@@ -1,0 +1,1833 @@
+<!DOCTYPE html><html><head><style class="vjs-styles-defaults">
+      .video-js {
+        width: 300px;
+        height: 150px;
+      }
+
+      .vjs-fluid {
+        padding-top: 56.25%
+      }
+    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="">
+    <meta name="author" content="">
+
+    <title>Sistema Administrativo Escolar</title>
+    <link rel="icon" type="image/png" href="/Imagenes/logoUat2.png" sizes="32x32">
+
+    
+    <link href="/Content/bundle?v=m0Slc-N1068MTrckPo6SLPhn7sUkUOtDUVeomykhGyo1" rel="stylesheet">
+
+    <link href="/css/fontAwesome?v=twNePZ-ujs1ucXs-RWtBVgReb12iCJYObHz7jZ0ulX81" rel="stylesheet">
+
+    <link href="/Content/DevExtremeBundle?v=-Q9Vbp42pxyYJKIa1FgvPML0kBRHlfBd0t5bZOoV1BM1" rel="stylesheet">
+
+    <script src="/Scripts/bundle?v=ChW1myQFJ-vCLi2kHW-6ZkU70LVJox65fDyoCQzfkfU1"></script>
+
+    <script src="/Scripts/DevExtremeBundle?v=Nr_L_4-jSbE-XFLwDO9b8PlYh0PzhX5IEV-0iHJXcps1"></script>
+
+
+    <script src="/Scripts/pdf.js"></script>
+
+    <script>
+        $(function () {
+            DevExpress.localization.locale("es-MX");
+
+            DevExpress.ui.dxPopup.defaultOptions({
+                //device: { deviceType: "desktop" },
+                options: {
+                    deferRendering: false
+                }
+            });
+
+            DevExpress.ui.dxDropDownBox.defaultOptions({
+                //device: { deviceType: "desktop" },
+                options: {
+                    deferRendering: false
+                }
+            });
+        });
+    </script>
+
+    <style type="text/css">
+        @font-face {
+            font-family: 'Open Sans';
+            src: url('/fonts/OpenSans-Regular.ttf') format('truetype'),
+                url('/fonts/OpenSans-Bold.ttf') format('truetype'),
+                url('/fonts/OpenSans-BoldItalic.ttf') format('truetype'),
+                url('/fonts/OpenSans-ExtraBold.ttf') format('truetype'),
+                url('/fonts/OpenSans-ExtraBoldItalic.ttf') format('truetype'),
+                url('/fonts/OpenSans-Italic.ttf') format('truetype'),
+                url('/fonts/OpenSans-Light.ttf') format('truetype'),
+                url('/fonts/OpenSans-LightItalic.ttf') format('truetype'),
+                url('/fonts/OpenSans-Regular.ttf') format('truetype'),
+                url('/fonts/OpenSans-Semibold.ttf') format('truetype'),
+                url('/fonts/OpenSans-SemiboldItalic.ttf') format('truetype');
+            font-style: normal;
+        }
+
+        /***********************************************************************************/
+        /*Contenedores*/
+        /**********************************************************************************/
+
+
+        body {
+            background: url('/Imagenes/fondoInicio.jpg') no-repeat center center fixed;
+            background-size: cover;
+            -moz-background-size: cover;
+            -webkit-background-size: cover;
+            -o-background-size: cover
+        }
+
+        #contenedorCabeceraPrincipal {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background-color: #0064A8;
+            z-index: 999;
+            transition: all 0.5s;
+        }
+
+        .sombraContenedorCabeceraPrincipal {
+            box-shadow: 0 2px 15px 0 #999;
+            -webkit-box-shadow: 0 2px 15px 0 #999;
+            -moz-box-shadow: 0 2px 15px 0 #999;
+        }
+
+        #contenedorCabeceraPrincipal_Mobile {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background-color: #0064A8;
+            z-index: 999;
+            transition: all 0.5s;
+        }
+
+        #contenedorMenuPrincipal {
+            position: fixed;
+            float: left;
+            width: 350px;
+            top: 80px;
+            bottom: 30px;
+            z-index: 1000;
+        }
+
+        #contenedorGeneralPrincipal {
+            padding-top: 100px;
+            padding-bottom: 40px;
+            width: 100%;
+        }
+
+        #contenedorGeneralPrincipal {
+            -webkit-transition: padding-left 0.5s ease-in-out 0.25s;
+            -moz-transition: padding-left 0.5s ease-in-out 0.25s;
+            -o-transition: padding-left 0.5s ease-in-out 0.25s;
+            transition: padding-left 0.5s ease-in-out 0.25s;
+        }
+
+        #divPrincipalContenedor {
+            width: 100%;
+            background-color: white;
+            padding: 0px 15px 15px 15px;
+            box-shadow: 5px 5px 10px #999;
+            -webkit-box-shadow: 5px 5px 10px #999;
+            -moz-box-shadow: 5px 5px 10px #999;
+            filter: shadow(color=#999999, direction=135, strength=2);
+            margin-bottom: 50px;
+          /*  z-index: -1;*/
+            position: relative;
+        }
+
+        #contenedorPiePrincipal {
+            background-color: #0064A8;
+            text-align: center;
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            height: 30px;
+            z-index: 1000;
+            background-image: url('/Imagenes/bg-pattern-azul.png');
+        }
+
+        /**********************************************************************************/
+        /*Arbol menu principal*/
+        /*********************************************************************************/
+
+        #treeViewMenuPrincipal .dx-treeview-item .dx-treeview-item-content > .dx-icon {
+            width: 24px !important;
+            height: 24px !important;
+        }
+
+        /**********************************************************************************/
+        /*Avatar menu principal*/
+        /*********************************************************************************/
+
+        .avatarPrincipal {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+        }
+
+        .usuarioDatosPrincipal {
+            font-family: Arial;
+            font-size: 10pt;
+            color: white;
+            width: 100%;
+            text-align: right;
+        }
+
+        /*********************************************************************************/
+        /*Load panel generico*/
+        /********************************************************************************/
+
+        #panelCargaGenerico .dx-loadindicator {
+            height: 300px;
+            width: 300px;
+        }
+
+        /**********************************************************/
+        /*ToolBar*/
+        /*********************************************************/
+
+        #toolbarMenuPrincipal {
+            background-color: #0064A8;
+            color: white;
+            padding: 15px 20px;
+            height: 80px;
+            background-image: url('/Imagenes/logo-uat-2022.png?v=202312011142'), url('/Imagenes/bg-pattern-naranja.png'), url('/Imagenes/bg-pattern-azul.png');
+            background-size: 80px, 300px;
+            background-position: left, left, right;
+            background-position-x: 90px, 0px, right;
+            background-repeat: no-repeat, no-repeat, repeat;
+        }
+
+        #toolbarMenuPrincipal_Mobile {
+            background-color: #0064A8;
+            color: white;
+            padding: 15px 20px;
+            height: 80px;
+            background-image: url('/Imagenes/logo-uat-2022.png?v=202312011142'), url('/Imagenes/bg-pattern-naranja.png'), url('/Imagenes/bg-pattern-azul.png');
+            background-size: 80px, 300px;
+            background-position: left, left, right;
+            background-position-x: 90px, 0px, right;
+            background-repeat: no-repeat, no-repeat, repeat;
+        }
+
+        #treeViewMenuPrincipal {
+            font-family: Arial;
+            font-size: 12pt;
+            color: black;
+            padding: 10px;
+            background-image: url('/Imagenes/fondoMenu.png');
+            background-repeat: no-repeat;
+            background-position: 50% 0;
+            background-size: cover;
+            /*font-weight: bold;*/
+        }
+
+        #btn_menu_generico {
+            border-radius: 50%;
+            font-size: 18pt;
+            width: 50px;
+            padding-bottom: 10px;
+        }
+
+            #btn_menu_generico i {
+                font-size: 20pt;
+                text-align: center;
+                margin-left: -12px;
+                margin-top: 12px;
+            }
+
+        /******************************************************************************/
+        /*Botones genericos*/
+        /*****************************************************************************/
+
+        #botonesPrincipalSIF img {
+            width: 24px;
+            height: 24px;
+            padding-top: 2px;
+        }
+
+        #botonesPrincipalSIF [elemento-sif=botones] .dx-button-content {
+            padding-top: 11px;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+        }
+
+        #botonesPrincipalSIF [elemento-sif=botones] :hover {
+            background-color: #B86125;
+        }
+
+        /*******************************************************************************/
+        /*Grid generico*/
+        /******************************************************************************/
+        [elemento-sif=gridGenerico] .dx-toolbar .dx-toolbar-item {
+            padding: 0;
+        }
+
+        [elemento-sif=gridGenerico] .dx-toolbar .dx-toolbar-before .dx-toolbar-item div.dx-item-content > div[elemento-sif=botonGrid] {
+            margin-right: 5px;
+        }
+
+        [elemento-sif=gridGenerico] .dx-toolbar .dx-toolbar-after .dx-toolbar-item div.dx-item-content > div[elemento-sif=botonGrid] {
+            margin-left: 5px;
+        }
+
+        [elemento-sif=gridGenerico] .dx-button-content {
+            display: flex;
+            align-items: center;
+        }
+
+        /*[elemento-sif="gridGenerico"] .dx-datagrid-export-button {
+            margin-left: 5px;
+            padding: 4px;
+        }*/
+
+        [elemento-sif=gridGenerico] .dx-datagrid-search-panel input {
+            height: 30px !important;
+        }
+
+        [elemento-sif=gridGenerico] [role=checkbox] {
+            display: inline-block !important;
+        }
+
+        [elemento-sif=gridGenerico] > div .dx-datagrid-header-panel > div > div {
+            height: 45px !important;
+        }
+
+        [elemento-sif=gridGenerico] [role=checkbox] {
+            display: inline-block !important;
+        }
+
+        [elemento-sif=botonGrid]/*, .dx-widget[elemento-sif="gridGenerico"] .dx-datagrid-export-button*/ {
+            width: auto;
+            height: 32px;
+            color: #007bff;
+            border-color: #007bff;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [elemento-sif=botonGrid].dx-state-hover {
+                background-color: #007bff;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [elemento-sif=botonGrid].dx-state-active {
+                background-color: darkblue;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [elemento-sif=botonGrid] > div > img/*, .dx-widget[elemento-sif="gridGenerico"] .dx-datagrid-export-button > div > img*/ {
+            width: 24px !important;
+            height: 24px !important;
+        }
+
+        .dx-widget[elemento-sif=gridGenerico] > div.dx-datagrid,
+        .dx-widget[elemento-sif=gridGenerico] > div.dx-datagrid > div.dx-datagrid-header-panel > div.dx-toolbar {
+            background-color: transparent !important;
+        }
+
+        .dx-widget[elemento-sif=gridGenerico] > div.dx-datagrid > div.dx-datagrid-rowsview,
+        .dx-widget[elemento-sif=gridGenerico] > div.dx-datagrid > div.dx-datagrid-headers {
+            background-color: white !important;
+        }
+
+        .dx-datagrid-pager {
+            display: flex;
+            margin: 0;
+            padding: 5px;
+            align-items: center;
+            justify-content: space-between;
+        }
+        /*quitar espacio alrededor en master detail*/
+        .dx-datagrid-rowsview .dx-row > .dx-master-detail-cell.AjustaDetalle {
+            padding: 5px;
+            margin: 1px;
+        }
+        /*reducir espacio en columna expandir grupo/detalles*/
+        .dx-datagrid-group-space {
+            width: 10px !important;
+            min-width: 10px !important;
+        }
+        /*******************************************************************************/
+        /*TreeList generico*/
+        /******************************************************************************/
+        [elemento-sif=treeGenerico] .dx-toolbar .dx-toolbar-item {
+            padding: 0;
+        }
+
+        [elemento-sif=treeGenerico] .dx-toolbar .dx-toolbar-before .dx-toolbar-item div.dx-item-content > div[elemento-sif=botonGrid] {
+            margin-right: 5px;
+        }
+
+        [elemento-sif=treeGenerico] .dx-toolbar .dx-toolbar-after .dx-toolbar-item div.dx-item-content > div[elemento-sif=botonGrid] {
+            margin-left: 5px;
+        }
+
+        [elemento-sif=treeGenerico] .dx-button-content {
+            display: flex;
+            align-items: center;
+        }
+
+        /*[elemento-sif="treeGenerico"] .dx-datagrid-export-button {
+            margin-left: 5px;
+            padding: 4px;
+        }*/
+
+        [elemento-sif=treeGenerico] .dx-treelist-search-panel input {
+            height: 30px !important;
+        }
+
+        [elemento-sif=treeGenerico] > div .dx-treelist-header-panel > div > div {
+            height: 45px !important;
+        }
+
+        [elemento-sif=botonTree]/*, .dx-widget[elemento-sif="botonTree"] .dx-datagrid-export-button*/ {
+            width: auto;
+            height: 32px;
+            color: #007bff;
+            border-color: #007bff;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [elemento-sif=botonTree].dx-state-hover {
+                background-color: #007bff;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [elemento-sif=botonTree].dx-state-active {
+                background-color: darkblue;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [elemento-sif=botonTree] > div > img/*, .dx-widget[elemento-sif="botonTree"] .dx-datagrid-export-button > div > img*/ {
+                width: 24px !important;
+                height: 24px !important;
+            }
+
+        .dx-widget[elemento-sif="treeGenerico"] > div.dx-treelist-container,
+        .dx-widget[elemento-sif="treeGenerico"] > div.dx-treelist-container > div.dx-treelist-header-panel > div.dx-toolbar {
+            background-color: transparent !important;
+        }
+
+        .dx-widget[elemento-sif="treeGenerico"] > div.dx-treelist-container > div.dx-treelist-rowsview,
+        .dx-widget[elemento-sif="treeGenerico"] > div.dx-treelist-container > div.dx-treelist-headers {
+            background-color: white !important;
+        }
+
+        /*******************************************************************************/
+        /*Botnones grid generico*/
+        /******************************************************************************/
+
+        [botonGrid=btn_Buscar] {
+            color: #6C757D;
+            border-color: #6C757D;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Buscar].dx-state-hover {
+                background-color: #6C757D;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Buscar].dx-state-active {
+                background-color: darkgray;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [botonGrid=btn_Imprimir]/*, .dx-widget[elemento-sif="gridGenerico"] .dx-datagrid-export-button*/ {
+            color: #6C757D;
+            border-color: #6C757D;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Imprimir].dx-state-hover/*, .dx-widget[elemento-sif="gridGenerico"] .dx-datagrid-export-button.dx-state-hover*/ {
+                background-color: #6C757D;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Imprimir].dx-state-active/*, .dx-widget[elemento-sif="gridGenerico"] .dx-datagrid-export-button.dx-state-active*/ {
+                background-color: darkgray;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+
+        [botonGrid=btn_Limpiar] {
+            color: #0B8395;
+            border-color: #0B8395;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Limpiar].dx-state-hover {
+                background-color: #0B8395;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Limpiar].dx-state-active {
+                background-color: darkcyan;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [botonGrid=btn_Nuevo] {
+            color: #007bff;
+            border-color: #007bff;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Nuevo].dx-state-hover {
+                background-color: #007bff;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Nuevo].dx-state-active {
+                background-color: darkblue;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [botonGrid=btn_Detalle] {
+            color: rosybrown;
+            border-color: rosybrown;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Detalle].dx-state-hover {
+                background-color: rosybrown;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Detalle].dx-state-active {
+                background-color: brown;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [botonGrid=btn_Guardar] {
+            color: #018A40;
+            border-color: #018A40;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Guardar].dx-state-hover {
+                background-color: #018A40;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Guardar].dx-state-active {
+                background-color: darkgreen;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [botonGrid=btn_Editar] {
+            color: #f0ad4e;
+            border-color: #f0ad4e;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Editar].dx-state-hover {
+                background-color: #f0ad4e;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Editar].dx-state-active {
+                background-color: darkorange;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [botonGrid=btn_Eliminar] {
+            color: #CA2632;
+            border-color: #CA2632;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Eliminar].dx-state-hover {
+                background-color: #CA2632;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Eliminar].dx-state-active {
+                background-color: darkred;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [botonGrid=btn_Cancelar] {
+            color: #CA2632;
+            border-color: #CA2632;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Cancelar].dx-state-hover {
+                background-color: #CA2632;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Cancelar].dx-state-active {
+                background-color: darkred;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [botonGrid=btn_Colapsar] {
+            color: #292929;
+            border-color: #ababab;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Colapsar].dx-state-hover {
+                background-color: #A9A9A9;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Colapsar].dx-state-active {
+                background-color: #DCDCDC;
+                color: #292929;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        div.dx-texteditor.dx-state-readonly {
+            border-style: solid;
+            background-color: rgba(51,51,51,.03) !important;
+        }
+
+        .dx-item.dx-radiobutton.dx-item-selected {
+            font-weight: bold;
+        }
+
+        .dx-tooltip-wrapper .dx-overlay-content .dx-popup-content {
+            background-color: #fffdde !important;
+        }
+
+        .dx-tooltip-wrapper .dx-popover-arrow:after {
+            background-color: #fffdde !important;
+        }
+
+        .dx-tooltip-wrapper.dx-position-bottom .dx-popover-arrow:after {
+            background-color: #fffdde !important;
+        }
+
+        #toolbarMenuPrincipal_Mobile .dx-icon-overflow {
+            font: 40px/1 DXIcons !important;
+            width: 40px !important;
+            height: 40px !important;
+
+        }
+        #toolbarMenuPrincipal_Mobile .dx-button-mode-contained {
+            border-radius: 50% !important;
+        }
+       /* #toolbarMenuPrincipal_Mobile .dx-toolbar-after .dx-button-mode-contained {
+            background-color: #bc6824 !important;
+            border-color: #bc6824 !important;
+        }*/
+    </style>
+
+    <script type="text/javascript" id="rutas">
+        var urlFondoIzquierdo = '/Imagenes/bg-pattern-naranja.png';
+        var urlFondoDerecho = '/Imagenes/bg-pattern-azul.png';
+        var urlLogoFondo = '/Imagenes/logo-uat-2022.png?v=202312011142';
+        var urlFondoPie = '/Imagenes/bg-pattern-azul.png';
+
+        var urlLoadingIndicador = '/Imagenes/loading-icon.jpg';
+        var urlLoadingIndicador2 = '/Imagenes/loading2.jpg';
+        var urlImagenAvatar = '/Imagenes/img_avatar.png';
+        var urlbackgroundPrincipal = '/Imagenes/backgroundPrincipal.png';
+        var urlBackgroundGeneral = '/Imagenes/BackgroundGeneral.png';
+        var urlIconExport = '/Imagenes/ExcelIcon.png';
+
+        var urlIconBotonOK = '/Imagenes/Images/Actions/Apply_32x32.png';
+        var urlIconBotonNO = '/Imagenes/Images/Actions/Cancel_32x32.png';
+
+        var urlIconMessageAsterisk = '/Imagenes/Dialog/messagebox-asterisk.png';
+        var urlIconMessageError = '/Imagenes/Dialog/messagebox-error.png';
+        var urlIconMessageExclamation = '/Imagenes/Dialog/messagebox-exclamation.png';
+        var urlIconMessageHand = '/Imagenes/Dialog/messagebox-hand.png';
+        var urlIconMessageInformation = '/Imagenes/Dialog/messagebox-information.png';
+        var urlIconMessageQuestion = '/Imagenes/Dialog/messagebox-question.png';
+        var urlIconMessageStop = '/Imagenes/Dialog/messagebox-stop.png';
+        var urlIconMessageWarning = '/Imagenes/Dialog/messagebox-warning.png';
+
+        var urlIconBtnHerramientas = '/Imagenes/Images/Setup/Properties_32x32.png';
+        var urlIconBtnLimpiar = '/Imagenes/Images/Actions/Refresh2_32x32.png';
+        var urlIconBtnPrincipal = '/Imagenes/Images/Navigation/Home_32x32.png';
+        var urlIconBtnGuardar = '/Imagenes/Images/Save/Save_32x32.png';
+        var urlIconBtnBuscar = '/Imagenes/Images/Zoom/Zoom_32x32.png';
+        var urlIconBtnExportarPDF = '/Imagenes/Images/Export/ExportToPDF_32x32.png';
+        var urlIconBtnImportar = '/Imagenes/Images/Navigation/Up_32x32.png';
+        var urlIconBtnRecibir = '/Imagenes/Images/Actions/ConvertToRange_32x32.png';
+        var urlIconBtnCancelar = '/Imagenes/Images/Actions/Cancel_32x32.png';
+        var urlIconBtnEnviar = '/Imagenes/Images/Mail/Outbox_32x32.png';
+        var urlIconBtnAutoriza = '/Imagenes/Images/Actions/Apply_32x32.png';
+        var urlIconBtnRechazar = '/Imagenes/Images/Edit/Delete_32x32.png';
+        var urlIconBtnExportarExcel = '/Imagenes/Images/logo_excel.png';
+        var urlIconBtnPDF = '/Imagenes/Images/logo_pdf.png';
+        var urlIconBtnInfo = '/Imagenes/btnAyuda.png';
+        var urlIconBtnEditar = '/Imagenes/Images/Edit/Edit_32x32.png';
+        var urlIconBtnNuevo = '/Imagenes/Images/Actions/AddItem_32x32.png';
+        var urlIconBtnRecargar = '/Imagenes/Images/Actions/Refresh_32x32.png';
+        var urlIconBtnImprimir = '/Imagenes/Images/Print/Print_32x32.png';
+        var urlIconBtnGrid = '/Imagenes/Images/Grid/Grid_32x32.png';
+        var urlIconBtnDetalle = '/Imagenes/Images/XAF/BO_Security_Permission_32x32.png';
+        var urlIconBtnColapsar = '/Imagenes/Images/Actions/Fill_32x32.png';
+        var urlIconBtnExpander = '/Imagenes/Images/Actions/Right_32x32.png';
+        var urlIconBtnCalendario = '/Imagenes/Images/Scheduling/Today_32x32.png';
+
+        //var urlLoginErrorPeticionGeneral = "localhost\\SIF\\";
+        var urlMenu = '/Home/Menu';
+        var urlConfig = '';
+        var urlPrincipal = '/Home';
+        var urlParametros = '/Login/ObjetosGlobales';
+        var urlPermisos = '/Permisos';
+        var urlCerrarSesion = '/Login/Salir';
+        var urlManual = '/Manual/Multimedia';
+        var urlAvatarFoto = '/Home/ConsultaFotoAutorizada';
+
+
+        var botonesPrincipalesGrupo = [{"orden":0,"component":"","disabled":false,"elementAttr":"","icon":"home","render":"","template":"","text":"","type":"","visible":false,"alignment":"justify","hint":"Principal","name":"btnPrincipal"},{"orden":0,"component":"","disabled":false,"elementAttr":"","icon":"refresh","render":"","template":"","text":"","type":"","visible":true,"alignment":"justify","hint":"Limpiar","name":"btnLimpiar"},{"orden":0,"component":"","disabled":false,"elementAttr":"","icon":"search","render":"","template":"","text":"","type":"","visible":false,"alignment":"justify","hint":"Buscar","name":"btnBuscar"},{"orden":0,"component":"","disabled":false,"elementAttr":"","icon":"save","render":"","template":"","text":"","type":"","visible":false,"alignment":"justify","hint":"Guardar","name":"btnGuardar"},{"orden":0,"component":"","disabled":false,"elementAttr":"","icon":"close","render":"","template":"","text":"","type":"","visible":false,"alignment":"justify","hint":"Cancelar","name":"btnCancelar"},{"orden":0,"component":"","disabled":false,"elementAttr":"","icon":"pdffile","render":"","template":"","text":"","type":"","visible":false,"alignment":"justify","hint":"Imprimir","name":"btnExportarPDF"},{"orden":0,"component":"","disabled":false,"elementAttr":"","icon":"xlsxfile","render":"","template":"","text":"","type":"","visible":false,"alignment":"justify","hint":"Exportar excel","name":"btnExportarExcel"},{"orden":0,"component":"","disabled":false,"elementAttr":"","icon":"parentfolder","render":"","template":"","text":"","type":"","visible":false,"alignment":"justify","hint":"Importar","name":"btnImportar"},{"orden":0,"component":"","disabled":false,"elementAttr":"","icon":"exportselected","render":"","template":"","text":"","type":"","visible":false,"alignment":"justify","hint":"Enviar","name":"btnEnviar"},{"orden":0,"component":"","disabled":false,"elementAttr":"","icon":"exportselected","render":"","template":"","text":"","type":"","visible":false,"alignment":"justify","hint":"Recibir","name":"btnRecibir"},{"orden":0,"component":"","disabled":false,"elementAttr":"","icon":"export","render":"","template":"","text":"","type":"","visible":false,"alignment":"justify","hint":"Autorizar","name":"btnAutoriza"},{"orden":0,"component":"","disabled":false,"elementAttr":"","icon":"undo","render":"","template":"","text":"","type":"","visible":false,"alignment":"justify","hint":"Rechazar","name":"btnRechazar"},{"orden":0,"component":"","disabled":false,"elementAttr":"","icon":"info","render":"","template":"","text":"","type":"","visible":true,"alignment":"justify","hint":"Ayuda","name":"btnInfo"}];
+
+        var varLayoutDatosMenuIdPantalla = Number('835');
+    </script>
+    <script type="text/javascript" id="codigo">
+        var panelCargaGenerico = null;
+
+        function fnGetControladorAccion() {
+
+            var controllerName = 'ControlAsistencia';
+            var actionName = 'Index';
+            var areaName = 'Profesor';
+            return { "controllerName": controllerName, "actionName": actionName, "areaName": areaName };
+        }
+
+        function MostrarReporteVisorGenerico(documento = "Visor") {
+            var urlVisor = '/VisorPDFGenerico?documento=_documento';
+            urlVisor = urlVisor.replaceAll("_documento", documento);
+            //console.log(urlVisor);
+            PopupCenterScreen(urlVisor);
+            //window.open(urlVisor, "_blank", "width=1000,height=700,scrollbars = yes, toolbar = no, left = 10, top = 10, resizable = yes");
+        }
+
+        function PopupCenterScreen(url, target = "_blank", w = 800, h = 600) {
+
+            const width = screen.width;
+            const height = screen.height;
+            const left = (width - w) / 2;
+            const top = (height - h) / 2;
+            const newWindow = window.open(url, target,
+                `
+                toolbar = no,
+                resizable = yes,
+                scrollbars = yes,
+                width = ${w},
+                height = ${h},
+                top = ${top},
+                left = ${left}
+                `
+            )
+
+            if (window.focus) newWindow.focus();
+        }
+
+        jQuery(document).ready(function () {
+            DevExpress.localization.locale("es-MX");
+
+
+            setIconsMenu();
+            fnCargarMenu();
+            //fnCargarParametros();
+            panelCargaGenerico = $("#panelCargaGenerico").dxLoadPanel({
+                indicatorSrc: urlLoadingIndicador2,
+                message: "Espere un momento...",
+                shadingColor: "#d9e3f780",
+                showPane: false,
+                height: "300px",
+                width: "300px",
+                closeOnOutsideClick: false,
+                visible: false
+            }).dxLoadPanel("instance");
+
+            const new_style_element = document.createElement("style");
+            new_style_element.setAttribute('type', 'text/css');
+            new_style_element.textContent = "" +
+                ".dx-row.dx-header-row > td { " +
+                "color: white !important; " +
+                "background-color: " + localStorage.ColorCabeceraGrid + " !important; " +
+                "} " +
+                ".dx-row.dx-data-row.dx-selection > td { " +
+                "color: white !important; " +
+                "background-color: " + localStorage.ColorSeleccionGrid + " !important; " +
+                "} " +
+                ".dx-datagrid-total-footer { " +
+                "color: black !important; " +
+                "background-color: " + localStorage.ColorPieGrid + " !important; " +
+                "} " +
+                ".dx-datagrid-pager { " +
+                "color: black !important; " +
+                "background-color: " + localStorage.ColorPieGrid + " !important; " +
+                "} " +
+                ".dx-page-size { " +
+                "color: " + localStorage.ColorCabeceraGrid + " !important; " +
+                "} " +
+                ".dx-page-size.dx-selection { " +
+                "color: black !important; " +
+                "} " +
+                ".dx-item.dx-list-item.dx-list-item-selected { " +
+                "color: white !important; " +
+                "background-color: " + localStorage.ColorCabeceraGrid + " !important; " +
+                "} " +
+                ".dx-item.dx-radiobutton.dx-item-selected { " +
+                "color: " + localStorage.ColorCabeceraGrid + " !important; " +
+                "} " +
+                ".text_info_header { " +
+                "color: " + localStorage.ColorCabeceraGrid + " !important; " +
+                "} " +
+                ".dx-popup-title {" +
+                "background-color: " + localStorage.ColorHeaderPopUp + "; " +
+                "} " +
+                ".dx-popup-wrapper.dx-popover-wrapper.dx-position-bottom > div.dx-popup-normal > div.dx-popover-arrow:after {" +
+                "background-color: " + localStorage.ColorHeaderPopUp + "; " +
+                "} " +
+                ".dx-popup-wrapper.dx-popover-wrapper.dx-popover-flipped-vertical > div.dx-popup-normal > div.dx-popover-arrow:after {" +
+                "background-color: white; " +
+                "} " +
+                "#treeViewMenuPrincipal{" +
+                "background-color: " + localStorage.ColorFondoMenu + " !important; " +
+                "} " +
+                "#treeViewMenuPrincipal .dx-item.dx-treeview-item > div > a {" + localStorage.EstiloLinkMenu + "}" +
+                ".dx-item.dx-treeview-item.dx-state-hover{" +
+                "background-color: " + localStorage.ColorHoverMenu + " !important; " +
+                "} " +
+                ".dx-buttongroup .dx-buttongroup-item { " +
+                "color: " + localStorage.ColorCabeceraGrid + " !important; " +
+                //"border: solid 1px " + localStorage.ColorCabeceraGrid + " !important; " +
+                "} " +
+                ".dx-buttongroup .dx-buttongroup-item .dx-icon { " +
+                "color: " + localStorage.ColorCabeceraGrid + " !important; " +
+                "} " +
+                ".dx-buttongroup .dx-buttongroup-item.dx-state-hover { " +
+                "color: white !important; " +
+                "background-color: " + localStorage.ColorCabeceraGrid + " !important; " +
+                //"border: solid 1px " + localStorage.ColorCabeceraGrid + " !important; " +
+                "} " +
+                ".dx-buttongroup .dx-buttongroup-item.dx-state-hover .dx-icon { " +
+                "color: white !important; " +
+                "} " +
+                ".dx-buttongroup .dx-buttongroup-item.dx-item-selected { " +
+                "color: white !important; " +
+                "background-color: " + localStorage.ColorSeleccionGrid + " !important; " +
+                //"border: solid 1px " + localStorage.ColorSeleccionGrid + " !important; " +
+                "} " +
+                ".dx-buttongroup .dx-buttongroup-item.dx-item-selected .dx-icon { " +
+                "color: white !important; " +
+                "} ";
+            $('head')[0].appendChild(new_style_element);
+
+            validarPantallaMobile();
+            
+            $("#lyMenuUsuarioToolTip").dxTooltip({
+                target: "#imgUsuarioLayout",
+                showEvent: "mouseenter",
+                closeOnOutsideClick: true,
+                position: usuarioEstaUtilizandoMovil() ? {
+                    my: "top",
+                    at: "center",
+                    of: "#target-element",
+                    offset: "0 " + "-" + (($(window).height() / 2) - 70)
+                } : "bottom",
+                width: usuarioEstaUtilizandoMovil() ? ($(window).width() - 50) + "px" : "400px",
+                contentTemplate: function (data) {
+                    var pcName = localStorage.getItem("Txt_Nom_PC_AdmonUAT").split(".");
+                    var tooltipWidth = '400px';
+                    if (usuarioEstaUtilizandoMovil()) {
+                        tooltipWidth = $(window).width();
+                        tooltipWidth = tooltipWidth - 80;
+                        tooltipWidth = tooltipWidth + "px";
+                    }
+                    data.html("<div style='width: " + tooltipWidth + "'>" +
+                        "<div style='width: 100%; float: left; font-weight: bold; font-family: Arial; font-size: 12pt; text-align: left;'>Usuario</div>" +
+                        "<div style='width: 100%; float: left; font-family: Arial; font-size: 12pt; text-align: center; padding-bottom: 10px; white-space: normal;'>" + localStorage.getItem("Id_Plantilla_AdmonUAT") + " - " + localStorage.getItem("Txt_Usuario_AdmonUAT") + "</div>" +
+                        "<div style='width: 100%; float: left; font-weight: bold; font-family: Arial; font-size: 12pt; text-align: left;'>Nivel</div>" +
+                        "<div style='width: 100%; float: left; font-family: Arial; font-size: 12pt; text-align: center; padding-bottom: 10px; white-space: normal;'>" + localStorage.getItem("Id_Niveles_AdmonUAT") + " - " + localStorage.getItem("Txt_Nivel_AdmonUAT") + "</div>" +
+                        "<div style='width: 100%; float: left; font-weight: bold; font-family: Arial; font-size: 12pt; text-align: left;'>Equipo</div>" +
+                        "<div style='width: 100%; float: left; font-family: Arial; font-size: 12pt; text-align: center; padding-bottom: 10px;'>" + pcName[0] + "</div>" +
+                        "<div style='width: 100%; float: left;'><a style='cursor: pointer;' class='btn btn-outline-danger my-2 my-sm-0' href='" + urlCerrarSesion + "'>" +
+                        "<img src='" + urlIconBtnDetalle + "' style='width: 24px;height: 24px;margin-right: 5px;margin-bottom: 3px;' /> Cerrar sesión</a ></div > " +
+                        "</div>");
+
+                  
+
+                }
+            });
+        });
+
+        function validarPantallaMobile() {
+            try {
+            const contenedorCabeceraPrincipal = document.getElementById('contenedorCabeceraPrincipal');
+            const contenedorCabeceraPrincipal_Mobile = document.getElementById('contenedorCabeceraPrincipal_Mobile');
+            const contenedorGeneralPrincipal = document.getElementById("contenedorGeneralPrincipal");
+            const contenedorPie = document.getElementById('contenedorPiePrincipal');
+            // Cambia la propiedad height a 40px
+            if (usuarioEstaUtilizandoMovil()) {
+                contenedorCabeceraPrincipal.style.display = 'none';
+                contenedorCabeceraPrincipal_Mobile.style.display = 'block';
+                contenedorGeneralPrincipal.style.paddingLeft = "0px";
+                contenedorPie.style.height = '40px';
+                //console.log("EsMobile");
+            }
+            else {
+                contenedorCabeceraPrincipal_Mobile.style.display = 'none';
+                contenedorCabeceraPrincipal.style.display = 'block';
+                contenedorGeneralPrincipal.style.paddingLeft = "350px";
+                contenedorPie.style.height = '30px';
+                //console.log("EsEscritorio");
+            }
+                ejecutarDespuesRenderizarPantalla();
+            } catch (error) {
+               
+            }
+        }
+
+        window.addEventListener('resize', validarPantallaMobile);
+
+        function ejecutarDespuesRenderizarPantalla() {
+            try {
+            if (typeof usuarioEstaUtilizandoMovil === 'function') {
+                if (usuarioEstaUtilizandoMovil()) {
+                    const allPopups = $(".dx-popup");
+                    for (var i = 0; i < allPopups.length; i++) {
+                        if (allPopups[i].id != null && allPopups[i].id != '') {
+                            var $controlElement = $("#" + allPopups[i].id);
+                            // Verifica si el control es una instancia de dxTooltip
+                            if ($controlElement.hasClass("dx-tooltip") == false) {
+                                if (!["confirmacionGenericoSIF", "confirmacionGenericoOpcionSIF","alertaGenericoSIF"].includes(allPopups[i].id)) { 
+                                $("#" + allPopups[i].id).dxPopup('instance').option("width", Math.floor(window.innerWidth * 0.7));
+                                $("#" + allPopups[i].id).dxPopup('instance').option("height", Math.floor(window.innerHeight * 0.7))
+                                $("#" + allPopups[i].id).dxPopup('instance').option("showCloseButton", true);
+                                    
+                                }
+                            }
+                        }
+                    }
+                    const scrollPops = document.querySelectorAll('.dx-overlay-content .dx-popup-content');
+                    for (var i = 0; i < scrollPops.length; i++) {
+                        scrollPops[i].style.overflow = 'scroll';
+                    }
+                }
+                //-------------------------------------------------------------------
+                }
+            } catch (error) {
+               
+            }
+        }
+    </script>
+<style type="text/css">.dx-row.dx-header-row > td { color: white !important; background-color: #3D6F89 !important; } .dx-row.dx-data-row.dx-selection > td { color: white !important; background-color: #FFA500 !important; } .dx-datagrid-total-footer { color: black !important; background-color: #6A9EBA !important; } .dx-datagrid-pager { color: black !important; background-color: #6A9EBA !important; } .dx-page-size { color: #3D6F89 !important; } .dx-page-size.dx-selection { color: black !important; } .dx-item.dx-list-item.dx-list-item-selected { color: white !important; background-color: #3D6F89 !important; } .dx-item.dx-radiobutton.dx-item-selected { color: #3D6F89 !important; } .text_info_header { color: #3D6F89 !important; } .dx-popup-title {background-color: #00b8d4; } .dx-popup-wrapper.dx-popover-wrapper.dx-position-bottom > div.dx-popup-normal > div.dx-popover-arrow:after {background-color: #00b8d4; } .dx-popup-wrapper.dx-popover-wrapper.dx-popover-flipped-vertical > div.dx-popup-normal > div.dx-popover-arrow:after {background-color: white; } #treeViewMenuPrincipal{background-color: #E9E9F3 !important; } #treeViewMenuPrincipal .dx-item.dx-treeview-item > div > a {font-family: Arial;font-size: 10pt;font-weight: bold;color: #007bff;text-decoration: underline;}.dx-item.dx-treeview-item.dx-state-hover{background-color: #F0AD4E !important; } .dx-buttongroup .dx-buttongroup-item { color: #3D6F89 !important; } .dx-buttongroup .dx-buttongroup-item .dx-icon { color: #3D6F89 !important; } .dx-buttongroup .dx-buttongroup-item.dx-state-hover { color: white !important; background-color: #3D6F89 !important; } .dx-buttongroup .dx-buttongroup-item.dx-state-hover .dx-icon { color: white !important; } .dx-buttongroup .dx-buttongroup-item.dx-item-selected { color: white !important; background-color: #FFA500 !important; } .dx-buttongroup .dx-buttongroup-item.dx-item-selected .dx-icon { color: white !important; } </style></head>
+<body>
+    <script type="text/javascript">
+
+    var ucDA;
+
+    $(function () {
+        ucDA_control_ready();
+        ucDA_Cargar();
+    });
+
+    var ucDA_Cargar = function () {
+        var dropDown = ucDA;
+        var datos = {
+            m: dropDown.option('filtro')
+        };
+        var url_consulta = '/Genericos/ConsultarDA';
+        jQuery.ajax({
+            dataType: 'json',
+            data: datos,
+            type: 'POST',
+            url: url_consulta,
+            success: function (result) {
+                if (result.exito) {
+                    $("#ucDA").dxSelectBox("instance").option("dataSource", result.result);
+                    $("#ucDA").dxSelectBox('instance').option('value', result.result[0].Id_DES);
+                    var onCargarDataSource = ucDA.option('onCargarDataSource');
+                    if (onCargarDataSource != null && onCargarDataSource != undefined && typeof onCargarDataSource === 'function') {
+                        onCargarDataSource(dropDown);
+                    }
+                }
+                else {
+                    $("#ucDA").dxSelectBox("instance").option("dataSource", null);
+                }
+            }
+        }).fail(function (a, b, c) {
+            return null;
+        });
+    }
+
+    function ucDA_control_ready() {
+        var readOnly = false;
+        ucDA =
+        $("#ucDA").dxSelectBox({
+            readOnly: readOnly,
+            valueExpr: "Id_DES",
+            displayExpr: "Txt_DES",
+            noDataText: "No hay información",
+            placeholder: "Seleccionar",
+            searchEnabled: true,
+            showClearButton: false,
+            showDropDownButton: true,
+            filtro: {"profesor":true,"id_cu":null,"name_cu":null,"control_ready_cu":null,"hide_cu":false,"todos_cu":false,"id_des":null,"name_des":null,"control_ready_des":null,"hide_des":false,"todos_des":false,"id":"ucDA","name":"ucDA","value":"null","height":null,"width":null,"required":false,"readOnly":false,"validationGroup":"validacion_control_ucDA","validationFunction":null,"control_ready":"ucDA_control_ready","origen":null,"label":null},
+            value: {"profesor":true,"id_cu":null,"name_cu":null,"control_ready_cu":null,"hide_cu":false,"todos_cu":false,"id_des":null,"name_des":null,"control_ready_des":null,"hide_des":false,"todos_des":false,"id":"ucDA","name":"ucDA","value":"null","height":null,"width":null,"required":false,"readOnly":false,"validationGroup":"validacion_control_ucDA","validationFunction":null,"control_ready":"ucDA_control_ready","origen":null,"label":null},
+            onCargarDataSource: null
+        }).dxSelectBox("instance");
+        ucDA.option('readOnly', readOnly);
+    }
+
+</script>
+
+<script type="text/javascript">
+
+    var ucCicloEscolar;
+
+    $(function () {
+        ucCicloEscolar_control_ready();
+        var autoCarga =true;
+        if (autoCarga) {
+            ucCicloEscolar_Cargar();
+        }
+    });
+
+    var ucCicloEscolar_Ocultar = function () {
+        $("#ucCicloEscolar_pnlPrincipal").hide();
+    }
+
+    var ucCicloEscolar_Mostrar = function () {
+        $("#ucCicloEscolar_pnlPrincipal").show();
+    }
+
+    var ucCicloEscolar_Cargar = function () {
+        var dropDown = ucCicloEscolar;
+        var datos = {
+            todos: dropDown.option('todos'),
+            tipo: dropDown.option('tipo'),
+            Id_Ciclo_Escolar: dropDown.option('value') != null ? dropDown.option('value') : 0,
+            Id_Plan_Estudio: dropDown.option('Id_Plan_Estudio'),
+            id_tipo_calendario_escolar: dropDown.option('id_tipo_calendario_escolar')
+        };
+        var sn_async = true;
+        var url_consulta = '/Genericos/BuscarCicloEscolar';
+        jQuery.ajax({
+            dataType: 'json',
+            data: datos,
+            type: 'POST',
+            url: url_consulta,
+            async: sn_async,
+            success: function (result) {
+                if (result.exito) {
+                    $("#ucCicloEscolar").dxSelectBox("instance").option("dataSource", result.result);
+                    if (!false) {
+
+                        var inicial = false;
+                        $(result.result).each(function (index, value) {
+                            if (value.Sn_Activo == "x") {
+                                $("#ucCicloEscolar").dxSelectBox('instance').option('value', value.Id_Ciclo_Escolar);
+                                inicial = true;
+                            }
+                        });
+                        if (!inicial) $("#ucCicloEscolar").dxSelectBox('instance').option('value', result.result[0].Id_Ciclo_Escolar);
+
+                        var onCargarDataSource = ucCicloEscolar.option('onCargarDataSource');
+                        if (onCargarDataSource != null && onCargarDataSource != undefined && typeof onCargarDataSource === 'function') {
+                            onCargarDataSource(dropDown);
+                        }
+                    }
+                }
+                else {
+                    $("#ucCicloEscolar").dxSelectBox("instance").option("dataSource", null);
+                }
+            }
+        }).fail(function (a, b, c) {
+            return null;
+        });
+    }
+
+    function ucCicloEscolar_control_ready() {
+        var readOnly = false;
+        ucCicloEscolar = $("#ucCicloEscolar").dxSelectBox({
+            tipo: 99,
+            readOnly: readOnly,
+            valueExpr: "Id_Ciclo_Escolar",
+            displayExpr: "Txt_Ciclo_Escolar",
+            todos: false,
+            tipo: 99,
+            Id_Plan_Estudio: 0,
+            id_tipo_calendario_escolar: 0,
+            onCargarDataSource: null,
+            //itemTemplate: function (data) {
+            //    if (data.Sn_Activo != null && data.Sn_Activo == "x") {
+            //        return "<div style='height: 18px; position: relative; min-height: 18px; background: #28B463; color: #ffffff;';><strong>" + data.Txt_Ciclo_Escolar + "</strong></div>";
+            //    }
+            //    else {
+            //        return data.Txt_Ciclo_Escolar;
+            //    }
+            //}
+        }).dxSelectBox("instance");
+        ucCicloEscolar.option('readOnly', readOnly);
+    }
+
+</script>
+
+    <div id="contenedorCabeceraPrincipal" style="display: none;">
+        <div id="toolbarMenuPrincipal" class="dx-toolbar dx-widget dx-visibility-change-handler dx-collection" role="toolbar"><div class="dx-toolbar-items-container"><div class="dx-toolbar-before"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-contained dx-button-normal dx-button-has-icon" id="btn_menu_generico" role="button" aria-label="menu" tabindex="0" style="height: 50px; width: 50px;"><div class="dx-button-content"><i class="dx-icon dx-icon-menu"></i></div></div></div></div></div><div class="dx-toolbar-center"></div><div class="dx-toolbar-after"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div role="group" class="dx-buttongroup dx-widget" id="botonesPrincipalSIF"><div class="dx-buttongroup-wrapper dx-widget dx-collection"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-success dx-button-has-icon dx-state-invisible dx-item dx-buttongroup-item dx-item-content dx-buttongroup-item-content dx-buttongroup-first-item dx-shape-standard dx-state-invisible" id="btnPrincipal_generalesSIF" elemento-sif="botones" role="button" aria-label="Home_32x32" aria-hidden="true" title="Principal" hidden="" aria-selected="false" style="border-radius: 50%; margin-bottom: 5px; border-color: transparent;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Navigation/Home_32x32.png"></div></div><div class="dx-widget dx-button dx-button-mode-outlined dx-button-success dx-button-has-icon dx-item dx-buttongroup-item dx-item-content dx-buttongroup-item-content dx-shape-standard" id="btnLimpiar_generalesSIF" elemento-sif="botones" role="button" aria-label="Refresh2_32x32" title="Limpiar" aria-selected="false" style="border-radius: 50%; margin-bottom: 5px; border-color: transparent;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Refresh2_32x32.png"></div></div><div class="dx-widget dx-button dx-button-mode-outlined dx-button-success dx-button-has-icon dx-state-invisible dx-item dx-buttongroup-item dx-item-content dx-buttongroup-item-content dx-shape-standard dx-state-invisible" id="btnBuscar_generalesSIF" elemento-sif="botones" role="button" aria-label="Zoom_32x32" aria-hidden="true" title="Buscar" hidden="" aria-selected="false" style="border-radius: 50%; margin-bottom: 5px; border-color: transparent;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Zoom/Zoom_32x32.png"></div></div><div class="dx-widget dx-button dx-button-mode-outlined dx-button-success dx-button-has-icon dx-state-invisible dx-item dx-buttongroup-item dx-item-content dx-buttongroup-item-content dx-shape-standard dx-state-invisible" id="btnGuardar_generalesSIF" elemento-sif="botones" role="button" aria-label="Save_32x32" aria-hidden="true" title="Guardar" hidden="" aria-selected="false" style="border-radius: 50%; margin-bottom: 5px; border-color: transparent;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Save/Save_32x32.png"></div></div><div class="dx-widget dx-button dx-button-mode-outlined dx-button-success dx-button-has-icon dx-state-invisible dx-item dx-buttongroup-item dx-item-content dx-buttongroup-item-content dx-shape-standard dx-state-invisible" id="btnCancelar_generalesSIF" elemento-sif="botones" role="button" aria-label="Cancel_32x32" aria-hidden="true" title="Cancelar" hidden="" aria-selected="false" style="border-radius: 50%; margin-bottom: 5px; border-color: transparent;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Cancel_32x32.png"></div></div><div class="dx-widget dx-button dx-button-mode-outlined dx-button-success dx-button-has-icon dx-state-invisible dx-item dx-buttongroup-item dx-item-content dx-buttongroup-item-content dx-shape-standard dx-state-invisible" id="btnExportarPDF_generalesSIF" elemento-sif="botones" role="button" aria-label="ExportToPDF_32x32" aria-hidden="true" title="Imprimir" hidden="" aria-selected="false" style="border-radius: 50%; margin-bottom: 5px; border-color: transparent;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Export/ExportToPDF_32x32.png"></div></div><div class="dx-widget dx-button dx-button-mode-outlined dx-button-success dx-button-has-icon dx-state-invisible dx-item dx-buttongroup-item dx-item-content dx-buttongroup-item-content dx-shape-standard dx-state-invisible" id="btnExportarExcel_generalesSIF" elemento-sif="botones" role="button" aria-label="logo_excel" aria-hidden="true" title="Exportar excel" hidden="" aria-selected="false" style="border-radius: 50%; margin-bottom: 5px; border-color: transparent;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/logo_excel.png"></div></div><div class="dx-widget dx-button dx-button-mode-outlined dx-button-success dx-button-has-icon dx-state-invisible dx-item dx-buttongroup-item dx-item-content dx-buttongroup-item-content dx-shape-standard dx-state-invisible" id="btnImportar_generalesSIF" elemento-sif="botones" role="button" aria-label="Up_32x32" aria-hidden="true" title="Importar" hidden="" aria-selected="false" style="border-radius: 50%; margin-bottom: 5px; border-color: transparent;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Navigation/Up_32x32.png"></div></div><div class="dx-widget dx-button dx-button-mode-outlined dx-button-success dx-button-has-icon dx-state-invisible dx-item dx-buttongroup-item dx-item-content dx-buttongroup-item-content dx-shape-standard dx-state-invisible" id="btnEnviar_generalesSIF" elemento-sif="botones" role="button" aria-label="Outbox_32x32" aria-hidden="true" title="Enviar" hidden="" aria-selected="false" style="border-radius: 50%; margin-bottom: 5px; border-color: transparent;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Mail/Outbox_32x32.png"></div></div><div class="dx-widget dx-button dx-button-mode-outlined dx-button-success dx-button-has-icon dx-state-invisible dx-item dx-buttongroup-item dx-item-content dx-buttongroup-item-content dx-shape-standard dx-state-invisible" id="btnRecibir_generalesSIF" elemento-sif="botones" role="button" aria-label="ConvertToRange_32x32" aria-hidden="true" title="Recibir" hidden="" aria-selected="false" style="border-radius: 50%; margin-bottom: 5px; border-color: transparent;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/ConvertToRange_32x32.png"></div></div><div class="dx-widget dx-button dx-button-mode-outlined dx-button-success dx-button-has-icon dx-state-invisible dx-item dx-buttongroup-item dx-item-content dx-buttongroup-item-content dx-shape-standard dx-state-invisible" id="btnAutoriza_generalesSIF" elemento-sif="botones" role="button" aria-label="Apply_32x32" aria-hidden="true" title="Autorizar" hidden="" aria-selected="false" style="border-radius: 50%; margin-bottom: 5px; border-color: transparent;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Apply_32x32.png"></div></div><div class="dx-widget dx-button dx-button-mode-outlined dx-button-success dx-button-has-icon dx-state-invisible dx-item dx-buttongroup-item dx-item-content dx-buttongroup-item-content dx-shape-standard dx-state-invisible" id="btnRechazar_generalesSIF" elemento-sif="botones" role="button" aria-label="Delete_32x32" aria-hidden="true" title="Rechazar" hidden="" aria-selected="false" style="border-radius: 50%; margin-bottom: 5px; border-color: transparent;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Edit/Delete_32x32.png"></div></div><div class="dx-widget dx-button dx-button-mode-outlined dx-button-success dx-button-has-icon dx-item dx-buttongroup-item dx-item-content dx-buttongroup-item-content dx-buttongroup-last-item dx-shape-standard" id="btnInfo_generalesSIF" elemento-sif="botones" role="button" aria-label="btnAyuda" title="Ayuda" aria-selected="false" style="border-radius: 50%; margin-bottom: 5px; border-color: transparent;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/btnAyuda.png"></div></div></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div><div id="imgUsuarioLayout" style="float: rigth; width: 60px; margin-right: -1 ++---+0px; margin-rigth: 50px;" aria-describedby="dx-7c6ac43b-b2f1-dc12-f7d1-5b6786d95276"><img id="imgFotoEmpleadoLayoutPrincipal" class="avatarPrincipal" src="/Home/ConsultaFotoAutorizada"></div></div></div></div></div></div></div>
+    </div>
+    <div id="contenedorMenuPrincipal" style="display: none;">
+        <div id="treeViewMenuPrincipal" class="dx-treeview-with-search dx-widget dx-collection dx-treeview" style="width: 300px;"><div class="dx-treeview-search dx-show-invalid-badge dx-textbox dx-texteditor dx-editor-outlined dx-searchbox dx-texteditor-empty dx-widget"><div class="dx-texteditor-container"><div class="dx-texteditor-input-container"><div class="dx-icon dx-icon-search"></div><input autocomplete="off" aria-label="Buscar" class="dx-texteditor-input" type="text" spellcheck="false" tabindex="0" role="textbox" style=""><div data-dx_placeholder="Buscar" class="dx-placeholder"></div></div><div class="dx-texteditor-buttons-container"><div class="dx-widget dx-button dx-button-mode-contained dx-button-danger dx-button-has-icon" role="button" aria-label="remove" tabindex="0"><div class="dx-button-content"><i class="dx-icon dx-icon-remove"></i></div></div></div></div></div><div class="dx-scrollable dx-visibility-change-handler dx-scrollable-vertical dx-scrollable-simulated"><div class="dx-scrollable-wrapper"><div class="dx-scrollable-container"><div class="dx-scrollable-content" style="left: 0px; top: 0px; transform: none;" tabindex="0" role="tree"><ul class="dx-treeview-node-container" role="group"><li class="dx-treeview-node dx-treeview-item-without-checkbox" data-item-id="1" role="treeitem" aria-label="Dirección General de Servicios Escolares" aria-expanded="true" aria-level="1"><div class="dx-item dx-treeview-item"><div class="dx-item-content dx-treeview-item-content"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAAAOsAAADrASts18IAAAAZdEVYdFNvZnR3YXJlAHd3dy5pbmtzY2FwZS5vcmeb7jwaAAAFAklEQVRYR72Wa0xTZxjHuy1zsIvOsAEu+2AcFI3bl80oFBeFcXHqpmM6/eJmNJvLssiyZaEtAoeecwAFwdYtXkZc5m6JmVVW2joFisqWAVW3GBZtmZRe8ZReQMKtLc/e9+Ws2suiFLp/8kua533O8/+f97w9rWCmqq2tfYJl5dtZRv5TFSPvrKYVdQxzeAW/HB8pFIrHGEbxBjI8iRhGQBRMVcwhOcs2vMxfNjtRFPVwDSNfjYei4VyY2f3oYWk5RdPydH7cg6taJn+FN3WEDY2VnmpWUbKfOvwcbxGpGln9cpwYNfeGXQwsfQgYWT3IqDqopGqBqjgAFeWYGp79pIbB67TsILkmfA4iUEUf6kA+xbXUkWTeGt0xOkThzXRlPewrZUAikUFJSQVBLKZAKpWBVEJDqZQh6/tKWfK5VEqTukRSSfru9tNQXlYdEQjtiJ+i9r9JAlBUw9Mo2ftooQ0RwA3YGA/Dd4jDoEcSMuB+sHQD2TG8K3gWnsOvuaoYxfGyMvY3FDCPBLhX6AQvQk2fSsSVt8XiSjSkNmRwLJSX1fjL9lXrWFax4dixY49iH7G4QhU1wL1CAcbnIgDavXJ+ZFAPFEAilo3OTQC5mB9JBKcE8zoac25oG9fv4UvRVSopG2cqD0QbOFNCAvjUz7T52xaA/0riBFxLWMyXI+VTJk8GLj8FgSsJs0OfGBJgUvXsFb9uPlkD/byX+HKkfGdSxn2aJPBdWDgr/LoFR/iRRAFt0t7J5qRJ3y8LOb4UKh239slz1sIcT8vz+lFNqiMm1KkDo+oU55gmhTN1ZZzQ2gs+INgKdk+ok00+dRLgxwDdiSt522lpbAW7UNMgAuJBe98amFCmQKA7kX88CY28tUBwzl64AzVN4cZW6w64bCmBDqsUOlt2gv6HNaBX5UGnfg+pxYq1O3MEP9bg+bia4CLmX/etTThnzR/A5l2WL8Fk7geL3U4wfb4bHOuE4CnKgNuN1cF6LHgMp3b6tUnKQFdiHbr7Gv/VxO0kQJMhZ4PGkg8X7FsDt5C5x+uFoeFhglXyYTCA9+TBYD0GfADwCDEMl9KYt6m5Px9t/XtgslhCLnQcrQOuXgre7+Xg1f4YsjZDxni7SCl7RclnDLnjWts6+Mt8EWwOB3AuFzgHB+cUjuP++w+K8sZrXU238uC8bTM6B1/An+bTc4/j24tqbn0qbxkqjXHV/NM3cvuUhtwplSkf1OZ8aI4Dakv+r7xlpBw7ly7ubMysv6TM7Ll4NsvW/rPIqWvKGm5TicYRU60qEcyENlXWFGJC1yS6g2a525uyBrpPrvzGvUX4KmwV3D2Q3reFS9Apb8Un/X/jrYy9xNxZtGyRp0g4gIvud16EwY9fB2fxxpjxSDLhTvESGPpkKbg+K4ja496VbfQWLZv++24rEJ7F5nih7/o16LdawTwLxs6vAP+l6V9R7u8TEevoheSz2+2PE3OsvjXpvTiAuV0Dt53OaN/fGTHZuioYYMQe5b0xNNTCW0/LKEp34QCmP7rB7fFEXjBDxjs2w8T1d2Hi5lYYGTgbraeJt57WTVG6ndsoBNt3CvK+HkQvoLjidht562kZV6eJe7PTAq4ty6ccR2kw65rB3NESV1xfMdtAIHiIBMAfjNlpWkNWWsBeKATXpihfmTjgLhJ+RAL8q5uZL2wzZKf/bhSlDaAwQwZR/EDnjutfm7FFIBAI/gFXAUQ3k1UrMQAAAABJRU5ErkJggg==" class="dx-icon"><span>Dirección General de Servicios Escolares</span></div></div><div class="dx-treeview-toggle-item-visibility dx-treeview-toggle-item-visibility-opened"></div><ul class="dx-treeview-node-container dx-treeview-node-container-opened" role="group" style="transition: none; max-height: none;"><li class="dx-treeview-node dx-treeview-item-without-checkbox" data-item-id="2" role="treeitem" aria-label="Profesor" aria-expanded="true" aria-level="2"><div class="dx-item dx-treeview-item"><div class="dx-item-content dx-treeview-item-content"><span>Profesor</span></div></div><div class="dx-treeview-toggle-item-visibility dx-treeview-toggle-item-visibility-opened"></div><ul class="dx-treeview-node-container dx-treeview-node-container-opened" role="group" style="transition: none; max-height: none;"><li class="dx-treeview-node dx-treeview-item-without-checkbox dx-treeview-node-is-leaf" data-item-id="3" role="treeitem" aria-label="Calificaciones Parciales" aria-expanded="false" aria-level="3" aria-selected="false"><div class="dx-item dx-treeview-item"><div class="dx-item-content dx-treeview-item-content"><a href="https://administracionescolar.uat.edu.mx/Profesor/CalificacionesParciales/Index" target="_parent">Calificaciones Parciales</a></div></div></li><li class="dx-treeview-node dx-treeview-item-without-checkbox dx-treeview-node-is-leaf" data-item-id="4" role="treeitem" aria-label="Actas De Evaluación" aria-expanded="false" aria-level="3" aria-selected="false"><div class="dx-item dx-treeview-item"><div class="dx-item-content dx-treeview-item-content"><a href="https://administracionescolar.uat.edu.mx/Profesor/ActasEvaluacion/Index" target="_parent">Actas De Evaluación</a></div></div></li><li class="dx-treeview-node dx-treeview-item-without-checkbox dx-treeview-node-is-leaf" data-item-id="5" role="treeitem" aria-label="Consultas Profesor" aria-expanded="false" aria-level="3" aria-selected="false"><div class="dx-item dx-treeview-item"><div class="dx-item-content dx-treeview-item-content"><a href="https://administracionescolar.uat.edu.mx/Profesor/Consultas/Index" target="_parent">Consultas Profesor</a></div></div></li><li class="dx-treeview-node dx-treeview-item-without-checkbox dx-treeview-node-is-leaf dx-state-selected" data-item-id="6" role="treeitem" aria-label="Control De Asistencia" aria-expanded="true" aria-level="3" aria-selected="true"><div class="dx-item dx-treeview-item"><div class="dx-item-content dx-treeview-item-content"><a href="https://administracionescolar.uat.edu.mx/Profesor/ControlAsistencia/Index" target="_parent">Control De Asistencia</a></div></div></li><li class="dx-treeview-node dx-treeview-item-without-checkbox dx-treeview-node-is-leaf" data-item-id="7" role="treeitem" aria-label="Calificaciones Parciales Ceina" aria-expanded="false" aria-level="3" aria-selected="false"><div class="dx-item dx-treeview-item"><div class="dx-item-content dx-treeview-item-content"><a href="https://administracionescolar.uat.edu.mx/Profesor/CalificaParcialCeina/Index" target="_parent">Calificaciones Parciales Ceina</a></div></div></li></ul></li></ul></li></ul></div><div class="dx-scrollable-scrollbar dx-widget dx-scrollbar-vertical dx-scrollbar-hoverable" style=""><div class="dx-scrollable-scroll dx-state-invisible" style="height: 15px; transform: translate(0px, 0px);"><div class="dx-scrollable-scroll-content"></div></div></div></div></div></div></div>
+    </div>
+    
+    <div id="contenedorCabeceraPrincipal_Mobile" style="display: block;">
+        <div id="toolbarMenuPrincipal_Mobile" class="dx-toolbar dx-widget dx-visibility-change-handler dx-collection" role="toolbar"><div class="dx-toolbar-items-container"><div class="dx-toolbar-before"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-contained dx-button-normal dx-button-has-icon" id="btn_menu_generico" role="button" aria-label="menu" tabindex="0" style="height: 50px; width: 50px;"><div class="dx-button-content"><i class="dx-icon dx-icon-menu"></i></div></div></div></div></div><div class="dx-toolbar-center" style="margin: 0px 122px 0px 65px; float: right;"></div><div class="dx-toolbar-after"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-contained dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" role="button" aria-label="Principal" aria-hidden="true" tabindex="0" hidden=""><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Navigation/Home_32x32.png"><span class="dx-button-text">Principal</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-contained dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" role="button" aria-label="Buscar" aria-hidden="true" tabindex="0" hidden=""><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Zoom/Zoom_32x32.png"><span class="dx-button-text">Buscar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-contained dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" role="button" aria-label="Guardar" aria-hidden="true" tabindex="0" hidden=""><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Save/Save_32x32.png"><span class="dx-button-text">Guardar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-contained dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" role="button" aria-label="Cancelar" aria-hidden="true" tabindex="0" hidden=""><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Cancel_32x32.png"><span class="dx-button-text">Cancelar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-contained dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" role="button" aria-label="Imprimir" aria-hidden="true" tabindex="0" hidden=""><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Export/ExportToPDF_32x32.png"><span class="dx-button-text">Imprimir</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-contained dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" role="button" aria-label="Exportar excel" aria-hidden="true" tabindex="0" hidden=""><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/logo_excel.png"><span class="dx-button-text">Exportar excel</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-contained dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" role="button" aria-label="Importar" aria-hidden="true" tabindex="0" hidden=""><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Navigation/Up_32x32.png"><span class="dx-button-text">Importar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-contained dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" role="button" aria-label="Enviar" aria-hidden="true" tabindex="0" hidden=""><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Mail/Outbox_32x32.png"><span class="dx-button-text">Enviar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-contained dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" role="button" aria-label="Recibir" aria-hidden="true" tabindex="0" hidden=""><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/ConvertToRange_32x32.png"><span class="dx-button-text">Recibir</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-contained dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" role="button" aria-label="Autorizar" aria-hidden="true" tabindex="0" hidden=""><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Apply_32x32.png"><span class="dx-button-text">Autorizar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-contained dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" role="button" aria-label="Rechazar" aria-hidden="true" tabindex="0" hidden=""><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Edit/Delete_32x32.png"><span class="dx-button-text">Rechazar</span></div></div></div></div><div class="dx-toolbar-button dx-toolbar-menu-container"><div class="dx-widget dx-button dx-button-mode-contained dx-button-normal dx-button-has-icon dx-dropdownmenu dx-dropdownmenu-button" role="menubar" aria-label="overflow" tabindex="0" aria-haspopup="true" aria-expanded="false"><div class="dx-button-content"><i class="dx-icon dx-icon-overflow"></i></div></div></div></div></div></div>
+        
+
+    </div>
+    
+    <div id="contenedorGeneralPrincipal" style="padding-left: 0px; padding-bottom: 30px;">
+        <div class="container">
+            <div id="divPrincipalContenedor" style="width: 100%; float: left;">
+                <div class="row" id="contenedorGeneraPrincipalTitulo" style="display: block;">
+                    <div id="contenedorGeneraPrincipalTituloEtiqueta" class="col-lg-12" style="margin-bottom: 20px; border-bottom: 2px solid black; text-align: right; float: right; background: linear-gradient(90deg, rgb(118, 199, 254) 0%, rgb(0, 100, 168) 67%, rgb(1, 59, 98) 100%); display: block;">
+                        <label id="lblPrincipalContenedorTituloPagina" style="float: right; font-size: 18pt; font-weight: bold; color: white;">Control de asistencia</label>
+                        
+                    </div>
+                </div>
+                <div class="row" id="layoutContenidoPrincipal">
+                    <div class="col-lg-12">
+                        
+
+
+
+<style type="text/css">
+    .dx-data-row .cell-checkbox-alignment {
+        vertical-align: middle !important;
+    }
+</style>
+
+<script type="text/javascript">
+
+    var urlCargaDES = '/Profesor/ControlAsistencia/CargaDES';
+    var urlBuscaProfesor = '/Profesor/ControlAsistencia/BuscaProfesor';
+    var urlBuscaGruposProfesor = '/Profesor/ControlAsistencia/BuscaGruposProfesor';
+    var urlBuscaSemanas = '/Profesor/ControlAsistencia/BuscaSemanas';
+    var urlBuscaAsistenciaGrupo = '/Profesor/ControlAsistencia/BuscaAsistenciaGrupo';
+    var urlBuscaGrupos = '/Profesor/ControlAsistencia/BuscaGrupos';
+    var urlGuardaAsistencias = '/Profesor/ControlAsistencia/GuardaAsistencias';
+    var urlGenerarReportes = '/Profesor/ControlAsistencia/GenerarReportes';
+
+    const Id_Nivel = Number('');
+    const Txt_Usuario = 'Eder Jahir Gonzalez Bravo';
+    var PermisoProfesor = 1;
+    var id_plantilla = Number('308127');
+
+</script>
+
+<div id="popBusqueda" class="dx-overlay dx-popup dx-widget dx-state-invisible dx-visibility-change-handler"><div class="dx-overlay-content dx-popup-normal dx-popup-draggable dx-resizable" aria-hidden="true" tabindex="0" style="width: 900px; height: 550px;"><div class="dx-toolbar dx-widget dx-visibility-change-handler dx-collection dx-popup-title dx-has-close-button" role="toolbar"><div class="dx-toolbar-items-container"><div class="dx-toolbar-before"><div class="dx-item dx-toolbar-item dx-toolbar-label" style="max-width: 0px;"><div class="dx-item-content dx-toolbar-item-content"><div>Buscar Profesor</div></div></div></div><div class="dx-toolbar-center" style="margin: 0px auto; float: none;"></div><div class="dx-toolbar-after"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-text dx-button-normal dx-button-has-icon dx-closebutton" role="button" aria-label="close" tabindex="0"><div class="dx-button-content"><i class="dx-icon dx-icon-close"></i></div></div></div></div></div></div></div><div class="dx-popup-content">
+    <div class="row">
+        <div class="col-md-3">
+            <label class="etiquetaCompact">Núm.empleado:</label>
+            <div id="txtNumeroEmpl" class="dx-show-invalid-badge dx-numberbox dx-texteditor dx-editor-outlined dx-texteditor-empty dx-widget" style="width: 100%;"><input type="hidden" value="" style=""><div class="dx-texteditor-container"><div class="dx-texteditor-input-container"><input autocomplete="off" inputmode="decimal" class="dx-texteditor-input" type="number" spellcheck="false" step="1" aria-valuemin="" aria-valuemax="" tabindex="0" aria-valuenow="" role="spinbutton" style=""><div data-dx_placeholder="" class="dx-placeholder"></div></div><div class="dx-texteditor-buttons-container"><div></div><div></div></div></div></div>
+        </div>
+
+        <div class="col-md-3">
+            <label class="etiquetaCompact">Apellido Paterno:</label>
+            <div id="txtApaterno" class="dx-show-invalid-badge dx-textbox dx-texteditor dx-editor-outlined dx-texteditor-empty dx-widget" style="width: 100%;"><div class="dx-texteditor-container"><div class="dx-texteditor-input-container"><input autocomplete="off" class="dx-texteditor-input" type="text" spellcheck="false" tabindex="0" role="textbox" style=""><div data-dx_placeholder="" class="dx-placeholder"></div></div><div class="dx-texteditor-buttons-container"><div></div></div></div></div>
+        </div>
+        <div class="col-md-3">
+            <label class="etiquetaCompact">Apellido Materno:</label>
+            <div id="txtAmaterno" class="dx-show-invalid-badge dx-textbox dx-texteditor dx-editor-outlined dx-texteditor-empty dx-widget" style="width: 100%;"><div class="dx-texteditor-container"><div class="dx-texteditor-input-container"><input autocomplete="off" class="dx-texteditor-input" type="text" spellcheck="false" tabindex="0" role="textbox" style=""><div data-dx_placeholder="" class="dx-placeholder"></div></div><div class="dx-texteditor-buttons-container"><div></div></div></div></div>
+        </div>
+        <div class="col-md-3">
+            <label class="etiquetaCompact">Nombre(s):</label>
+            <div id="txtNombre" class="dx-show-invalid-badge dx-textbox dx-texteditor dx-editor-outlined dx-texteditor-empty dx-widget" style="width: 100%;"><div class="dx-texteditor-container"><div class="dx-texteditor-input-container"><input autocomplete="off" class="dx-texteditor-input" type="text" spellcheck="false" tabindex="0" role="textbox" style=""><div data-dx_placeholder="" class="dx-placeholder"></div></div><div class="dx-texteditor-buttons-container"><div></div></div></div></div>
+        </div>
+    </div>
+    <div class="row" style="text-align: right;margin-top:10px;">
+        <div class="col-lg-12">
+            <div id="btnbuscaProfesor" class="dx-widget dx-button dx-button-mode-contained dx-button-normal dx-button-has-text uat-btncolor-success" role="button" aria-label="Buscar Profesor" tabindex="0" style="width: 150px;"><div class="dx-button-content"><span class="dx-button-text">Buscar Profesor</span></div></div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-lg-12">
+            <div id="grdProfesores" class="dx-widget dx-visibility-change-handler" elemento-sif="gridGenerico" role="presentation" style="width: 100%;"><div class="dx-datagrid dx-gridbase-container dx-datagrid-borders" role="grid" aria-label="Tabla de datos"><div class="dx-datagrid-columns-separator dx-datagrid-columns-separator-transparent" style="height: 128px; left: 0px;"></div><div class="dx-hidden"></div><div class="dx-datagrid-tracker" style="display: none; height: 128px;"></div><div class="dx-datagrid-header-panel"><div aria-label="Data grid toolbar" class="dx-toolbar dx-widget dx-visibility-change-handler dx-collection" role="toolbar"><div class="dx-toolbar-items-container"><div class="dx-toolbar-before"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Colapsar_grdProfesores" elemento-sif="botonGrid" botongrid="btn_Colapsar" role="button" aria-label="Colapsar todo" aria-hidden="true" tabindex="0" title="colapsar todo" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Fill_32x32.png"><span class="dx-button-text">Colapsar todo</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Buscar_grdProfesores" elemento-sif="botonGrid" botongrid="btn_Buscar" role="button" aria-label="Buscar" aria-hidden="true" tabindex="0" title="buscar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Zoom/Zoom_32x32.png"><span class="dx-button-text">Buscar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Limpiar_grdProfesores" elemento-sif="botonGrid" botongrid="btn_Limpiar" role="button" aria-label="Limpiar" aria-hidden="true" tabindex="0" title="Limpiar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Refresh_32x32.png"><span class="dx-button-text">Limpiar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Nuevo_grdProfesores" elemento-sif="botonGrid" botongrid="btn_Nuevo" role="button" aria-label="Nuevo" aria-hidden="true" tabindex="0" title="Nuevo" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/AddItem_32x32.png"><span class="dx-button-text">Nuevo</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Guardar_grdProfesores" elemento-sif="botonGrid" botongrid="btn_Guardar" role="button" aria-label="Guardar" aria-hidden="true" tabindex="0" title="Guardar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Save/Save_32x32.png"><span class="dx-button-text">Guardar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Detalle_grdProfesores" elemento-sif="botonGrid" botongrid="btn_Detalle" role="button" aria-label="Detalle" aria-hidden="true" tabindex="0" title="Detalle" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/XAF/BO_Security_Permission_32x32.png"><span class="dx-button-text">Detalle</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Editar_grdProfesores" elemento-sif="botonGrid" botongrid="btn_Editar" role="button" aria-label="Editar" aria-hidden="true" tabindex="0" title="Editar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Edit/Edit_32x32.png"><span class="dx-button-text">Editar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Eliminar_grdProfesores" elemento-sif="botonGrid" botongrid="btn_Eliminar" role="button" aria-label="Eliminar" aria-hidden="true" tabindex="0" title="Eliminar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Cancel_32x32.png"><span class="dx-button-text">Eliminar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Imprimir_grdProfesores" elemento-sif="botonGrid" botongrid="btn_Imprimir" role="button" aria-label="Imprimir" aria-hidden="true" tabindex="0" title="Imprimir" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Print/Print_32x32.png"><span class="dx-button-text">Imprimir</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Cancelar_grdProfesores" elemento-sif="botonGrid" botongrid="btn_Cancelar" role="button" aria-label="Cancelar" aria-hidden="true" tabindex="0" title="Cancelar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Cancel_32x32.png"><span class="dx-button-text">Cancelar</span></div></div></div></div></div><div class="dx-toolbar-center" style="margin: 0px 270px 0px 15px; float: right;"></div><div class="dx-toolbar-after"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-datagrid-search-panel dx-show-invalid-badge dx-textbox dx-texteditor dx-editor-outlined dx-searchbox dx-show-clear-button dx-texteditor-empty dx-widget" style="width: 240px;"><div class="dx-texteditor-container"><div class="dx-texteditor-input-container"><div class="dx-icon dx-icon-search"></div><input autocomplete="off" aria-label="Buscar en la tabla de datos" class="dx-texteditor-input" type="text" spellcheck="false" tabindex="0" role="textbox" style=""><div data-dx_placeholder="Buscar..." class="dx-placeholder"></div></div><div class="dx-texteditor-buttons-container"><span class="dx-clear-button-area"><span class="dx-icon dx-icon-clear"></span></span></div></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"></div></div></div></div></div></div><div class="dx-datagrid-headers dx-datagrid-nowrap" role="presentation" style="padding-right: 0px;"><div class="dx-datagrid-scrollable-simulated dx-datagrid-content dx-datagrid-scroll-container" role="presentation"><table class="dx-datagrid-table dx-datagrid-table-fixed" role="presentation"><colgroup><col><col><col><col></colgroup><tbody role="presentation"><tr class="dx-row dx-column-lines dx-header-row" role="row"><td aria-selected="false" role="columnheader" aria-colindex="1" id="dx-col-10" aria-label="Columna Núm. Empleado" class="dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">Núm. Empleado</div></td><td aria-selected="false" role="columnheader" aria-colindex="2" id="dx-col-11" aria-label="Columna Ap. Paterno" class="dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">Ap. Paterno</div></td><td aria-selected="false" role="columnheader" aria-colindex="3" id="dx-col-12" aria-label="Columna Ap. Materno" class="dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">Ap. Materno</div></td><td aria-selected="false" role="columnheader" aria-colindex="4" id="dx-col-13" aria-label="Columna Nombre" class="dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">Nombre</div></td></tr></tbody></table></div></div><div class="dx-datagrid-rowsview dx-datagrid-nowrap dx-empty" role="presentation" tabindex="0"><div class="dx-datagrid-content"><table class="dx-datagrid-table dx-datagrid-table-fixed" role="presentation"><colgroup><col><col><col><col></colgroup><tbody role="presentation"><tr class="dx-row dx-freespace-row dx-column-lines" role="presentation" style="height: 0px;"><td style="text-align: left;"></td><td style="text-align: left;"></td><td style="text-align: left;"></td><td style="text-align: left;"></td></tr></tbody></table></div><span class="dx-datagrid-nodata">Sin información</span></div><div class="dx-overlay dx-widget dx-state-invisible dx-visibility-change-handler dx-loadpanel"><div class="dx-overlay-content" aria-hidden="true" style="width: 200px; height: 90px;"></div></div><div class="dx-hidden" style="padding-right: 0px;"></div><div></div><div class="dx-hidden"></div><div class="dx-hidden"></div><div class="dx-datagrid-drag-header dx-datagrid-text-content dx-widget" style="display: none;"></div><div class="dx-context-menu dx-has-context-menu dx-widget dx-visibility-change-handler dx-collection dx-datagrid" role="presentation"></div><div class="dx-header-filter-menu"></div><div></div></div></div>
+        </div>
+    </div>
+</div></div></div>
+
+<div id="popImprime" class="dx-overlay dx-popup dx-widget dx-state-invisible dx-visibility-change-handler"><div class="dx-overlay-content dx-popup-normal dx-popup-draggable dx-resizable" aria-hidden="true" tabindex="0" style="width: 400px; height: 150px;"><div class="dx-toolbar dx-widget dx-visibility-change-handler dx-collection dx-popup-title dx-has-close-button" role="toolbar"><div class="dx-toolbar-items-container"><div class="dx-toolbar-before"><div class="dx-item dx-toolbar-item dx-toolbar-label" style="max-width: 0px;"><div class="dx-item-content dx-toolbar-item-content"><div>Imprimir reportes</div></div></div></div><div class="dx-toolbar-center" style="margin: 0px auto; float: none;"></div><div class="dx-toolbar-after"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-text dx-button-normal dx-button-has-icon dx-closebutton" role="button" aria-label="close" tabindex="0"><div class="dx-button-content"><i class="dx-icon dx-icon-close"></i></div></div></div></div></div></div></div><div class="dx-popup-content">
+    <div class="row">
+        <div class="col-md-12">
+            <label class="etiquetaCompact">Reporte:</label>
+            <div id="cboReporte" class="dx-show-invalid-badge dx-selectbox dx-textbox dx-texteditor dx-show-clear-button dx-dropdowneditor-button-visible dx-editor-outlined dx-widget dx-dropdowneditor dx-dropdowneditor-field-clickable"><div class="dx-dropdowneditor-input-wrapper dx-selectbox-container"><input type="hidden" value="1" style=""><div class="dx-texteditor-container"><div class="dx-texteditor-input-container"><input autocomplete="off" class="dx-texteditor-input" aria-haspopup="listbox" aria-autocomplete="list" type="text" spellcheck="false" tabindex="0" role="combobox" aria-expanded="false" style=""><div data-dx_placeholder="Seleccione" class="dx-placeholder dx-state-invisible"></div></div><div class="dx-texteditor-buttons-container"><span class="dx-clear-button-area"><span class="dx-icon dx-icon-clear"></span></span><div class="dx-widget dx-button-mode-contained dx-button-normal dx-dropdowneditor-button" aria-label="Seleccionar" role="button"><div class="dx-button-content"><div class="dx-dropdowneditor-icon"></div></div></div></div></div></div></div>
+        </div>
+    </div>
+    <div class="row" style="margin-top:15px">
+        <div class="col-lg-6" style="text-align: right;margin-top:10px;">
+            <div id="btnPdf" class="dx-widget dx-button dx-button-mode-contained dx-button-normal dx-button-has-text uat-btncolor-danger" role="button" aria-label="Imprimir PDF" tabindex="0" style="width: 200px;"><div class="dx-button-content"><span class="dx-button-text">Imprimir PDF</span></div></div>
+        </div>
+        <div class="col-lg-6" style="text-align: right;margin-top:10px;">
+            <div id="btnXls" class="dx-widget dx-button dx-button-mode-contained dx-button-normal dx-button-has-text uat-btncolor-success" role="button" aria-label="Imprimir Excel" tabindex="0" style="width: 200px;"><div class="dx-button-content"><span class="dx-button-text">Imprimir Excel</span></div></div>
+        </div>
+    </div>
+</div></div></div>
+
+
+<div id="pnlPrincipal" class="uat-callout bg-light" style="border-left: 6px solid rgba(64, 112, 182, 0.5);"><div id="widgetUatCalloutCabecera_pnlPrincipal" class="alert widgetUatCallout-header-sif" role="alert" style="background-color: #4070B6; border-color: #4070B6;"> 
+<div style="width: 100%;"> 
+<div id="widgetUatCalloutBoton_pnlPrincipal" class="dx-widget dx-button dx-button-mode-contained dx-button-back dx-button-has-icon widgetUatCallout-button" role="button" aria-label="chevronup" tabindex="0"><div class="dx-button-content"><i class="dx-icon dx-icon-chevronup"></i></div></div><label id="widgetUatCalloutTexto_pnlPrincipal" class="widgetUatCallout-title" style="color: white;">Busqueda</label> 
+</div> 
+</div> 
+<div id="widgetUatCalloutContenedor_pnlPrincipal" style="width: 100%"> 
+
+
+    <div class="row">
+        <div class="col-lg-4">
+            
+            
+    <div class="row">
+        <div class="col-md-12">
+            <label class="etiquetaCompact">Dependencia académica:</label>
+            <div id="ucDA" class="dx-show-invalid-badge dx-selectbox dx-textbox dx-texteditor dx-dropdowneditor-button-visible dx-editor-outlined dx-widget dx-dropdowneditor dx-dropdowneditor-field-clickable"><div class="dx-dropdowneditor-input-wrapper dx-selectbox-container"><input type="hidden" value="12" style=""><div class="dx-texteditor-container"><div class="dx-texteditor-input-container"><input autocomplete="off" class="dx-texteditor-input" aria-haspopup="listbox" aria-autocomplete="list" type="text" spellcheck="false" tabindex="0" role="combobox" aria-expanded="false" style=""><div data-dx_placeholder="Seleccionar" class="dx-placeholder dx-state-invisible"></div></div><div class="dx-texteditor-buttons-container"><div></div><div class="dx-widget dx-button-mode-contained dx-button-normal dx-dropdowneditor-button" aria-label="Seleccionar" role="button"><div class="dx-button-content"><div class="dx-dropdowneditor-icon"></div></div></div></div></div></div></div>
+        </div>
+    </div>
+
+        </div>
+        <div class="col-lg-4">
+                <div id="ucCicloEscolar_pnlPrincipal" class="row">
+        <div class="col-md-12">
+            <label class="etiquetaCompact">Ciclo escolar:</label>
+            <div id="ucCicloEscolar" class="dx-show-invalid-badge dx-selectbox dx-textbox dx-texteditor dx-dropdowneditor-button-visible dx-editor-outlined dx-widget dx-dropdowneditor dx-dropdowneditor-field-clickable"><div class="dx-dropdowneditor-input-wrapper dx-selectbox-container"><input type="hidden" value="149" style=""><div class="dx-texteditor-container"><div class="dx-texteditor-input-container"><input autocomplete="off" class="dx-texteditor-input" aria-haspopup="listbox" aria-autocomplete="list" type="text" readonly="" spellcheck="false" tabindex="0" role="combobox" aria-expanded="false" style="" aria-controls="dx-2ab4121f-6e3b-4898-65b8-ef3dfc115998" aria-owns="dx-bc58aa86-464c-5846-c64d-112569984335"><div data-dx_placeholder="Seleccionar..." class="dx-placeholder dx-state-invisible"></div></div><div class="dx-texteditor-buttons-container"><div></div><div class="dx-widget dx-button-mode-contained dx-button-normal dx-dropdowneditor-button" aria-label="Seleccionar" role="button"><div class="dx-button-content"><div class="dx-dropdowneditor-icon"></div></div></div></div></div></div><div class="dx-dropdowneditor-overlay dx-overlay dx-popup dx-widget dx-visibility-change-handler dx-selectbox-popup dx-state-invisible"><div class="dx-overlay-content dx-popup-normal dx-resizable dx-state-invisible" style="max-height: 360px; width: 324px; height: auto; z-index: 1501; left: 0px; top: 0px; transform: translate(0px, 26px); transition: none; visibility: visible; opacity: 0;" tabindex="-1" aria-hidden="true"><div class="dx-popup-content" id="dx-bc58aa86-464c-5846-c64d-112569984335" style="height: 140px; max-height: none; min-height: auto;"><div id="dx-2ab4121f-6e3b-4898-65b8-ef3dfc115998" class="dx-scrollable dx-scrollview dx-visibility-change-handler dx-scrollable-vertical dx-scrollable-simulated dx-list dx-widget dx-collection" role="listbox"><div class="dx-scrollable-wrapper"><div class="dx-scrollable-container"><div class="dx-scrollable-content" style="left: 0px; top: 0px; transform: none;"><div class="dx-scrollview-top-pocket"><div class="dx-scrollview-pull-down" style="display: none;"><div class="dx-scrollview-pull-down-image"></div><div class="dx-scrollview-pull-down-indicator"><div class="dx-loadindicator dx-widget"><div class="dx-loadindicator-wrapper"><div class="dx-loadindicator-content"><div class="dx-loadindicator-icon"><div class="dx-loadindicator-segment dx-loadindicator-segment7"></div><div class="dx-loadindicator-segment dx-loadindicator-segment6"></div><div class="dx-loadindicator-segment dx-loadindicator-segment5"></div><div class="dx-loadindicator-segment dx-loadindicator-segment4"></div><div class="dx-loadindicator-segment dx-loadindicator-segment3"></div><div class="dx-loadindicator-segment dx-loadindicator-segment2"></div><div class="dx-loadindicator-segment dx-loadindicator-segment1"></div><div class="dx-loadindicator-segment dx-loadindicator-segment0"></div></div></div></div></div></div><div class="dx-scrollview-pull-down-text"><div class="dx-scrollview-pull-down-text-visible">Desliza hacia abajo para actualizar...</div><div>Suelta para actualizar...</div><div>Actualizando...</div></div></div></div><div class="dx-scrollview-content"><div class="dx-item dx-list-item" role="option" aria-selected="false"><div class="dx-item-content dx-list-item-content">2026 - 1 PRIMAVERA</div></div><div class="dx-item dx-list-item dx-list-item-selected" role="option" aria-selected="true"><div class="dx-item-content dx-list-item-content">2025 - 3 OTOÑO</div></div><div class="dx-item dx-list-item" role="option" aria-selected="false"><div class="dx-item-content dx-list-item-content">2025 - 2 VERANO</div></div><div class="dx-item dx-list-item" role="option" aria-selected="false"><div class="dx-item-content dx-list-item-content">2025 - 1 PRIMAVERA</div></div><div class="dx-item dx-list-item" role="option" aria-selected="false"><div class="dx-item-content dx-list-item-content">2024 - 3 OTOÑO</div></div><div class="dx-item dx-list-item" role="option" aria-selected="false"><div class="dx-item-content dx-list-item-content">2024 - 2 VERANO</div></div><div class="dx-item dx-list-item" role="option" aria-selected="false"><div class="dx-item-content dx-list-item-content">2024 - 1 PRIMAVERA</div></div></div><div class="dx-scrollview-bottom-pocket"><div class="dx-scrollview-scrollbottom" style="display: none;"><div class="dx-scrollview-scrollbottom-indicator"><div class="dx-loadindicator dx-widget"><div class="dx-loadindicator-wrapper"><div class="dx-loadindicator-content"><div class="dx-loadindicator-icon"><div class="dx-loadindicator-segment dx-loadindicator-segment7"></div><div class="dx-loadindicator-segment dx-loadindicator-segment6"></div><div class="dx-loadindicator-segment dx-loadindicator-segment5"></div><div class="dx-loadindicator-segment dx-loadindicator-segment4"></div><div class="dx-loadindicator-segment dx-loadindicator-segment3"></div><div class="dx-loadindicator-segment dx-loadindicator-segment2"></div><div class="dx-loadindicator-segment dx-loadindicator-segment1"></div><div class="dx-loadindicator-segment dx-loadindicator-segment0"></div></div></div></div></div></div><div class="dx-scrollview-scrollbottom-text">Cargando...</div></div></div></div><div class="dx-scrollable-scrollbar dx-widget dx-scrollbar-vertical dx-scrollbar-hoverable" style="display: none;"><div class="dx-scrollable-scroll dx-state-invisible" style="height: 140px; transform: translate(0px, 0px);"><div class="dx-scrollable-scroll-content"></div></div></div></div></div><div class="dx-scrollview-loadpanel dx-overlay dx-widget dx-state-invisible dx-visibility-change-handler dx-loadpanel"><div class="dx-overlay-content" aria-hidden="true" style="width: 222px; height: 90px;"></div></div></div></div></div></div></div>
+        </div>
+    </div>
+
+        </div>
+        <div class="col-lg-4" id="CellBusqueda" style="display: none;">
+            <label class="etiquetaCompact">Busqueda por:</label>
+            <div id="rgTipoBusqueda" class="dx-show-invalid-badge dx-radiogroup dx-radiogroup-horizontal dx-widget" role="radiogroup" tabindex="0" style="width: 100%;"><input type="hidden" value="1" style=""><div class="dx-widget dx-collection"><div class="dx-item dx-item-selected dx-radiobutton-checked dx-radiobutton" role="radio" aria-selected="true" aria-checked="true" style="height: auto;"><div class="dx-radio-value-container"><div class="dx-radiobutton-icon dx-radiobutton-icon-checked"><div class="dx-radiobutton-icon-dot"></div></div></div><div class="dx-item-content">GRUPOS SIN PROFESOR</div></div><div class="dx-item dx-radiobutton" role="radio" aria-selected="false" aria-checked="false" style="height: auto;"><div class="dx-radio-value-container"><div class="dx-radiobutton-icon"><div class="dx-radiobutton-icon-dot"></div></div></div><div class="dx-item-content">PROFESOR</div></div></div></div>
+        </div>
+    </div>
+    <div id="RowDetallesSeleccion" class="alert alert-info" style="margin-top: 10px; margin-bottom: 0px;">
+        <div class="row">
+            <div class="col-lg-6">
+                <label class="etiquetaCompact">Profesor:</label><label id="lblProf" style="margin-left:5px;">308127 - EDER JAHIR GONZALEZ BRAVO</label>
+            </div>
+            <div class="col-lg-6">
+                <label class="etiquetaCompact">Asignatura:</label><label id="lblAsig" style="margin-left:5px;">(RC.06061.2870.5-5) ESTRUCTURAS DE DATOS - 3 </label>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-3">
+                <label class="etiquetaCompact">Horas AC:</label><label id="lblHoras" style="margin-left:5px;"></label>
+            </div>
+            <div class="col-md-3">
+                <label class="etiquetaCompact">Grupo:</label><label id="lblGpo" style="margin-left:5px;">G   </label>
+            </div>
+            <div class="col-md-3">
+                <label class="etiquetaCompact">Periodo:</label><label id="lblPeriodo" style="margin-left:5px;">3 </label>
+            </div>
+            <div class="col-md-3">
+                <label class="etiquetaCompact">Lugar:</label><label id="lblLugar" style="margin-left:5px;">D-409</label>
+            </div>
+        </div>
+    </div>
+</div></div>
+
+<div id="pnlDetalles" class="uat-callout bg-light" style="border-left: 6px solid rgba(97, 176, 204, 0.5);"><div id="widgetUatCalloutCabecera_pnlDetalles" class="alert widgetUatCallout-header-sif" role="alert" style="background-color: #61B0CC; border-color: #61B0CC;"> 
+<div style="width: 100%;"> 
+<div id="widgetUatCalloutBoton_pnlDetalles" class="dx-widget dx-button dx-button-mode-contained dx-button-back dx-button-has-icon widgetUatCallout-button" role="button" aria-label="chevrondown" tabindex="0"><div class="dx-button-content"><i class="dx-icon dx-icon-chevrondown"></i></div></div><label id="widgetUatCalloutTexto_pnlDetalles" class="widgetUatCallout-title" style="color: white;">Grupos</label> 
+</div> 
+</div> 
+<div id="widgetUatCalloutContenedor_pnlDetalles" style="width: 100%; display: none;"> 
+
+
+
+    <div id="grdProfesoresNoAsignados" class="dx-widget dx-visibility-change-handler dx-state-invisible" elemento-sif="gridGenerico" role="presentation" style="width: 100%;"><div class="dx-datagrid dx-gridbase-container dx-datagrid-borders" role="grid" aria-label="Tabla de datos"><div class="dx-datagrid-columns-separator dx-datagrid-columns-separator-transparent" style="height: 128px; left: 0px;"></div><div class="dx-hidden"></div><div class="dx-datagrid-tracker" style="display: none; height: 128px;"></div><div class="dx-datagrid-header-panel"><div aria-label="Data grid toolbar" class="dx-toolbar dx-widget dx-visibility-change-handler dx-collection" role="toolbar"><div class="dx-toolbar-items-container"><div class="dx-toolbar-before"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Colapsar_grdProfesoresNoAsignados" elemento-sif="botonGrid" botongrid="btn_Colapsar" role="button" aria-label="Colapsar todo" aria-hidden="true" tabindex="0" title="colapsar todo" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Fill_32x32.png"><span class="dx-button-text">Colapsar todo</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Buscar_grdProfesoresNoAsignados" elemento-sif="botonGrid" botongrid="btn_Buscar" role="button" aria-label="Buscar" aria-hidden="true" tabindex="0" title="buscar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Zoom/Zoom_32x32.png"><span class="dx-button-text">Buscar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Limpiar_grdProfesoresNoAsignados" elemento-sif="botonGrid" botongrid="btn_Limpiar" role="button" aria-label="Limpiar" aria-hidden="true" tabindex="0" title="Limpiar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Refresh_32x32.png"><span class="dx-button-text">Limpiar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Nuevo_grdProfesoresNoAsignados" elemento-sif="botonGrid" botongrid="btn_Nuevo" role="button" aria-label="Nuevo" aria-hidden="true" tabindex="0" title="Nuevo" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/AddItem_32x32.png"><span class="dx-button-text">Nuevo</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Guardar_grdProfesoresNoAsignados" elemento-sif="botonGrid" botongrid="btn_Guardar" role="button" aria-label="Guardar" aria-hidden="true" tabindex="0" title="Guardar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Save/Save_32x32.png"><span class="dx-button-text">Guardar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Detalle_grdProfesoresNoAsignados" elemento-sif="botonGrid" botongrid="btn_Detalle" role="button" aria-label="Detalle" aria-hidden="true" tabindex="0" title="Detalle" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/XAF/BO_Security_Permission_32x32.png"><span class="dx-button-text">Detalle</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Editar_grdProfesoresNoAsignados" elemento-sif="botonGrid" botongrid="btn_Editar" role="button" aria-label="Editar" aria-hidden="true" tabindex="0" title="Editar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Edit/Edit_32x32.png"><span class="dx-button-text">Editar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Eliminar_grdProfesoresNoAsignados" elemento-sif="botonGrid" botongrid="btn_Eliminar" role="button" aria-label="Eliminar" aria-hidden="true" tabindex="0" title="Eliminar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Cancel_32x32.png"><span class="dx-button-text">Eliminar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Imprimir_grdProfesoresNoAsignados" elemento-sif="botonGrid" botongrid="btn_Imprimir" role="button" aria-label="Imprimir" aria-hidden="true" tabindex="0" title="Imprimir" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Print/Print_32x32.png"><span class="dx-button-text">Imprimir</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Cancelar_grdProfesoresNoAsignados" elemento-sif="botonGrid" botongrid="btn_Cancelar" role="button" aria-label="Cancelar" aria-hidden="true" tabindex="0" title="Cancelar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Cancel_32x32.png"><span class="dx-button-text">Cancelar</span></div></div></div></div></div><div class="dx-toolbar-center"></div><div class="dx-toolbar-after"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-datagrid-search-panel dx-show-invalid-badge dx-textbox dx-texteditor dx-editor-outlined dx-searchbox dx-show-clear-button dx-texteditor-empty dx-widget" style="width: 240px;"><div class="dx-texteditor-container"><div class="dx-texteditor-input-container"><div class="dx-icon dx-icon-search"></div><input autocomplete="off" aria-label="Buscar en la tabla de datos" class="dx-texteditor-input" type="text" spellcheck="false" tabindex="0" role="textbox" style=""><div data-dx_placeholder="Buscar..." class="dx-placeholder"></div></div><div class="dx-texteditor-buttons-container"><span class="dx-clear-button-area"><span class="dx-icon dx-icon-clear"></span></span></div></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"></div></div></div></div></div></div><div class="dx-datagrid-headers dx-datagrid-nowrap" role="presentation" style="padding-right: 0px;"><div class="dx-datagrid-scrollable-simulated dx-datagrid-content dx-datagrid-scroll-container" role="presentation"><table class="dx-datagrid-table dx-datagrid-table-fixed" role="presentation"><colgroup><col style="width: 35px;"><col style="width: 100px;"><col><col><col style="width: 30px;"></colgroup><tbody role="presentation"><tr class="dx-row dx-column-lines dx-header-row" role="row" aria-hidden="true"><td aria-selected="false" role="columnheader" aria-colindex="1" id="dx-col-1" aria-label="Columna Gpo" class="dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">Gpo</div></td><td aria-selected="false" role="columnheader" aria-colindex="2" id="dx-col-2" aria-label="Columna Lugar" class="dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">Lugar</div></td><td aria-selected="false" role="columnheader" aria-colindex="3" id="dx-col-3" aria-label="Columna Asignatura" class="dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">Asignatura</div></td><td aria-selected="false" role="columnheader" aria-colindex="4" id="dx-col-4" aria-label="Columna Profesor" class="dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">Profesor</div></td><td aria-selected="false" role="columnheader" aria-colindex="5" id="dx-col-5" aria-label="Columna P" class="dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">P</div></td></tr></tbody></table></div></div><div class="dx-datagrid-rowsview dx-datagrid-nowrap dx-empty" role="presentation" tabindex="0"><div class="dx-datagrid-content"><table class="dx-datagrid-table dx-datagrid-table-fixed" role="presentation"><colgroup><col style="width: 35px;"><col style="width: 100px;"><col><col><col style="width: 30px;"></colgroup><tbody role="presentation"><tr class="dx-row dx-freespace-row dx-column-lines" role="presentation" style="height: 0px;" aria-hidden="true"><td style="text-align: left;"></td><td style="text-align: left;"></td><td style="text-align: left;"></td><td style="text-align: left;"></td><td style="text-align: left;"></td></tr></tbody></table></div><span class="dx-datagrid-nodata">Sin información</span></div><div class="dx-overlay dx-widget dx-state-invisible dx-visibility-change-handler dx-loadpanel"><div class="dx-overlay-content" aria-hidden="true" style="width: 200px; height: 90px;"></div></div><div class="dx-hidden" style="padding-right: 0px;"></div><div></div><div class="dx-hidden"></div><div class="dx-hidden"></div><div class="dx-datagrid-drag-header dx-datagrid-text-content dx-widget" style="display: none;"></div><div class="dx-context-menu dx-has-context-menu dx-widget dx-visibility-change-handler dx-collection dx-datagrid" role="presentation"></div><div class="dx-header-filter-menu"></div><div></div></div></div>
+    <div id="grdGrupos" class="dx-widget dx-visibility-change-handler" elemento-sif="gridGenerico" role="presentation" style="width: 100%;"><div class="dx-datagrid dx-gridbase-container dx-datagrid-borders" role="grid" aria-label="Tabla de datos" aria-rowcount="5" aria-colcount="4"><div class="dx-hidden"></div><div class="dx-datagrid-columns-separator dx-datagrid-columns-separator-transparent" style="height: 173.828px; left: 0px;"></div><div class="dx-datagrid-tracker" style="display: none; height: 173.828px;"></div><div class="dx-datagrid-header-panel"><div aria-label="Data grid toolbar" class="dx-toolbar dx-widget dx-visibility-change-handler dx-collection" role="toolbar"><div class="dx-toolbar-items-container"><div class="dx-toolbar-before"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Colapsar_grdGrupos" elemento-sif="botonGrid" botongrid="btn_Colapsar" role="button" aria-label="Colapsar todo" aria-hidden="true" tabindex="0" title="colapsar todo" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Fill_32x32.png"><span class="dx-button-text">Colapsar todo</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Buscar_grdGrupos" elemento-sif="botonGrid" botongrid="btn_Buscar" role="button" aria-label="Buscar" aria-hidden="true" tabindex="0" title="buscar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Zoom/Zoom_32x32.png"><span class="dx-button-text">Buscar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Limpiar_grdGrupos" elemento-sif="botonGrid" botongrid="btn_Limpiar" role="button" aria-label="Limpiar" aria-hidden="true" tabindex="0" title="Limpiar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Refresh_32x32.png"><span class="dx-button-text">Limpiar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Nuevo_grdGrupos" elemento-sif="botonGrid" botongrid="btn_Nuevo" role="button" aria-label="Nuevo" aria-hidden="true" tabindex="0" title="Nuevo" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/AddItem_32x32.png"><span class="dx-button-text">Nuevo</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Guardar_grdGrupos" elemento-sif="botonGrid" botongrid="btn_Guardar" role="button" aria-label="Guardar" aria-hidden="true" tabindex="0" title="Guardar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Save/Save_32x32.png"><span class="dx-button-text">Guardar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Detalle_grdGrupos" elemento-sif="botonGrid" botongrid="btn_Detalle" role="button" aria-label="Detalle" aria-hidden="true" tabindex="0" title="Detalle" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/XAF/BO_Security_Permission_32x32.png"><span class="dx-button-text">Detalle</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Editar_grdGrupos" elemento-sif="botonGrid" botongrid="btn_Editar" role="button" aria-label="Editar" aria-hidden="true" tabindex="0" title="Editar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Edit/Edit_32x32.png"><span class="dx-button-text">Editar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Eliminar_grdGrupos" elemento-sif="botonGrid" botongrid="btn_Eliminar" role="button" aria-label="Eliminar" aria-hidden="true" tabindex="0" title="Eliminar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Cancel_32x32.png"><span class="dx-button-text">Eliminar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Imprimir_grdGrupos" elemento-sif="botonGrid" botongrid="btn_Imprimir" role="button" aria-label="Imprimir" aria-hidden="true" tabindex="0" title="Imprimir" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Print/Print_32x32.png"><span class="dx-button-text">Imprimir</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Cancelar_grdGrupos" elemento-sif="botonGrid" botongrid="btn_Cancelar" role="button" aria-label="Cancelar" aria-hidden="true" tabindex="0" title="Cancelar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Cancel_32x32.png"><span class="dx-button-text">Cancelar</span></div></div></div></div></div><div class="dx-toolbar-center" style="margin: 0px 270px 0px 15px; float: right;"></div><div class="dx-toolbar-after"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-datagrid-search-panel dx-show-invalid-badge dx-textbox dx-texteditor dx-editor-outlined dx-searchbox dx-show-clear-button dx-texteditor-empty dx-widget" style="width: 240px;"><div class="dx-texteditor-container"><div class="dx-texteditor-input-container"><div class="dx-icon dx-icon-search"></div><input autocomplete="off" aria-label="Buscar en la tabla de datos" class="dx-texteditor-input" type="text" spellcheck="false" tabindex="0" role="textbox" style=""><div data-dx_placeholder="Buscar..." class="dx-placeholder"></div></div><div class="dx-texteditor-buttons-container"><span class="dx-clear-button-area"><span class="dx-icon dx-icon-clear"></span></span></div></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"></div></div></div></div></div></div><div class="dx-datagrid-headers dx-datagrid-nowrap" role="presentation" style="padding-right: 0px;"><div class="dx-datagrid-scrollable-simulated dx-datagrid-content dx-datagrid-scroll-container" role="presentation"><table class="dx-datagrid-table dx-datagrid-table-fixed" role="presentation"><colgroup><col style="width: 35px;"><col style="width: 40%;"><col><col style="width: 30px;"></colgroup><tbody role="presentation"><tr class="dx-row dx-column-lines dx-header-row" role="row"><td aria-selected="false" role="columnheader" aria-colindex="1" id="dx-col-36" aria-label="Columna Gpo" class="dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">Gpo</div></td><td aria-selected="false" role="columnheader" aria-colindex="2" id="dx-col-37" aria-label="Columna Lugar" class="dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">Lugar</div></td><td aria-selected="false" role="columnheader" aria-colindex="3" id="dx-col-38" aria-label="Columna Asignatura" class="dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">Asignatura</div></td><td aria-selected="false" role="columnheader" aria-colindex="4" id="dx-col-39" aria-label="Columna P" class="dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">P</div></td></tr></tbody></table></div></div><div class="dx-datagrid-rowsview dx-datagrid-nowrap dx-last-row-border" role="presentation"><div class="dx-datagrid-content"><table class="dx-datagrid-table dx-datagrid-table-fixed" role="presentation"><colgroup><col style="width: 35px;"><col style="width: 40%;"><col><col style="width: 30px;"></colgroup><tbody role="presentation"><tr class="dx-row dx-data-row dx-row-lines dx-column-lines dx-selection" role="row" aria-selected="true" aria-rowindex="1"><td aria-describedby="dx-col-36" aria-selected="false" role="gridcell" aria-colindex="1" style="text-align: left;">G   </td><td aria-describedby="dx-col-37" aria-selected="false" role="gridcell" aria-colindex="2" style="text-align: left;">D-409</td><td aria-describedby="dx-col-38" aria-selected="false" role="gridcell" aria-colindex="3" style="text-align: left;" tabindex="0" class="dx-cell-focus-disabled">(RC.06061.2870.5-5) ESTRUCTURAS DE DATOS</td><td aria-describedby="dx-col-39" aria-selected="false" role="gridcell" aria-colindex="4" style="text-align: left;">3 </td></tr><tr class="dx-row dx-data-row dx-row-lines dx-column-lines dx-row-alt" role="row" aria-selected="false" aria-rowindex="2"><td aria-describedby="dx-col-36" aria-selected="false" role="gridcell" aria-colindex="1" style="text-align: left;">I   </td><td aria-describedby="dx-col-37" aria-selected="false" role="gridcell" aria-colindex="2" style="text-align: left;">D-409</td><td aria-describedby="dx-col-38" aria-selected="false" role="gridcell" aria-colindex="3" style="text-align: left;">(RC.06061.2870.5-5) ESTRUCTURAS DE DATOS</td><td aria-describedby="dx-col-39" aria-selected="false" role="gridcell" aria-colindex="4" style="text-align: left;">3 </td></tr><tr class="dx-row dx-data-row dx-row-lines dx-column-lines" role="row" aria-selected="false" aria-rowindex="3"><td aria-describedby="dx-col-36" aria-selected="false" role="gridcell" aria-colindex="1" style="text-align: left;">I   </td><td aria-describedby="dx-col-37" aria-selected="false" role="gridcell" aria-colindex="2" style="text-align: left;">D-409</td><td aria-describedby="dx-col-38" aria-selected="false" role="gridcell" aria-colindex="3" style="text-align: left;">(RC.06061.2873.5-5) DESARROLLO DE APLICACIONES WEB I</td><td aria-describedby="dx-col-39" aria-selected="false" role="gridcell" aria-colindex="4" style="text-align: left;">4 </td></tr><tr class="dx-row dx-data-row dx-row-lines dx-column-lines dx-row-alt" role="row" aria-selected="false" aria-rowindex="4"><td aria-describedby="dx-col-36" aria-selected="false" role="gridcell" aria-colindex="1" style="text-align: left;">G   </td><td aria-describedby="dx-col-37" aria-selected="false" role="gridcell" aria-colindex="2" style="text-align: left;">D-409</td><td aria-describedby="dx-col-38" aria-selected="false" role="gridcell" aria-colindex="3" style="text-align: left;">(RC.06061.2876.5-5) DESARROLLO DE APLICACIONES WEB II</td><td aria-describedby="dx-col-39" aria-selected="false" role="gridcell" aria-colindex="4" style="text-align: left;">5 </td></tr><tr class="dx-row dx-data-row dx-row-lines dx-column-lines" role="row" aria-selected="false" aria-rowindex="5"><td aria-describedby="dx-col-36" aria-selected="false" role="gridcell" aria-colindex="1" style="text-align: left;">I   </td><td aria-describedby="dx-col-37" aria-selected="false" role="gridcell" aria-colindex="2" style="text-align: left;">D-409</td><td aria-describedby="dx-col-38" aria-selected="false" role="gridcell" aria-colindex="3" style="text-align: left;">(RC.06061.2876.5-5) DESARROLLO DE APLICACIONES WEB II</td><td aria-describedby="dx-col-39" aria-selected="false" role="gridcell" aria-colindex="4" style="text-align: left;">5 </td></tr><tr class="dx-row dx-freespace-row dx-column-lines" role="presentation" style="height: 0px; display: none;"><td style="text-align: left;"></td><td style="text-align: left;"></td><td style="text-align: left;"></td><td style="text-align: left;"></td></tr></tbody></table></div><span class="dx-datagrid-nodata dx-hidden">Sin información</span></div><div class="dx-overlay dx-widget dx-state-invisible dx-visibility-change-handler dx-loadpanel"><div class="dx-overlay-content" aria-hidden="true" style="width: 200px; height: 90px; left: 0px; top: 0px; transform: translate(542px, 419px); transition: all;"></div></div><div class="dx-hidden" style="padding-right: 0px;"></div><div></div><div class="dx-hidden"></div><div class="dx-hidden"></div><div class="dx-datagrid-drag-header dx-datagrid-text-content dx-widget" style="display: none;"></div><div class="dx-context-menu dx-has-context-menu dx-widget dx-visibility-change-handler dx-collection dx-datagrid" role="presentation"></div><div class="dx-header-filter-menu"></div><div></div></div></div>
+
+</div></div>
+<div id="pnlSemanas" class="uat-callout bg-light" style="border-left: 6px solid rgba(129, 198, 204, 0.5);"><div id="widgetUatCalloutCabecera_pnlSemanas" class="alert widgetUatCallout-header-sif" role="alert" style="background-color: #81C6CC; border-color: #81C6CC;"> 
+<div style="width: 100%;"> 
+<div id="widgetUatCalloutBoton_pnlSemanas" class="dx-widget dx-button dx-button-mode-contained dx-button-back dx-button-has-icon widgetUatCallout-button" role="button" aria-label="chevronup" tabindex="0"><div class="dx-button-content"><i class="dx-icon dx-icon-chevronup"></i></div></div><label id="widgetUatCalloutTexto_pnlSemanas" class="widgetUatCallout-title" style="color: white;">Semanas</label> 
+</div> 
+</div> 
+<div id="widgetUatCalloutContenedor_pnlSemanas" style="width: 100%;"> 
+
+
+    <div id="grdSemanas" class="dx-widget dx-visibility-change-handler" elemento-sif="gridGenerico" role="presentation" style="width: 100%;"><div class="dx-datagrid dx-gridbase-container dx-datagrid-borders" role="grid" aria-label="Tabla de datos" aria-rowcount="17" aria-colcount="4"><div class="dx-hidden"></div><div class="dx-datagrid-columns-separator dx-datagrid-columns-separator-transparent" style="height: 317.656px; left: 0px;"></div><div class="dx-datagrid-tracker" style="display: none; height: 317.656px;"></div><div class="dx-datagrid-header-panel"><div aria-label="Data grid toolbar" class="dx-toolbar dx-widget dx-visibility-change-handler dx-collection" role="toolbar"><div class="dx-toolbar-items-container"><div class="dx-toolbar-before"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Colapsar_grdSemanas" elemento-sif="botonGrid" botongrid="btn_Colapsar" role="button" aria-label="Colapsar todo" aria-hidden="true" tabindex="0" title="colapsar todo" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Fill_32x32.png"><span class="dx-button-text">Colapsar todo</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Buscar_grdSemanas" elemento-sif="botonGrid" botongrid="btn_Buscar" role="button" aria-label="Buscar" aria-hidden="true" tabindex="0" title="buscar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Zoom/Zoom_32x32.png"><span class="dx-button-text">Buscar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Limpiar_grdSemanas" elemento-sif="botonGrid" botongrid="btn_Limpiar" role="button" aria-label="Limpiar" aria-hidden="true" tabindex="0" title="Limpiar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Refresh_32x32.png"><span class="dx-button-text">Limpiar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Nuevo_grdSemanas" elemento-sif="botonGrid" botongrid="btn_Nuevo" role="button" aria-label="Nuevo" aria-hidden="true" tabindex="0" title="Nuevo" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/AddItem_32x32.png"><span class="dx-button-text">Nuevo</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Guardar_grdSemanas" elemento-sif="botonGrid" botongrid="btn_Guardar" role="button" aria-label="Guardar" aria-hidden="true" tabindex="0" title="Guardar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Save/Save_32x32.png"><span class="dx-button-text">Guardar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Detalle_grdSemanas" elemento-sif="botonGrid" botongrid="btn_Detalle" role="button" aria-label="Detalle" aria-hidden="true" tabindex="0" title="Detalle" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/XAF/BO_Security_Permission_32x32.png"><span class="dx-button-text">Detalle</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Editar_grdSemanas" elemento-sif="botonGrid" botongrid="btn_Editar" role="button" aria-label="Editar" aria-hidden="true" tabindex="0" title="Editar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Edit/Edit_32x32.png"><span class="dx-button-text">Editar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Eliminar_grdSemanas" elemento-sif="botonGrid" botongrid="btn_Eliminar" role="button" aria-label="Eliminar" aria-hidden="true" tabindex="0" title="Eliminar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Cancel_32x32.png"><span class="dx-button-text">Eliminar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Imprimir_grdSemanas" elemento-sif="botonGrid" botongrid="btn_Imprimir" role="button" aria-label="Imprimir" aria-hidden="true" tabindex="0" title="Imprimir" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Print/Print_32x32.png"><span class="dx-button-text">Imprimir</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Cancelar_grdSemanas" elemento-sif="botonGrid" botongrid="btn_Cancelar" role="button" aria-label="Cancelar" aria-hidden="true" tabindex="0" title="Cancelar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Cancel_32x32.png"><span class="dx-button-text">Cancelar</span></div></div></div></div></div><div class="dx-toolbar-center" style="margin: 0px 270px 0px 15px; float: right;"></div><div class="dx-toolbar-after"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-datagrid-search-panel dx-show-invalid-badge dx-textbox dx-texteditor dx-editor-outlined dx-searchbox dx-show-clear-button dx-texteditor-empty dx-widget" style="width: 240px;"><div class="dx-texteditor-container"><div class="dx-texteditor-input-container"><div class="dx-icon dx-icon-search"></div><input autocomplete="off" aria-label="Buscar en la tabla de datos" class="dx-texteditor-input" type="text" spellcheck="false" tabindex="0" role="textbox" style=""><div data-dx_placeholder="Buscar..." class="dx-placeholder"></div></div><div class="dx-texteditor-buttons-container"><span class="dx-clear-button-area"><span class="dx-icon dx-icon-clear"></span></span></div></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"></div></div></div></div></div></div><div class="dx-datagrid-headers dx-datagrid-nowrap" role="presentation" style="padding-right: 0px;"><div class="dx-datagrid-scrollable-simulated dx-datagrid-content dx-datagrid-scroll-container" role="presentation"><table class="dx-datagrid-table dx-datagrid-table-fixed" role="presentation"><colgroup><col style="width: 65px;"><col><col><col style="width: 80px;"></colgroup><tbody role="presentation"><tr class="dx-row dx-column-lines dx-header-row" role="row"><td aria-selected="false" role="columnheader" aria-colindex="1" id="dx-col-40" aria-label="Columna Semana" class="dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">Semana</div></td><td aria-selected="false" role="columnheader" aria-colindex="2" id="dx-col-41" aria-label="Columna Fecha Inicial" class="dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">Fecha Inicial</div></td><td aria-selected="false" role="columnheader" aria-colindex="3" id="dx-col-42" aria-label="Columna Fecha Final" class="dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">Fecha Final</div></td><td aria-selected="false" role="columnheader" aria-colindex="4" id="dx-col-43" aria-label="Columna Capturada" class="dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">Capturada</div></td></tr></tbody></table></div></div><div class="dx-datagrid-rowsview dx-datagrid-nowrap dx-last-row-border" role="presentation"><div class="dx-datagrid-content"><table class="dx-datagrid-table dx-datagrid-table-fixed" role="presentation"><colgroup><col style="width: 65px;"><col><col><col style="width: 80px;"></colgroup><tbody role="presentation"><tr class="dx-row dx-data-row dx-row-lines dx-column-lines" role="row" aria-selected="false" aria-rowindex="1"><td aria-describedby="dx-col-40" aria-selected="false" role="gridcell" aria-colindex="1" tabindex="0" style="text-align: left;">1</td><td aria-describedby="dx-col-41" aria-selected="false" role="gridcell" aria-colindex="2" style="text-align: left;">11/08/2025</td><td aria-describedby="dx-col-42" aria-selected="false" role="gridcell" aria-colindex="3" style="text-align: left;">17/08/2025</td><td aria-describedby="dx-col-43" aria-selected="false" role="gridcell" aria-colindex="4" style="text-align: left;">SI</td></tr><tr class="dx-row dx-data-row dx-row-lines dx-column-lines dx-row-alt" role="row" aria-selected="false" aria-rowindex="2"><td aria-describedby="dx-col-40" aria-selected="false" role="gridcell" aria-colindex="1" style="text-align: left;">2</td><td aria-describedby="dx-col-41" aria-selected="false" role="gridcell" aria-colindex="2" style="text-align: left;">18/08/2025</td><td aria-describedby="dx-col-42" aria-selected="false" role="gridcell" aria-colindex="3" style="text-align: left;">24/08/2025</td><td aria-describedby="dx-col-43" aria-selected="false" role="gridcell" aria-colindex="4" style="text-align: left;">SI</td></tr><tr class="dx-row dx-data-row dx-row-lines dx-column-lines" role="row" aria-selected="false" aria-rowindex="3"><td aria-describedby="dx-col-40" aria-selected="false" role="gridcell" aria-colindex="1" style="text-align: left;">3</td><td aria-describedby="dx-col-41" aria-selected="false" role="gridcell" aria-colindex="2" style="text-align: left;">25/08/2025</td><td aria-describedby="dx-col-42" aria-selected="false" role="gridcell" aria-colindex="3" style="text-align: left;">31/08/2025</td><td aria-describedby="dx-col-43" aria-selected="false" role="gridcell" aria-colindex="4" style="text-align: left;">SI</td></tr><tr class="dx-row dx-data-row dx-row-lines dx-column-lines dx-row-alt" role="row" aria-selected="false" aria-rowindex="4"><td aria-describedby="dx-col-40" aria-selected="false" role="gridcell" aria-colindex="1" style="text-align: left;">4</td><td aria-describedby="dx-col-41" aria-selected="false" role="gridcell" aria-colindex="2" style="text-align: left;">01/09/2025</td><td aria-describedby="dx-col-42" aria-selected="false" role="gridcell" aria-colindex="3" style="text-align: left;">07/09/2025</td><td aria-describedby="dx-col-43" aria-selected="false" role="gridcell" aria-colindex="4" style="text-align: left;">SI</td></tr><tr class="dx-row dx-data-row dx-row-lines dx-column-lines" role="row" aria-selected="false" aria-rowindex="5"><td aria-describedby="dx-col-40" aria-selected="false" role="gridcell" aria-colindex="1" style="text-align: left;">5</td><td aria-describedby="dx-col-41" aria-selected="false" role="gridcell" aria-colindex="2" style="text-align: left;">08/09/2025</td><td aria-describedby="dx-col-42" aria-selected="false" role="gridcell" aria-colindex="3" style="text-align: left;">14/09/2025</td><td aria-describedby="dx-col-43" aria-selected="false" role="gridcell" aria-colindex="4" style="text-align: left;">SI</td></tr><tr class="dx-row dx-data-row dx-row-lines dx-column-lines dx-row-alt" role="row" aria-selected="false" aria-rowindex="6"><td aria-describedby="dx-col-40" aria-selected="false" role="gridcell" aria-colindex="1" style="text-align: left;">6</td><td aria-describedby="dx-col-41" aria-selected="false" role="gridcell" aria-colindex="2" style="text-align: left;">15/09/2025</td><td aria-describedby="dx-col-42" aria-selected="false" role="gridcell" aria-colindex="3" style="text-align: left;">21/09/2025</td><td aria-describedby="dx-col-43" aria-selected="false" role="gridcell" aria-colindex="4" style="text-align: left;">SI</td></tr><tr class="dx-row dx-data-row dx-row-lines dx-column-lines" role="row" aria-selected="false" aria-rowindex="7"><td aria-describedby="dx-col-40" aria-selected="false" role="gridcell" aria-colindex="1" style="text-align: left;">7</td><td aria-describedby="dx-col-41" aria-selected="false" role="gridcell" aria-colindex="2" style="text-align: left;">22/09/2025</td><td aria-describedby="dx-col-42" aria-selected="false" role="gridcell" aria-colindex="3" style="text-align: left;">28/09/2025</td><td aria-describedby="dx-col-43" aria-selected="false" role="gridcell" aria-colindex="4" style="text-align: left;">SI</td></tr><tr class="dx-row dx-data-row dx-row-lines dx-column-lines dx-row-alt" role="row" aria-selected="false" aria-rowindex="8"><td aria-describedby="dx-col-40" aria-selected="false" role="gridcell" aria-colindex="1" style="text-align: left;">8</td><td aria-describedby="dx-col-41" aria-selected="false" role="gridcell" aria-colindex="2" style="text-align: left;">29/09/2025</td><td aria-describedby="dx-col-42" aria-selected="false" role="gridcell" aria-colindex="3" style="text-align: left;">05/10/2025</td><td aria-describedby="dx-col-43" aria-selected="false" role="gridcell" aria-colindex="4" style="text-align: left;">SI</td></tr><tr class="dx-row dx-data-row dx-row-lines dx-column-lines" role="row" aria-selected="false" aria-rowindex="9"><td aria-describedby="dx-col-40" aria-selected="false" role="gridcell" aria-colindex="1" style="text-align: left;">9</td><td aria-describedby="dx-col-41" aria-selected="false" role="gridcell" aria-colindex="2" style="text-align: left;">06/10/2025</td><td aria-describedby="dx-col-42" aria-selected="false" role="gridcell" aria-colindex="3" style="text-align: left;">12/10/2025</td><td aria-describedby="dx-col-43" aria-selected="false" role="gridcell" aria-colindex="4" style="text-align: left;">SI</td></tr><tr class="dx-row dx-data-row dx-row-lines dx-column-lines dx-row-alt" role="row" aria-selected="false" aria-rowindex="10"><td aria-describedby="dx-col-40" aria-selected="false" role="gridcell" aria-colindex="1" style="text-align: left;">10</td><td aria-describedby="dx-col-41" aria-selected="false" role="gridcell" aria-colindex="2" style="text-align: left;">13/10/2025</td><td aria-describedby="dx-col-42" aria-selected="false" role="gridcell" aria-colindex="3" style="text-align: left;">19/10/2025</td><td aria-describedby="dx-col-43" aria-selected="false" role="gridcell" aria-colindex="4" style="text-align: left;">SI</td></tr><tr class="dx-row dx-freespace-row dx-column-lines" role="presentation" style="height: 0px; display: none;"><td style="text-align: left;"></td><td style="text-align: left;"></td><td style="text-align: left;"></td><td style="text-align: left;"></td></tr></tbody></table></div><span class="dx-datagrid-nodata dx-hidden">Sin información</span></div><div class="dx-overlay dx-widget dx-state-invisible dx-visibility-change-handler dx-loadpanel"><div class="dx-overlay-content" aria-hidden="true" style="width: 200px; height: 90px; left: 0px; top: 0px; transform: translate(542px, 578px); transition: all;"></div></div><div class="dx-hidden" style="padding-right: 0px;"></div><div></div><div class="dx-hidden"></div><div class="dx-widget dx-datagrid-pager dx-pager"><div class="dx-pages"><div class="dx-page-indexes"><div class="dx-page dx-selection" tabindex="0" role="button" aria-label="Page 1">1</div><div class="dx-page" tabindex="0" role="button" aria-label="Page 2">2</div></div></div></div><div class="dx-datagrid-drag-header dx-datagrid-text-content dx-widget" style="display: none;"></div><div class="dx-context-menu dx-has-context-menu dx-widget dx-visibility-change-handler dx-collection dx-datagrid" role="presentation"></div><div class="dx-header-filter-menu"></div><div></div></div></div>
+</div></div>
+<div id="pnlAsistencia" class="uat-callout bg-light" style="border-left: 6px solid rgba(236, 176, 111, 0.5);"><div id="widgetUatCalloutCabecera_pnlAsistencia" class="alert widgetUatCallout-header-sif" role="alert" style="background-color: #ECB06F; border-color: #ECB06F;"> 
+<div style="width: 100%;"> 
+<div id="widgetUatCalloutBoton_pnlAsistencia" class="dx-widget dx-button dx-button-mode-contained dx-button-back dx-button-has-icon widgetUatCallout-button" role="button" aria-label="chevrondown" tabindex="0"><div class="dx-button-content"><i class="dx-icon dx-icon-chevrondown"></i></div></div><label id="widgetUatCalloutTexto_pnlAsistencia" class="widgetUatCallout-title" style="color: white;">Asistencia</label> 
+</div> 
+</div> 
+<div id="widgetUatCalloutContenedor_pnlAsistencia" style="width: 100%; display: none;"> 
+
+
+    <div class="row">
+        <div class="col-lg-12" style="text-align: center; margin-top: 15px;">
+            <label id="lblRangoAsistencias" style="font-size: 15px; font-weight: 600;"></label>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-lg-12" style="text-align: left;">
+            <label id="lblNotaAsistencias" style="font-size: 12px; font-weight: 600; color: #d84315;">Para invertir la seleccion de todos los alumnos haga clic sobre la letra del día elegido.</label>
+        </div>
+    </div>
+    <div id="grdAsistencias" style="margin-top: -50px; width: 100%;" class="dx-widget dx-visibility-change-handler" elemento-sif="gridGenerico" role="presentation"><div class="dx-datagrid dx-gridbase-container dx-datagrid-borders" role="grid" aria-label="Tabla de datos" aria-rowcount="0" aria-colcount="10"><div class="dx-datagrid-columns-separator dx-datagrid-columns-separator-transparent" style="height: 100px; left: 0px;"></div><div class="dx-hidden"></div><div class="dx-datagrid-tracker" style="display: none; height: 100px;"></div><div class="dx-datagrid-header-panel"><div aria-label="Data grid toolbar" class="dx-toolbar dx-widget dx-visibility-change-handler dx-collection" role="toolbar"><div class="dx-toolbar-items-container"><div class="dx-toolbar-before"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Colapsar_grdAsistencias" elemento-sif="botonGrid" botongrid="btn_Colapsar" role="button" aria-label="Colapsar todo" aria-hidden="true" tabindex="0" title="colapsar todo" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Fill_32x32.png"><span class="dx-button-text">Colapsar todo</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Buscar_grdAsistencias" elemento-sif="botonGrid" botongrid="btn_Buscar" role="button" aria-label="Buscar" aria-hidden="true" tabindex="0" title="buscar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Zoom/Zoom_32x32.png"><span class="dx-button-text">Buscar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Limpiar_grdAsistencias" elemento-sif="botonGrid" botongrid="btn_Limpiar" role="button" aria-label="Limpiar" aria-hidden="true" tabindex="0" title="Limpiar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Refresh_32x32.png"><span class="dx-button-text">Limpiar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Nuevo_grdAsistencias" elemento-sif="botonGrid" botongrid="btn_Nuevo" role="button" aria-label="Nuevo" aria-hidden="true" tabindex="0" title="Nuevo" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/AddItem_32x32.png"><span class="dx-button-text">Nuevo</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Guardar_grdAsistencias" elemento-sif="botonGrid" botongrid="btn_Guardar" role="button" aria-label="Guardar" aria-hidden="true" tabindex="0" title="Guardar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Save/Save_32x32.png"><span class="dx-button-text">Guardar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Detalle_grdAsistencias" elemento-sif="botonGrid" botongrid="btn_Detalle" role="button" aria-label="Detalle" aria-hidden="true" tabindex="0" title="Detalle" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/XAF/BO_Security_Permission_32x32.png"><span class="dx-button-text">Detalle</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Editar_grdAsistencias" elemento-sif="botonGrid" botongrid="btn_Editar" role="button" aria-label="Editar" aria-hidden="true" tabindex="0" title="Editar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Edit/Edit_32x32.png"><span class="dx-button-text">Editar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Eliminar_grdAsistencias" elemento-sif="botonGrid" botongrid="btn_Eliminar" role="button" aria-label="Eliminar" aria-hidden="true" tabindex="0" title="Eliminar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Cancel_32x32.png"><span class="dx-button-text">Eliminar</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Imprimir_grdAsistencias" elemento-sif="botonGrid" botongrid="btn_Imprimir" role="button" aria-label="Imprimir" aria-hidden="true" tabindex="0" title="Imprimir" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Print/Print_32x32.png"><span class="dx-button-text">Imprimir</span></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon dx-state-invisible" id="btn_Cancelar_grdAsistencias" elemento-sif="botonGrid" botongrid="btn_Cancelar" role="button" aria-label="Cancelar" aria-hidden="true" tabindex="0" title="Cancelar" hidden="" style="height: auto;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Cancel_32x32.png"><span class="dx-button-text">Cancelar</span></div></div></div></div></div><div class="dx-toolbar-center"></div><div class="dx-toolbar-after"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-datagrid-search-panel dx-show-invalid-badge dx-textbox dx-texteditor dx-editor-outlined dx-searchbox dx-show-clear-button dx-texteditor-empty dx-widget" style="width: 240px;"><div class="dx-texteditor-container"><div class="dx-texteditor-input-container"><div class="dx-icon dx-icon-search"></div><input autocomplete="off" aria-label="Buscar en la tabla de datos" class="dx-texteditor-input" type="text" spellcheck="false" tabindex="0" role="textbox" style=""><div data-dx_placeholder="Buscar..." class="dx-placeholder"></div></div><div class="dx-texteditor-buttons-container"><span class="dx-clear-button-area"><span class="dx-icon dx-icon-clear"></span></span></div></div></div></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"></div></div><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"></div></div></div></div></div></div><div class="dx-datagrid-headers" role="presentation" style="padding-right: 0px;"><div class="dx-datagrid-scrollable-simulated dx-datagrid-content dx-datagrid-scroll-container dx-datagrid-content-fixed" role="presentation" style="padding-right: 0px;"><table class="dx-datagrid-table dx-datagrid-table-fixed dx-pointer-events-none" role="presentation"><colgroup><col class="dx-col-fixed" style="width: 30px;"><col class="dx-col-fixed"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"></colgroup><tbody role="presentation"><tr class="dx-row dx-column-lines dx-header-row" role="row"><td class="cell-checkbox-alignment dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-selected="false" role="columnheader" aria-colindex="1" id="dx-col-18-fixed" aria-label="Columna No." aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">No.</div></td><td class="cell-checkbox-alignment dx-datagrid-action dx-cell-focus-disabled dx-datagrid-drag-action" aria-selected="false" role="columnheader" aria-colindex="2" id="dx-col-20-fixed" aria-label="Columna Nombre" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">Nombre</div></td><td colspan="7" class="dx-pointer-events-none dx-last-cell dx-cell-focus-disabled" aria-selected="false" role="columnheader" aria-colindex="3" tabindex="0" style="text-align: left;">&nbsp;</td></tr></tbody></table></div><div class="dx-datagrid-scrollable-simulated dx-datagrid-content dx-datagrid-scroll-container" role="presentation"><table class="dx-datagrid-table dx-datagrid-table-fixed" role="presentation"><colgroup><col style="width: 30px;"><col><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"></colgroup><tbody role="presentation"><tr class="dx-row dx-column-lines dx-header-row" role="row"><td class="cell-checkbox-alignment dx-hidden-cell dx-datagrid-action dx-cell-focus-disabled" aria-selected="false" role="columnheader" aria-colindex="1" id="dx-col-18" aria-label="Columna No." aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">No.</div></td><td class="cell-checkbox-alignment dx-hidden-cell dx-datagrid-action dx-cell-focus-disabled" aria-selected="false" role="columnheader" aria-colindex="2" id="dx-col-20" aria-label="Columna Nombre" aria-sort="none" tabindex="0" style="text-align: left;"><div class="dx-column-indicators" role="presentation" style="float: right;"><span class="dx-sort dx-sort-none"></span></div><div class="dx-datagrid-text-content dx-text-content-alignment-left" role="presentation">Nombre</div></td><td class="cell-checkbox-alignment dx-cell-focus-disabled" aria-selected="false" role="columnheader" aria-colindex="3" id="dx-col-21" aria-label="Columna undefined" aria-sort="none" tabindex="0" style="text-align: center;"><div class="dx-datagrid-text-content" role="presentation"><div><span id="lbl_Lu_0" title="Invertir selección para el día 28 de diciembre de 1998" onclick="SeleccionarTodos(1)" style="cursor: pointer;">Lu <br>28</span></div></div></td><td class="cell-checkbox-alignment dx-cell-focus-disabled" aria-selected="false" role="columnheader" aria-colindex="4" id="dx-col-22" aria-label="Columna undefined" aria-sort="none" tabindex="0" style="text-align: center;"><div class="dx-datagrid-text-content" role="presentation"><div><span id="lbl_Ma_1" title="Invertir selección para el día 29 de diciembre de 1998" onclick="SeleccionarTodos(2)" style="cursor: pointer;">Ma <br>29</span></div></div></td><td class="cell-checkbox-alignment dx-cell-focus-disabled" aria-selected="false" role="columnheader" aria-colindex="5" id="dx-col-23" aria-label="Columna undefined" aria-sort="none" tabindex="0" style="text-align: center;"><div class="dx-datagrid-text-content" role="presentation"><div><span id="lbl_Mi_2" title="Invertir selección para el día 30 de diciembre de 1998" onclick="SeleccionarTodos(3)" style="cursor: pointer;">Mi <br>30</span></div></div></td><td class="cell-checkbox-alignment dx-cell-focus-disabled" aria-selected="false" role="columnheader" aria-colindex="6" id="dx-col-24" aria-label="Columna undefined" aria-sort="none" tabindex="0" style="text-align: center;"><div class="dx-datagrid-text-content" role="presentation"><div><span id="lbl_Ju_3" title="Invertir selección para el día 31 de diciembre de 1998" onclick="SeleccionarTodos(4)" style="cursor: pointer;">Ju <br>31</span></div></div></td><td class="cell-checkbox-alignment dx-cell-focus-disabled" aria-selected="false" role="columnheader" aria-colindex="7" id="dx-col-25" aria-label="Columna undefined" aria-sort="none" tabindex="0" style="text-align: center;"><div class="dx-datagrid-text-content" role="presentation"><div><span id="lbl_Vi_4" title="Invertir selección para el día 1 de enero de 1999" onclick="SeleccionarTodos(5)" style="cursor: pointer;">Vi <br>1</span></div></div></td><td class="cell-checkbox-alignment dx-cell-focus-disabled" aria-selected="false" role="columnheader" aria-colindex="8" id="dx-col-26" aria-label="Columna undefined" aria-sort="none" tabindex="0" style="text-align: center;"><div class="dx-datagrid-text-content" role="presentation"><div><span id="lbl_Sa_5" title="Invertir selección para el día 2 de enero de 1999" onclick="SeleccionarTodos(6)" style="cursor: pointer;">Sa <br>2</span></div></div></td><td class="cell-checkbox-alignment dx-cell-focus-disabled" aria-selected="false" role="columnheader" aria-colindex="9" id="dx-col-27" aria-label="Columna undefined" aria-sort="none" tabindex="0" style="text-align: center;"><div class="dx-datagrid-text-content" role="presentation"><div><span id="lbl_Do_6" title="Invertir selección para el día 3 de enero de 1999" onclick="SeleccionarTodos(7)" style="cursor: pointer;">Do <br>3</span></div></div></td></tr></tbody></table></div></div><div class="dx-datagrid-rowsview dx-empty dx-scrollable dx-visibility-change-handler dx-scrollable-both dx-scrollable-simulated dx-fixed-columns" role="presentation" tabindex="0"><div class="dx-scrollable-wrapper"><div class="dx-scrollable-container"><div class="dx-scrollable-content" style="left: 0px; top: 0px; transform: none;"><div class="dx-datagrid-content"><table class="dx-datagrid-table dx-datagrid-table-fixed" role="presentation"><colgroup><col style="width: 30px;"><col><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"></colgroup><tbody role="presentation"><tr class="dx-row dx-freespace-row dx-column-lines" role="presentation" style="height: 0px;"><td class="cell-checkbox-alignment" style="text-align: left;"></td><td class="cell-checkbox-alignment" style="text-align: left;"></td><td class="cell-checkbox-alignment" style="text-align: center;"></td><td class="cell-checkbox-alignment" style="text-align: center;"></td><td class="cell-checkbox-alignment" style="text-align: center;"></td><td class="cell-checkbox-alignment" style="text-align: center;"></td><td class="cell-checkbox-alignment" style="text-align: center;"></td><td class="cell-checkbox-alignment" style="text-align: center;"></td><td class="cell-checkbox-alignment" style="text-align: center;"></td></tr></tbody></table></div></div><div class="dx-scrollable-scrollbar dx-widget dx-scrollbar-horizontal dx-scrollbar-hoverable"><div class="dx-scrollable-scroll dx-state-invisible" style="width: 15px; transform: translate(0px, 0px);"><div class="dx-scrollable-scroll-content"></div></div></div><div class="dx-scrollable-scrollbar dx-widget dx-scrollbar-vertical dx-scrollbar-hoverable"><div class="dx-scrollable-scroll dx-state-invisible" style="height: 15px; transform: translate(0px, 0px);"><div class="dx-scrollable-scroll-content"></div></div></div></div></div><div class="dx-datagrid-content dx-datagrid-content-fixed" style="margin-bottom: 0px;"><table class="dx-datagrid-table dx-datagrid-table-fixed dx-pointer-events-none" role="presentation" style="margin-bottom: 0px; margin-right: 0px;"><colgroup><col class="dx-col-fixed" style="width: 30px;"><col class="dx-col-fixed"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"><col style="width: 30px;"></colgroup><tbody role="presentation"><tr class="dx-row dx-freespace-row dx-column-lines" role="presentation" style="height: 0px;"><td class="cell-checkbox-alignment" style="text-align: left;"></td><td class="cell-checkbox-alignment" style="text-align: left;"></td><td colspan="7" class="dx-pointer-events-none dx-last-cell" style="text-align: left;"></td></tr></tbody></table></div><span class="dx-datagrid-nodata">Sin información</span></div><div class="dx-overlay dx-widget dx-state-invisible dx-visibility-change-handler dx-loadpanel"><div class="dx-overlay-content" aria-hidden="true" style="width: 200px; height: 90px;"></div></div><div class="dx-hidden" style="padding-right: 0px;"></div><div></div><div class="dx-hidden"></div><div class="dx-hidden"></div><div class="dx-datagrid-drag-header dx-datagrid-text-content dx-widget" style="display: none;"></div><div class="dx-context-menu dx-has-context-menu dx-widget dx-visibility-change-handler dx-collection dx-datagrid" role="presentation"></div><div class="dx-header-filter-menu"></div><div></div></div></div>
+</div></div>
+
+
+<script src="/Areas/Profesor/Scripts/ControlAsistencia.js?v=2ac0a62a-1b33-4ea4-83e1-3f0cee0fdb08"></script>
+ 
+
+
+
+
+                        <script>
+                            window.onload = function () {
+                                ejecutarDespuesRenderizarPantalla();
+                            };
+                        </script>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="contenedorPiePrincipal" style="height: 40px;">
+        <label style="font-family: Arial; font-size: 10pt; font-weight: bold; color: white;">Universidad Autónoma de Tamaulipas - Sistema Administrativo Escolar</label>
+    </div>
+    <div id="lyMenuUsuarioToolTip" class="dx-overlay dx-popup dx-popover dx-widget dx-state-invisible dx-visibility-change-handler dx-tooltip"><div class="dx-overlay-content dx-popup-normal dx-state-invisible" aria-hidden="true" id="dx-7c6ac43b-b2f1-dc12-f7d1-5b6786d95276" role="tooltip" style="width: 1230px; height: auto;"><div class="dx-popover-arrow"></div><div class="dx-popup-content"></div></div></div>
+    <div id="panelCargaGenerico" class="dx-overlay dx-widget dx-visibility-change-handler dx-loadpanel dx-state-invisible"><div class="dx-overlay-content dx-resizable dx-loadpanel-content dx-loadpanel-pane-hidden dx-state-invisible" style="width: 300px; height: 300px; z-index: 1501; left: 0px; top: 0px; transform: translate(490px, 210px); transition: all;" aria-hidden="true"><div class="dx-loadpanel-content-wrapper"><div class="dx-loadpanel-indicator dx-loadindicator dx-widget"><div class="dx-loadindicator-wrapper dx-loadindicator-image" style="background-image: url(&quot;/Imagenes/loading2.jpg&quot;);"><div class="dx-loadindicator-content"></div></div></div><div class="dx-loadpanel-message">Espere un momento...</div></div></div></div>
+    <style type="text/css">
+    /*Botones popups*/
+
+    #alertaGenericoSIFBotonOK {
+        color: #007bff;
+        border-color: #007bff;
+        border-width: 1px;
+        font-family: Arial;
+        font-weight: bold;
+        height: 32px;
+    }
+
+        #alertaGenericoSIFBotonOK > div > img {
+            width: 24px !important;
+            height: 24px !important;
+        }
+
+        #alertaGenericoSIFBotonOK.dx-state-hover {
+            background-color: #007bff;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+        #alertaGenericoSIFBotonOK.dx-state-active {
+            background-color: darkblue;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+    #confirmacionGenericoSIFBotonSI {
+        color: #007bff;
+        border-color: #018A40;
+        border-width: 1px;
+        font-family: Arial;
+        font-weight: bold;
+        height: 32px;
+    }
+
+        #confirmacionGenericoSIFBotonSI > div > img {
+            width: 24px !important;
+            height: 24px !important;
+        }
+
+        #confirmacionGenericoSIFBotonSI.dx-state-hover {
+            background-color: #018A40;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+        #confirmacionGenericoSIFBotonSI.dx-state-active {
+            background-color: darkgreen;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+    #confirmacionGenericoSIFBotonNO {
+        color: #CA2632;
+        border-color: #CA2632;
+        border-width: 1px;
+        font-family: Arial;
+        font-weight: bold;
+        height: 32px;
+    }
+
+        #confirmacionGenericoSIFBotonNO > div > img {
+            width: 24px !important;
+            height: 24px !important;
+        }
+
+        #confirmacionGenericoSIFBotonNO.dx-state-hover {
+            background-color: #CA2632;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+        #confirmacionGenericoSIFBotonNO.dx-state-active {
+            background-color: darkred;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+    #confirmacionGenericoOpcionSIFBotonOk {
+        color: #007bff;
+        border-color: #018A40;
+        border-width: 1px;
+        font-family: Arial;
+        font-weight: bold;
+        height: 32px;
+    }
+
+        #confirmacionGenericoOpcionSIFBotonOk > div > img {
+            width: 24px !important;
+            height: 24px !important;
+        }
+
+        #confirmacionGenericoOpcionSIFBotonOk.dx-state-hover {
+            background-color: #018A40;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+        #confirmacionGenericoOpcionSIFBotonOk.dx-state-active {
+            background-color: darkgreen;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+    #confirmacionGenericoOpcionSIFBotonSalir {
+        color: #CA2632;
+        border-color: #CA2632;
+        border-width: 1px;
+        font-family: Arial;
+        font-weight: bold;
+        height: 32px;
+    }
+
+        #confirmacionGenericoOpcionSIFBotonSalir > div > img {
+            width: 24px !important;
+            height: 24px !important;
+        }
+
+        #confirmacionGenericoOpcionSIFBotonSalir.dx-state-hover {
+            background-color: #CA2632;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+        #confirmacionGenericoOpcionSIFBotonSalir.dx-state-active {
+            background-color: darkred;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+</style>
+<script type="text/javascript" id="rutas">
+        var urlIconBotonOK = '/Imagenes/Images/Actions/Apply_32x32.png';
+        var urlIconBotonNO = '/Imagenes/Images/Actions/Cancel_32x32.png';
+
+        var urlIconMessageAsterisk = '/Imagenes/Dialog/messagebox-asterisk.png';
+        var urlIconMessageError = '/Imagenes/Dialog/messagebox-error.png';
+        var urlIconMessageExclamation = '/Imagenes/Dialog/messagebox-exclamation.png';
+        var urlIconMessageHand = '/Imagenes/Dialog/messagebox-hand.png';
+        var urlIconMessageInformation = '/Imagenes/Dialog/messagebox-information.png';
+        var urlIconMessageQuestion = '/Imagenes/Dialog/messagebox-question.png';
+        var urlIconMessageStop = '/Imagenes/Dialog/messagebox-stop.png';
+        var urlIconMessageWarning = '/Imagenes/Dialog/messagebox-warning.png';
+</script>
+<script type="text/javascript">
+    jQuery(document).ready(function () {
+        $("#alertGenericoSIFImagen").attr("src", urlIconMessageInformation);
+        $("#confirmacionGenericoSIFImagen").attr("src", urlIconMessageInformation);
+
+        $("#alertGenericoSIFLabel").text("");
+        $("#confirmacionGenericoSIFLabel").text("");
+
+        $("#alertaGenericoSIFBotonOK").dxButton({
+            stylingMode: "outlined",
+            hint: "OK",
+            text: "OK",
+            width: "100%",
+            icon: urlIconBotonOK,
+            type: "normal",
+            onClick: function (e) {
+                $("#alertaGenericoSIF").dxPopup("instance").hide();
+            }
+        });
+
+        $("#confirmacionGenericoSIFBotonSI").dxButton({
+            stylingMode: "outlined",
+            hint: "SI",
+            text: "SI",
+            width: "100%",
+            icon: urlIconBotonOK,
+            type: "normal",
+            onClick: function (e) {
+                $("#confirmacionGenericoSIF").dxPopup("instance").hide();
+            }
+        });
+
+        $("#confirmacionGenericoSIFBotonNO").dxButton({
+            stylingMode: "outlined",
+            hint: "NO",
+            text: "NO",
+            width: "100%",
+            icon: urlIconBotonNO,
+            type: "normal",
+            onClick: function () {
+                $("#confirmacionGenericoSIF").dxPopup("instance").hide();
+            }
+        });
+
+        $("#confirmacionGenericoOpcionSIFBotonOk").dxButton({
+            stylingMode: "outlined",
+            hint: "Aceptar",
+            text: "Aceptar",
+            width: "100%",
+            icon: urlIconBotonOK,
+            type: "normal",
+            onClick: function (e) {
+                $("#confirmacionGenericoOpcionSIF").dxPopup("instance").hide();
+            }
+        });
+
+        $("#confirmacionGenericoOpcionSIFBotonSalir").dxButton({
+            stylingMode: "outlined",
+            hint: "Salir",
+            text: "Salir",
+            width: "100%",
+            icon: urlIconBotonNO,
+            type: "normal",
+            onClick: function () {
+                $("#confirmacionGenericoOpcionSIF").dxPopup("instance").hide();
+            }
+        });
+
+        $("#confirmacionGenericoOpcionRadButton").dxRadioGroup({
+            layout: "horizontal",
+            onValueChanged: function (e) {
+
+            }
+        });
+
+        $("#alertaGenericoSIF").dxPopup({
+            height: "250px",
+            shadingColor: "#d9e3f780",
+            shading: true,
+            title: "Sistema Administrativo UAT",
+            visible: false,
+            width: "500px",
+            onShown: function (e) {
+                $("#alertaGenericoSIFBotonOK").dxButton('instance').focus();
+            }
+        });
+
+        $("#confirmacionGenericoSIF").dxPopup({
+            height: "250px",
+            shadingColor: "#d9e3f780",
+            shading: true,
+            title: "Sistema Administrativo UAT",
+            visible: false,
+            width: "500px"
+        });
+
+        $("#confirmacionGenericoOpcionSIF").dxPopup({
+            height: "250px",
+            shadingColor: "#d9e3f780",
+            shading: true,
+            title: "Sistema Administrativo UAT",
+            visible: false,
+            width: "500px"
+        });
+    });
+
+    function fnAlertaSIF(mensaje, tipo, funcion, tamanio, templateText) {
+        if (usuarioEstaUtilizandoMovil()) { $("#alertaGenericoSIF").dxPopup("instance").option("width", Math.floor(window.innerWidth * 0.9)); }
+        $("#alertaGenericoSIF").dxPopup("instance").show();
+        $("#alertaGenericoSIFTextoTemplate").html(' <label class="etiquetaCompact" style="margin-top: 5px;" id="alertaGenericoSIFLabel"></label>');
+        if (ConInformacion(tamanio)) {
+            if (tamanio.hasOwnProperty("ancho")) $("#alertaGenericoSIF").dxPopup("instance").option("width", tamanio.ancho);
+            if (tamanio.hasOwnProperty("alto")) $("#alertaGenericoSIF").dxPopup("instance").option("height", tamanio.alto);
+        }
+        $("#alertaGenericoSIF .dx-popup-title").css("background-color", localStorage.getItem("ColorHeaderPopUp"));
+        var estatusMensaje = urlIconMessageInformation;
+        switch (tipo) {
+            case "asterisk": estatusMensaje = urlIconMessageAsterisk; break;
+            case "error": estatusMensaje = urlIconMessageError; break;
+            case "exclamation": estatusMensaje = urlIconMessageExclamation; break;
+            case "hand": estatusMensaje = urlIconMessageHand; break;
+            case "information": estatusMensaje = urlIconMessageInformation; break;
+            case "question": estatusMensaje = urlIconMessageQuestion; break;
+            case "stop": estatusMensaje = urlIconMessageStop; break;
+            case "warning": estatusMensaje = urlIconMessageWarning; break;
+        }
+        $("#alertaGenericoSIFImagen").attr("src", estatusMensaje);
+        if (ConInformacion(templateText)) {
+            $("#alertaGenericoSIFTextoTemplate").html(templateText);
+        }
+        else {
+            $("#alertaGenericoSIFLabel").text(mensaje);
+        }
+
+        $("#alertaGenericoSIFBotonOK").dxButton("instance").off("click");
+        $("#alertaGenericoSIFBotonOK").dxButton("instance").on("click", function () {
+            $("#alertaGenericoSIF").dxPopup("instance").option({ "width": "500px", "height": "250px" });
+            $("#alertaGenericoSIF").dxPopup("instance").hide();
+        });
+
+        if (funcion != null || funcion != undefined) {
+            $("#alertaGenericoSIFBotonOK").dxButton("instance").on("click", function (e) {
+                return funcion(e);
+            });
+        }
+    }
+
+    function fnConfirmacionSIF(mensaje, tipo, funcionOk, funcionNo, tamanio, templateText) {
+        if (usuarioEstaUtilizandoMovil()) {  $("#confirmacionGenericoSIF").dxPopup("instance").option("width", Math.floor(window.innerWidth * 0.9)); }
+        $("#confirmacionGenericoSIF").dxPopup("instance").show();
+        if (ConInformacion(tamanio)) {
+            if (tamanio.hasOwnProperty("ancho")) $("#confirmacionGenericoSIF").dxPopup("instance").option("width", tamanio.ancho);
+            if (tamanio.hasOwnProperty("alto")) $("#confirmacionGenericoSIF").dxPopup("instance").option("height", tamanio.alto);
+        }
+        $("#confirmacionGenericoSIF .dx-popup-title").css("background-color", localStorage.getItem("ColorHeaderPopUp"));
+        var estatusMensaje = urlIconMessageInformation;
+        switch (tipo) {
+            case "asterisk": estatusMensaje = urlIconMessageAsterisk; break;
+            case "error": estatusMensaje = urlIconMessageError; break;
+            case "exclamation": estatusMensaje = urlIconMessageExclamation; break;
+            case "hand": estatusMensaje = urlIconMessageHand; break;
+            case "information": estatusMensaje = urlIconMessageInformation; break;
+            case "question": estatusMensaje = urlIconMessageQuestion; break;
+            case "stop": estatusMensaje = urlIconMessageStop; break;
+            case "warning": estatusMensaje = urlIconMessageWarning; break;
+        }
+        $("#confirmacionGenericoSIFImagen").attr("src", estatusMensaje);
+        if (ConInformacion(templateText)) {
+            $("#confirmacionGenericoSIFLabel").html(templateText);
+        }
+        else {
+            $("#confirmacionGenericoSIFLabel").text(mensaje);
+        }
+
+        $("#confirmacionGenericoSIFBotonSI").dxButton("instance").off("click");
+        $("#confirmacionGenericoSIFBotonSI").dxButton("instance").on("click", function () {
+            $("#confirmacionGenericoSIF").dxPopup("instance").option({ "width": "500px", "height": "250px" });
+            $("#confirmacionGenericoSIF").dxPopup("instance").hide();
+        });
+
+        $("#confirmacionGenericoSIFBotonNO").dxButton("instance").off("click");
+        $("#confirmacionGenericoSIFBotonNO").dxButton("instance").on("click", function () {
+            $("#confirmacionGenericoSIF").dxPopup("instance").option({ "width": "500px", "height": "250px" });
+            $("#confirmacionGenericoSIF").dxPopup("instance").hide();
+        });
+
+        if (funcionOk != null || funcionOk != undefined) {
+            $("#confirmacionGenericoSIFBotonSI").dxButton("instance").on("click", function (e) {
+                return funcionOk(e);
+            });
+        }
+        if (funcionNo != null || funcionNo != undefined) {
+            $("#confirmacionGenericoSIFBotonNO").dxButton("instance").on("click", function (e) {
+                return funcionNo(e);
+            });
+        }
+    }
+
+    function fnConfirmacionOpcionSIF(mensaje, tipo, opciones, funcionAceptar, tamanio, templateText) {
+        if (usuarioEstaUtilizandoMovil()) {  $("#confirmacionGenericoOpcionSIF").dxPopup("instance").option("width", Math.floor(window.innerWidth * 0.9)); }
+        $("#confirmacionGenericoOpcionSIF").dxPopup("instance").show();
+        if (ConInformacion(tamanio)) {
+            if (tamanio.hasOwnProperty("ancho")) $("#confirmacionGenericoOpcionSIF").dxPopup("instance").option("width", tamanio.ancho);
+            if (tamanio.hasOwnProperty("alto")) $("#confirmacionGenericoOpcionSIF").dxPopup("instance").option("height", tamanio.alto);
+        }
+        $("#confirmacionGenericoOpcionSIF .dx-popup-title").css("background-color", localStorage.getItem("ColorHeaderPopUp"));
+        var estatusMensaje = urlIconMessageInformation;
+        switch (tipo) {
+            case "asterisk": estatusMensaje = urlIconMessageAsterisk; break;
+            case "error": estatusMensaje = urlIconMessageError; break;
+            case "exclamation": estatusMensaje = urlIconMessageExclamation; break;
+            case "hand": estatusMensaje = urlIconMessageHand; break;
+            case "information": estatusMensaje = urlIconMessageInformation; break;
+            case "question": estatusMensaje = urlIconMessageQuestion; break;
+            case "stop": estatusMensaje = urlIconMessageStop; break;
+            case "warning": estatusMensaje = urlIconMessageWarning; break;
+        }
+        $("#confirmacionGenericoOpcionSIFImagen").attr("src", estatusMensaje);
+        if (ConInformacion(templateText)) {
+            $("#confirmacionGenericoOpcionSIFLabel").html(templateText);
+        }
+        else {
+            $("#confirmacionGenericoOpcionSIFLabel").text(mensaje);
+        }
+
+        $("#confirmacionGenericoOpcionRadButton").dxRadioGroup("instance").option("items", opciones);
+        $("#confirmacionGenericoOpcionRadButton").dxRadioGroup("instance").option("value", opciones[0]);
+
+        $("#confirmacionGenericoOpcionSIFBotonOk").dxButton("instance").off("click");
+        $("#confirmacionGenericoOpcionSIFBotonOk").dxButton("instance").on("click", function () {
+            $("#confirmacionGenericoOpcionSIF").dxPopup("instance").hide();
+        });
+
+        if (funcionAceptar != null || funcionAceptar != funcionAceptar) {
+            $("#confirmacionGenericoOpcionSIFBotonOk").dxButton("instance").on("click", function (e) {
+                var valorRadioSeleccionado = $("#confirmacionGenericoOpcionRadButton").dxRadioGroup("instance").option("value");
+                return funcionAceptar(valorRadioSeleccionado);
+            });
+        }
+    }
+</script>
+<div id="alertaGenericoSIF" class="dx-overlay dx-popup dx-widget dx-state-invisible dx-visibility-change-handler"><div class="dx-overlay-content dx-popup-normal dx-popup-draggable dx-resizable" aria-hidden="true" tabindex="0" style="width: 500px; height: 250px;"><div class="dx-toolbar dx-widget dx-visibility-change-handler dx-collection dx-popup-title dx-has-close-button" role="toolbar"><div class="dx-toolbar-items-container"><div class="dx-toolbar-before"><div class="dx-item dx-toolbar-item dx-toolbar-label" style="max-width: 0px;"><div class="dx-item-content dx-toolbar-item-content"><div>Sistema Administrativo UAT</div></div></div></div><div class="dx-toolbar-center" style="margin: 0px auto; float: none;"></div><div class="dx-toolbar-after"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-text dx-button-normal dx-button-has-icon dx-closebutton" role="button" aria-label="close" tabindex="0"><div class="dx-button-content"><i class="dx-icon dx-icon-close"></i></div></div></div></div></div></div></div><div class="dx-popup-content">
+    <div style="width: 500px; float: left;">
+        <div style="width: 100%; float: left; padding-top: 50px; padding-bottom: 50px;">
+            <div style="width: 30px; float: left; margin-left: 50px; margin-right: 20px;">
+                <img id="alertaGenericoSIFImagen">
+            </div>
+            <div id="alertaGenericoSIFTextoTemplate" style="width: 320px; float: left;">
+               
+            </div>
+        </div>
+        <div id="alertaGenericoSIFBotonesTemplate" style="width: 100%; float: left;">
+            <div style="width: 100px; float: left; margin-left: 190px;">
+                <div id="alertaGenericoSIFBotonOK" class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon" role="button" aria-label="OK" tabindex="0" title="OK" style="width: 100%;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Apply_32x32.png"><span class="dx-button-text">OK</span></div></div>
+            </div>
+        </div>
+    </div>
+</div></div></div>
+<div id="confirmacionGenericoSIF" class="dx-overlay dx-popup dx-widget dx-state-invisible dx-visibility-change-handler"><div class="dx-overlay-content dx-popup-normal dx-popup-draggable dx-resizable" aria-hidden="true" tabindex="0" style="width: 500px; height: 250px;"><div class="dx-toolbar dx-widget dx-visibility-change-handler dx-collection dx-popup-title dx-has-close-button" role="toolbar"><div class="dx-toolbar-items-container"><div class="dx-toolbar-before"><div class="dx-item dx-toolbar-item dx-toolbar-label" style="max-width: 0px;"><div class="dx-item-content dx-toolbar-item-content"><div>Sistema Administrativo UAT</div></div></div></div><div class="dx-toolbar-center" style="margin: 0px auto; float: none;"></div><div class="dx-toolbar-after"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-text dx-button-normal dx-button-has-icon dx-closebutton" role="button" aria-label="close" tabindex="0"><div class="dx-button-content"><i class="dx-icon dx-icon-close"></i></div></div></div></div></div></div></div><div class="dx-popup-content">
+    <div style="width: 500px; float: left;">
+        <div style="width: 100%; float: left; padding-top: 50px; padding-bottom: 50px;">
+            <div style="width: 30px; float: left; margin-left: 50px; margin-right: 20px;">
+                <img id="confirmacionGenericoSIFImagen" src="/Imagenes/Dialog/messagebox-information.png">
+            </div>
+            <div style="width: 320px; float: left;">
+                <label class="etiquetaCompact" style="margin-top: 5px;" id="confirmacionGenericoSIFLabel"></label>
+            </div>
+        </div>
+        <div style="width: 100%; float: left;">
+            <div style="width: 100px; float: left; margin-left: 90px;">
+                <div id="confirmacionGenericoSIFBotonSI" class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon" role="button" aria-label="SI" tabindex="0" title="SI" style="width: 100%;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Apply_32x32.png"><span class="dx-button-text">SI</span></div></div>
+            </div>
+            <div style="width: 100px; float: left; margin-left: 100px;">
+                <div id="confirmacionGenericoSIFBotonNO" class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon" role="button" aria-label="NO" tabindex="0" title="NO" style="width: 100%;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Cancel_32x32.png"><span class="dx-button-text">NO</span></div></div>
+            </div>
+        </div>
+    </div>
+</div></div></div>
+<div id="confirmacionGenericoOpcionSIF" class="dx-overlay dx-popup dx-widget dx-state-invisible dx-visibility-change-handler"><div class="dx-overlay-content dx-popup-normal dx-popup-draggable dx-resizable" aria-hidden="true" tabindex="0" style="width: 500px; height: 250px;"><div class="dx-toolbar dx-widget dx-visibility-change-handler dx-collection dx-popup-title dx-has-close-button" role="toolbar"><div class="dx-toolbar-items-container"><div class="dx-toolbar-before"><div class="dx-item dx-toolbar-item dx-toolbar-label" style="max-width: 0px;"><div class="dx-item-content dx-toolbar-item-content"><div>Sistema Administrativo UAT</div></div></div></div><div class="dx-toolbar-center" style="margin: 0px auto; float: none;"></div><div class="dx-toolbar-after"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-text dx-button-normal dx-button-has-icon dx-closebutton" role="button" aria-label="close" tabindex="0"><div class="dx-button-content"><i class="dx-icon dx-icon-close"></i></div></div></div></div></div></div></div><div class="dx-popup-content">
+    <div style="width: 500px; float: left;">
+        <div style="width: 100%; float: left; padding-top: 17px; padding-bottom: 17px;">
+            <div style="width: 320px; float: left;">
+                <label class="etiquetaCompact" style="margin-top: 5px; float: right;" id="confirmacionGenericoOpcionSIFLabel"></label>
+            </div>
+        </div>
+        <div style="width: 100%; float: left; padding-top: 17px; padding-bottom: 17px;">
+            <div style="width: 30px; float: left; margin-left: 50px; margin-right: 20px;">
+                <img id="confirmacionGenericoOpcionSIFImagen">
+            </div>
+            <div style="width: 320px; float: left;">
+                <div id="confirmacionGenericoOpcionRadButton" class="dx-show-invalid-badge dx-radiogroup dx-radiogroup-horizontal dx-widget" role="radiogroup" tabindex="0"><input type="hidden" value="" style=""><div class="dx-widget dx-collection"></div></div>
+            </div>
+        </div>
+        <div style="width: 100%; float: left;">
+            <div style="width: 100px; float: left; margin-left: 90px;">
+                <div id="confirmacionGenericoOpcionSIFBotonOk" class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon" role="button" aria-label="Aceptar" tabindex="0" title="Aceptar" style="width: 100%;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Apply_32x32.png"><span class="dx-button-text">Aceptar</span></div></div>
+            </div>
+            <div style="width: 100px; float: left; margin-left: 100px;">
+                <div id="confirmacionGenericoOpcionSIFBotonSalir" class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon" role="button" aria-label="Salir" tabindex="0" title="Salir" style="width: 100%;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Cancel_32x32.png"><span class="dx-button-text">Salir</span></div></div>
+            </div>
+        </div>
+    </div>
+</div></div></div>
+
+</body></html>

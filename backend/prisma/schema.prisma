@@ -1,0 +1,89 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Professor {
+  id                 String             @id @default(cuid())
+  institutionalEmail String             @unique @map("institutional_email")
+  name               String
+  lastSyncPeriod     String?            @map("last_sync_period")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  attendanceRecords  AttendanceRecord[]
+  groups             Group[]
+
+  @@map("professors")
+}
+
+model Group {
+  id                String             @id @default(cuid())
+  code              String
+  name              String
+  level             String
+  classroom         String
+  schedule          Json
+  period            String
+  professorId       String             @map("professor_id")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  attendanceRecords AttendanceRecord[]
+  professor         Professor          @relation(fields: [professorId], references: [id], onDelete: Cascade)
+  students          Student[]
+
+  @@unique([code, professorId, period])
+  @@map("groups")
+}
+
+model Student {
+  id          String       @id @default(cuid())
+  matricula   String
+  name        String
+  groupId     String       @map("group_id")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  attendances Attendance[]
+  group       Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([matricula, groupId])
+  @@map("students")
+}
+
+model AttendanceRecord {
+  id          String       @id @default(cuid())
+  date        DateTime     @db.Date
+  groupId     String       @map("group_id")
+  professorId String       @map("professor_id")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  group       Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  professor   Professor    @relation(fields: [professorId], references: [id], onDelete: Cascade)
+  attendances Attendance[]
+
+  @@unique([date, groupId])
+  @@map("attendance_records")
+}
+
+model Attendance {
+  id                 String           @id @default(cuid())
+  studentId          String           @map("student_id")
+  attendanceRecordId String           @map("attendance_record_id")
+  status             AttendanceStatus
+  createdAt          DateTime         @default(now()) @map("created_at")
+  attendanceRecord   AttendanceRecord @relation(fields: [attendanceRecordId], references: [id], onDelete: Cascade)
+  student            Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, attendanceRecordId])
+  @@map("attendances")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}

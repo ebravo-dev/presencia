@@ -1,0 +1,766 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../../shared/models/asistencia_registro.dart';
+import '../../../shared/models/grupo.dart';
+import '../../../services/asistencia_local_service.dart';
+
+class AsistenciasPendientesPage extends StatefulWidget {
+  final String claseActual; // Nombre completo de la materia
+  final String grupoActualId; // ID del grupo para mostrar en las tarjetas
+  final List<Grupo>? todosLosGrupos; // Para poder actualizar nombres de clases
+
+  const AsistenciasPendientesPage({
+    super.key,
+    required this.claseActual,
+    required this.grupoActualId,
+    this.todosLosGrupos,
+  });
+
+  @override
+  State<AsistenciasPendientesPage> createState() =>
+      _AsistenciasPendientesPageState();
+}
+
+class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
+  final AsistenciaLocalService _asistenciaService = AsistenciaLocalService();
+  List<AsistenciaRegistro> _asistenciasPendientes = [];
+  bool _isLoading = true;
+  bool _isSyncing = false;
+
+  // Gradientes y colores de acentos (igual que en grupos_page)
+  static const List<List<Color>> _cardGradients = [
+    [Color(0xFF8B5CF6), Color(0xFF7C3AED)],
+    [Color(0xFFFF6B9D), Color(0xFFFF5A8F)],
+    [Color(0xFF2DD4BF), Color(0xFF14B8A6)],
+    [Color(0xFFFF8A65), Color(0xFFFF7043)],
+    [Color(0xFF60A5FA), Color(0xFF3B82F6)],
+    [Color(0xFFFF6B9D), Color(0xFFFF5A8F)],
+  ];
+
+  // Obtener colores para un grupo específico
+  List<Color> _getColoresParaGrupo(String grupoId) {
+    if (widget.todosLosGrupos == null) return _cardGradients[0];
+
+    // Buscar el índice del grupo en la lista original
+    final index = widget.todosLosGrupos!.indexWhere(
+      (g) => g.identificadorUnico == grupoId,
+    );
+
+    if (index == -1) return _cardGradients[0];
+    return _cardGradients[index % _cardGradients.length];
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _actualizarAsistenciasSinNombre();
+    _cargarAsistenciasPendientes();
+  }
+
+  // Actualizar asistencias antiguas que no tienen nombreClase
+  Future<void> _actualizarAsistenciasSinNombre() async {
+    if (widget.todosLosGrupos == null) return;
+
+    final todasLasAsistencias = _asistenciaService
+        .obtenerAsistenciasPendientes();
+
+    for (var asistencia in todasLasAsistencias) {
+      if (asistencia.nombreClase == null || asistencia.nombreClase!.isEmpty) {
+        // Buscar el grupo correspondiente usando el identificador único
+        final grupo = widget.todosLosGrupos!.firstWhere(
+          (g) => g.identificadorUnico == asistencia.grupoId,
+          orElse: () => widget.todosLosGrupos!.first,
+        );
+
+        // Actualizar con el nombre de la clase
+        final actualizado = asistencia.copyWith(nombreClase: grupo.subject);
+
+        await _asistenciaService.guardarAsistencia(actualizado);
+      }
+    }
+  }
+
+  void _cargarAsistenciasPendientes() {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final pendientes = _asistenciaService.obtenerAsistenciasPendientes();
+
+    // Ordenar: primero la clase actual, luego el resto por fecha descendente
+    pendientes.sort((a, b) {
+      // Primero verificar si es de la clase actual
+      final aEsClaseActual = (a.nombreClase ?? '') == widget.claseActual;
+      final bEsClaseActual = (b.nombreClase ?? '') == widget.claseActual;
+
+      if (aEsClaseActual && !bEsClaseActual) {
+        return -1;
+      }
+      if (bEsClaseActual && !aEsClaseActual) {
+        return 1;
+      }
+      // Si ambos son de la misma categoría (clase actual o no), ordenar por fecha
+      return b.fecha.compareTo(a.fecha);
+    });
+
+    setState(() {
+      _asistenciasPendientes = pendientes;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _sincronizarAsistencia(AsistenciaRegistro registro) async {
+    setState(() {
+      _isSyncing = true;
+    });
+
+    // Simular sincronización
+    // TODO: Implementar llamada real al API
+    await Future.delayed(const Duration(seconds: 2));
+
+    // Simular éxito/fallo
+    final exito = DateTime.now().second % 2 == 0;
+
+    if (exito) {
+      // Marcar como sincronizada
+      await _asistenciaService.marcarComoSincronizada(registro.id);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Asistencia del ${_formatearFecha(registro.fecha)} sincronizada',
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error al sincronizar. Intente nuevamente.'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+
+    setState(() {
+      _isSyncing = false;
+    });
+
+    _cargarAsistenciasPendientes();
+  }
+
+  Future<void> _sincronizarTodas() async {
+    if (_asistenciasPendientes.isEmpty) return;
+
+    setState(() {
+      _isSyncing = true;
+    });
+
+    // Mostrar diálogo de progreso
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: const Color(0xFF2C2C2E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 50,
+                height: 50,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Sincronizando asistencias...',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    // Simular sincronización
+    // TODO: Implementar llamada real al API
+    await Future.delayed(const Duration(seconds: 3));
+
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+
+    // Simular resultado
+    final exito = DateTime.now().second % 2 == 0;
+
+    if (exito) {
+      // Marcar todas como sincronizadas
+      for (var registro in _asistenciasPendientes) {
+        await _asistenciaService.marcarComoSincronizada(registro.id);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Todas las asistencias fueron sincronizadas'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+
+        // Volver a la pantalla anterior
+        Navigator.of(context).pop();
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error al sincronizar. Intente nuevamente.'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+
+    setState(() {
+      _isSyncing = false;
+    });
+
+    _cargarAsistenciasPendientes();
+  }
+
+  String _formatearFecha(DateTime fecha) {
+    final dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    final meses = [
+      'Ene',
+      'Feb',
+      'Mar',
+      'Abr',
+      'May',
+      'Jun',
+      'Jul',
+      'Ago',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dic',
+    ];
+
+    final dia = dias[fecha.weekday % 7];
+    final mes = meses[fecha.month - 1];
+
+    return '$dia ${fecha.day} $mes';
+  }
+
+  String _formatearHora(DateTime? dateTime) {
+    if (dateTime == null) return '--:--';
+    final hour = dateTime.hour.toString().padLeft(2, '0');
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Text(
+          'Asistencias Pendientes',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        systemOverlayStyle: SystemUiOverlayStyle.light,
+      ),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+              ),
+            )
+          : _asistenciasPendientes.isEmpty
+          ? _buildEmptyState()
+          : Column(
+              children: [
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.only(
+                      top: 100,
+                      left: 16,
+                      right: 16,
+                      bottom: 100,
+                    ),
+                    itemCount: _asistenciasPendientes.length,
+                    itemBuilder: (context, index) {
+                      final registro = _asistenciasPendientes[index];
+                      final esClaseActual =
+                          (registro.nombreClase ?? '') == widget.claseActual;
+
+                      // Mostrar encabezado solo para el primer elemento de la clase actual
+                      final mostrarEncabezado = index == 0 && esClaseActual;
+                      final mostrarEncabezadoOtros =
+                          index > 0 &&
+                              esClaseActual &&
+                              !((_asistenciasPendientes[index - 1]
+                                          .nombreClase ??
+                                      '') ==
+                                  widget.claseActual) ||
+                          (index > 0 &&
+                              !esClaseActual &&
+                              ((_asistenciasPendientes[index - 1].nombreClase ??
+                                      '') ==
+                                  widget.claseActual));
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (mostrarEncabezado) ...[
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                left: 4,
+                                bottom: 12,
+                                top: 8,
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.star_rounded,
+                                    color: _getColoresParaGrupo(
+                                      registro.grupoId,
+                                    )[0],
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      'CLASE ACTUAL - ${widget.claseActual.toUpperCase()}',
+                                      style: TextStyle(
+                                        color: _getColoresParaGrupo(
+                                          registro.grupoId,
+                                        )[0],
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 1.2,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          if (mostrarEncabezadoOtros) ...[
+                            const Padding(
+                              padding: EdgeInsets.only(
+                                left: 4,
+                                bottom: 12,
+                                top: 24,
+                              ),
+                              child: Text(
+                                'OTRAS CLASES',
+                                style: TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                            ),
+                          ],
+                          _buildAsistenciaCard(registro, esClaseActual),
+                          const SizedBox(height: 12),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+      floatingActionButton: _asistenciasPendientes.isNotEmpty
+          ? FloatingActionButton.extended(
+              onPressed: _isSyncing ? null : _sincronizarTodas,
+              backgroundColor: Colors.orange,
+              icon: _isSyncing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.cloud_upload, color: Colors.white),
+              label: Text(
+                _isSyncing ? 'Sincronizando...' : 'Subir todas',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            )
+          : null,
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.cloud_done, size: 60, color: Colors.green),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'Todo sincronizado',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'No hay asistencias pendientes de subir',
+            style: TextStyle(color: Colors.white60, fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAsistenciaCard(AsistenciaRegistro registro, bool esClaseActual) {
+    final tieneEntrada = registro.horaEntrada != null;
+    final tieneSalida = registro.horaSalida != null;
+    final alumnosPresentes = registro.asistenciasAlumnos.values
+        .where((asistio) => asistio)
+        .length;
+    final totalAlumnos = registro.asistenciasAlumnos.length;
+
+    // Buscar el grupo correspondiente para obtener la letra del grupo
+    final grupo = widget.todosLosGrupos?.firstWhere(
+      (g) => g.identificadorUnico == registro.grupoId,
+      orElse: () => widget.todosLosGrupos!.first,
+    );
+    final letraGrupo = grupo?.group ?? registro.grupoId.split('_').last;
+
+    // Obtener los colores del grupo
+    final coloresGrupo = _getColoresParaGrupo(registro.grupoId);
+    final colorPrincipal = coloresGrupo[0];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.circular(16),
+        border: esClaseActual
+            ? Border.all(color: colorPrincipal.withOpacity(0.5), width: 1.5)
+            : null,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Encabezado con clase, grupo y fecha
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: esClaseActual
+                  ? colorPrincipal.withOpacity(0.15)
+                  : Colors.white.withOpacity(0.05),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: esClaseActual
+                        ? colorPrincipal.withOpacity(0.2)
+                        : Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.class_,
+                    color: esClaseActual ? colorPrincipal : Colors.white60,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        registro.nombreClase ?? 'Sin nombre',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Text(
+                            'Grupo $letraGrupo',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const Text(
+                            ' • ',
+                            style: TextStyle(
+                              color: Colors.white60,
+                              fontSize: 12,
+                            ),
+                          ),
+                          Text(
+                            _formatearFecha(registro.fecha),
+                            style: const TextStyle(
+                              color: Colors.white60,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: _isSyncing
+                      ? null
+                      : () => _sincronizarAsistencia(registro),
+                  icon: _isSyncing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
+                        )
+                      : Icon(Icons.cloud_upload, color: colorPrincipal),
+                ),
+              ],
+            ),
+          ),
+
+          // Detalles de asistencia
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                // Mi asistencia
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.person, color: Colors.white70, size: 16),
+                          SizedBox(width: 6),
+                          Text(
+                            'MI ASISTENCIA',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildTiempoChip(
+                              'Entrada',
+                              _formatearHora(registro.horaEntrada),
+                              Icons.login,
+                              tieneEntrada ? Colors.green : Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildTiempoChip(
+                              'Salida',
+                              _formatearHora(registro.horaSalida),
+                              Icons.logout,
+                              tieneSalida ? Colors.blue : Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Asistencia de alumnos
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.group, color: Colors.white70, size: 16),
+                          SizedBox(width: 6),
+                          Text(
+                            'ASISTENCIA ALUMNOS',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.green,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '$alumnosPresentes presentes',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            '$alumnosPresentes/$totalAlumnos',
+                            style: const TextStyle(
+                              color: Colors.white60,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTiempoChip(
+    String label,
+    String hora,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 14),
+          const SizedBox(width: 6),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                hora,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}

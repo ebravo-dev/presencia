@@ -1,0 +1,161 @@
+import 'package:dio/dio.dart';
+import 'package:dartz/dartz.dart';
+import '../shared/models/profesor.dart';
+import '../shared/models/grupo.dart';
+import '../core/utils/utils.dart';
+import '../core/security/encryption_service.dart';
+
+class ApiService {
+  late final Dio _dio;
+  late final EncryptionService _encryptionService;
+
+  // TODO: Cambiar a 'https://campus.20040521.xyz' para producción
+  static const String baseUrl = 'http://localhost:3000';
+
+  ApiService() {
+    _encryptionService = EncryptionService();
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: baseUrl,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(seconds: 30),
+      ),
+    );
+
+    // Agregar interceptors para logging
+    _dio.interceptors.add(
+      LogInterceptor(
+        requestBody: true,
+        responseBody: true,
+        logPrint: (object) => Logger.info(object.toString()),
+      ),
+    );
+  }
+
+  /// Autentica un profesor usando email y password
+  /// Si el profesor no existe, se crea automáticamente (upsert)
+  /// Endpoint: POST /professors/login
+  Future<Either<String, LoginResponse>> loginProfesor({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      // Encriptar contraseña con RSA
+      final encryptedPassword = _encryptionService.encryptPassword(password);
+
+      final loginRequest = LoginRequest(
+        institutionalEmail: email,
+        encryptedPassword: encryptedPassword,
+      );
+
+      Logger.info('Intentando login para: $email');
+
+      final response = await _dio.post(
+        '/professors/login',
+        data: loginRequest.toJson(),
+      );
+
+      Logger.info('Response status: ${response.statusCode}');
+      Logger.info('Response data: ${response.data}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        try {
+          final loginResponse = LoginResponse.fromJson(response.data);
+          Logger.info(
+            'Login exitoso para profesor: ${loginResponse.profesor.nombreCompleto}',
+          );
+          return Right(loginResponse);
+        } catch (parseError, stackTrace) {
+          Logger.error(
+            'Error al parsear respuesta de login',
+            parseError,
+            stackTrace,
+          );
+          return Left('Error al procesar respuesta del servidor');
+        }
+      } else {
+        final errorMessage = response.data['message'] ?? 'Error en el login';
+        Logger.error('Error en login: $errorMessage');
+        return Left(errorMessage);
+      }
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error('Error de conexión en login: $errorMessage', e);
+      return Left(errorMessage);
+    } catch (e, stackTrace) {
+      Logger.error('Error inesperado en login', e, stackTrace);
+      return Left('Error inesperado: ${e.toString()}');
+    }
+  }
+
+  /// Obtiene las clases asignadas al profesor autenticado
+  /// Endpoint: GET /professors/classes
+  /// Requiere JWT token en el header Authorization
+  Future<Either<String, List<Grupo>>> getGruposProfesor(String token) async {
+    try {
+      Logger.info('Obteniendo clases del profesor autenticado');
+
+      final response = await _dio.get(
+        '/professors/classes',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> clasesJson = response.data['data'] ?? [];
+        final grupos = clasesJson.map((json) => Grupo.fromJson(json)).toList();
+
+        Logger.info('Clases obtenidas exitosamente: ${grupos.length} clases');
+        return Right(grupos);
+      } else {
+        final errorMessage =
+            response.data['message'] ?? 'Error al obtener clases';
+        Logger.error('Error obteniendo clases: $errorMessage');
+        return Left(errorMessage);
+      }
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error('Error de conexión obteniendo clases: $errorMessage', e);
+      return Left(errorMessage);
+    } catch (e) {
+      Logger.error('Error inesperado obteniendo clases', e);
+      return Left('Error inesperado: ${e.toString()}');
+    }
+  }
+
+  /// Maneja errores de Dio y devuelve mensajes amigables
+  String _handleDioError(DioException e) {
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+        return 'Tiempo de conexión agotado. Verifica tu conexión a internet.';
+      case DioExceptionType.sendTimeout:
+        return 'Tiempo de envío agotado. Verifica tu conexión a internet.';
+      case DioExceptionType.receiveTimeout:
+        return 'Tiempo de respuesta agotado. El servidor no responde.';
+      case DioExceptionType.badResponse:
+        switch (e.response?.statusCode) {
+          case 400:
+            return e.response?.data['message'] ?? 'Solicitud inválida';
+          case 401:
+            return 'Credenciales inválidas. Verifica tu email y contraseña.';
+          case 403:
+            return 'No tienes permisos para acceder a este recurso.';
+          case 404:
+            return 'Recurso no encontrado.';
+          case 500:
+            return 'Error interno del servidor. Intenta más tarde.';
+          default:
+            return 'Error del servidor: ${e.response?.statusCode}';
+        }
+      case DioExceptionType.cancel:
+        return 'Solicitud cancelada';
+      case DioExceptionType.connectionError:
+        return 'Error de conexión. Verifica tu conexión a internet.';
+      default:
+        return 'Error de conexión desconocido';
+    }
+  }
+}

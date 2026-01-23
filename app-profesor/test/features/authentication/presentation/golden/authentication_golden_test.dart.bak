@@ -1,0 +1,282 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:alchemist/alchemist.dart';
+import 'package:mocktail/mocktail.dart';
+
+import 'package:appprofesoresuniversidad/features/authentication/presentation/pages/login_page.dart';
+import 'package:appprofesoresuniversidad/features/authentication/presentation/pages/dashboard_page.dart';
+import 'package:appprofesoresuniversidad/features/authentication/providers/auth_provider.dart';
+import 'package:appprofesoresuniversidad/features/authentication/models/auth_models.dart';
+import 'package:appprofesoresuniversidad/features/authentication/services/auth_service.dart';
+
+// Mock classes
+class MockAuthService extends Mock implements AuthService {}
+
+class MockAuthNotifier extends Mock implements AuthNotifier {}
+
+void main() {
+  group('Authentication Golden Tests', () {
+    late MockAuthService mockAuthService;
+    late MockAuthNotifier mockAuthNotifier;
+
+    setUp(() {
+      mockAuthService = MockAuthService();
+      mockAuthNotifier = MockAuthNotifier();
+    });
+
+    goldenTest(
+      'LoginPage renders correctly in initial state',
+      fileName: 'login_page_initial',
+      builder: () {
+        const authState = AuthState();
+        when(() => mockAuthNotifier.debugState).thenReturn(authState);
+
+        return ProviderScope(
+          overrides: [
+            authServiceProvider.overrideWithValue(mockAuthService),
+            authStateProvider.overrideWith((ref) => mockAuthNotifier),
+          ],
+          child: MaterialApp(
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+              useMaterial3: true,
+            ),
+            home: const LoginPage(),
+          ),
+        );
+      },
+      tags: ['golden'],
+    );
+
+    goldenTest(
+      'LoginPage shows loading state',
+      fileName: 'login_page_loading',
+      builder: () {
+        const authState = AuthState(status: AuthStatus.loading);
+        when(() => mockAuthNotifier.debugState).thenReturn(authState);
+
+        return ProviderScope(
+          overrides: [
+            authServiceProvider.overrideWithValue(mockAuthService),
+            authStateProvider.overrideWith((ref) => mockAuthNotifier),
+          ],
+          child: MaterialApp(
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+              useMaterial3: true,
+            ),
+            home: const LoginPage(),
+          ),
+        );
+      },
+      tags: ['golden'],
+    );
+
+    goldenTest(
+      'LoginPage shows error state',
+      fileName: 'login_page_error',
+      builder: () {
+        const authState = AuthState(
+          status: AuthStatus.error,
+          errorMessage:
+              'Credenciales inválidas. Por favor, verifique su usuario y contraseña.',
+        );
+        when(() => mockAuthNotifier.debugState).thenReturn(authState);
+
+        return ProviderScope(
+          overrides: [
+            authServiceProvider.overrideWithValue(mockAuthService),
+            authStateProvider.overrideWith((ref) => mockAuthNotifier),
+          ],
+          child: MaterialApp(
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+              useMaterial3: true,
+            ),
+            home: const LoginPage(),
+          ),
+        );
+      },
+      tags: ['golden'],
+    );
+
+    goldenTest(
+      'DashboardPage renders correctly with user data',
+      fileName: 'dashboard_page_authenticated',
+      builder: () {
+        final user = User(
+          id: 'user_001',
+          email: 'carlos.martinez@uniatlantico.edu.co',
+          name: 'Prof. Carlos Martínez',
+          role: 'professor',
+          employeeId: 'EMP001',
+          department: 'Matemáticas',
+        );
+
+        final groups = [
+          Group(
+            id: 'group_001',
+            name: 'Cálculo I - Grupo A',
+            subject: 'Cálculo I',
+            schedule: 'Lun-Mie-Vie 8:00-10:00',
+            classroom: 'Aula 201',
+            classroomUuid: 'beacon-uuid-201',
+            students: [
+              Student(
+                id: 'student_001',
+                studentId: '201912345',
+                name: 'Juan Pérez',
+                email: 'juan.perez@est.uniatlantico.edu.co',
+              ),
+              Student(
+                id: 'student_002',
+                studentId: '201912346',
+                name: 'María González',
+                email: 'maria.gonzalez@est.uniatlantico.edu.co',
+              ),
+            ],
+            professorId: 'user_001',
+          ),
+          Group(
+            id: 'group_002',
+            name: 'Cálculo II - Grupo B',
+            subject: 'Cálculo II',
+            schedule: 'Mar-Jue 10:00-12:00',
+            classroom: 'Aula 203',
+            classroomUuid: 'beacon-uuid-203',
+            students: [
+              Student(
+                id: 'student_003',
+                studentId: '201912347',
+                name: 'Carlos López',
+                email: 'carlos.lopez@est.uniatlantico.edu.co',
+              ),
+            ],
+            professorId: 'user_001',
+          ),
+        ];
+
+        final authState = AuthState(
+          status: AuthStatus.authenticated,
+          user: user,
+          token: 'mock-token-123',
+          groups: groups,
+        );
+
+        when(() => mockAuthNotifier.debugState).thenReturn(authState);
+
+        return ProviderScope(
+          overrides: [
+            authServiceProvider.overrideWithValue(mockAuthService),
+            authStateProvider.overrideWith((ref) => mockAuthNotifier),
+          ],
+          child: MaterialApp(
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+              useMaterial3: true,
+            ),
+            home: const DashboardPage(),
+          ),
+        );
+      },
+      tags: ['golden'],
+    );
+
+    goldenTest(
+      'DashboardPage renders correctly with no groups',
+      fileName: 'dashboard_page_no_groups',
+      builder: () {
+        final user = User(
+          id: 'user_002',
+          email: 'new.professor@uniatlantico.edu.co',
+          name: 'Prof. Nuevo Profesor',
+          role: 'professor',
+          employeeId: 'EMP002',
+          department: 'Química',
+        );
+
+        final authState = AuthState(
+          status: AuthStatus.authenticated,
+          user: user,
+          token: 'mock-token-456',
+          groups: [], // No groups assigned
+        );
+
+        when(() => mockAuthNotifier.debugState).thenReturn(authState);
+
+        return ProviderScope(
+          overrides: [
+            authServiceProvider.overrideWithValue(mockAuthService),
+            authStateProvider.overrideWith((ref) => mockAuthNotifier),
+          ],
+          child: MaterialApp(
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+              useMaterial3: true,
+            ),
+            home: const DashboardPage(),
+          ),
+        );
+      },
+      tags: ['golden'],
+    );
+
+    // Test different screen sizes
+    goldenTest(
+      'LoginPage renders correctly on small screen',
+      fileName: 'login_page_small_screen',
+      constraints: const BoxConstraints.tightFor(
+        width: 320,
+        height: 568,
+      ), // iPhone SE size
+      builder: () {
+        const authState = AuthState();
+        when(() => mockAuthNotifier.debugState).thenReturn(authState);
+
+        return ProviderScope(
+          overrides: [
+            authServiceProvider.overrideWithValue(mockAuthService),
+            authStateProvider.overrideWith((ref) => mockAuthNotifier),
+          ],
+          child: MaterialApp(
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+              useMaterial3: true,
+            ),
+            home: const LoginPage(),
+          ),
+        );
+      },
+      tags: ['golden'],
+    );
+
+    goldenTest(
+      'LoginPage renders correctly on tablet',
+      fileName: 'login_page_tablet',
+      constraints: const BoxConstraints.tightFor(
+        width: 768,
+        height: 1024,
+      ), // iPad size
+      builder: () {
+        const authState = AuthState();
+        when(() => mockAuthNotifier.debugState).thenReturn(authState);
+
+        return ProviderScope(
+          overrides: [
+            authServiceProvider.overrideWithValue(mockAuthService),
+            authStateProvider.overrideWith((ref) => mockAuthNotifier),
+          ],
+          child: MaterialApp(
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+              useMaterial3: true,
+            ),
+            home: const LoginPage(),
+          ),
+        );
+      },
+      tags: ['golden'],
+    );
+  });
+}

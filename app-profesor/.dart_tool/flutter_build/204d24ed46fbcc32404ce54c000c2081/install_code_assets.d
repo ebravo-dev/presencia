@@ -1,0 +1,1 @@
+ /Users/ebravo/proyects/asistenciamas/appprofesoresuniversidad/.dart_tool/flutter_build/204d24ed46fbcc32404ce54c000c2081/native_assets.json: 

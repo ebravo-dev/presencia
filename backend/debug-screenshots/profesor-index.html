@@ -1,0 +1,1514 @@
+<!DOCTYPE html><html><head><style class="vjs-styles-defaults">
+      .video-js {
+        width: 300px;
+        height: 150px;
+      }
+
+      .vjs-fluid {
+        padding-top: 56.25%
+      }
+    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="">
+    <meta name="author" content="">
+
+    <title>Sistema Administrativo Escolar</title>
+    <link rel="icon" type="image/png" href="/Imagenes/logoUat2.png" sizes="32x32">
+
+    
+    <link href="/Content/bundle?v=m0Slc-N1068MTrckPo6SLPhn7sUkUOtDUVeomykhGyo1" rel="stylesheet">
+
+    <link href="/css/fontAwesome?v=twNePZ-ujs1ucXs-RWtBVgReb12iCJYObHz7jZ0ulX81" rel="stylesheet">
+
+    <link href="/Content/DevExtremeBundle?v=-Q9Vbp42pxyYJKIa1FgvPML0kBRHlfBd0t5bZOoV1BM1" rel="stylesheet">
+
+    <script src="/Scripts/bundle?v=ChW1myQFJ-vCLi2kHW-6ZkU70LVJox65fDyoCQzfkfU1"></script>
+
+    <script src="/Scripts/DevExtremeBundle?v=Nr_L_4-jSbE-XFLwDO9b8PlYh0PzhX5IEV-0iHJXcps1"></script>
+
+
+    <script src="/Scripts/pdf.js"></script>
+
+    <script>
+        $(function () {
+            DevExpress.localization.locale("es-MX");
+
+            DevExpress.ui.dxPopup.defaultOptions({
+                //device: { deviceType: "desktop" },
+                options: {
+                    deferRendering: false
+                }
+            });
+
+            DevExpress.ui.dxDropDownBox.defaultOptions({
+                //device: { deviceType: "desktop" },
+                options: {
+                    deferRendering: false
+                }
+            });
+        });
+    </script>
+
+    <style type="text/css">
+        @font-face {
+            font-family: 'Open Sans';
+            src: url('/fonts/OpenSans-Regular.ttf') format('truetype'),
+                url('/fonts/OpenSans-Bold.ttf') format('truetype'),
+                url('/fonts/OpenSans-BoldItalic.ttf') format('truetype'),
+                url('/fonts/OpenSans-ExtraBold.ttf') format('truetype'),
+                url('/fonts/OpenSans-ExtraBoldItalic.ttf') format('truetype'),
+                url('/fonts/OpenSans-Italic.ttf') format('truetype'),
+                url('/fonts/OpenSans-Light.ttf') format('truetype'),
+                url('/fonts/OpenSans-LightItalic.ttf') format('truetype'),
+                url('/fonts/OpenSans-Regular.ttf') format('truetype'),
+                url('/fonts/OpenSans-Semibold.ttf') format('truetype'),
+                url('/fonts/OpenSans-SemiboldItalic.ttf') format('truetype');
+            font-style: normal;
+        }
+
+        /***********************************************************************************/
+        /*Contenedores*/
+        /**********************************************************************************/
+
+
+        body {
+            background: url('/Imagenes/fondoInicio.jpg') no-repeat center center fixed;
+            background-size: cover;
+            -moz-background-size: cover;
+            -webkit-background-size: cover;
+            -o-background-size: cover
+        }
+
+        #contenedorCabeceraPrincipal {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background-color: #0064A8;
+            z-index: 999;
+            transition: all 0.5s;
+        }
+
+        .sombraContenedorCabeceraPrincipal {
+            box-shadow: 0 2px 15px 0 #999;
+            -webkit-box-shadow: 0 2px 15px 0 #999;
+            -moz-box-shadow: 0 2px 15px 0 #999;
+        }
+
+        #contenedorCabeceraPrincipal_Mobile {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background-color: #0064A8;
+            z-index: 999;
+            transition: all 0.5s;
+        }
+
+        #contenedorMenuPrincipal {
+            position: fixed;
+            float: left;
+            width: 350px;
+            top: 80px;
+            bottom: 30px;
+            z-index: 1000;
+        }
+
+        #contenedorGeneralPrincipal {
+            padding-top: 100px;
+            padding-bottom: 40px;
+            width: 100%;
+        }
+
+        #contenedorGeneralPrincipal {
+            -webkit-transition: padding-left 0.5s ease-in-out 0.25s;
+            -moz-transition: padding-left 0.5s ease-in-out 0.25s;
+            -o-transition: padding-left 0.5s ease-in-out 0.25s;
+            transition: padding-left 0.5s ease-in-out 0.25s;
+        }
+
+        #divPrincipalContenedor {
+            width: 100%;
+            background-color: white;
+            padding: 0px 15px 15px 15px;
+            box-shadow: 5px 5px 10px #999;
+            -webkit-box-shadow: 5px 5px 10px #999;
+            -moz-box-shadow: 5px 5px 10px #999;
+            filter: shadow(color=#999999, direction=135, strength=2);
+            margin-bottom: 50px;
+          /*  z-index: -1;*/
+            position: relative;
+        }
+
+        #contenedorPiePrincipal {
+            background-color: #0064A8;
+            text-align: center;
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            height: 30px;
+            z-index: 1000;
+            background-image: url('/Imagenes/bg-pattern-azul.png');
+        }
+
+        /**********************************************************************************/
+        /*Arbol menu principal*/
+        /*********************************************************************************/
+
+        #treeViewMenuPrincipal .dx-treeview-item .dx-treeview-item-content > .dx-icon {
+            width: 24px !important;
+            height: 24px !important;
+        }
+
+        /**********************************************************************************/
+        /*Avatar menu principal*/
+        /*********************************************************************************/
+
+        .avatarPrincipal {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+        }
+
+        .usuarioDatosPrincipal {
+            font-family: Arial;
+            font-size: 10pt;
+            color: white;
+            width: 100%;
+            text-align: right;
+        }
+
+        /*********************************************************************************/
+        /*Load panel generico*/
+        /********************************************************************************/
+
+        #panelCargaGenerico .dx-loadindicator {
+            height: 300px;
+            width: 300px;
+        }
+
+        /**********************************************************/
+        /*ToolBar*/
+        /*********************************************************/
+
+        #toolbarMenuPrincipal {
+            background-color: #0064A8;
+            color: white;
+            padding: 15px 20px;
+            height: 80px;
+            background-image: url('/Imagenes/logo-uat-2022.png?v=202312011142'), url('/Imagenes/bg-pattern-naranja.png'), url('/Imagenes/bg-pattern-azul.png');
+            background-size: 80px, 300px;
+            background-position: left, left, right;
+            background-position-x: 90px, 0px, right;
+            background-repeat: no-repeat, no-repeat, repeat;
+        }
+
+        #toolbarMenuPrincipal_Mobile {
+            background-color: #0064A8;
+            color: white;
+            padding: 15px 20px;
+            height: 80px;
+            background-image: url('/Imagenes/logo-uat-2022.png?v=202312011142'), url('/Imagenes/bg-pattern-naranja.png'), url('/Imagenes/bg-pattern-azul.png');
+            background-size: 80px, 300px;
+            background-position: left, left, right;
+            background-position-x: 90px, 0px, right;
+            background-repeat: no-repeat, no-repeat, repeat;
+        }
+
+        #treeViewMenuPrincipal {
+            font-family: Arial;
+            font-size: 12pt;
+            color: black;
+            padding: 10px;
+            background-image: url('/Imagenes/fondoMenu.png');
+            background-repeat: no-repeat;
+            background-position: 50% 0;
+            background-size: cover;
+            /*font-weight: bold;*/
+        }
+
+        #btn_menu_generico {
+            border-radius: 50%;
+            font-size: 18pt;
+            width: 50px;
+            padding-bottom: 10px;
+        }
+
+            #btn_menu_generico i {
+                font-size: 20pt;
+                text-align: center;
+                margin-left: -12px;
+                margin-top: 12px;
+            }
+
+        /******************************************************************************/
+        /*Botones genericos*/
+        /*****************************************************************************/
+
+        #botonesPrincipalSIF img {
+            width: 24px;
+            height: 24px;
+            padding-top: 2px;
+        }
+
+        #botonesPrincipalSIF [elemento-sif=botones] .dx-button-content {
+            padding-top: 11px;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+        }
+
+        #botonesPrincipalSIF [elemento-sif=botones] :hover {
+            background-color: #B86125;
+        }
+
+        /*******************************************************************************/
+        /*Grid generico*/
+        /******************************************************************************/
+        [elemento-sif=gridGenerico] .dx-toolbar .dx-toolbar-item {
+            padding: 0;
+        }
+
+        [elemento-sif=gridGenerico] .dx-toolbar .dx-toolbar-before .dx-toolbar-item div.dx-item-content > div[elemento-sif=botonGrid] {
+            margin-right: 5px;
+        }
+
+        [elemento-sif=gridGenerico] .dx-toolbar .dx-toolbar-after .dx-toolbar-item div.dx-item-content > div[elemento-sif=botonGrid] {
+            margin-left: 5px;
+        }
+
+        [elemento-sif=gridGenerico] .dx-button-content {
+            display: flex;
+            align-items: center;
+        }
+
+        /*[elemento-sif="gridGenerico"] .dx-datagrid-export-button {
+            margin-left: 5px;
+            padding: 4px;
+        }*/
+
+        [elemento-sif=gridGenerico] .dx-datagrid-search-panel input {
+            height: 30px !important;
+        }
+
+        [elemento-sif=gridGenerico] [role=checkbox] {
+            display: inline-block !important;
+        }
+
+        [elemento-sif=gridGenerico] > div .dx-datagrid-header-panel > div > div {
+            height: 45px !important;
+        }
+
+        [elemento-sif=gridGenerico] [role=checkbox] {
+            display: inline-block !important;
+        }
+
+        [elemento-sif=botonGrid]/*, .dx-widget[elemento-sif="gridGenerico"] .dx-datagrid-export-button*/ {
+            width: auto;
+            height: 32px;
+            color: #007bff;
+            border-color: #007bff;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [elemento-sif=botonGrid].dx-state-hover {
+                background-color: #007bff;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [elemento-sif=botonGrid].dx-state-active {
+                background-color: darkblue;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [elemento-sif=botonGrid] > div > img/*, .dx-widget[elemento-sif="gridGenerico"] .dx-datagrid-export-button > div > img*/ {
+            width: 24px !important;
+            height: 24px !important;
+        }
+
+        .dx-widget[elemento-sif=gridGenerico] > div.dx-datagrid,
+        .dx-widget[elemento-sif=gridGenerico] > div.dx-datagrid > div.dx-datagrid-header-panel > div.dx-toolbar {
+            background-color: transparent !important;
+        }
+
+        .dx-widget[elemento-sif=gridGenerico] > div.dx-datagrid > div.dx-datagrid-rowsview,
+        .dx-widget[elemento-sif=gridGenerico] > div.dx-datagrid > div.dx-datagrid-headers {
+            background-color: white !important;
+        }
+
+        .dx-datagrid-pager {
+            display: flex;
+            margin: 0;
+            padding: 5px;
+            align-items: center;
+            justify-content: space-between;
+        }
+        /*quitar espacio alrededor en master detail*/
+        .dx-datagrid-rowsview .dx-row > .dx-master-detail-cell.AjustaDetalle {
+            padding: 5px;
+            margin: 1px;
+        }
+        /*reducir espacio en columna expandir grupo/detalles*/
+        .dx-datagrid-group-space {
+            width: 10px !important;
+            min-width: 10px !important;
+        }
+        /*******************************************************************************/
+        /*TreeList generico*/
+        /******************************************************************************/
+        [elemento-sif=treeGenerico] .dx-toolbar .dx-toolbar-item {
+            padding: 0;
+        }
+
+        [elemento-sif=treeGenerico] .dx-toolbar .dx-toolbar-before .dx-toolbar-item div.dx-item-content > div[elemento-sif=botonGrid] {
+            margin-right: 5px;
+        }
+
+        [elemento-sif=treeGenerico] .dx-toolbar .dx-toolbar-after .dx-toolbar-item div.dx-item-content > div[elemento-sif=botonGrid] {
+            margin-left: 5px;
+        }
+
+        [elemento-sif=treeGenerico] .dx-button-content {
+            display: flex;
+            align-items: center;
+        }
+
+        /*[elemento-sif="treeGenerico"] .dx-datagrid-export-button {
+            margin-left: 5px;
+            padding: 4px;
+        }*/
+
+        [elemento-sif=treeGenerico] .dx-treelist-search-panel input {
+            height: 30px !important;
+        }
+
+        [elemento-sif=treeGenerico] > div .dx-treelist-header-panel > div > div {
+            height: 45px !important;
+        }
+
+        [elemento-sif=botonTree]/*, .dx-widget[elemento-sif="botonTree"] .dx-datagrid-export-button*/ {
+            width: auto;
+            height: 32px;
+            color: #007bff;
+            border-color: #007bff;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [elemento-sif=botonTree].dx-state-hover {
+                background-color: #007bff;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [elemento-sif=botonTree].dx-state-active {
+                background-color: darkblue;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [elemento-sif=botonTree] > div > img/*, .dx-widget[elemento-sif="botonTree"] .dx-datagrid-export-button > div > img*/ {
+                width: 24px !important;
+                height: 24px !important;
+            }
+
+        .dx-widget[elemento-sif="treeGenerico"] > div.dx-treelist-container,
+        .dx-widget[elemento-sif="treeGenerico"] > div.dx-treelist-container > div.dx-treelist-header-panel > div.dx-toolbar {
+            background-color: transparent !important;
+        }
+
+        .dx-widget[elemento-sif="treeGenerico"] > div.dx-treelist-container > div.dx-treelist-rowsview,
+        .dx-widget[elemento-sif="treeGenerico"] > div.dx-treelist-container > div.dx-treelist-headers {
+            background-color: white !important;
+        }
+
+        /*******************************************************************************/
+        /*Botnones grid generico*/
+        /******************************************************************************/
+
+        [botonGrid=btn_Buscar] {
+            color: #6C757D;
+            border-color: #6C757D;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Buscar].dx-state-hover {
+                background-color: #6C757D;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Buscar].dx-state-active {
+                background-color: darkgray;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [botonGrid=btn_Imprimir]/*, .dx-widget[elemento-sif="gridGenerico"] .dx-datagrid-export-button*/ {
+            color: #6C757D;
+            border-color: #6C757D;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Imprimir].dx-state-hover/*, .dx-widget[elemento-sif="gridGenerico"] .dx-datagrid-export-button.dx-state-hover*/ {
+                background-color: #6C757D;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Imprimir].dx-state-active/*, .dx-widget[elemento-sif="gridGenerico"] .dx-datagrid-export-button.dx-state-active*/ {
+                background-color: darkgray;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+
+        [botonGrid=btn_Limpiar] {
+            color: #0B8395;
+            border-color: #0B8395;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Limpiar].dx-state-hover {
+                background-color: #0B8395;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Limpiar].dx-state-active {
+                background-color: darkcyan;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [botonGrid=btn_Nuevo] {
+            color: #007bff;
+            border-color: #007bff;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Nuevo].dx-state-hover {
+                background-color: #007bff;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Nuevo].dx-state-active {
+                background-color: darkblue;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [botonGrid=btn_Detalle] {
+            color: rosybrown;
+            border-color: rosybrown;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Detalle].dx-state-hover {
+                background-color: rosybrown;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Detalle].dx-state-active {
+                background-color: brown;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [botonGrid=btn_Guardar] {
+            color: #018A40;
+            border-color: #018A40;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Guardar].dx-state-hover {
+                background-color: #018A40;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Guardar].dx-state-active {
+                background-color: darkgreen;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [botonGrid=btn_Editar] {
+            color: #f0ad4e;
+            border-color: #f0ad4e;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Editar].dx-state-hover {
+                background-color: #f0ad4e;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Editar].dx-state-active {
+                background-color: darkorange;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [botonGrid=btn_Eliminar] {
+            color: #CA2632;
+            border-color: #CA2632;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Eliminar].dx-state-hover {
+                background-color: #CA2632;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Eliminar].dx-state-active {
+                background-color: darkred;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [botonGrid=btn_Cancelar] {
+            color: #CA2632;
+            border-color: #CA2632;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Cancelar].dx-state-hover {
+                background-color: #CA2632;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Cancelar].dx-state-active {
+                background-color: darkred;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        [botonGrid=btn_Colapsar] {
+            color: #292929;
+            border-color: #ababab;
+            border-width: 1px;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+            [botonGrid=btn_Colapsar].dx-state-hover {
+                background-color: #A9A9A9;
+                color: white;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+            [botonGrid=btn_Colapsar].dx-state-active {
+                background-color: #DCDCDC;
+                color: #292929;
+                font-family: Arial;
+                font-weight: bold;
+            }
+
+        div.dx-texteditor.dx-state-readonly {
+            border-style: solid;
+            background-color: rgba(51,51,51,.03) !important;
+        }
+
+        .dx-item.dx-radiobutton.dx-item-selected {
+            font-weight: bold;
+        }
+
+        .dx-tooltip-wrapper .dx-overlay-content .dx-popup-content {
+            background-color: #fffdde !important;
+        }
+
+        .dx-tooltip-wrapper .dx-popover-arrow:after {
+            background-color: #fffdde !important;
+        }
+
+        .dx-tooltip-wrapper.dx-position-bottom .dx-popover-arrow:after {
+            background-color: #fffdde !important;
+        }
+
+        #toolbarMenuPrincipal_Mobile .dx-icon-overflow {
+            font: 40px/1 DXIcons !important;
+            width: 40px !important;
+            height: 40px !important;
+
+        }
+        #toolbarMenuPrincipal_Mobile .dx-button-mode-contained {
+            border-radius: 50% !important;
+        }
+       /* #toolbarMenuPrincipal_Mobile .dx-toolbar-after .dx-button-mode-contained {
+            background-color: #bc6824 !important;
+            border-color: #bc6824 !important;
+        }*/
+    </style>
+
+    <script type="text/javascript" id="rutas">
+        var urlFondoIzquierdo = '/Imagenes/bg-pattern-naranja.png';
+        var urlFondoDerecho = '/Imagenes/bg-pattern-azul.png';
+        var urlLogoFondo = '/Imagenes/logo-uat-2022.png?v=202312011142';
+        var urlFondoPie = '/Imagenes/bg-pattern-azul.png';
+
+        var urlLoadingIndicador = '/Imagenes/loading-icon.jpg';
+        var urlLoadingIndicador2 = '/Imagenes/loading2.jpg';
+        var urlImagenAvatar = '/Imagenes/img_avatar.png';
+        var urlbackgroundPrincipal = '/Imagenes/backgroundPrincipal.png';
+        var urlBackgroundGeneral = '/Imagenes/BackgroundGeneral.png';
+        var urlIconExport = '/Imagenes/ExcelIcon.png';
+
+        var urlIconBotonOK = '/Imagenes/Images/Actions/Apply_32x32.png';
+        var urlIconBotonNO = '/Imagenes/Images/Actions/Cancel_32x32.png';
+
+        var urlIconMessageAsterisk = '/Imagenes/Dialog/messagebox-asterisk.png';
+        var urlIconMessageError = '/Imagenes/Dialog/messagebox-error.png';
+        var urlIconMessageExclamation = '/Imagenes/Dialog/messagebox-exclamation.png';
+        var urlIconMessageHand = '/Imagenes/Dialog/messagebox-hand.png';
+        var urlIconMessageInformation = '/Imagenes/Dialog/messagebox-information.png';
+        var urlIconMessageQuestion = '/Imagenes/Dialog/messagebox-question.png';
+        var urlIconMessageStop = '/Imagenes/Dialog/messagebox-stop.png';
+        var urlIconMessageWarning = '/Imagenes/Dialog/messagebox-warning.png';
+
+        var urlIconBtnHerramientas = '/Imagenes/Images/Setup/Properties_32x32.png';
+        var urlIconBtnLimpiar = '/Imagenes/Images/Actions/Refresh2_32x32.png';
+        var urlIconBtnPrincipal = '/Imagenes/Images/Navigation/Home_32x32.png';
+        var urlIconBtnGuardar = '/Imagenes/Images/Save/Save_32x32.png';
+        var urlIconBtnBuscar = '/Imagenes/Images/Zoom/Zoom_32x32.png';
+        var urlIconBtnExportarPDF = '/Imagenes/Images/Export/ExportToPDF_32x32.png';
+        var urlIconBtnImportar = '/Imagenes/Images/Navigation/Up_32x32.png';
+        var urlIconBtnRecibir = '/Imagenes/Images/Actions/ConvertToRange_32x32.png';
+        var urlIconBtnCancelar = '/Imagenes/Images/Actions/Cancel_32x32.png';
+        var urlIconBtnEnviar = '/Imagenes/Images/Mail/Outbox_32x32.png';
+        var urlIconBtnAutoriza = '/Imagenes/Images/Actions/Apply_32x32.png';
+        var urlIconBtnRechazar = '/Imagenes/Images/Edit/Delete_32x32.png';
+        var urlIconBtnExportarExcel = '/Imagenes/Images/logo_excel.png';
+        var urlIconBtnPDF = '/Imagenes/Images/logo_pdf.png';
+        var urlIconBtnInfo = '/Imagenes/btnAyuda.png';
+        var urlIconBtnEditar = '/Imagenes/Images/Edit/Edit_32x32.png';
+        var urlIconBtnNuevo = '/Imagenes/Images/Actions/AddItem_32x32.png';
+        var urlIconBtnRecargar = '/Imagenes/Images/Actions/Refresh_32x32.png';
+        var urlIconBtnImprimir = '/Imagenes/Images/Print/Print_32x32.png';
+        var urlIconBtnGrid = '/Imagenes/Images/Grid/Grid_32x32.png';
+        var urlIconBtnDetalle = '/Imagenes/Images/XAF/BO_Security_Permission_32x32.png';
+        var urlIconBtnColapsar = '/Imagenes/Images/Actions/Fill_32x32.png';
+        var urlIconBtnExpander = '/Imagenes/Images/Actions/Right_32x32.png';
+        var urlIconBtnCalendario = '/Imagenes/Images/Scheduling/Today_32x32.png';
+
+        //var urlLoginErrorPeticionGeneral = "localhost\\SIF\\";
+        var urlMenu = '/Home/Menu';
+        var urlConfig = '';
+        var urlPrincipal = '/Home';
+        var urlParametros = '/Login/ObjetosGlobales';
+        var urlPermisos = '/Permisos';
+        var urlCerrarSesion = '/Login/Salir';
+        var urlManual = '/Manual/Multimedia';
+        var urlAvatarFoto = '/Home/ConsultaFotoAutorizada';
+
+
+        var botonesPrincipalesGrupo = null;
+
+        var varLayoutDatosMenuIdPantalla = Number('');
+    </script>
+    <script type="text/javascript" id="codigo">
+        var panelCargaGenerico = null;
+
+        function fnGetControladorAccion() {
+
+            var controllerName = 'Error';
+            var actionName = 'Error';
+            var areaName = '';
+            return { "controllerName": controllerName, "actionName": actionName, "areaName": areaName };
+        }
+
+        function MostrarReporteVisorGenerico(documento = "Visor") {
+            var urlVisor = '/VisorPDFGenerico?documento=_documento';
+            urlVisor = urlVisor.replaceAll("_documento", documento);
+            //console.log(urlVisor);
+            PopupCenterScreen(urlVisor);
+            //window.open(urlVisor, "_blank", "width=1000,height=700,scrollbars = yes, toolbar = no, left = 10, top = 10, resizable = yes");
+        }
+
+        function PopupCenterScreen(url, target = "_blank", w = 800, h = 600) {
+
+            const width = screen.width;
+            const height = screen.height;
+            const left = (width - w) / 2;
+            const top = (height - h) / 2;
+            const newWindow = window.open(url, target,
+                `
+                toolbar = no,
+                resizable = yes,
+                scrollbars = yes,
+                width = ${w},
+                height = ${h},
+                top = ${top},
+                left = ${left}
+                `
+            )
+
+            if (window.focus) newWindow.focus();
+        }
+
+        jQuery(document).ready(function () {
+            DevExpress.localization.locale("es-MX");
+
+
+            setIconsMenu();
+            fnCargarMenu();
+            //fnCargarParametros();
+            panelCargaGenerico = $("#panelCargaGenerico").dxLoadPanel({
+                indicatorSrc: urlLoadingIndicador2,
+                message: "Espere un momento...",
+                shadingColor: "#d9e3f780",
+                showPane: false,
+                height: "300px",
+                width: "300px",
+                closeOnOutsideClick: false,
+                visible: false
+            }).dxLoadPanel("instance");
+
+            const new_style_element = document.createElement("style");
+            new_style_element.setAttribute('type', 'text/css');
+            new_style_element.textContent = "" +
+                ".dx-row.dx-header-row > td { " +
+                "color: white !important; " +
+                "background-color: " + localStorage.ColorCabeceraGrid + " !important; " +
+                "} " +
+                ".dx-row.dx-data-row.dx-selection > td { " +
+                "color: white !important; " +
+                "background-color: " + localStorage.ColorSeleccionGrid + " !important; " +
+                "} " +
+                ".dx-datagrid-total-footer { " +
+                "color: black !important; " +
+                "background-color: " + localStorage.ColorPieGrid + " !important; " +
+                "} " +
+                ".dx-datagrid-pager { " +
+                "color: black !important; " +
+                "background-color: " + localStorage.ColorPieGrid + " !important; " +
+                "} " +
+                ".dx-page-size { " +
+                "color: " + localStorage.ColorCabeceraGrid + " !important; " +
+                "} " +
+                ".dx-page-size.dx-selection { " +
+                "color: black !important; " +
+                "} " +
+                ".dx-item.dx-list-item.dx-list-item-selected { " +
+                "color: white !important; " +
+                "background-color: " + localStorage.ColorCabeceraGrid + " !important; " +
+                "} " +
+                ".dx-item.dx-radiobutton.dx-item-selected { " +
+                "color: " + localStorage.ColorCabeceraGrid + " !important; " +
+                "} " +
+                ".text_info_header { " +
+                "color: " + localStorage.ColorCabeceraGrid + " !important; " +
+                "} " +
+                ".dx-popup-title {" +
+                "background-color: " + localStorage.ColorHeaderPopUp + "; " +
+                "} " +
+                ".dx-popup-wrapper.dx-popover-wrapper.dx-position-bottom > div.dx-popup-normal > div.dx-popover-arrow:after {" +
+                "background-color: " + localStorage.ColorHeaderPopUp + "; " +
+                "} " +
+                ".dx-popup-wrapper.dx-popover-wrapper.dx-popover-flipped-vertical > div.dx-popup-normal > div.dx-popover-arrow:after {" +
+                "background-color: white; " +
+                "} " +
+                "#treeViewMenuPrincipal{" +
+                "background-color: " + localStorage.ColorFondoMenu + " !important; " +
+                "} " +
+                "#treeViewMenuPrincipal .dx-item.dx-treeview-item > div > a {" + localStorage.EstiloLinkMenu + "}" +
+                ".dx-item.dx-treeview-item.dx-state-hover{" +
+                "background-color: " + localStorage.ColorHoverMenu + " !important; " +
+                "} " +
+                ".dx-buttongroup .dx-buttongroup-item { " +
+                "color: " + localStorage.ColorCabeceraGrid + " !important; " +
+                //"border: solid 1px " + localStorage.ColorCabeceraGrid + " !important; " +
+                "} " +
+                ".dx-buttongroup .dx-buttongroup-item .dx-icon { " +
+                "color: " + localStorage.ColorCabeceraGrid + " !important; " +
+                "} " +
+                ".dx-buttongroup .dx-buttongroup-item.dx-state-hover { " +
+                "color: white !important; " +
+                "background-color: " + localStorage.ColorCabeceraGrid + " !important; " +
+                //"border: solid 1px " + localStorage.ColorCabeceraGrid + " !important; " +
+                "} " +
+                ".dx-buttongroup .dx-buttongroup-item.dx-state-hover .dx-icon { " +
+                "color: white !important; " +
+                "} " +
+                ".dx-buttongroup .dx-buttongroup-item.dx-item-selected { " +
+                "color: white !important; " +
+                "background-color: " + localStorage.ColorSeleccionGrid + " !important; " +
+                //"border: solid 1px " + localStorage.ColorSeleccionGrid + " !important; " +
+                "} " +
+                ".dx-buttongroup .dx-buttongroup-item.dx-item-selected .dx-icon { " +
+                "color: white !important; " +
+                "} ";
+            $('head')[0].appendChild(new_style_element);
+
+            validarPantallaMobile();
+            
+            $("#lyMenuUsuarioToolTip").dxTooltip({
+                target: "#imgUsuarioLayout",
+                showEvent: "mouseenter",
+                closeOnOutsideClick: true,
+                position: usuarioEstaUtilizandoMovil() ? {
+                    my: "top",
+                    at: "center",
+                    of: "#target-element",
+                    offset: "0 " + "-" + (($(window).height() / 2) - 70)
+                } : "bottom",
+                width: usuarioEstaUtilizandoMovil() ? ($(window).width() - 50) + "px" : "400px",
+                contentTemplate: function (data) {
+                    var pcName = localStorage.getItem("Txt_Nom_PC_AdmonUAT").split(".");
+                    var tooltipWidth = '400px';
+                    if (usuarioEstaUtilizandoMovil()) {
+                        tooltipWidth = $(window).width();
+                        tooltipWidth = tooltipWidth - 80;
+                        tooltipWidth = tooltipWidth + "px";
+                    }
+                    data.html("<div style='width: " + tooltipWidth + "'>" +
+                        "<div style='width: 100%; float: left; font-weight: bold; font-family: Arial; font-size: 12pt; text-align: left;'>Usuario</div>" +
+                        "<div style='width: 100%; float: left; font-family: Arial; font-size: 12pt; text-align: center; padding-bottom: 10px; white-space: normal;'>" + localStorage.getItem("Id_Plantilla_AdmonUAT") + " - " + localStorage.getItem("Txt_Usuario_AdmonUAT") + "</div>" +
+                        "<div style='width: 100%; float: left; font-weight: bold; font-family: Arial; font-size: 12pt; text-align: left;'>Nivel</div>" +
+                        "<div style='width: 100%; float: left; font-family: Arial; font-size: 12pt; text-align: center; padding-bottom: 10px; white-space: normal;'>" + localStorage.getItem("Id_Niveles_AdmonUAT") + " - " + localStorage.getItem("Txt_Nivel_AdmonUAT") + "</div>" +
+                        "<div style='width: 100%; float: left; font-weight: bold; font-family: Arial; font-size: 12pt; text-align: left;'>Equipo</div>" +
+                        "<div style='width: 100%; float: left; font-family: Arial; font-size: 12pt; text-align: center; padding-bottom: 10px;'>" + pcName[0] + "</div>" +
+                        "<div style='width: 100%; float: left;'><a style='cursor: pointer;' class='btn btn-outline-danger my-2 my-sm-0' href='" + urlCerrarSesion + "'>" +
+                        "<img src='" + urlIconBtnDetalle + "' style='width: 24px;height: 24px;margin-right: 5px;margin-bottom: 3px;' /> Cerrar sesión</a ></div > " +
+                        "</div>");
+
+                  
+
+                }
+            });
+        });
+
+        function validarPantallaMobile() {
+            try {
+            const contenedorCabeceraPrincipal = document.getElementById('contenedorCabeceraPrincipal');
+            const contenedorCabeceraPrincipal_Mobile = document.getElementById('contenedorCabeceraPrincipal_Mobile');
+            const contenedorGeneralPrincipal = document.getElementById("contenedorGeneralPrincipal");
+            const contenedorPie = document.getElementById('contenedorPiePrincipal');
+            // Cambia la propiedad height a 40px
+            if (usuarioEstaUtilizandoMovil()) {
+                contenedorCabeceraPrincipal.style.display = 'none';
+                contenedorCabeceraPrincipal_Mobile.style.display = 'block';
+                contenedorGeneralPrincipal.style.paddingLeft = "0px";
+                contenedorPie.style.height = '40px';
+                //console.log("EsMobile");
+            }
+            else {
+                contenedorCabeceraPrincipal_Mobile.style.display = 'none';
+                contenedorCabeceraPrincipal.style.display = 'block';
+                contenedorGeneralPrincipal.style.paddingLeft = "350px";
+                contenedorPie.style.height = '30px';
+                //console.log("EsEscritorio");
+            }
+                ejecutarDespuesRenderizarPantalla();
+            } catch (error) {
+               
+            }
+        }
+
+        window.addEventListener('resize', validarPantallaMobile);
+
+        function ejecutarDespuesRenderizarPantalla() {
+            try {
+            if (typeof usuarioEstaUtilizandoMovil === 'function') {
+                if (usuarioEstaUtilizandoMovil()) {
+                    const allPopups = $(".dx-popup");
+                    for (var i = 0; i < allPopups.length; i++) {
+                        if (allPopups[i].id != null && allPopups[i].id != '') {
+                            var $controlElement = $("#" + allPopups[i].id);
+                            // Verifica si el control es una instancia de dxTooltip
+                            if ($controlElement.hasClass("dx-tooltip") == false) {
+                                if (!["confirmacionGenericoSIF", "confirmacionGenericoOpcionSIF","alertaGenericoSIF"].includes(allPopups[i].id)) { 
+                                $("#" + allPopups[i].id).dxPopup('instance').option("width", Math.floor(window.innerWidth * 0.7));
+                                $("#" + allPopups[i].id).dxPopup('instance').option("height", Math.floor(window.innerHeight * 0.7))
+                                $("#" + allPopups[i].id).dxPopup('instance').option("showCloseButton", true);
+                                    
+                                }
+                            }
+                        }
+                    }
+                    const scrollPops = document.querySelectorAll('.dx-overlay-content .dx-popup-content');
+                    for (var i = 0; i < scrollPops.length; i++) {
+                        scrollPops[i].style.overflow = 'scroll';
+                    }
+                }
+                //-------------------------------------------------------------------
+                }
+            } catch (error) {
+               
+            }
+        }
+    </script>
+</head>
+<body>
+    
+    <div id="contenedorCabeceraPrincipal">
+        <div id="toolbarMenuPrincipal"></div>
+    </div>
+    <div id="contenedorMenuPrincipal">
+        <div id="treeViewMenuPrincipal"></div>
+    </div>
+    
+    <div id="contenedorCabeceraPrincipal_Mobile">
+        <div id="toolbarMenuPrincipal_Mobile"></div>
+        
+
+    </div>
+    
+    <div id="contenedorGeneralPrincipal" style="padding-left: 350px; padding-bottom: 30px;">
+        <div class="container">
+            <div id="divPrincipalContenedor" style="width: 100%; float: left;">
+                <div class="row" id="contenedorGeneraPrincipalTitulo">
+                    <div id="contenedorGeneraPrincipalTituloEtiqueta" class="col-lg-12" style="margin-bottom: 20px; border-bottom-width: 2px; border-bottom-color: black; border-bottom-style: solid; text-align: right; float: right; background: rgb(118,199,254); background: linear-gradient(90deg, rgba(118,199,254,1) 0%, rgba(0,100,168,1) 67%, rgba(1,59,98,1) 100%);">
+                        <label id="lblPrincipalContenedorTituloPagina" style="float: right; font-size: 18pt; font-weight: bold; color: white;">
+                        </label>
+                        
+                    </div>
+                </div>
+                <div class="row" id="layoutContenidoPrincipal">
+                    <div class="col-lg-12">
+                        
+<div class="container">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="error-template">
+                <h1>
+                    Oops!
+                </h1>
+                <h2>404 - Página no Encontrada</h2><div class="error-details">Lo sentimos, ¡la página solicitada no se encuentra!</div>
+                <div class="error-actions">
+                    <a href="/Home" class="btn btn-primary btn-lg">
+                        <span class="icon dx-icon-home"></span>
+                        Regresar al Inicio
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+                        <script>
+                            window.onload = function () {
+                                ejecutarDespuesRenderizarPantalla();
+                            };
+                        </script>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="contenedorPiePrincipal">
+        <label style="font-family: Arial; font-size: 10pt; font-weight: bold; color: white;">Universidad Autónoma de Tamaulipas - Sistema Administrativo Escolar</label>
+    </div>
+    <div id="lyMenuUsuarioToolTip"></div>
+    <div id="panelCargaGenerico"></div>
+    <style type="text/css">
+    /*Botones popups*/
+
+    #alertaGenericoSIFBotonOK {
+        color: #007bff;
+        border-color: #007bff;
+        border-width: 1px;
+        font-family: Arial;
+        font-weight: bold;
+        height: 32px;
+    }
+
+        #alertaGenericoSIFBotonOK > div > img {
+            width: 24px !important;
+            height: 24px !important;
+        }
+
+        #alertaGenericoSIFBotonOK.dx-state-hover {
+            background-color: #007bff;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+        #alertaGenericoSIFBotonOK.dx-state-active {
+            background-color: darkblue;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+    #confirmacionGenericoSIFBotonSI {
+        color: #007bff;
+        border-color: #018A40;
+        border-width: 1px;
+        font-family: Arial;
+        font-weight: bold;
+        height: 32px;
+    }
+
+        #confirmacionGenericoSIFBotonSI > div > img {
+            width: 24px !important;
+            height: 24px !important;
+        }
+
+        #confirmacionGenericoSIFBotonSI.dx-state-hover {
+            background-color: #018A40;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+        #confirmacionGenericoSIFBotonSI.dx-state-active {
+            background-color: darkgreen;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+    #confirmacionGenericoSIFBotonNO {
+        color: #CA2632;
+        border-color: #CA2632;
+        border-width: 1px;
+        font-family: Arial;
+        font-weight: bold;
+        height: 32px;
+    }
+
+        #confirmacionGenericoSIFBotonNO > div > img {
+            width: 24px !important;
+            height: 24px !important;
+        }
+
+        #confirmacionGenericoSIFBotonNO.dx-state-hover {
+            background-color: #CA2632;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+        #confirmacionGenericoSIFBotonNO.dx-state-active {
+            background-color: darkred;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+    #confirmacionGenericoOpcionSIFBotonOk {
+        color: #007bff;
+        border-color: #018A40;
+        border-width: 1px;
+        font-family: Arial;
+        font-weight: bold;
+        height: 32px;
+    }
+
+        #confirmacionGenericoOpcionSIFBotonOk > div > img {
+            width: 24px !important;
+            height: 24px !important;
+        }
+
+        #confirmacionGenericoOpcionSIFBotonOk.dx-state-hover {
+            background-color: #018A40;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+        #confirmacionGenericoOpcionSIFBotonOk.dx-state-active {
+            background-color: darkgreen;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+    #confirmacionGenericoOpcionSIFBotonSalir {
+        color: #CA2632;
+        border-color: #CA2632;
+        border-width: 1px;
+        font-family: Arial;
+        font-weight: bold;
+        height: 32px;
+    }
+
+        #confirmacionGenericoOpcionSIFBotonSalir > div > img {
+            width: 24px !important;
+            height: 24px !important;
+        }
+
+        #confirmacionGenericoOpcionSIFBotonSalir.dx-state-hover {
+            background-color: #CA2632;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+
+        #confirmacionGenericoOpcionSIFBotonSalir.dx-state-active {
+            background-color: darkred;
+            color: white;
+            font-family: Arial;
+            font-weight: bold;
+        }
+</style>
+<script type="text/javascript" id="rutas">
+        var urlIconBotonOK = '/Imagenes/Images/Actions/Apply_32x32.png';
+        var urlIconBotonNO = '/Imagenes/Images/Actions/Cancel_32x32.png';
+
+        var urlIconMessageAsterisk = '/Imagenes/Dialog/messagebox-asterisk.png';
+        var urlIconMessageError = '/Imagenes/Dialog/messagebox-error.png';
+        var urlIconMessageExclamation = '/Imagenes/Dialog/messagebox-exclamation.png';
+        var urlIconMessageHand = '/Imagenes/Dialog/messagebox-hand.png';
+        var urlIconMessageInformation = '/Imagenes/Dialog/messagebox-information.png';
+        var urlIconMessageQuestion = '/Imagenes/Dialog/messagebox-question.png';
+        var urlIconMessageStop = '/Imagenes/Dialog/messagebox-stop.png';
+        var urlIconMessageWarning = '/Imagenes/Dialog/messagebox-warning.png';
+</script>
+<script type="text/javascript">
+    jQuery(document).ready(function () {
+        $("#alertGenericoSIFImagen").attr("src", urlIconMessageInformation);
+        $("#confirmacionGenericoSIFImagen").attr("src", urlIconMessageInformation);
+
+        $("#alertGenericoSIFLabel").text("");
+        $("#confirmacionGenericoSIFLabel").text("");
+
+        $("#alertaGenericoSIFBotonOK").dxButton({
+            stylingMode: "outlined",
+            hint: "OK",
+            text: "OK",
+            width: "100%",
+            icon: urlIconBotonOK,
+            type: "normal",
+            onClick: function (e) {
+                $("#alertaGenericoSIF").dxPopup("instance").hide();
+            }
+        });
+
+        $("#confirmacionGenericoSIFBotonSI").dxButton({
+            stylingMode: "outlined",
+            hint: "SI",
+            text: "SI",
+            width: "100%",
+            icon: urlIconBotonOK,
+            type: "normal",
+            onClick: function (e) {
+                $("#confirmacionGenericoSIF").dxPopup("instance").hide();
+            }
+        });
+
+        $("#confirmacionGenericoSIFBotonNO").dxButton({
+            stylingMode: "outlined",
+            hint: "NO",
+            text: "NO",
+            width: "100%",
+            icon: urlIconBotonNO,
+            type: "normal",
+            onClick: function () {
+                $("#confirmacionGenericoSIF").dxPopup("instance").hide();
+            }
+        });
+
+        $("#confirmacionGenericoOpcionSIFBotonOk").dxButton({
+            stylingMode: "outlined",
+            hint: "Aceptar",
+            text: "Aceptar",
+            width: "100%",
+            icon: urlIconBotonOK,
+            type: "normal",
+            onClick: function (e) {
+                $("#confirmacionGenericoOpcionSIF").dxPopup("instance").hide();
+            }
+        });
+
+        $("#confirmacionGenericoOpcionSIFBotonSalir").dxButton({
+            stylingMode: "outlined",
+            hint: "Salir",
+            text: "Salir",
+            width: "100%",
+            icon: urlIconBotonNO,
+            type: "normal",
+            onClick: function () {
+                $("#confirmacionGenericoOpcionSIF").dxPopup("instance").hide();
+            }
+        });
+
+        $("#confirmacionGenericoOpcionRadButton").dxRadioGroup({
+            layout: "horizontal",
+            onValueChanged: function (e) {
+
+            }
+        });
+
+        $("#alertaGenericoSIF").dxPopup({
+            height: "250px",
+            shadingColor: "#d9e3f780",
+            shading: true,
+            title: "Sistema Administrativo UAT",
+            visible: false,
+            width: "500px",
+            onShown: function (e) {
+                $("#alertaGenericoSIFBotonOK").dxButton('instance').focus();
+            }
+        });
+
+        $("#confirmacionGenericoSIF").dxPopup({
+            height: "250px",
+            shadingColor: "#d9e3f780",
+            shading: true,
+            title: "Sistema Administrativo UAT",
+            visible: false,
+            width: "500px"
+        });
+
+        $("#confirmacionGenericoOpcionSIF").dxPopup({
+            height: "250px",
+            shadingColor: "#d9e3f780",
+            shading: true,
+            title: "Sistema Administrativo UAT",
+            visible: false,
+            width: "500px"
+        });
+    });
+
+    function fnAlertaSIF(mensaje, tipo, funcion, tamanio, templateText) {
+        if (usuarioEstaUtilizandoMovil()) { $("#alertaGenericoSIF").dxPopup("instance").option("width", Math.floor(window.innerWidth * 0.9)); }
+        $("#alertaGenericoSIF").dxPopup("instance").show();
+        $("#alertaGenericoSIFTextoTemplate").html(' <label class="etiquetaCompact" style="margin-top: 5px;" id="alertaGenericoSIFLabel"></label>');
+        if (ConInformacion(tamanio)) {
+            if (tamanio.hasOwnProperty("ancho")) $("#alertaGenericoSIF").dxPopup("instance").option("width", tamanio.ancho);
+            if (tamanio.hasOwnProperty("alto")) $("#alertaGenericoSIF").dxPopup("instance").option("height", tamanio.alto);
+        }
+        $("#alertaGenericoSIF .dx-popup-title").css("background-color", localStorage.getItem("ColorHeaderPopUp"));
+        var estatusMensaje = urlIconMessageInformation;
+        switch (tipo) {
+            case "asterisk": estatusMensaje = urlIconMessageAsterisk; break;
+            case "error": estatusMensaje = urlIconMessageError; break;
+            case "exclamation": estatusMensaje = urlIconMessageExclamation; break;
+            case "hand": estatusMensaje = urlIconMessageHand; break;
+            case "information": estatusMensaje = urlIconMessageInformation; break;
+            case "question": estatusMensaje = urlIconMessageQuestion; break;
+            case "stop": estatusMensaje = urlIconMessageStop; break;
+            case "warning": estatusMensaje = urlIconMessageWarning; break;
+        }
+        $("#alertaGenericoSIFImagen").attr("src", estatusMensaje);
+        if (ConInformacion(templateText)) {
+            $("#alertaGenericoSIFTextoTemplate").html(templateText);
+        }
+        else {
+            $("#alertaGenericoSIFLabel").text(mensaje);
+        }
+
+        $("#alertaGenericoSIFBotonOK").dxButton("instance").off("click");
+        $("#alertaGenericoSIFBotonOK").dxButton("instance").on("click", function () {
+            $("#alertaGenericoSIF").dxPopup("instance").option({ "width": "500px", "height": "250px" });
+            $("#alertaGenericoSIF").dxPopup("instance").hide();
+        });
+
+        if (funcion != null || funcion != undefined) {
+            $("#alertaGenericoSIFBotonOK").dxButton("instance").on("click", function (e) {
+                return funcion(e);
+            });
+        }
+    }
+
+    function fnConfirmacionSIF(mensaje, tipo, funcionOk, funcionNo, tamanio, templateText) {
+        if (usuarioEstaUtilizandoMovil()) {  $("#confirmacionGenericoSIF").dxPopup("instance").option("width", Math.floor(window.innerWidth * 0.9)); }
+        $("#confirmacionGenericoSIF").dxPopup("instance").show();
+        if (ConInformacion(tamanio)) {
+            if (tamanio.hasOwnProperty("ancho")) $("#confirmacionGenericoSIF").dxPopup("instance").option("width", tamanio.ancho);
+            if (tamanio.hasOwnProperty("alto")) $("#confirmacionGenericoSIF").dxPopup("instance").option("height", tamanio.alto);
+        }
+        $("#confirmacionGenericoSIF .dx-popup-title").css("background-color", localStorage.getItem("ColorHeaderPopUp"));
+        var estatusMensaje = urlIconMessageInformation;
+        switch (tipo) {
+            case "asterisk": estatusMensaje = urlIconMessageAsterisk; break;
+            case "error": estatusMensaje = urlIconMessageError; break;
+            case "exclamation": estatusMensaje = urlIconMessageExclamation; break;
+            case "hand": estatusMensaje = urlIconMessageHand; break;
+            case "information": estatusMensaje = urlIconMessageInformation; break;
+            case "question": estatusMensaje = urlIconMessageQuestion; break;
+            case "stop": estatusMensaje = urlIconMessageStop; break;
+            case "warning": estatusMensaje = urlIconMessageWarning; break;
+        }
+        $("#confirmacionGenericoSIFImagen").attr("src", estatusMensaje);
+        if (ConInformacion(templateText)) {
+            $("#confirmacionGenericoSIFLabel").html(templateText);
+        }
+        else {
+            $("#confirmacionGenericoSIFLabel").text(mensaje);
+        }
+
+        $("#confirmacionGenericoSIFBotonSI").dxButton("instance").off("click");
+        $("#confirmacionGenericoSIFBotonSI").dxButton("instance").on("click", function () {
+            $("#confirmacionGenericoSIF").dxPopup("instance").option({ "width": "500px", "height": "250px" });
+            $("#confirmacionGenericoSIF").dxPopup("instance").hide();
+        });
+
+        $("#confirmacionGenericoSIFBotonNO").dxButton("instance").off("click");
+        $("#confirmacionGenericoSIFBotonNO").dxButton("instance").on("click", function () {
+            $("#confirmacionGenericoSIF").dxPopup("instance").option({ "width": "500px", "height": "250px" });
+            $("#confirmacionGenericoSIF").dxPopup("instance").hide();
+        });
+
+        if (funcionOk != null || funcionOk != undefined) {
+            $("#confirmacionGenericoSIFBotonSI").dxButton("instance").on("click", function (e) {
+                return funcionOk(e);
+            });
+        }
+        if (funcionNo != null || funcionNo != undefined) {
+            $("#confirmacionGenericoSIFBotonNO").dxButton("instance").on("click", function (e) {
+                return funcionNo(e);
+            });
+        }
+    }
+
+    function fnConfirmacionOpcionSIF(mensaje, tipo, opciones, funcionAceptar, tamanio, templateText) {
+        if (usuarioEstaUtilizandoMovil()) {  $("#confirmacionGenericoOpcionSIF").dxPopup("instance").option("width", Math.floor(window.innerWidth * 0.9)); }
+        $("#confirmacionGenericoOpcionSIF").dxPopup("instance").show();
+        if (ConInformacion(tamanio)) {
+            if (tamanio.hasOwnProperty("ancho")) $("#confirmacionGenericoOpcionSIF").dxPopup("instance").option("width", tamanio.ancho);
+            if (tamanio.hasOwnProperty("alto")) $("#confirmacionGenericoOpcionSIF").dxPopup("instance").option("height", tamanio.alto);
+        }
+        $("#confirmacionGenericoOpcionSIF .dx-popup-title").css("background-color", localStorage.getItem("ColorHeaderPopUp"));
+        var estatusMensaje = urlIconMessageInformation;
+        switch (tipo) {
+            case "asterisk": estatusMensaje = urlIconMessageAsterisk; break;
+            case "error": estatusMensaje = urlIconMessageError; break;
+            case "exclamation": estatusMensaje = urlIconMessageExclamation; break;
+            case "hand": estatusMensaje = urlIconMessageHand; break;
+            case "information": estatusMensaje = urlIconMessageInformation; break;
+            case "question": estatusMensaje = urlIconMessageQuestion; break;
+            case "stop": estatusMensaje = urlIconMessageStop; break;
+            case "warning": estatusMensaje = urlIconMessageWarning; break;
+        }
+        $("#confirmacionGenericoOpcionSIFImagen").attr("src", estatusMensaje);
+        if (ConInformacion(templateText)) {
+            $("#confirmacionGenericoOpcionSIFLabel").html(templateText);
+        }
+        else {
+            $("#confirmacionGenericoOpcionSIFLabel").text(mensaje);
+        }
+
+        $("#confirmacionGenericoOpcionRadButton").dxRadioGroup("instance").option("items", opciones);
+        $("#confirmacionGenericoOpcionRadButton").dxRadioGroup("instance").option("value", opciones[0]);
+
+        $("#confirmacionGenericoOpcionSIFBotonOk").dxButton("instance").off("click");
+        $("#confirmacionGenericoOpcionSIFBotonOk").dxButton("instance").on("click", function () {
+            $("#confirmacionGenericoOpcionSIF").dxPopup("instance").hide();
+        });
+
+        if (funcionAceptar != null || funcionAceptar != funcionAceptar) {
+            $("#confirmacionGenericoOpcionSIFBotonOk").dxButton("instance").on("click", function (e) {
+                var valorRadioSeleccionado = $("#confirmacionGenericoOpcionRadButton").dxRadioGroup("instance").option("value");
+                return funcionAceptar(valorRadioSeleccionado);
+            });
+        }
+    }
+</script>
+<div id="alertaGenericoSIF" class="dx-overlay dx-popup dx-widget dx-state-invisible dx-visibility-change-handler"><div class="dx-overlay-content dx-popup-normal dx-popup-draggable dx-resizable" aria-hidden="true" tabindex="0" style="width: 500px; height: 250px;"><div class="dx-toolbar dx-widget dx-visibility-change-handler dx-collection dx-popup-title dx-has-close-button" role="toolbar"><div class="dx-toolbar-items-container"><div class="dx-toolbar-before"><div class="dx-item dx-toolbar-item dx-toolbar-label" style="max-width: 0px;"><div class="dx-item-content dx-toolbar-item-content"><div>Sistema Administrativo UAT</div></div></div></div><div class="dx-toolbar-center" style="margin: 0px auto; float: none;"></div><div class="dx-toolbar-after"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-text dx-button-normal dx-button-has-icon dx-closebutton" role="button" aria-label="close" tabindex="0"><div class="dx-button-content"><i class="dx-icon dx-icon-close"></i></div></div></div></div></div></div></div><div class="dx-popup-content" style="overflow: scroll;">
+    <div style="width: 500px; float: left;">
+        <div style="width: 100%; float: left; padding-top: 50px; padding-bottom: 50px;">
+            <div style="width: 30px; float: left; margin-left: 50px; margin-right: 20px;">
+                <img id="alertaGenericoSIFImagen">
+            </div>
+            <div id="alertaGenericoSIFTextoTemplate" style="width: 320px; float: left;">
+               
+            </div>
+        </div>
+        <div id="alertaGenericoSIFBotonesTemplate" style="width: 100%; float: left;">
+            <div style="width: 100px; float: left; margin-left: 190px;">
+                <div id="alertaGenericoSIFBotonOK" class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon" role="button" aria-label="OK" tabindex="0" title="OK" style="width: 100%;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Apply_32x32.png"><span class="dx-button-text">OK</span></div></div>
+            </div>
+        </div>
+    </div>
+</div></div></div>
+<div id="confirmacionGenericoSIF" class="dx-overlay dx-popup dx-widget dx-state-invisible dx-visibility-change-handler"><div class="dx-overlay-content dx-popup-normal dx-popup-draggable dx-resizable" aria-hidden="true" tabindex="0" style="width: 500px; height: 250px;"><div class="dx-toolbar dx-widget dx-visibility-change-handler dx-collection dx-popup-title dx-has-close-button" role="toolbar"><div class="dx-toolbar-items-container"><div class="dx-toolbar-before"><div class="dx-item dx-toolbar-item dx-toolbar-label" style="max-width: 0px;"><div class="dx-item-content dx-toolbar-item-content"><div>Sistema Administrativo UAT</div></div></div></div><div class="dx-toolbar-center" style="margin: 0px auto; float: none;"></div><div class="dx-toolbar-after"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-text dx-button-normal dx-button-has-icon dx-closebutton" role="button" aria-label="close" tabindex="0"><div class="dx-button-content"><i class="dx-icon dx-icon-close"></i></div></div></div></div></div></div></div><div class="dx-popup-content" style="overflow: scroll;">
+    <div style="width: 500px; float: left;">
+        <div style="width: 100%; float: left; padding-top: 50px; padding-bottom: 50px;">
+            <div style="width: 30px; float: left; margin-left: 50px; margin-right: 20px;">
+                <img id="confirmacionGenericoSIFImagen" src="/Imagenes/Dialog/messagebox-information.png">
+            </div>
+            <div style="width: 320px; float: left;">
+                <label class="etiquetaCompact" style="margin-top: 5px;" id="confirmacionGenericoSIFLabel"></label>
+            </div>
+        </div>
+        <div style="width: 100%; float: left;">
+            <div style="width: 100px; float: left; margin-left: 90px;">
+                <div id="confirmacionGenericoSIFBotonSI" class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon" role="button" aria-label="SI" tabindex="0" title="SI" style="width: 100%;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Apply_32x32.png"><span class="dx-button-text">SI</span></div></div>
+            </div>
+            <div style="width: 100px; float: left; margin-left: 100px;">
+                <div id="confirmacionGenericoSIFBotonNO" class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon" role="button" aria-label="NO" tabindex="0" title="NO" style="width: 100%;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Cancel_32x32.png"><span class="dx-button-text">NO</span></div></div>
+            </div>
+        </div>
+    </div>
+</div></div></div>
+<div id="confirmacionGenericoOpcionSIF" class="dx-overlay dx-popup dx-widget dx-state-invisible dx-visibility-change-handler"><div class="dx-overlay-content dx-popup-normal dx-popup-draggable dx-resizable" aria-hidden="true" tabindex="0" style="width: 500px; height: 250px;"><div class="dx-toolbar dx-widget dx-visibility-change-handler dx-collection dx-popup-title dx-has-close-button" role="toolbar"><div class="dx-toolbar-items-container"><div class="dx-toolbar-before"><div class="dx-item dx-toolbar-item dx-toolbar-label" style="max-width: 0px;"><div class="dx-item-content dx-toolbar-item-content"><div>Sistema Administrativo UAT</div></div></div></div><div class="dx-toolbar-center" style="margin: 0px auto; float: none;"></div><div class="dx-toolbar-after"><div class="dx-item dx-toolbar-item dx-toolbar-button"><div class="dx-item-content dx-toolbar-item-content"><div class="dx-widget dx-button dx-button-mode-text dx-button-normal dx-button-has-icon dx-closebutton" role="button" aria-label="close" tabindex="0"><div class="dx-button-content"><i class="dx-icon dx-icon-close"></i></div></div></div></div></div></div></div><div class="dx-popup-content" style="overflow: scroll;">
+    <div style="width: 500px; float: left;">
+        <div style="width: 100%; float: left; padding-top: 17px; padding-bottom: 17px;">
+            <div style="width: 320px; float: left;">
+                <label class="etiquetaCompact" style="margin-top: 5px; float: right;" id="confirmacionGenericoOpcionSIFLabel"></label>
+            </div>
+        </div>
+        <div style="width: 100%; float: left; padding-top: 17px; padding-bottom: 17px;">
+            <div style="width: 30px; float: left; margin-left: 50px; margin-right: 20px;">
+                <img id="confirmacionGenericoOpcionSIFImagen">
+            </div>
+            <div style="width: 320px; float: left;">
+                <div id="confirmacionGenericoOpcionRadButton" class="dx-show-invalid-badge dx-radiogroup dx-radiogroup-horizontal dx-widget" role="radiogroup" tabindex="0"><input type="hidden" value="" style=""><div class="dx-widget dx-collection"></div></div>
+            </div>
+        </div>
+        <div style="width: 100%; float: left;">
+            <div style="width: 100px; float: left; margin-left: 90px;">
+                <div id="confirmacionGenericoOpcionSIFBotonOk" class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon" role="button" aria-label="Aceptar" tabindex="0" title="Aceptar" style="width: 100%;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Apply_32x32.png"><span class="dx-button-text">Aceptar</span></div></div>
+            </div>
+            <div style="width: 100px; float: left; margin-left: 100px;">
+                <div id="confirmacionGenericoOpcionSIFBotonSalir" class="dx-widget dx-button dx-button-mode-outlined dx-button-normal dx-button-has-text dx-button-has-icon" role="button" aria-label="Salir" tabindex="0" title="Salir" style="width: 100%;"><div class="dx-button-content"><img class="dx-icon" alt="" src="/Imagenes/Images/Actions/Cancel_32x32.png"><span class="dx-button-text">Salir</span></div></div>
+            </div>
+        </div>
+    </div>
+</div></div></div>
+
+</body></html>
