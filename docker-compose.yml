@@ -38,6 +38,10 @@ services:
       - "traefik.http.routers.presencia-api.entrypoints=websecure"
       - "traefik.http.routers.presencia-api.tls.certresolver=letsencrypt"
       - "traefik.http.services.presencia-api.loadbalancer.server.port=3000"
+      - "traefik.docker.network=dokploy-network"
+    networks:
+      - presencia-network
+      - dokploy-network
 
   postgres:
     image: postgres:16-alpine
@@ -90,5 +94,7 @@ volumes:
 
 
 networks:
-  default:
+  presencia-network:
     name: presencia-network
+  dokploy-network:
+    external: true
