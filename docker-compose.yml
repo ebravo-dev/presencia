@@ -4,9 +4,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    # Ports handled by Traefik in production
-    # ports:
-    #   - "${API_PORT:-3000}:3000"
+    ports:
+      - "3000:3000"
     environment:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/presenciadb
       - REDIS_URL=redis://redis:6379
