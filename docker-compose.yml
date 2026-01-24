@@ -34,11 +34,7 @@ services:
       start_period: 40s
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.presencia-api.rule=Host(`apipresencia.110694.xyz`)"
-      - "traefik.http.routers.presencia-api.entrypoints=websecure"
-      - "traefik.http.routers.presencia-api.tls.certresolver=letsencrypt"
       - "traefik.http.services.presencia-api.loadbalancer.server.port=3000"
-      - "traefik.docker.network=dokploy-network"
     networks:
       - default
       - dokploy-network
