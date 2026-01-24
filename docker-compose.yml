@@ -4,8 +4,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    ports:
-      - "${API_PORT:-3000}:3000"
+    # Ports handled by Traefik in production
+    # ports:
+    #   - "${API_PORT:-3000}:3000"
     environment:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/presenciadb
       - REDIS_URL=redis://redis:6379
@@ -34,8 +35,9 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    ports:
-      - "5432:5432"
+    # Ports not exposed externally in production
+    # ports:
+    #   - "5432:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -57,8 +59,9 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    # Ports not exposed externally in production
+    # ports:
+    #   - "6379:6379"
     command: redis-server --appendonly yes --maxmemory 100mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
