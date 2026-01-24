@@ -32,6 +32,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.presencia-api.loadbalancer.server.port=3000"
 
   postgres:
     image: postgres:16-alpine
