@@ -57,6 +57,14 @@ export class ScraperService {
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
+                // Disable crash reporter to avoid crashpad_handler issues in Docker
+                '--disable-crash-reporter',
+                '--disable-crash-uploads',
+                '--disable-features=VizDisplayCompositor',
+                // Additional stability flags for containerized environments
+                '--disable-software-rasterizer',
+                '--disable-extensions',
+                '--disable-background-networking',
             ],
         });
 
