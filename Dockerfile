@@ -49,11 +49,6 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/prisma ./prisma
 
-# Install Playwright's Chromium (after copying node_modules)
-RUN npx playwright install chromium --with-deps
-
-# No need to set executable path env var - will be auto-detected
-
 # Copy and make start script executable
 COPY backend/start.sh ./start.sh
 RUN chmod +x ./start.sh
@@ -64,6 +59,10 @@ RUN groupadd -g 1001 nodejs && \
     chown -R nodejs:nodejs /app
 
 USER nodejs
+
+# Install Playwright's Chromium as the nodejs user (after USER nodejs)
+# This ensures it's installed in /home/nodejs/.cache/ms-playwright
+RUN npx playwright install chromium --with-deps
 
 EXPOSE 3000
 
