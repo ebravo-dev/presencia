@@ -4,19 +4,17 @@ import '../shared/models/profesor.dart';
 import '../shared/models/grupo.dart';
 import '../core/utils/utils.dart';
 import '../core/security/encryption_service.dart';
+import '../core/constants/api_constants.dart';
 
 class ApiService {
   late final Dio _dio;
   late final EncryptionService _encryptionService;
 
-  // TODO: Cambiar a 'https://campus.20040521.xyz' para producción
-  static const String baseUrl = 'http://localhost:3000';
-
   ApiService() {
     _encryptionService = EncryptionService();
     _dio = Dio(
       BaseOptions(
-        baseUrl: baseUrl,
+        baseUrl: ApiConstants.baseUrl,
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',

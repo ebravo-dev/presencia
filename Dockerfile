@@ -36,12 +36,17 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/prisma ./prisma
 
+# Copy and make start script executable
+COPY backend/start.sh ./start.sh
+RUN chmod +x ./start.sh
+
 # Create non-root user
 RUN groupadd -g 1001 nodejs && \
-    useradd -u 1001 -g nodejs nodejs
+    useradd -u 1001 -g nodejs nodejs && \
+    chown -R nodejs:nodejs /app
 
 USER nodejs
 
 EXPOSE 3000
 
-CMD ["node", "dist/app.js"]
+CMD ["./start.sh"]

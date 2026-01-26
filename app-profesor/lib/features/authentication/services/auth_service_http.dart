@@ -3,6 +3,7 @@ import '../models/auth_models.dart';
 import '../services/auth_service.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/utils/utils.dart';
+import '../../../core/services/rsa_encryption_service.dart';
 
 /// Implementación HTTP del servicio de autenticación
 /// Se conectará con la API real del backend cuando esté disponible
@@ -17,6 +18,11 @@ class AuthServiceHttp implements AuthService {
     _dio.options.receiveTimeout = Duration(
       milliseconds: ApiConstants.timeoutDuration,
     );
+
+    // Debug: Print actual baseUrl being used
+    Logger.info(
+      '🔧 AuthServiceHttp initialized with baseUrl: ${_dio.options.baseUrl}',
+    );
   }
 
   @override
@@ -24,9 +30,16 @@ class AuthServiceHttp implements AuthService {
     try {
       Logger.info('Iniciando login HTTP para: $email');
 
+      // Encrypt password with RSA
+      final encryptedPassword = rsaEncryptionService.encryptPassword(password);
+      Logger.info('Password encrypted successfully');
+
       final response = await _dio.post(
         ApiConstants.login,
-        data: {'email': email, 'password': password},
+        data: {
+          'institutionalEmail': email,
+          'encryptedPassword': encryptedPassword,
+        },
       );
 
       if (response.statusCode == 200) {
