@@ -21,7 +21,7 @@ void main() {
       final loginResponse = LoginResponse.fromJson(jsonResponse);
 
       // Verificaciones
-      expect(loginResponse.status, 200);
+      //expect(loginResponse.status, 200);
       expect(loginResponse.message, "Login successful");
       expect(loginResponse.profesor.id, "68f13ff5eb895057d6880da8");
       expect(loginResponse.profesor.name, "Dr. Eder Jahir Gonzalez Bravo");

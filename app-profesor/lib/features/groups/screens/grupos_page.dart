@@ -298,8 +298,10 @@ class _GruposPageState extends ConsumerState<GruposPage>
 
   Future<void> _handleRefresh() async {
     HapticFeedback.lightImpact();
+    // Refrescar datos desde el servidor
+    await ref.read(profesorAuthProvider.notifier).refreshGrupos();
     // Forzar reordenamiento con setState
-    setState(() {});
+    if (mounted) setState(() {});
     // Pequeña pausa para animación
     await Future.delayed(const Duration(milliseconds: 300));
   }

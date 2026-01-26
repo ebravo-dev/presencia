@@ -59,4 +59,58 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             }
         }
     );
+
+    /**
+     * POST /professors/sync
+     * Force sync groups for a professor (triggers scraping)
+     * Requires jwt authentication and password for UAT login
+     */
+    fastify.post<{ Body: LoginRequest }>(
+        '/professors/sync',
+        {
+            schema: {
+                body: {
+                    type: 'object',
+                    required: ['institutionalEmail', 'encryptedPassword'],
+                    properties: {
+                        institutionalEmail: { type: 'string', format: 'email' },
+                        encryptedPassword: { type: 'string' },
+                    },
+                },
+                security: [{ bearerAuth: [] }],
+            },
+            preHandler: [fastify.authenticate],
+        },
+        async (request: FastifyRequest<{ Body: LoginRequest }>, reply: FastifyReply) => {
+            try {
+                const { institutionalEmail, encryptedPassword } = request.body;
+                const user = request.user as { professorId: string; email: string };
+
+                if (user.email !== institutionalEmail) {
+                    return reply.code(403).send({
+                        statusCode: 403,
+                        error: 'Forbidden',
+                        message: 'No tienes permiso para sincronizar este usuario',
+                    });
+                }
+
+                const result = await authService.forceSync(
+                    user.professorId,
+                    institutionalEmail,
+                    encryptedPassword
+                );
+
+                return reply.code(200).send(result);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : 'Error en la sincronización';
+
+                request.log.error(error);
+                return reply.code(500).send({
+                    statusCode: 500,
+                    error: 'Internal Server Error',
+                    message: message,
+                });
+            }
+        }
+    );
 }

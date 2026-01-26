@@ -35,9 +35,23 @@ async function registerPlugins(): Promise<void> {
         credentials: true,
     });
 
-    // Security headers
+    // CSS/Security
     await fastify.register(helmet, {
         contentSecurityPolicy: false, // Disable for API server
+    });
+
+    // JWT
+    await fastify.register(import('@fastify/jwt'), {
+        secret: env.JWT_SECRET,
+    });
+
+    // Auth decorator
+    fastify.decorate('authenticate', async (request: any, reply: any) => {
+        try {
+            await request.jwtVerify();
+        } catch (err) {
+            reply.send(err);
+        }
     });
 }
 
