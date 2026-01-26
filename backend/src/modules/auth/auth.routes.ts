@@ -116,6 +116,68 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     );
 
     /**
+     * GET /debug/test-browser
+     * Simple test to verify Playwright/Chromium works on the server
+     * Just opens the UAT portal page and returns the title
+     */
+    fastify.get(
+        '/debug/test-browser',
+        async (request: FastifyRequest, reply: FastifyReply) => {
+            try {
+                request.log.info('🔍 Debug: Testing browser initialization...');
+
+                // Initialize scraper
+                await scraperService.init();
+
+                // Create a simple browser context
+                const browser = (scraperService as any).browser;
+                if (!browser) {
+                    throw new Error('Browser not initialized');
+                }
+
+                const context = await browser.newContext({
+                    viewport: { width: 1280, height: 720 },
+                    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                });
+
+                const page = await context.newPage();
+
+                // Navigate to UAT portal
+                await page.goto('https://administracionescolar.uat.edu.mx', {
+                    waitUntil: 'domcontentloaded',
+                    timeout: 30000
+                });
+
+                // Get page title and URL
+                const title = await page.title();
+                const url = page.url();
+
+                // Close context
+                await context.close();
+
+                return reply.code(200).send({
+                    success: true,
+                    message: 'Browser test successful',
+                    data: {
+                        title,
+                        url,
+                        timestamp: new Date().toISOString(),
+                    }
+                });
+            } catch (error) {
+                const message = error instanceof Error ? error.message : 'Unknown error';
+                request.log.error({ err: error }, `❌ Browser test failed: ${message}`);
+
+                return reply.code(500).send({
+                    success: false,
+                    error: message,
+                    stack: error instanceof Error ? error.stack : undefined,
+                });
+            }
+        }
+    );
+
+    /**
      * POST /debug/scrape-groups
      * Debug endpoint - Scrape groups directly without queue
      * Returns raw scraping results for debugging
