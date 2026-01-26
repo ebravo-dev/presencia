@@ -42,11 +42,16 @@ export class ScraperService {
     async init(): Promise<void> {
         if (this.browser) return;
 
-        const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+        // Support both uppercase and lowercase env var names
+        const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+            || process.env.playwright_chromium_executable_path
+            || '/usr/bin/chromium';
+
+        console.log(`🌐 Initializing browser with executable: ${executablePath}`);
 
         this.browser = await chromium.launch({
             headless: true,
-            executablePath: executablePath || undefined,
+            executablePath: executablePath,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -342,9 +347,9 @@ export class ScraperService {
         await this.selectDevExpressDropdown(page, '#ucDes', 'INGENIERIA');
         await page.waitForTimeout(2000); // Wait for Ciclo to load via AJAX
 
-        // Step 4: Select Ciclo escolar - look for "2025" and "OTOÑO"
-        console.log('4️⃣ Selecting Ciclo escolar: 2025 - 3 OTOÑO...');
-        await this.selectDevExpressDropdown(page, '#ucCicloEscolar', 'OTOÑO');
+        // Step 4: Select Ciclo escolar - the portal defaults to active period, but we'll select explicitly
+        console.log('4️⃣ Selecting Ciclo escolar: current PRIMAVERA period...');
+        await this.selectDevExpressDropdown(page, '#ucCicloEscolar', 'PRIMAVERA');
         await page.waitForTimeout(3000); // Wait for horarios table to load
 
         // Take screenshot after filling all filters
@@ -621,9 +626,9 @@ export class ScraperService {
             await page.waitForTimeout(2000);
         }
 
-        // Select Ciclo escolar
+        // Select Ciclo escolar - current active period
         console.log('2️⃣ Selecting Ciclo escolar...');
-        await this.selectDevExpressDropdown(page, '#ucCicloEscolar', 'OTOÑO');
+        await this.selectDevExpressDropdown(page, '#ucCicloEscolar', 'PRIMAVERA');
         await page.waitForTimeout(3000);
 
         await page.screenshot({ path: `${debugDir}/asistencia-after-filters.png` });

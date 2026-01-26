@@ -69,17 +69,19 @@ class RegisterRequest extends Equatable {
 
 @JsonSerializable()
 class LoginResponse extends Equatable {
-  final int status;
   final String message;
   @JsonKey(name: 'data')
   final Profesor profesor;
   final String token;
+  final String? currentPeriod;
+  final bool? needsSync;
 
   const LoginResponse({
-    required this.status,
     required this.message,
     required this.profesor,
     required this.token,
+    this.currentPeriod,
+    this.needsSync,
   });
 
   factory LoginResponse.fromJson(Map<String, dynamic> json) =>
@@ -88,5 +90,11 @@ class LoginResponse extends Equatable {
   Map<String, dynamic> toJson() => _$LoginResponseToJson(this);
 
   @override
-  List<Object?> get props => [status, message, profesor, token];
+  List<Object?> get props => [
+    message,
+    profesor,
+    token,
+    currentPeriod,
+    needsSync,
+  ];
 }

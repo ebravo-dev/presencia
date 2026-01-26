@@ -5,15 +5,16 @@ import type { LoginRequest, AuthResponse } from './auth.schemas.js';
 
 /**
  * Calculate the current academic period based on date
- * Enero-Mayo = Primavera, Junio-Julio = Verano, Agosto-Diciembre = Otoño
+ * Format matches UAT portal: "2026 - 1 PRIMAVERA", "2026 - 2 VERANO", "2026 - 3 OTOÑO"
+ * Enero-Mayo = 1 PRIMAVERA, Junio-Julio = 2 VERANO, Agosto-Diciembre = 3 OTOÑO
  */
 export function calculateCurrentPeriod(date: Date = new Date()): string {
     const month = date.getMonth() + 1; // 1-12
     const year = date.getFullYear();
 
-    if (month >= 1 && month <= 5) return `Primavera ${year}`;
-    if (month >= 6 && month <= 7) return `Verano ${year}`;
-    return `Otoño ${year}`;
+    if (month >= 1 && month <= 5) return `${year} - 1 PRIMAVERA`;
+    if (month >= 6 && month <= 7) return `${year} - 2 VERANO`;
+    return `${year} - 3 OTOÑO`;
 }
 
 export class AuthService {

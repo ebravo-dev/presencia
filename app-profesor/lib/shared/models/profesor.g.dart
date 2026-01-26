@@ -45,16 +45,18 @@ Map<String, dynamic> _$RegisterRequestToJson(RegisterRequest instance) =>
 
 LoginResponse _$LoginResponseFromJson(Map<String, dynamic> json) =>
     LoginResponse(
-      status: (json['status'] as num).toInt(),
       message: json['message'] as String,
       profesor: Profesor.fromJson(json['data'] as Map<String, dynamic>),
       token: json['token'] as String,
+      currentPeriod: json['currentPeriod'] as String?,
+      needsSync: json['needsSync'] as bool?,
     );
 
 Map<String, dynamic> _$LoginResponseToJson(LoginResponse instance) =>
     <String, dynamic>{
-      'status': instance.status,
       'message': instance.message,
       'data': instance.profesor,
       'token': instance.token,
+      'currentPeriod': instance.currentPeriod,
+      'needsSync': instance.needsSync,
     };
