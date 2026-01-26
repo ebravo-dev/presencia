@@ -53,6 +53,10 @@ COPY --from=builder /app/prisma ./prisma
 COPY backend/start.sh ./start.sh
 RUN chmod +x ./start.sh
 
+# Install Playwright system dependencies as root (before USER nodejs)
+# This installs all the apt packages needed by Chromium
+RUN npx playwright install-deps chromium
+
 # Create non-root user
 RUN groupadd -g 1001 nodejs && \
     useradd -u 1001 -g nodejs nodejs && \
@@ -60,9 +64,9 @@ RUN groupadd -g 1001 nodejs && \
 
 USER nodejs
 
-# Install Playwright's Chromium as the nodejs user (after USER nodejs)
-# This ensures it's installed in /home/nodejs/.cache/ms-playwright
-RUN npx playwright install chromium --with-deps
+# Install Playwright's Chromium binary as the nodejs user (without --with-deps)
+# System deps are already installed above, this just downloads the browser
+RUN npx playwright install chromium
 
 EXPOSE 3000
 
