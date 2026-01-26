@@ -1,4 +1,5 @@
 # Node.js multi-stage build - backend from root context
+# Build timestamp: 2026-01-26T02:57:00Z - force rebuild
 FROM node:20-slim AS builder
 WORKDIR /app
 
