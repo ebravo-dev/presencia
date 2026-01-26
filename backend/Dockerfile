@@ -1,4 +1,4 @@
-# Build stage
+# Build stage - v2 (force rebuild)
 FROM node:20-slim AS builder
 
 WORKDIR /app
