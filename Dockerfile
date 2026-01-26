@@ -16,26 +16,43 @@ RUN npm run build
 FROM node:20-slim AS production
 WORKDIR /app
 
-# Install Chromium for Playwright
+# Install dependencies for Playwright Chromium (no chromium package itself)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
+    # Dependencies for Playwright's Chromium
     libnss3 \
-    libfreetype6 \
-    libharfbuzz0b \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libdbus-1-3 \
+    libxkbcommon0 \
+    libatspi2.0-0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libasound2 \
+    libxshmfence1 \
+    # Utilities
     ca-certificates \
-    fonts-freefont-ttf \
+    fonts-liberation \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=1 \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
-    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
-
-# Copy built application
+# Copy built application FIRST
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/prisma ./prisma
+
+# Install Playwright's Chromium (after copying node_modules)
+RUN npx playwright install chromium --with-deps
+
+# No need to set executable path env var - will be auto-detected
 
 # Copy and make start script executable
 COPY backend/start.sh ./start.sh
