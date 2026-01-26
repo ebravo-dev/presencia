@@ -21,9 +21,12 @@ export interface ScrapingJobResult {
 }
 
 // Redis connection options
+const redisUrl = new URL(env.REDIS_URL);
 const redisConnection = {
-    host: new URL(env.REDIS_URL).hostname,
-    port: parseInt(new URL(env.REDIS_URL).port) || 6379,
+    host: redisUrl.hostname,
+    port: parseInt(redisUrl.port) || 6379,
+    password: redisUrl.password || undefined,
+    username: redisUrl.username || undefined,
 };
 
 // Create scraping queue
