@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authService } from './auth.service.js';
 import { loginSchema, type LoginRequest } from './auth.schemas.js';
+import { scraperService } from '../scraper/scraper.service.js';
+import { rsaService } from '../../core/security/index.js';
 
 export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     /**
@@ -77,7 +79,6 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
                         encryptedPassword: { type: 'string' },
                     },
                 },
-                security: [{ bearerAuth: [] }],
             },
             preHandler: [fastify.authenticate],
         },
@@ -109,6 +110,65 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
                     statusCode: 500,
                     error: 'Internal Server Error',
                     message: message,
+                });
+            }
+        }
+    );
+
+    /**
+     * POST /debug/scrape-groups
+     * Debug endpoint - Scrape groups directly without queue
+     * Returns raw scraping results for debugging
+     * WARNING: Only for development/debugging
+     */
+    fastify.post<{ Body: LoginRequest }>(
+        '/debug/scrape-groups',
+        {
+            schema: {
+                body: {
+                    type: 'object',
+                    required: ['institutionalEmail', 'encryptedPassword'],
+                    properties: {
+                        institutionalEmail: { type: 'string', format: 'email' },
+                        encryptedPassword: { type: 'string' },
+                    },
+                },
+            },
+        },
+        async (request: FastifyRequest<{ Body: LoginRequest }>, reply: FastifyReply) => {
+            try {
+                const { institutionalEmail, encryptedPassword } = request.body;
+
+                // Decrypt password
+                const decryptedPassword = rsaService.decryptPassword(encryptedPassword);
+
+                request.log.info(`🔍 Debug: Starting scrape for ${institutionalEmail}`);
+
+                // Initialize scraper
+                await scraperService.init();
+
+                // Scrape groups directly (synchronous for debugging)
+                const result = await scraperService.scrapeGroups(institutionalEmail, decryptedPassword);
+
+                // Return raw results for debugging
+                return reply.code(200).send({
+                    success: result.success,
+                    groupCount: result.groups.length,
+                    groups: result.groups,
+                    error: result.error,
+                    debug: {
+                        email: institutionalEmail,
+                        timestamp: new Date().toISOString(),
+                    }
+                });
+            } catch (error) {
+                const message = error instanceof Error ? error.message : 'Unknown error';
+                request.log.error({ err: error }, `❌ Debug scraping failed: ${message}`);
+
+                return reply.code(500).send({
+                    success: false,
+                    error: message,
+                    stack: error instanceof Error ? error.stack : undefined,
                 });
             }
         }

@@ -124,6 +124,47 @@ class ApiService {
     }
   }
 
+  /// Fuerza la sincronización de grupos desatando el scraping
+  /// Endpoint: POST /professors/sync
+  Future<Either<String, String>> forceSync({
+    required String email,
+    required String password,
+    required String token,
+  }) async {
+    try {
+      Logger.info('Iniciando sincronización forzada para: $email');
+
+      // Encriptar contraseña
+      final encryptedPassword = _encryptionService.encryptPassword(password);
+
+      final response = await _dio.post(
+        '/professors/sync',
+        data: {
+          'institutionalEmail': email,
+          'encryptedPassword': encryptedPassword,
+        },
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+
+      if (response.statusCode == 200) {
+        final message = response.data['message'] ?? 'Sincronización iniciada';
+        Logger.info('Sincronización iniciada exitosamente');
+        return Right(message);
+      } else {
+        final errorMessage = response.data['message'] ?? 'Error al sincronizar';
+        Logger.error('Error en sincronización: $errorMessage');
+        return Left(errorMessage);
+      }
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error('Error de conexión en sincronización: $errorMessage', e);
+      return Left(errorMessage);
+    } catch (e, stackTrace) {
+      Logger.error('Error inesperado en sincronización', e, stackTrace);
+      return Left('Error inesperado: ${e.toString()}');
+    }
+  }
+
   /// Maneja errores de Dio y devuelve mensajes amigables
   String _handleDioError(DioException e) {
     switch (e.type) {

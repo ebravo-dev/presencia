@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dartz/dartz.dart';
 import '../../../shared/models/profesor.dart';
 import '../../../shared/models/grupo.dart';
 import '../../../services/api_service.dart';
@@ -185,6 +186,22 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     if (!state.isAuthenticated) return;
     Logger.info('🔄 Refrescando clases (forzando descarga desde servidor)');
     await _loadGrupos(forceRefresh: true);
+  }
+
+  /// Sincronizar ciclo (scraping forzado)
+  Future<Either<String, String>> syncGroups(String password) async {
+    if (!state.isAuthenticated ||
+        state.profesor == null ||
+        state.token == null) {
+      return Left('No hay sesión activa');
+    }
+
+    // Usar ApiService para iniciar sync forzada
+    return _apiService.forceSync(
+      email: state.profesor!.institutionalEmail,
+      password: password,
+      token: state.token!,
+    );
   }
 
   /// Verificar si existe una sesión almacenada y restaurarla

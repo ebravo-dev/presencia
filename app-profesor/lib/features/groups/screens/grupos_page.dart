@@ -924,6 +924,151 @@ class _GruposPageState extends ConsumerState<GruposPage>
     ); // Cierre SizedBox
   }
 
+  void _showSyncDialog(BuildContext context) {
+    final passwordController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool obscureText = true;
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            backgroundColor: Colors.grey.shade900,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: const Row(
+              children: [
+                Icon(Icons.sync_rounded, color: Colors.blueAccent),
+                SizedBox(width: 12),
+                Text(
+                  'Sincronizar Ciclo',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Ingresa tu contraseña de la UAT para descargar tus clases actualizadas.',
+                  style: TextStyle(fontSize: 14, color: Colors.white70),
+                ),
+                const SizedBox(height: 16),
+                Form(
+                  key: formKey,
+                  child: TextFormField(
+                    controller: passwordController,
+                    obscureText: obscureText,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'Contraseña UAT',
+                      labelStyle: TextStyle(color: Colors.grey.shade400),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade700),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Colors.blueAccent),
+                      ),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          obscureText
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                          color: Colors.grey,
+                        ),
+                        onPressed: () {
+                          setState(() => obscureText = !obscureText);
+                        },
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Ingresa tu contraseña';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+                if (isLoading) ...[
+                  const SizedBox(height: 20),
+                  const CircularProgressIndicator(color: Colors.blueAccent),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Solicitando sincronización...',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: isLoading ? null : () => Navigator.of(context).pop(),
+                child: const Text(
+                  'Cancelar',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              ),
+              FilledButton(
+                onPressed: isLoading
+                    ? null
+                    : () async {
+                        FocusScope.of(context).unfocus();
+                        if (formKey.currentState!.validate()) {
+                          setState(() => isLoading = true);
+
+                          final result = await ref
+                              .read(profesorAuthProvider.notifier)
+                              .syncGroups(passwordController.text);
+
+                          if (context.mounted) {
+                            Navigator.of(context).pop();
+
+                            result.fold(
+                              (error) =>
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(error),
+                                      backgroundColor: Colors.red,
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  ),
+                              (message) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(message),
+                                    backgroundColor: Colors.green,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                                // Iniciar polling o simplemente refrescar la vista (aunque tardará en llegar la data)
+                                _handleRefresh();
+                              },
+                            );
+                          }
+                        }
+                      },
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Sincronizar'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   void _showOptionsMenu(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -985,6 +1130,24 @@ class _GruposPageState extends ConsumerState<GruposPage>
               const SizedBox(height: 8),
 
               // Opciones
+              ListTile(
+                leading: const Icon(
+                  Icons.sync_rounded,
+                  color: Colors.blueAccent,
+                ),
+                title: const Text(
+                  'Sincronizar Ciclo',
+                  style: TextStyle(color: Colors.white),
+                ),
+                subtitle: Text(
+                  'Descargar clases del portal (requiere contraseña)',
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showSyncDialog(context);
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.delete_sweep, color: Colors.orange),
                 title: const Text(
