@@ -57,9 +57,9 @@ RUN chmod +x ./start.sh
 # This installs all the apt packages needed by Chromium
 RUN npx playwright install-deps chromium
 
-# Create non-root user
+# Create non-root user with home directory (needed for playwright cache)
 RUN groupadd -g 1001 nodejs && \
-    useradd -u 1001 -g nodejs nodejs && \
+    useradd -m -u 1001 -g nodejs nodejs && \
     chown -R nodejs:nodejs /app
 
 USER nodejs
