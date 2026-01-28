@@ -58,7 +58,54 @@ async function processScrapingJob(
             });
         }
 
-        console.log(`✅ Job ${job.id} completed: ${result.groups.length} groups saved`);
+        // Scrape students for each group
+        console.log(`👥 Scraping students for ${result.groups.length} groups...`);
+
+        for (const group of result.groups) {
+            // Find the group in database to get its ID
+            const dbGroup = await prisma.group.findFirst({
+                where: {
+                    code: group.code,
+                    professorId,
+                    period: currentPeriod,
+                },
+            });
+
+            if (!dbGroup) {
+                console.log(`⚠️ Group ${group.code} not found in database, skipping students`);
+                continue;
+            }
+
+            console.log(`📚 Scraping students for: ${group.code}`);
+            const studentsResult = await scraperService.scrapeStudents(email, password, group.code);
+
+            if (studentsResult.success && studentsResult.students.length > 0) {
+                for (const student of studentsResult.students) {
+                    await prisma.student.upsert({
+                        where: {
+                            matricula_groupId: {
+                                matricula: student.matricula,
+                                groupId: dbGroup.id,
+                            },
+                        },
+                        create: {
+                            matricula: student.matricula,
+                            name: student.name,
+                            groupId: dbGroup.id,
+                        },
+                        update: {
+                            name: student.name,
+                        },
+                    });
+                }
+                studentsCount += studentsResult.students.length;
+                console.log(`   ✅ Saved ${studentsResult.students.length} students`);
+            } else {
+                console.log(`   ⚠️ No students found or scraping failed for ${group.code}`);
+            }
+        }
+
+        console.log(`✅ Job ${job.id} completed: ${result.groups.length} groups, ${studentsCount} students saved`);
 
         // Clear password from job data (security measure)
         // Note: BullMQ may have already stored this in Redis temporarily

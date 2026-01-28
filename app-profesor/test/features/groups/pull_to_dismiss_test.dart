@@ -8,9 +8,9 @@ void main() {
     WidgetTester tester,
   ) async {
     final grupo = Grupo(
+      id: 'test-id-1',
       group: 'A',
-      subject: 'Matemáticas',
-      period: 2024,
+      name: 'Matemáticas',
       classroom: 'A101',
       students: [],
     );
@@ -41,9 +41,9 @@ void main() {
     WidgetTester tester,
   ) async {
     final grupo = Grupo(
+      id: 'test-id-2',
       group: 'A',
-      subject: 'Matemáticas',
-      period: 2024,
+      name: 'Matemáticas',
       classroom: 'A101',
       students: [],
     );
@@ -102,9 +102,9 @@ void main() {
     WidgetTester tester,
   ) async {
     final grupo = Grupo(
+      id: 'test-id-3',
       group: 'A',
-      subject: 'Matemáticas',
-      period: 2024,
+      name: 'Matemáticas',
       classroom: 'A101',
       students: [],
     );
@@ -142,9 +142,9 @@ void main() {
     (WidgetTester tester) async {
       // Crear un grupo sin estudiantes para simular poco contenido
       final grupo = Grupo(
+        id: 'test-id-4',
         group: 'A',
-        subject: 'Matemáticas',
-        period: 2024,
+        name: 'Matemáticas',
         classroom: 'A101',
         students: [], // Sin estudiantes = poco contenido
       );

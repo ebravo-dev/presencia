@@ -6,20 +6,27 @@ part 'grupo.g.dart';
 
 @JsonSerializable()
 class Grupo extends Equatable {
+  final String id;
+  final String? code;
   final String group;
   final String classroom;
-  final String subject;
-  final int period;
+  final String name; // Subject name from API
+  final String? level;
   final List<Alumno> students;
   final Map<String, String?>? schedule;
+  @JsonKey(defaultValue: 0)
+  final int studentsCount;
 
   const Grupo({
+    required this.id,
+    this.code,
     required this.group,
     required this.classroom,
-    required this.subject,
-    required this.period,
+    required this.name,
+    this.level,
     required this.students,
     this.schedule,
+    this.studentsCount = 0,
   });
 
   factory Grupo.fromJson(Map<String, dynamic> json) => _$GrupoFromJson(json);
@@ -28,18 +35,22 @@ class Grupo extends Equatable {
 
   @override
   List<Object?> get props => [
+    id,
+    code,
     group,
     classroom,
-    subject,
-    period,
+    name,
+    level,
     students,
     schedule,
+    studentsCount,
   ];
 
-  String get nombre => 'Grupo $group';
-  String get materia => subject;
-  int get totalAlumnos => students.length;
-  String get infoCompleta => '$subject - Grupo $group (Periodo $period)';
+  // Compatibility getters
+  String get subject => name;
+  String get materia => name;
+  int get totalAlumnos => students.isNotEmpty ? students.length : studentsCount;
+  String get infoCompleta => '$name - Grupo $group';
   String get aula => classroom;
 
   /// Genera un identificador único para este grupo basado en salón + materia + grupo
@@ -59,34 +70,73 @@ class Grupo extends Equatable {
     return '${classroomNormalizado}_${subjectNormalizado}_$group';
   }
 
+  /// Días en español e inglés (API puede devolver en cualquiera de los dos)
+  static const List<String> _diasEspanol = [
+    'lunes',
+    'martes',
+    'miercoles',
+    'jueves',
+    'viernes',
+    'sabado',
+    'domingo',
+  ];
+  static const List<String> _diasIngles = [
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+    'sunday',
+  ];
+  static const Map<String, String> _diasAbreviados = {
+    'lunes': 'L',
+    'monday': 'L',
+    'martes': 'Ma',
+    'tuesday': 'Ma',
+    'miercoles': 'Mi',
+    'wednesday': 'Mi',
+    'jueves': 'J',
+    'thursday': 'J',
+    'viernes': 'V',
+    'friday': 'V',
+    'sabado': 'S',
+    'saturday': 'S',
+    'domingo': 'D',
+    'sunday': 'D',
+  };
+  static const Map<String, int> _diasToWeekday = {
+    'lunes': 1,
+    'monday': 1,
+    'martes': 2,
+    'tuesday': 2,
+    'miercoles': 3,
+    'wednesday': 3,
+    'jueves': 4,
+    'thursday': 4,
+    'viernes': 5,
+    'friday': 5,
+    'sabado': 6,
+    'saturday': 6,
+    'domingo': 7,
+    'sunday': 7,
+  };
+
   /// Obtiene el horario (ej: "13:00-14:00") desde el schedule
   /// Usa el primer día que tenga horario disponible
   String? get horario {
     if (schedule == null) {
-      print('⚠️ Schedule es NULL para grupo $group');
       return null;
     }
 
-    print('📅 Schedule para grupo $group: $schedule');
-
-    final dias = [
-      'monday',
-      'tuesday',
-      'wednesday',
-      'thursday',
-      'friday',
-      'saturday',
-      'sunday',
-    ];
-    for (final dia in dias) {
+    // Buscar en días español e inglés
+    final todosLosDias = [..._diasEspanol, ..._diasIngles];
+    for (final dia in todosLosDias) {
       final horarioDia = schedule![dia];
-      print('  - $dia: $horarioDia');
       if (horarioDia != null && horarioDia.isNotEmpty) {
-        print('✅ Horario encontrado: $horarioDia');
         return horarioDia;
       }
     }
-    print('❌ No se encontró horario en schedule');
     return null;
   }
 
@@ -94,30 +144,25 @@ class Grupo extends Equatable {
   String? get diasClase {
     if (schedule == null) return null;
 
-    final Map<String, String> diasAbrev = {
-      'monday': 'L',
-      'tuesday': 'Ma',
-      'wednesday': 'Mi',
-      'thursday': 'J',
-      'friday': 'V',
-      'saturday': 'S',
-      'sunday': 'D',
-    };
-
     final diasConHorario = <String>[];
-    final orden = [
-      'monday',
-      'tuesday',
-      'wednesday',
-      'thursday',
-      'friday',
-      'saturday',
-      'sunday',
-    ];
+    // Orden de días de la semana (usamos español como referencia)
+    final ordenDias = [1, 2, 3, 4, 5, 6, 7]; // L, Ma, Mi, J, V, S, D
 
-    for (final dia in orden) {
-      if (schedule![dia] != null && schedule![dia]!.isNotEmpty) {
-        diasConHorario.add(diasAbrev[dia]!);
+    // Recopilar todos los días que tienen horario
+    final diasEncontrados = <int, String>{};
+    schedule!.forEach((dia, horarioVal) {
+      if (horarioVal != null && horarioVal.isNotEmpty) {
+        final weekday = _diasToWeekday[dia.toLowerCase()];
+        if (weekday != null) {
+          diasEncontrados[weekday] = _diasAbreviados[dia.toLowerCase()] ?? dia;
+        }
+      }
+    });
+
+    // Ordenar por weekday
+    for (final wd in ordenDias) {
+      if (diasEncontrados.containsKey(wd)) {
+        diasConHorario.add(diasEncontrados[wd]!);
       }
     }
 
@@ -125,10 +170,8 @@ class Grupo extends Equatable {
     if (diasConHorario.length == 1) return diasConHorario.first;
 
     // Si son días consecutivos, usar formato "L-V"
-    if (_sonConsecutivos(
-      diasConHorario,
-      orden.map((d) => diasAbrev[d]!).toList(),
-    )) {
+    final ordenAbrev = ['L', 'Ma', 'Mi', 'J', 'V', 'S', 'D'];
+    if (_sonConsecutivos(diasConHorario, ordenAbrev)) {
       return '${diasConHorario.first}-${diasConHorario.last}';
     }
 
@@ -155,23 +198,17 @@ class Grupo extends Equatable {
   List<int> get weekdaysConClase {
     if (schedule == null) return [];
 
-    final Map<String, int> diaToWeekday = {
-      'monday': 1,
-      'tuesday': 2,
-      'wednesday': 3,
-      'thursday': 4,
-      'friday': 5,
-      'saturday': 6,
-      'sunday': 7,
-    };
-
     final weekdays = <int>[];
-    schedule!.forEach((dia, horario) {
-      if (horario != null && horario.isNotEmpty) {
-        weekdays.add(diaToWeekday[dia]!);
+    schedule!.forEach((dia, horarioVal) {
+      if (horarioVal != null && horarioVal.isNotEmpty) {
+        final weekday = _diasToWeekday[dia.toLowerCase()];
+        if (weekday != null && !weekdays.contains(weekday)) {
+          weekdays.add(weekday);
+        }
       }
     });
 
+    weekdays.sort();
     return weekdays;
   }
 }

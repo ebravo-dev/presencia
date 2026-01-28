@@ -87,6 +87,14 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
                     level: true,
                     classroom: true,
                     schedule: true,
+                    students: {
+                        select: {
+                            id: true,
+                            matricula: true,
+                            name: true,
+                        },
+                        orderBy: { name: 'asc' },
+                    },
                     _count: {
                         select: { students: true },
                     },
@@ -95,15 +103,28 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
             });
 
             // Transform to match Flutter app expected format
-            const formattedGroups = groups.map((group) => ({
-                id: group.id,
-                code: group.code,
-                name: group.name,
-                level: group.level,
-                classroom: group.classroom,
-                schedule: group.schedule,
-                studentsCount: group._count.students,
-            }));
+            const formattedGroups = groups.map((group) => {
+                // Extract group letter/number from code (e.g., "RC.06061.2873.5-5" -> "5-5")
+                const codeMatch = group.code.match(/\.(\d+-\d+)$/);
+                const groupCode = codeMatch ? codeMatch[1] : group.code;
+
+                return {
+                    id: group.id,
+                    code: group.code,
+                    group: groupCode, // For Flutter compatibility
+                    name: group.name,
+                    level: group.level,
+                    classroom: group.classroom,
+                    schedule: group.schedule,
+                    students: group.students.map((student, index) => ({
+                        id: student.id,
+                        matricula: student.matricula,
+                        name: student.name,
+                        number: index + 1, // For Flutter's Alumno model
+                    })),
+                    studentsCount: group._count.students,
+                };
+            });
 
             return reply.send({ data: formattedGroups });
         }
