@@ -618,10 +618,16 @@ export class ScraperService {
                     // This ensures clean state - avoids accordion visibility issues
                     console.log(`   🔄 Navigating to Control de Asistencia...`);
                     await page.goto('https://administracionescolar.uat.edu.mx/Profesor/ControlAsistencia/Index', {
-                        waitUntil: 'networkidle',
+                        waitUntil: 'domcontentloaded',
                         timeout: 30000,
                     });
-                    await page.waitForTimeout(2000);
+
+                    // Wait for Grupos table to be visible (this is what we need, not networkidle)
+                    await page.waitForSelector('#grdGrupos .dx-datagrid-rowsview .dx-data-row', {
+                        state: 'visible',
+                        timeout: 15000,
+                    });
+                    await page.waitForTimeout(1000); // Small delay for UI to settle
 
                     // Click on the group in the Grupos table
                     const students = await this.selectGroupAndExtractStudents(page, groupCode, debugDir);
