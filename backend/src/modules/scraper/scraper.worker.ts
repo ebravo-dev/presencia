@@ -58,29 +58,25 @@ async function processScrapingJob(
             });
         }
 
-        // Scrape students for each group
-        console.log(`👥 Scraping students for ${result.groups.length} groups...`);
+        // Scrape students for ALL groups in a single session (efficient)
+        console.log(`👥 Scraping students for ${result.groups.length} groups in single session...`);
 
-        for (const group of result.groups) {
-            // Find the group in database to get its ID
-            const dbGroup = await prisma.group.findFirst({
-                where: {
-                    code: group.code,
-                    professorId,
-                    period: currentPeriod,
-                },
-            });
+        const groupCodes = result.groups.map(g => g.code);
+        const studentsResult = await scraperService.scrapeAllStudentsInSession(email, password, groupCodes);
 
-            if (!dbGroup) {
-                console.log(`⚠️ Group ${group.code} not found in database, skipping students`);
-                continue;
-            }
+        if (studentsResult.success) {
+            // Save students to database
+            for (const [groupCode, students] of studentsResult.studentsByGroup) {
+                const dbGroup = await prisma.group.findFirst({
+                    where: { code: groupCode, professorId, period: currentPeriod },
+                });
 
-            console.log(`📚 Scraping students for: ${group.code}`);
-            const studentsResult = await scraperService.scrapeStudents(email, password, group.code);
+                if (!dbGroup) {
+                    console.log(`⚠️ Group ${groupCode} not found in database, skipping students`);
+                    continue;
+                }
 
-            if (studentsResult.success && studentsResult.students.length > 0) {
-                for (const student of studentsResult.students) {
+                for (const student of students) {
                     await prisma.student.upsert({
                         where: {
                             matricula_groupId: {
@@ -98,11 +94,14 @@ async function processScrapingJob(
                         },
                     });
                 }
-                studentsCount += studentsResult.students.length;
-                console.log(`   ✅ Saved ${studentsResult.students.length} students`);
-            } else {
-                console.log(`   ⚠️ No students found or scraping failed for ${group.code}`);
+                studentsCount += students.length;
             }
+
+            if (studentsResult.errors.length > 0) {
+                console.log(`⚠️ Some groups had errors: ${studentsResult.errors.join(', ')}`);
+            }
+        } else {
+            console.log(`⚠️ Student scraping session failed`);
         }
 
         console.log(`✅ Job ${job.id} completed: ${result.groups.length} groups, ${studentsCount} students saved`);

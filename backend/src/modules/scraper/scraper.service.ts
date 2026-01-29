@@ -522,10 +522,8 @@ export class ScraperService {
     }
 
     /**
-     * Scrape students for a specific group
-     * @param email - Professor's institutional email
-     * @param password - Decrypted password
-     * @param groupCode - Group code to fetch students for (e.g., "RC.06061.2873.5-5")
+     * Scrape students for a specific group (standalone - creates new session)
+     * @deprecated Use scrapeAllStudentsInSession for better efficiency
      */
     async scrapeStudents(
         email: string,
@@ -545,7 +543,60 @@ export class ScraperService {
         const debugDir = './debug-screenshots';
 
         try {
-            // Step 1: Login
+            // Login
+            console.log(`🔐 Logging in as ${email}...`);
+            await this.login(page, email, password);
+
+            // Navigate to Control de Asistencia
+            console.log('📋 Navigating to Control de Asistencia...');
+            await this.navigateToControlAsistencia(page);
+
+            // Select group and extract students
+            console.log(`📝 Selecting group ${groupCode}...`);
+            await this.fillAsistenciaFilters(page, groupCode, debugDir);
+
+            console.log('📊 Extracting students...');
+            const students = await this.extractStudents(page);
+
+            console.log(`✅ Scraped ${students.length} students`);
+
+            return { success: true, students };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            console.error('❌ Student scraping failed:', errorMessage);
+            await page.screenshot({ path: `${debugDir}/students-error.png` });
+            return { success: false, students: [], error: errorMessage };
+        } finally {
+            await context.close();
+        }
+    }
+
+    /**
+     * Scrape students for ALL groups in a single login session
+     * Much more efficient than calling scrapeStudents per group
+     * @returns Map of groupCode -> students array
+     */
+    async scrapeAllStudentsInSession(
+        email: string,
+        password: string,
+        groupCodes: string[]
+    ): Promise<{ success: boolean; studentsByGroup: Map<string, ScrapedStudent[]>; errors: string[] }> {
+        if (!this.browser) {
+            await this.init();
+        }
+
+        const context = await this.browser!.newContext({
+            viewport: { width: 1280, height: 720 },
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        });
+
+        const page = await context.newPage();
+        const debugDir = './debug-screenshots';
+        const studentsByGroup = new Map<string, ScrapedStudent[]>();
+        const errors: string[] = [];
+
+        try {
+            // Step 1: Login ONCE
             console.log(`🔐 Logging in as ${email}...`);
             await this.login(page, email, password);
 
@@ -553,35 +604,99 @@ export class ScraperService {
             console.log('📋 Navigating to Control de Asistencia...');
             await this.navigateToControlAsistencia(page);
 
-            // Step 3: Fill filters and select group
-            console.log(`📝 Selecting group ${groupCode}...`);
-            await this.fillAsistenciaFilters(page, groupCode, debugDir);
+            // Step 3: Select Ciclo escolar (only once)
+            console.log('📅 Selecting Ciclo escolar...');
+            const cicloSelected = await this.selectDevExpressDropdown(page, '#ucCicloEscolar', 'OTOÑO');
+            if (!cicloSelected) {
+                await this.selectDevExpressDropdown(page, '#ucCicloEscolar', 'PRIMAVERA');
+            }
+            await page.waitForTimeout(3000);
 
-            // Step 4: Extract students
-            console.log('📊 Extracting students...');
-            const students = await this.extractStudents(page);
+            // Step 4: For each group, select it and extract students
+            for (let i = 0; i < groupCodes.length; i++) {
+                const groupCode = groupCodes[i];
+                console.log(`\n👥 [${i + 1}/${groupCodes.length}] Processing group: ${groupCode}`);
 
-            console.log(`✅ Scraped ${students.length} students`);
+                try {
+                    // Click on the group in the Grupos table
+                    const students = await this.selectGroupAndExtractStudents(page, groupCode, debugDir);
+                    studentsByGroup.set(groupCode, students);
+                    console.log(`   ✅ Extracted ${students.length} students`);
+                } catch (error) {
+                    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+                    errors.push(`${groupCode}: ${errorMsg}`);
+                    console.log(`   ❌ Failed: ${errorMsg}`);
+                }
+            }
 
-            return {
-                success: true,
-                students,
-            };
+            console.log(`\n✅ Completed scraping ${groupCodes.length} groups`);
+            return { success: true, studentsByGroup, errors };
+
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            console.error('❌ Student scraping failed:', errorMessage);
-
-            // Save debug screenshot on error
-            await page.screenshot({ path: `${debugDir}/students-error.png` });
-
-            return {
-                success: false,
-                students: [],
-                error: errorMessage,
-            };
+            console.error('❌ Session scraping failed:', errorMessage);
+            await page.screenshot({ path: `${debugDir}/session-error.png` });
+            return { success: false, studentsByGroup, errors: [errorMessage, ...errors] };
         } finally {
             await context.close();
         }
+    }
+
+    /**
+     * Select a specific group and extract its students (within an existing session)
+     */
+    private async selectGroupAndExtractStudents(
+        page: Page,
+        groupCode: string,
+        debugDir: string
+    ): Promise<ScrapedStudent[]> {
+        // Wait for Grupos table
+        await page.waitForSelector('#grdGrupos .dx-datagrid-rowsview .dx-data-row', { timeout: 10000 });
+
+        // Find and click the matching group row
+        const groupRows = await page.$$('#grdGrupos .dx-datagrid-rowsview .dx-data-row');
+        let groupClicked = false;
+
+        for (const row of groupRows) {
+            const rowText = await row.textContent();
+            const codeMatch = groupCode.match(/RC\.\d+\.\d+\.\d+-\d+/);
+            const searchPattern = codeMatch ? codeMatch[0] : groupCode;
+
+            if (rowText && rowText.includes(searchPattern)) {
+                await row.click();
+                groupClicked = true;
+                await page.waitForTimeout(2000);
+                break;
+            }
+        }
+
+        if (!groupClicked) {
+            throw new Error(`Group ${groupCode} not found in table`);
+        }
+
+        // Wait for Semanas table and click first week
+        await page.waitForSelector('#grdSemanas .dx-datagrid-rowsview .dx-data-row', { timeout: 10000 });
+        const weekRows = await page.$$('#grdSemanas .dx-datagrid-rowsview .dx-data-row');
+
+        if (weekRows.length > 0) {
+            await weekRows[0].click();
+            await page.waitForTimeout(3000);
+        }
+
+        // Wait for Asistencia table
+        try {
+            await page.waitForSelector('#grdAsistencias .dx-datagrid-rowsview .dx-data-row', { timeout: 10000 });
+        } catch {
+            // Try to expand the Asistencia section
+            const header = await page.$('.dx-accordion-item:has-text("Asistencia") .dx-accordion-item-title');
+            if (header) {
+                await header.click();
+                await page.waitForTimeout(2000);
+            }
+        }
+
+        // Extract students
+        return await this.extractStudents(page);
     }
 
     /**
@@ -615,77 +730,109 @@ export class ScraperService {
      * The page has: Dependencia académica, Ciclo escolar, and a Groups table
      */
     private async fillAsistenciaFilters(page: Page, groupCode: string, debugDir: string): Promise<void> {
-        // Wait for page to load
+        const fs = await import('fs');
+        await fs.promises.mkdir(debugDir, { recursive: true });
+
+        // Wait for page to fully load
         await page.waitForTimeout(3000);
 
-        // The Control de Asistencia page has different selectors than Consultas
-        // It shows: Dependencia académica and Ciclo escolar
+        // Step 1: Select Ciclo escolar - look for OTOÑO (current period)
+        console.log('1️⃣ Selecting Ciclo escolar...');
+        const cicloSelected = await this.selectDevExpressDropdown(page, '#ucCicloEscolar', 'OTOÑO');
+        if (!cicloSelected) {
+            // Try PRIMAVERA as fallback
+            await this.selectDevExpressDropdown(page, '#ucCicloEscolar', 'PRIMAVERA');
+        }
+        await page.waitForTimeout(3000);
 
-        // Try to select Dependencia if available (might already be set)
-        console.log('1️⃣ Checking Dependencia académica...');
-        const depSelect = await page.$('#ucDependencia, .dx-selectbox');
-        if (depSelect) {
-            await this.selectDevExpressDropdown(page, '#ucDependencia', 'INGENIERIA');
+        await page.screenshot({ path: `${debugDir}/asistencia-after-ciclo.png` });
+
+        // Step 2: Wait for Grupos table to have data and click the row matching our group
+        console.log(`2️⃣ Looking for group: ${groupCode}...`);
+
+        // Wait for the Grupos grid to have data rows
+        try {
+            await page.waitForSelector('#grdGrupos .dx-datagrid-rowsview .dx-data-row', { timeout: 10000 });
+        } catch {
+            console.log('⚠️ Grupos table not found or empty');
+            await page.screenshot({ path: `${debugDir}/no-grupos-table.png` });
+        }
+
+        // Try to find and click the row that contains our group code
+        const groupRows = await page.$$('#grdGrupos .dx-datagrid-rowsview .dx-data-row');
+        console.log(`   Found ${groupRows.length} group rows`);
+
+        let groupClicked = false;
+        for (const row of groupRows) {
+            const rowText = await row.textContent();
+            // Check if this row contains our group code (partial match)
+            const codeMatch = groupCode.match(/RC\.\d+\.\d+\.\d+-\d+/);
+            const searchPattern = codeMatch ? codeMatch[0] : groupCode;
+
+            if (rowText && rowText.includes(searchPattern)) {
+                console.log(`   ✅ Found matching group row, clicking...`);
+                await row.click();
+                groupClicked = true;
+                await page.waitForTimeout(2000);
+                break;
+            }
+        }
+
+        if (!groupClicked && groupRows.length > 0) {
+            // Click first group row as fallback
+            console.log('   ⚠️ Group not found by code, clicking first row...');
+            await groupRows[0].click();
             await page.waitForTimeout(2000);
         }
 
-        // Select Ciclo escolar - current active period
-        console.log('2️⃣ Selecting Ciclo escolar...');
-        await this.selectDevExpressDropdown(page, '#ucCicloEscolar', 'PRIMAVERA');
-        await page.waitForTimeout(3000);
+        await page.screenshot({ path: `${debugDir}/asistencia-group-selected.png` });
 
-        await page.screenshot({ path: `${debugDir}/asistencia-after-filters.png` });
+        // Step 3: Wait for Semanas table to populate and click first week
+        console.log('3️⃣ Looking for Semanas table...');
 
-        // Now find and click on the group in the Grupos table
-        console.log(`3️⃣ Looking for group in table: ${groupCode}...`);
-
-        // Wait for the page to settle
-        await page.waitForTimeout(3000);
-
-        // Extract group code pattern - e.g., "RC.06061.2873.5-5"
-        const codeMatch = groupCode.match(/\(?(RC\.\d+\.\d+\.\d+-\d+)\)?/);
-        const searchCode = codeMatch ? codeMatch[1] : groupCode;
-        console.log(`   Searching for code: ${searchCode}`);
-
-        // Try to click on the first data row in the Grupos section
-        // The Grupos table is the first table on the page
-        const firstGroupRow = await page.$('.dx-datagrid-rowsview .dx-data-row');
-        if (firstGroupRow) {
-            console.log('   ✅ Found group row, clicking...');
-            await firstGroupRow.click();
-            await page.waitForTimeout(3000);
-        } else {
-            console.log('   ⚠️ No group row found');
+        try {
+            await page.waitForSelector('#grdSemanas .dx-datagrid-rowsview .dx-data-row', { timeout: 10000 });
+            console.log('   ✅ Semanas table has data');
+        } catch {
+            console.log('   ⚠️ Semanas table not found or empty');
+            await page.screenshot({ path: `${debugDir}/no-semanas-table.png` });
+            return;
         }
 
-        await page.screenshot({ path: `${debugDir}/asistencia-group-selected.png` });
-        console.log(`📸 Screenshot saved to ${debugDir}/asistencia-group-selected.png`);
+        // Click the first week row to load students
+        const weekRows = await page.$$('#grdSemanas .dx-datagrid-rowsview .dx-data-row');
+        console.log(`   Found ${weekRows.length} week rows`);
 
-        // After clicking a group, there should be a student list or week selection
-        // Wait for potential content to load
-        await page.waitForTimeout(2000);
+        if (weekRows.length > 0) {
+            console.log('   ✅ Clicking first week row to load students...');
+            await weekRows[0].click();
+            await page.waitForTimeout(3000);
+        }
 
-        // Check if there's a Semanas (weeks) section - it's a DataGrid table
-        // The Semanas table has rows with dates that we need to click
-        console.log('4️⃣ Looking for Semanas section...');
+        await page.screenshot({ path: `${debugDir}/asistencia-week-selected.png` });
 
-        // Look for grdSemanas grid
-        const semanasGrid = await page.$('#grdSemanas');
-        if (semanasGrid) {
-            // Click the first data row in Semanas table
-            const weekRow = await page.$('#grdSemanas .dx-datagrid-rowsview .dx-data-row');
-            if (weekRow) {
-                console.log('   ✅ Found week row, clicking...');
-                await weekRow.click();
-                await page.waitForTimeout(3000);
-            } else {
-                console.log('   ⚠️ No week row found, will extract from current view');
+        // Step 4: Wait for Asistencia table to load
+        console.log('4️⃣ Waiting for Asistencia table to load...');
+
+        try {
+            await page.waitForSelector('#grdAsistencias .dx-datagrid-rowsview .dx-data-row', { timeout: 15000 });
+            console.log('   ✅ Asistencia table has data!');
+        } catch {
+            console.log('   ⚠️ Asistencia table did not load');
+            // Try clicking the Asistencia collapsible header to expand it
+            const asistenciaHeader = await page.$('.dx-accordion-item:has-text("Asistencia") .dx-accordion-item-title');
+            if (asistenciaHeader) {
+                console.log('   🔄 Trying to expand Asistencia section...');
+                await asistenciaHeader.click();
+                await page.waitForTimeout(2000);
             }
-        } else {
-            console.log('   ⚠️ grdSemanas not found, will extract from current view');
         }
 
         await page.screenshot({ path: `${debugDir}/asistencia-final.png` });
+
+        // Save HTML for debugging
+        const html = await page.content();
+        await fs.promises.writeFile(`${debugDir}/asistencia-page.html`, html);
     }
 
     /**
