@@ -608,12 +608,27 @@ export class ScraperService {
             await page.waitForTimeout(3000);
 
 
-            // Step 4: For each group, select it and extract students
+            // Step 3: For each group, select it and extract students
             for (let i = 0; i < groupCodes.length; i++) {
                 const groupCode = groupCodes[i];
                 console.log(`\n👥 [${i + 1}/${groupCodes.length}] Processing group: ${groupCode}`);
 
                 try {
+                    // Before each group, ensure the Grupos section is expanded and visible
+                    // The page uses DevExpress accordion - sections collapse when others expand
+                    console.log(`   📂 Ensuring Grupos section is expanded...`);
+
+                    // Try to click on the Grupos header to expand it if collapsed
+                    const gruposHeader = await page.$('#pnlGrupos_collapsed, .dx-accordion-item:has-text("Grupos") .dx-accordion-item-title');
+                    if (gruposHeader) {
+                        await gruposHeader.click();
+                        await page.waitForTimeout(1500);
+                    }
+
+                    // Scroll up to make sure Grupos section is in view
+                    await page.evaluate(() => window.scrollTo(0, 0));
+                    await page.waitForTimeout(500);
+
                     // Click on the group in the Grupos table
                     const students = await this.selectGroupAndExtractStudents(page, groupCode, debugDir);
                     studentsByGroup.set(groupCode, students);
@@ -622,6 +637,9 @@ export class ScraperService {
                     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
                     errors.push(`${groupCode}: ${errorMsg}`);
                     console.log(`   ❌ Failed: ${errorMsg}`);
+
+                    // Take screenshot of the error state
+                    await page.screenshot({ path: `${debugDir}/error-group-${i + 1}.png` });
                 }
             }
 
