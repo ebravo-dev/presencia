@@ -646,53 +646,79 @@ export class ScraperService {
         groupCode: string,
         debugDir: string
     ): Promise<ScrapedStudent[]> {
+        const fs = await import('fs');
+        await fs.promises.mkdir(debugDir, { recursive: true });
+
         // Wait for Grupos table
         await page.waitForSelector('#grdGrupos .dx-datagrid-rowsview .dx-data-row', { timeout: 10000 });
 
         // Find and click the matching group row
         const groupRows = await page.$$('#grdGrupos .dx-datagrid-rowsview .dx-data-row');
         let groupClicked = false;
+        const codeMatch = groupCode.match(/RC\.\d+\.\d+\.\d+-\d+/);
+        const searchPattern = codeMatch ? codeMatch[0] : groupCode;
+
+        console.log(`   🔍 Searching for: ${searchPattern} in ${groupRows.length} rows`);
 
         for (const row of groupRows) {
             const rowText = await row.textContent();
-            const codeMatch = groupCode.match(/RC\.\d+\.\d+\.\d+-\d+/);
-            const searchPattern = codeMatch ? codeMatch[0] : groupCode;
 
             if (rowText && rowText.includes(searchPattern)) {
+                console.log(`   ✅ Found group, clicking...`);
                 await row.click();
                 groupClicked = true;
-                await page.waitForTimeout(2000);
+                // Wait longer for tables to refresh
+                await page.waitForTimeout(3000);
                 break;
             }
         }
 
         if (!groupClicked) {
+            console.log(`   ❌ Group ${searchPattern} not found in table`);
             throw new Error(`Group ${groupCode} not found in table`);
         }
 
-        // Wait for Semanas table and click first week
-        await page.waitForSelector('#grdSemanas .dx-datagrid-rowsview .dx-data-row', { timeout: 10000 });
-        const weekRows = await page.$$('#grdSemanas .dx-datagrid-rowsview .dx-data-row');
-
-        if (weekRows.length > 0) {
-            await weekRows[0].click();
-            await page.waitForTimeout(3000);
-        }
-
-        // Wait for Asistencia table
+        // Wait for Semanas table to update (it should show this group's weeks)
+        console.log(`   ⏳ Waiting for Semanas table...`);
         try {
-            await page.waitForSelector('#grdAsistencias .dx-datagrid-rowsview .dx-data-row', { timeout: 10000 });
+            await page.waitForSelector('#grdSemanas .dx-datagrid-rowsview .dx-data-row', { timeout: 10000 });
         } catch {
-            // Try to expand the Asistencia section
-            const header = await page.$('.dx-accordion-item:has-text("Asistencia") .dx-accordion-item-title');
-            if (header) {
-                await header.click();
-                await page.waitForTimeout(2000);
-            }
+            console.log(`   ⚠️ No weeks found for this group`);
+            return [];
         }
+
+        const weekRows = await page.$$('#grdSemanas .dx-datagrid-rowsview .dx-data-row');
+        console.log(`   📅 Found ${weekRows.length} weeks`);
+
+        if (weekRows.length === 0) {
+            console.log(`   ⚠️ No week rows to click`);
+            return [];
+        }
+
+        // Click FIRST week row (must click, even if one was already selected)
+        console.log(`   👆 Clicking week row 1...`);
+        await weekRows[0].click();
+        await page.waitForTimeout(3000);
+
+        // Wait for Asistencia table to load
+        console.log(`   ⏳ Waiting for Asistencia table...`);
+        try {
+            await page.waitForSelector('#grdAsistencias .dx-datagrid-rowsview .dx-data-row', { timeout: 15000 });
+            console.log(`   ✅ Asistencia table loaded`);
+        } catch {
+            console.log(`   ⚠️ Asistencia table did not load`);
+            await page.screenshot({ path: `${debugDir}/no-asistencia-${searchPattern}.png` });
+            return [];
+        }
+
+        // Take screenshot for debugging
+        await page.screenshot({ path: `${debugDir}/students-${searchPattern}.png` });
 
         // Extract students
-        return await this.extractStudents(page);
+        const students = await this.extractStudents(page);
+        console.log(`   📊 Extracted ${students.length} students for ${searchPattern}`);
+
+        return students;
     }
 
     /**
