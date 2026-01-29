@@ -84,14 +84,16 @@ async function processScrapingJob(
         for (const group of result.groups) {
             await prisma.group.upsert({
                 where: {
-                    code_professorId_period: {
+                    code_groupLetter_professorId_period: {
                         code: group.code,
+                        groupLetter: group.groupLetter || '',
                         professorId,
                         period: currentPeriod,
                     },
                 },
                 create: {
                     code: group.code,
+                    groupLetter: group.groupLetter || '',
                     name: group.name,
                     level: group.level,
                     classroom: group.classroom,

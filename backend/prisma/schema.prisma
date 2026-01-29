@@ -25,6 +25,7 @@ model Professor {
 model Group {
   id                String             @id @default(cuid())
   code              String
+  groupLetter       String             @default("") @map("group_letter")
   name              String
   level             String
   classroom         String
@@ -37,7 +38,7 @@ model Group {
   professor         Professor          @relation(fields: [professorId], references: [id], onDelete: Cascade)
   students          Student[]
 
-  @@unique([code, professorId, period])
+  @@unique([code, groupLetter, professorId, period])
   @@map("groups")
 }
 

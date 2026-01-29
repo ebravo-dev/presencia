@@ -7,6 +7,7 @@ export interface ScrapedGroup {
     name: string;
     level: string;
     classroom: string;
+    groupLetter: string; // K, M, etc. - the letter that differentiates groups with same code
     schedule: {
         lunes?: string;
         martes?: string;
@@ -476,6 +477,8 @@ export class ScraperService {
 
                 const asignatura = cells[0]?.textContent?.trim() || '';
                 const nivel = cells[1]?.textContent?.trim() || '';
+                // Column 2 might be group letter in some tables
+                const possibleGroupLetter = cells[2]?.textContent?.trim() || '';
                 const lugar = cells[3]?.textContent?.trim() || '';
 
                 // Extract schedule (columns 4-10)
@@ -501,15 +504,20 @@ export class ScraperService {
                 });
 
                 // Extract code from asignatura (e.g., "RC.06661.2873.5-5 DESARROLLO DE...")
-                const codeMatch = asignatura.match(/^([A-Z]{2}\.\d+\.\d+\.\d+-\d+)/);
+                const codeMatch = asignatura.match(/^([A-Z]{2}\.[A-Z0-9]+\.\d+\.\d+-\d+\.?[A-Z0-9]*)/);
                 const code = codeMatch ? codeMatch[1] : asignatura.substring(0, 20);
                 const name = codeMatch ? asignatura.replace(codeMatch[1], '').trim() : asignatura;
+
+                // Use possibleGroupLetter if it looks like a letter (single char A-Z)
+                // This will be overwritten later from Control de Asistencia if needed
+                const groupLetter = /^[A-Z]$/.test(possibleGroupLetter) ? possibleGroupLetter : '';
 
                 result.push({
                     code,
                     name,
                     level: nivel,
                     classroom: lugar,
+                    groupLetter,
                     schedule,
                 });
             }
