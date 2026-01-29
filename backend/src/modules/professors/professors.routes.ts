@@ -1,7 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../../core/database/prisma.js';
 import { jwtService } from '../../core/security/index.js';
-import { getQueueStats } from '../../core/queue/queue.config.js';
 
 interface AuthenticatedRequest extends FastifyRequest {
     professorId?: string;
@@ -132,19 +131,68 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
 
     /**
      * GET /professors/sync-status
-     * Check the status of the scraping job
+     * Check the status of the latest synchronization job for this professor
      */
     fastify.get(
         '/professors/sync-status',
         async (request: AuthenticatedRequest, reply: FastifyReply) => {
-            const stats = await getQueueStats();
+            // Get the most recent sync job for this professor
+            const syncJob = await prisma.syncJob.findFirst({
+                where: { professorId: request.professorId },
+                orderBy: { startedAt: 'desc' },
+            });
+
+            if (!syncJob) {
+                return reply.send({
+                    data: {
+                        status: 'NO_SYNC',
+                        message: 'No hay sincronizaciones previas',
+                    },
+                });
+            }
+
+            // Calculate percentage
+            const percentage = syncJob.totalGroups && syncJob.currentGroup
+                ? Math.round((syncJob.currentGroup / syncJob.totalGroups) * 100)
+                : 0;
+
+            // Build descriptive message
+            let message: string;
+            switch (syncJob.status) {
+                case 'PENDING':
+                    message = 'Preparando sincronización...';
+                    break;
+                case 'IN_PROGRESS':
+                    if (syncJob.currentGroup && syncJob.totalGroups) {
+                        message = `Procesando grupo ${syncJob.currentGroup} de ${syncJob.totalGroups}`;
+                        if (syncJob.currentGroupName) {
+                            message += ` (${syncJob.currentGroupName})`;
+                        }
+                    } else {
+                        message = 'Conectando con el portal UAT...';
+                    }
+                    break;
+                case 'COMPLETED':
+                    message = `Sincronización completada - ${syncJob.totalGroups || 0} grupos procesados`;
+                    break;
+                case 'FAILED':
+                    message = `Error: ${syncJob.error || 'Error desconocido'}`;
+                    break;
+                default:
+                    message = 'Estado desconocido';
+            }
 
             return reply.send({
                 data: {
-                    queueStats: stats,
-                    message: stats.active > 0
-                        ? 'Sincronización en progreso...'
-                        : 'Sincronización completada',
+                    status: syncJob.status,
+                    totalGroups: syncJob.totalGroups,
+                    currentGroup: syncJob.currentGroup,
+                    currentGroupName: syncJob.currentGroupName,
+                    percentage,
+                    message,
+                    startedAt: syncJob.startedAt,
+                    completedAt: syncJob.completedAt,
+                    error: syncJob.error,
                 },
             });
         }

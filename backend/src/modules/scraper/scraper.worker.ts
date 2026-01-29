@@ -20,13 +20,34 @@ async function processScrapingJob(
 
     console.log(`🔄 Processing scraping job ${job.id} for ${email} (${currentPeriod})`);
 
+    // Create SyncJob record to track progress
+    const syncJob = await prisma.syncJob.create({
+        data: {
+            professorId,
+            status: 'PENDING',
+        },
+    });
+    console.log(`📊 Created SyncJob ${syncJob.id}`);
+
     try {
+        // Update to IN_PROGRESS
+        await prisma.syncJob.update({
+            where: { id: syncJob.id },
+            data: { status: 'IN_PROGRESS' },
+        });
+
         // Scrape groups from UAT portal
         const result = await scraperService.scrapeGroups(email, password);
 
         if (!result.success) {
             throw new Error(result.error || 'Scraping failed');
         }
+
+        // Update SyncJob with total groups
+        await prisma.syncJob.update({
+            where: { id: syncJob.id },
+            data: { totalGroups: result.groups.length },
+        });
 
         // Save groups to database
         let studentsCount = 0;
@@ -58,21 +79,37 @@ async function processScrapingJob(
             });
         }
 
-        // Scrape students for ALL groups in a single session (efficient)
+        // Scrape students for ALL groups in a single session
         console.log(`👥 Scraping students for ${result.groups.length} groups in single session...`);
 
         const groupCodes = result.groups.map(g => g.code);
+        const groupNames = result.groups.map(g => g.name);
+
+        // Process each group and update progress
         const studentsResult = await scraperService.scrapeAllStudentsInSession(email, password, groupCodes);
 
         if (studentsResult.success) {
-            // Save students to database
+            let groupIndex = 0;
+            // Save students to database and update progress
             for (const [groupCode, students] of studentsResult.studentsByGroup) {
+                const groupName = groupNames[groupIndex] || groupCode;
+
+                // Update sync progress for this group
+                await prisma.syncJob.update({
+                    where: { id: syncJob.id },
+                    data: {
+                        currentGroup: groupIndex + 1,
+                        currentGroupName: groupName,
+                    },
+                });
+
                 const dbGroup = await prisma.group.findFirst({
                     where: { code: groupCode, professorId, period: currentPeriod },
                 });
 
                 if (!dbGroup) {
                     console.log(`⚠️ Group ${groupCode} not found in database, skipping students`);
+                    groupIndex++;
                     continue;
                 }
 
@@ -95,6 +132,7 @@ async function processScrapingJob(
                     });
                 }
                 studentsCount += students.length;
+                groupIndex++;
             }
 
             if (studentsResult.errors.length > 0) {
@@ -104,10 +142,19 @@ async function processScrapingJob(
             console.log(`⚠️ Student scraping session failed`);
         }
 
+        // Mark SyncJob as COMPLETED
+        await prisma.syncJob.update({
+            where: { id: syncJob.id },
+            data: {
+                status: 'COMPLETED',
+                completedAt: new Date(),
+                currentGroup: result.groups.length,
+            },
+        });
+
         console.log(`✅ Job ${job.id} completed: ${result.groups.length} groups, ${studentsCount} students saved`);
 
         // Clear password from job data (security measure)
-        // Note: BullMQ may have already stored this in Redis temporarily
         await job.updateData({
             ...job.data,
             password: '[REDACTED]',
@@ -122,11 +169,22 @@ async function processScrapingJob(
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error(`❌ Job ${job.id} failed:`, errorMessage);
 
+        // Mark SyncJob as FAILED
+        await prisma.syncJob.update({
+            where: { id: syncJob.id },
+            data: {
+                status: 'FAILED',
+                error: errorMessage,
+                completedAt: new Date(),
+            },
+        });
+
         // Clear password even on failure
         await job.updateData({
             ...job.data,
             password: '[REDACTED]',
         });
+
 
         throw error;
     }

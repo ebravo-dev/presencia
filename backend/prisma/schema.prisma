@@ -17,6 +17,7 @@ model Professor {
   updatedAt          DateTime           @updatedAt @map("updated_at")
   attendanceRecords  AttendanceRecord[]
   groups             Group[]
+  syncJobs           SyncJob[]
 
   @@map("professors")
 }
@@ -81,9 +82,32 @@ model Attendance {
   @@map("attendances")
 }
 
+model SyncJob {
+  id           String     @id @default(cuid())
+  professorId  String     @map("professor_id")
+  status       SyncStatus @default(PENDING)
+  totalGroups  Int?       @map("total_groups")
+  currentGroup Int?       @map("current_group")
+  currentGroupName String? @map("current_group_name")
+  error        String?
+  startedAt    DateTime   @default(now()) @map("started_at")
+  completedAt  DateTime?  @map("completed_at")
+  professor    Professor  @relation(fields: [professorId], references: [id], onDelete: Cascade)
+
+  @@map("sync_jobs")
+}
+
 enum AttendanceStatus {
   PRESENT
   ABSENT
   LATE
   EXCUSED
 }
+
+enum SyncStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
