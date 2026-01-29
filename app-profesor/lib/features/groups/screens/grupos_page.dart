@@ -493,6 +493,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               width: 120,
@@ -525,22 +526,24 @@ class _GruposPageState extends ConsumerState<GruposPage>
             ),
             const SizedBox(height: 24),
             // Botón revisar sincronización
-            ElevatedButton.icon(
+            TextButton.icon(
               onPressed: () {
                 HapticFeedback.lightImpact();
                 context.push('/sync-status');
               },
-              icon: const Icon(Icons.cloud_sync),
-              label: const Text('Revisar sincronización'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueAccent,
-                foregroundColor: Colors.white,
+              icon: const Icon(Icons.cloud_sync, color: Colors.blueAccent),
+              label: const Text(
+                'Revisar sincronización',
+                style: TextStyle(
+                  color: Colors.blueAccent,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 24,
                   vertical: 14,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
             ),
