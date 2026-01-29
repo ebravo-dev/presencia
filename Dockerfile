@@ -18,6 +18,8 @@ WORKDIR /app
 
 # Install dependencies for Playwright Chromium (no chromium package itself)
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    # OpenSSL for Prisma
+    openssl \
     # Dependencies for Playwright's Chromium
     libnss3 \
     libnspr4 \
