@@ -608,26 +608,20 @@ export class ScraperService {
             await page.waitForTimeout(3000);
 
 
-            // Step 3: For each group, select it and extract students
+            // Step 3: For each group, navigate fresh and extract students
             for (let i = 0; i < groupCodes.length; i++) {
                 const groupCode = groupCodes[i];
                 console.log(`\n👥 [${i + 1}/${groupCodes.length}] Processing group: ${groupCode}`);
 
                 try {
-                    // Before each group, ensure the Grupos section is expanded and visible
-                    // The page uses DevExpress accordion - sections collapse when others expand
-                    console.log(`   📂 Ensuring Grupos section is expanded...`);
-
-                    // Try to click on the Grupos header to expand it if collapsed
-                    const gruposHeader = await page.$('#pnlGrupos_collapsed, .dx-accordion-item:has-text("Grupos") .dx-accordion-item-title');
-                    if (gruposHeader) {
-                        await gruposHeader.click();
-                        await page.waitForTimeout(1500);
-                    }
-
-                    // Scroll up to make sure Grupos section is in view
-                    await page.evaluate(() => window.scrollTo(0, 0));
-                    await page.waitForTimeout(500);
+                    // Navigate to Control de Asistencia fresh for each group
+                    // This ensures clean state - avoids accordion visibility issues
+                    console.log(`   🔄 Navigating to Control de Asistencia...`);
+                    await page.goto('https://administracionescolar.uat.edu.mx/Profesor/ControlAsistencia/Index', {
+                        waitUntil: 'networkidle',
+                        timeout: 30000,
+                    });
+                    await page.waitForTimeout(2000);
 
                     // Click on the group in the Grupos table
                     const students = await this.selectGroupAndExtractStudents(page, groupCode, debugDir);

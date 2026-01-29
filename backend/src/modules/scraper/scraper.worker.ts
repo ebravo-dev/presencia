@@ -36,6 +36,35 @@ async function processScrapingJob(
             data: { status: 'IN_PROGRESS' },
         });
 
+        // Delete old groups and students for this professor/period
+        // This ensures fresh data on each sync
+        console.log(`🗑️ Cleaning old data for professor ${email}...`);
+        const deletedGroups = await prisma.group.deleteMany({
+            where: {
+                professorId,
+                period: currentPeriod,
+            },
+        });
+        console.log(`   Deleted ${deletedGroups.count} old groups (cascade deletes students)`);
+
+        // Clean up old sync jobs (keep only the current one and last 5 completed)
+        const oldJobs = await prisma.syncJob.findMany({
+            where: {
+                professorId,
+                id: { not: syncJob.id },
+            },
+            orderBy: { startedAt: 'desc' },
+            skip: 5, // Keep last 5
+        });
+        if (oldJobs.length > 0) {
+            await prisma.syncJob.deleteMany({
+                where: {
+                    id: { in: oldJobs.map(j => j.id) },
+                },
+            });
+            console.log(`   Cleaned up ${oldJobs.length} old sync jobs`);
+        }
+
         // Scrape groups from UAT portal
         const result = await scraperService.scrapeGroups(email, password);
 
