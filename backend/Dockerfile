@@ -37,10 +37,12 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/start.sh ./start.sh
 
 # Create non-root user for security
 RUN groupadd -g 1001 nodejs && \
-    useradd -u 1001 -g nodejs nodejs
+    useradd -u 1001 -g nodejs nodejs && \
+    chmod +x ./start.sh
 
 USER nodejs
 
@@ -50,4 +52,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD wget -qO- http://localhost:3000/health || exit 1
 
-CMD ["node", "dist/app.js"]
+CMD ["./start.sh"]
+
