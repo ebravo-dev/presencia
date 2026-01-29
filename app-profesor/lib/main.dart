@@ -12,6 +12,7 @@ import 'core/utils/utils.dart';
 import 'core/theme/uat_theme.dart';
 import 'features/authentication/presentation/pages/login_page.dart';
 import 'features/groups/screens/grupos_page.dart';
+import 'features/groups/screens/sync_status_screen.dart';
 import 'features/authentication/providers/profesor_auth_provider.dart';
 
 void main() async {
@@ -91,6 +92,10 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
       GoRoute(path: '/grupos', builder: (context, state) => const GruposPage()),
+      GoRoute(
+        path: '/sync-status',
+        builder: (context, state) => const SyncStatusScreen(),
+      ),
       GoRoute(
         path: '/dashboard', // Mantener compatibilidad
         redirect: (context, state) => '/grupos',

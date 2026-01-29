@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:dartz/dartz.dart';
 import '../shared/models/profesor.dart';
 import '../shared/models/grupo.dart';
+import '../shared/models/sync_status.dart';
 import '../core/utils/utils.dart';
 import '../core/security/encryption_service.dart';
 import '../core/constants/api_constants.dart';
@@ -161,6 +162,40 @@ class ApiService {
       return Left(errorMessage);
     } catch (e, stackTrace) {
       Logger.error('Error inesperado en sincronización', e, stackTrace);
+      return Left('Error inesperado: ${e.toString()}');
+    }
+  }
+
+  /// Obtiene el estado actual de la sincronización
+  /// Endpoint: GET /professors/sync-status
+  Future<Either<String, SyncStatusResponse>> getSyncStatus(String token) async {
+    try {
+      Logger.info('Consultando estado de sincronización');
+
+      final response = await _dio.get(
+        '/professors/sync-status',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data['data'];
+        final status = SyncStatusResponse.fromJson(data);
+        Logger.info(
+          'Estado de sincronización: ${status.status} - ${status.message}',
+        );
+        return Right(status);
+      } else {
+        final errorMessage =
+            response.data['message'] ?? 'Error al obtener estado';
+        Logger.error('Error obteniendo estado: $errorMessage');
+        return Left(errorMessage);
+      }
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error('Error de conexión obteniendo estado: $errorMessage', e);
+      return Left(errorMessage);
+    } catch (e) {
+      Logger.error('Error inesperado obteniendo estado', e);
       return Left('Error inesperado: ${e.toString()}');
     }
   }
