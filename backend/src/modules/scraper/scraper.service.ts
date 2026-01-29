@@ -604,13 +604,9 @@ export class ScraperService {
             console.log('📋 Navigating to Control de Asistencia...');
             await this.navigateToControlAsistencia(page);
 
-            // Step 3: Select Ciclo escolar (only once)
-            console.log('📅 Selecting Ciclo escolar...');
-            const cicloSelected = await this.selectDevExpressDropdown(page, '#ucCicloEscolar', 'OTOÑO');
-            if (!cicloSelected) {
-                await this.selectDevExpressDropdown(page, '#ucCicloEscolar', 'PRIMAVERA');
-            }
+            // Wait for page to fully load (ciclo ya seleccionado por defecto)
             await page.waitForTimeout(3000);
+
 
             // Step 4: For each group, select it and extract students
             for (let i = 0; i < groupCodes.length; i++) {
@@ -733,22 +729,11 @@ export class ScraperService {
         const fs = await import('fs');
         await fs.promises.mkdir(debugDir, { recursive: true });
 
-        // Wait for page to fully load
+        // Wait for page to fully load (ciclo ya seleccionado por defecto)
         await page.waitForTimeout(3000);
 
-        // Step 1: Select Ciclo escolar - look for OTOÑO (current period)
-        console.log('1️⃣ Selecting Ciclo escolar...');
-        const cicloSelected = await this.selectDevExpressDropdown(page, '#ucCicloEscolar', 'OTOÑO');
-        if (!cicloSelected) {
-            // Try PRIMAVERA as fallback
-            await this.selectDevExpressDropdown(page, '#ucCicloEscolar', 'PRIMAVERA');
-        }
-        await page.waitForTimeout(3000);
-
-        await page.screenshot({ path: `${debugDir}/asistencia-after-ciclo.png` });
-
-        // Step 2: Wait for Grupos table to have data and click the row matching our group
-        console.log(`2️⃣ Looking for group: ${groupCode}...`);
+        // Step 1: Wait for Grupos table to have data and click the row matching our group
+        console.log(`1️⃣ Looking for group: ${groupCode}...`);
 
         // Wait for the Grupos grid to have data rows
         try {
