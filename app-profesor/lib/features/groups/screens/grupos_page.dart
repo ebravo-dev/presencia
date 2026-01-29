@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/uat_colors.dart';
 import '../../../../shared/models/grupo.dart';
@@ -518,9 +519,30 @@ class _GruposPageState extends ConsumerState<GruposPage>
             ),
             const SizedBox(height: 12),
             Text(
-              'Contacta al administrador si crees que esto es un error.',
+              'Si iniciaste sincronización, revisa el progreso abajo.',
               style: TextStyle(fontSize: 16, color: Colors.grey.shade400),
               textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            // Botón revisar sincronización
+            ElevatedButton.icon(
+              onPressed: () {
+                HapticFeedback.lightImpact();
+                context.push('/sync-status');
+              },
+              icon: const Icon(Icons.cloud_sync),
+              label: const Text('Revisar sincronización'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 14,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
             ),
           ],
         ),
@@ -1042,15 +1064,8 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                     ),
                                   ),
                               (message) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(message),
-                                    backgroundColor: Colors.green,
-                                    behavior: SnackBarBehavior.floating,
-                                  ),
-                                );
-                                // Iniciar polling o simplemente refrescar la vista (aunque tardará en llegar la data)
-                                _handleRefresh();
+                                // Navegar a pantalla de estado de sincronización
+                                context.push('/sync-status');
                               },
                             );
                           }
