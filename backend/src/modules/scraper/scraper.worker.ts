@@ -79,19 +79,12 @@ async function processScrapingJob(
         });
 
         // Save groups to database
+        // Using create since we already deleted all groups for this professor/period above
         let studentsCount = 0;
 
         for (const group of result.groups) {
-            await prisma.group.upsert({
-                where: {
-                    code_groupLetter_professorId_period: {
-                        code: group.code,
-                        groupLetter: group.groupLetter || '',
-                        professorId,
-                        period: currentPeriod,
-                    },
-                },
-                create: {
+            await prisma.group.create({
+                data: {
                     code: group.code,
                     groupLetter: group.groupLetter || '',
                     name: group.name,
@@ -100,12 +93,6 @@ async function processScrapingJob(
                     schedule: group.schedule,
                     period: currentPeriod,
                     professorId,
-                },
-                update: {
-                    name: group.name,
-                    level: group.level,
-                    classroom: group.classroom,
-                    schedule: group.schedule,
                 },
             });
         }
