@@ -1,5 +1,5 @@
 # Node.js multi-stage build - backend from root context
-# Build timestamp: 2026-01-26T02:57:00Z - force rebuild
+# Build timestamp: 2026-01-30T22:45:00Z - force rebuild for Prisma schema update
 FROM node:20-slim AS builder
 WORKDIR /app
 
