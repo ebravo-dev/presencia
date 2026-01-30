@@ -53,6 +53,12 @@ export class AuthService {
         const prof = professor!;
         const periodChanged = prof.lastSyncPeriod !== currentPeriod;
 
+        // Check if professor has any groups in current period
+        const groupCount = await prisma.group.count({
+            where: { professorId: prof.id, period: currentPeriod }
+        });
+        const hasNoGroups = groupCount === 0;
+
         // Generate JWT token
         const token = jwtService.sign({
             professorId: prof.id,
@@ -62,7 +68,8 @@ export class AuthService {
         // Only queue scraping if:
         // 1. New professor (first login ever)
         // 2. Period changed since last sync
-        const shouldScrape = isNewProfessor || periodChanged;
+        // 3. Professor has no groups in current period (e.g., previous sync failed)
+        const shouldScrape = isNewProfessor || periodChanged || hasNoGroups;
 
         if (shouldScrape) {
             // Update lastSyncPeriod

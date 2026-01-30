@@ -118,7 +118,11 @@ class _ProfesorLoginFormState extends ConsumerState<ProfesorLoginForm> {
     // Mostrar error si existe
     ref.listen<ProfesorAuthState>(profesorAuthProvider, (previous, next) {
       if (next.hasError && next.errorMessage != null && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        // Save references before showing SnackBar to avoid deactivated widget error
+        final scaffoldMessenger = ScaffoldMessenger.of(context);
+        final notifier = ref.read(profesorAuthProvider.notifier);
+
+        scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text(next.errorMessage!),
             backgroundColor: Colors.red,
@@ -127,8 +131,8 @@ class _ProfesorLoginFormState extends ConsumerState<ProfesorLoginForm> {
               label: 'Cerrar',
               textColor: Colors.white,
               onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                ref.read(profesorAuthProvider.notifier).clearError();
+                scaffoldMessenger.hideCurrentSnackBar();
+                notifier.clearError();
               },
             ),
           ),
