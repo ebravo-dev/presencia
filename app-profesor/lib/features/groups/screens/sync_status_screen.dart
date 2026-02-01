@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +7,7 @@ import '../../../core/theme/uat_colors.dart';
 import '../../../services/api_service.dart';
 import '../../../services/auth_storage_service.dart';
 import '../../../shared/models/sync_status.dart';
+import '../../authentication/providers/profesor_auth_provider.dart';
 
 class SyncStatusScreen extends ConsumerStatefulWidget {
   const SyncStatusScreen({super.key});
@@ -20,6 +23,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   SyncStatusResponse? _syncStatus;
   bool _isLoading = false;
   String? _error;
+  Timer? _pollingTimer;
 
   @override
   void initState() {
@@ -27,11 +31,33 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     _checkSyncStatus();
   }
 
-  Future<void> _checkSyncStatus() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startPolling() {
+    _pollingTimer?.cancel();
+    // 2 seconds in debug, 5 seconds in release
+    final interval = kDebugMode ? 2 : 5;
+    _pollingTimer = Timer.periodic(Duration(seconds: interval), (_) {
+      _checkSyncStatus(isPolling: true);
     });
+  }
+
+  void _stopPolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = null;
+  }
+
+  Future<void> _checkSyncStatus({bool isPolling = false}) async {
+    if (!isPolling) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
 
     try {
       final token = _authStorage.getToken();
@@ -40,31 +66,56 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
           _error = 'Sesión no encontrada';
           _isLoading = false;
         });
+        _stopPolling();
         return;
       }
 
       final result = await _apiService.getSyncStatus(token);
 
       result.fold(
-        (error) => setState(() {
-          _error = error;
-          _isLoading = false;
-        }),
-        (status) => setState(() {
-          _syncStatus = status;
-          _isLoading = false;
-        }),
+        (error) {
+          setState(() {
+            _error = error;
+            _isLoading = false;
+          });
+          _stopPolling();
+        },
+        (status) {
+          setState(() {
+            _syncStatus = status;
+            _isLoading = false;
+          });
+
+          // Handle state changes
+          if (status.isInProgress) {
+            // Start polling if not already polling
+            if (_pollingTimer == null) {
+              _startPolling();
+            }
+          } else {
+            // Stop polling for terminal states
+            _stopPolling();
+
+            // Auto-navigate when completed
+            if (status.isCompleted && mounted) {
+              _navigateToGroupsWithRefresh();
+            }
+          }
+        },
       );
     } catch (e) {
       setState(() {
         _error = 'Error: $e';
         _isLoading = false;
       });
+      _stopPolling();
     }
   }
 
-  Future<void> _downloadGroups() async {
-    // Navigate to groups page - it will fetch from API automatically
+  Future<void> _navigateToGroupsWithRefresh() async {
+    // Refresh grupos from the auth provider
+    await ref.read(profesorAuthProvider.notifier).refreshGrupos();
+
     if (mounted) {
       context.go('/grupos');
     }
@@ -187,7 +238,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
       subtitle = 'No hay sincronizaciones previas';
     } else {
       title = _getTitleForStatus(_syncStatus!.status);
-      subtitle = _syncStatus!.message;
+      subtitle = _getSubtitleForStatus();
     }
 
     return Column(
@@ -227,6 +278,32 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     }
   }
 
+  String _getSubtitleForStatus() {
+    if (_syncStatus == null) return '';
+
+    // Use the message from API if available
+    if (_syncStatus!.message.isNotEmpty) {
+      return _syncStatus!.message;
+    }
+
+    // Fallback messages
+    switch (_syncStatus!.status) {
+      case 'PENDING':
+        return 'Conectando con el portal UAT...';
+      case 'IN_PROGRESS':
+        if (_syncStatus!.currentGroupName != null) {
+          return 'Procesando: ${_syncStatus!.currentGroupName}';
+        }
+        return 'Extrayendo información del portal...';
+      case 'COMPLETED':
+        return 'Tus grupos están listos';
+      case 'FAILED':
+        return _syncStatus!.error ?? 'Error desconocido';
+      default:
+        return '';
+    }
+  }
+
   Widget _buildProgressBar() {
     return Column(
       children: [
@@ -259,7 +336,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
-            onPressed: _isLoading ? null : _checkSyncStatus,
+            onPressed: _isLoading ? null : () => _checkSyncStatus(),
             icon: const Icon(Icons.refresh),
             label: const Text('Revisar sincronización'),
             style: OutlinedButton.styleFrom(
@@ -277,9 +354,9 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: _downloadGroups,
+              onPressed: _navigateToGroupsWithRefresh,
               icon: const Icon(Icons.download),
-              label: const Text('Descargar grupos'),
+              label: const Text('Ver mis grupos'),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: UATColors.primary,

@@ -9,6 +9,8 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/uat_colors.dart';
 import '../../../../shared/models/grupo.dart';
 import '../../../../services/asistencia_local_service.dart';
+import '../../../../services/api_service.dart';
+import '../../../../services/auth_storage_service.dart';
 import '../../authentication/providers/profesor_auth_provider.dart';
 import 'grupo_detail_page.dart';
 
@@ -67,6 +69,11 @@ class _GruposPageState extends ConsumerState<GruposPage>
         statusBarBrightness: Brightness.dark,
       ),
     );
+
+    // Check sync status on startup
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkSyncOnStart();
+    });
   }
 
   @override
@@ -76,6 +83,38 @@ class _GruposPageState extends ConsumerState<GruposPage>
     _scrollController.dispose();
     _pulseController.dispose();
     super.dispose();
+  }
+
+  /// Checks sync status on app start and handles accordingly
+  Future<void> _checkSyncOnStart() async {
+    final authStorage = AuthStorageService();
+    final apiService = ApiService();
+
+    final token = authStorage.getToken();
+    if (token == null) return;
+
+    final result = await apiService.getSyncStatus(token);
+
+    result.fold(
+      (error) {
+        // Ignore errors, just show current state
+      },
+      (status) {
+        if (!mounted) return;
+
+        if (status.isInProgress) {
+          // Redirect to sync status screen
+          context.push('/sync-status');
+        } else if (status.isCompleted) {
+          // Check if we have groups locally
+          final grupos = ref.read(profesorGruposProvider);
+          if (grupos.isEmpty) {
+            // Download groups from server
+            ref.read(profesorAuthProvider.notifier).refreshGrupos();
+          }
+        }
+      },
+    );
   }
 
   void _handleScroll() {
