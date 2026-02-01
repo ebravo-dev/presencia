@@ -79,20 +79,34 @@ async function processScrapingJob(
         });
 
         // Save groups to database
-        // Using create since we already deleted all groups for this professor/period above
         let studentsCount = 0;
 
         for (const group of result.groups) {
-            await prisma.group.create({
-                data: {
+            const groupLetter = group.groupLetter || '';
+            await prisma.group.upsert({
+                where: {
+                    code_groupLetter_professorId_period: {
+                        code: group.code,
+                        groupLetter,
+                        professorId,
+                        period: currentPeriod,
+                    },
+                },
+                create: {
                     code: group.code,
-                    groupLetter: group.groupLetter || '',
+                    groupLetter,
                     name: group.name,
                     level: group.level,
                     classroom: group.classroom,
                     schedule: group.schedule,
                     period: currentPeriod,
                     professorId,
+                },
+                update: {
+                    name: group.name,
+                    level: group.level,
+                    classroom: group.classroom,
+                    schedule: group.schedule,
                 },
             });
         }
@@ -105,6 +119,9 @@ async function processScrapingJob(
 
         // Process each group and update progress
         const studentsResult = await scraperService.scrapeAllStudentsInSession(email, password, groupCodes);
+
+        let studentErrors: string[] = [];
+        let studentSessionFailed = false;
 
         if (studentsResult.success) {
             let groupIndex = 0;
@@ -154,19 +171,33 @@ async function processScrapingJob(
             }
 
             if (studentsResult.errors.length > 0) {
+                studentErrors = studentsResult.errors;
                 console.log(`⚠️ Some groups had errors: ${studentsResult.errors.join(', ')}`);
             }
         } else {
+            studentSessionFailed = true;
+            studentErrors = studentsResult.errors;
             console.log(`⚠️ Student scraping session failed`);
         }
 
-        // Mark SyncJob as COMPLETED
+        const finalStatus = (studentSessionFailed || studentErrors.length > 0) ? 'PARTIAL' : 'COMPLETED';
+        const errorSummary = studentErrors.length > 0
+            ? `Student scraping errors: ${studentErrors.join(' | ')}`
+            : studentSessionFailed
+                ? 'Student scraping session failed'
+                : null;
+        const trimmedError = errorSummary && errorSummary.length > 1000
+            ? `${errorSummary.substring(0, 1000)}...`
+            : errorSummary;
+
+        // Mark SyncJob as COMPLETED or PARTIAL
         await prisma.syncJob.update({
             where: { id: syncJob.id },
             data: {
-                status: 'COMPLETED',
+                status: finalStatus,
                 completedAt: new Date(),
                 currentGroup: result.groups.length,
+                error: trimmedError || null,
             },
         });
 

@@ -175,6 +175,9 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
                 case 'COMPLETED':
                     message = `Sincronización completada - ${syncJob.totalGroups || 0} grupos procesados`;
                     break;
+                case 'PARTIAL':
+                    message = `Sincronización parcial - ${syncJob.totalGroups || 0} grupos procesados`;
+                    break;
                 case 'FAILED':
                     message = `Error: ${syncJob.error || 'Error desconocido'}`;
                     break;

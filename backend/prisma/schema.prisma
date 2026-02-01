@@ -109,6 +109,7 @@ enum SyncStatus {
   PENDING
   IN_PROGRESS
   COMPLETED
+  PARTIAL
   FAILED
 }
 
