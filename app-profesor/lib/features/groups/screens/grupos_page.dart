@@ -892,7 +892,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    grupo.group,
+                                    grupo.groupLetter,
                                     style: TextStyle(
                                       color: accentColor,
                                       fontSize: 16,

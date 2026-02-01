@@ -53,6 +53,13 @@ class Grupo extends Equatable {
   String get infoCompleta => '$name - Grupo $group';
   String get aula => classroom;
 
+  /// Extrae solo la letra del grupo (ej: "RC.06061.2873.5-5-M" -> "M")
+  /// Si no hay letra al final, retorna el código completo
+  String get groupLetter {
+    final match = RegExp(r'-([A-Z])$').firstMatch(group);
+    return match?.group(1) ?? group;
+  }
+
   /// Genera un identificador único para este grupo basado en salón + materia + grupo
   /// Esto asegura que grupos con la misma letra pero diferente salón/materia
   /// tengan IDs distintos para sus asistencias

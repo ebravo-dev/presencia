@@ -354,7 +354,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                                             ),
                                             const SizedBox(height: 2),
                                             Text(
-                                              widget.grupo.group,
+                                              widget.grupo.groupLetter,
                                               style: TextStyle(
                                                 color: widget.accentColor,
                                                 fontSize: 16,
@@ -1696,11 +1696,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
             ),
             child: Row(
               children: [
-                Icon(
-                  Icons.info_outline,
-                  color: Colors.orange,
-                  size: 24,
-                ),
+                Icon(Icons.info_outline, color: Colors.orange, size: 24),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
@@ -1823,24 +1819,30 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
   Widget _buildStudentCard(dynamic alumno, {bool isLast = false}) {
     final puedeMarcar = _puedeMarcarAsistenciaAlumnos();
-    
+
     return Container(
       color: const Color(0xFF1C1C1E),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: puedeMarcar ? () async {
-            HapticFeedback.mediumImpact();
-            setState(() {
-              final currentValue =
-                  _asistencias[alumno.number.toString()] ?? false;
-              _asistencias[alumno.number.toString()] = !currentValue;
-            });
-            // Guardar en almacenamiento local
-            await _guardarAsistencia();
-          } : null,
-          splashColor: puedeMarcar ? widget.gradientColors[0].withOpacity(0.2) : Colors.transparent,
-          highlightColor: puedeMarcar ? widget.gradientColors[0].withOpacity(0.1) : Colors.transparent,
+          onTap: puedeMarcar
+              ? () async {
+                  HapticFeedback.mediumImpact();
+                  setState(() {
+                    final currentValue =
+                        _asistencias[alumno.number.toString()] ?? false;
+                    _asistencias[alumno.number.toString()] = !currentValue;
+                  });
+                  // Guardar en almacenamiento local
+                  await _guardarAsistencia();
+                }
+              : null,
+          splashColor: puedeMarcar
+              ? widget.gradientColors[0].withOpacity(0.2)
+              : Colors.transparent,
+          highlightColor: puedeMarcar
+              ? widget.gradientColors[0].withOpacity(0.1)
+              : Colors.transparent,
           child: Column(
             children: [
               Opacity(
@@ -1851,62 +1853,68 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                     vertical: 18,
                   ),
                   child: Row(
-                  children: [
-                    // Nombre del estudiante
-                    Expanded(
-                      child: Text(
-                        alumno.name,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
+                    children: [
+                      // Nombre del estudiante
+                      Expanded(
+                        child: Text(
+                          alumno.name,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    // Checkbox de asistencia con animación
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      curve: Curves.easeInOut,
-                      decoration: BoxDecoration(
-                        color: (_asistencias[alumno.number.toString()] ?? false)
-                            ? widget.gradientColors[0].withOpacity(0.15)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color:
-                                (_asistencias[alumno.number.toString()] ??
-                                    false)
-                                ? widget.gradientColors[0]
-                                : Colors.transparent,
-                            border: Border.all(
+                      const SizedBox(width: 12),
+                      // Checkbox de asistencia con animación
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeInOut,
+                        decoration: BoxDecoration(
+                          color:
+                              (_asistencias[alumno.number.toString()] ?? false)
+                              ? widget.gradientColors[0].withOpacity(0.15)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
                               color:
                                   (_asistencias[alumno.number.toString()] ??
                                       false)
                                   ? widget.gradientColors[0]
-                                  : Colors.grey.shade600,
-                              width: 2.5,
+                                  : Colors.transparent,
+                              border: Border.all(
+                                color:
+                                    (_asistencias[alumno.number.toString()] ??
+                                        false)
+                                    ? widget.gradientColors[0]
+                                    : Colors.grey.shade600,
+                                width: 2.5,
+                              ),
+                              borderRadius: BorderRadius.circular(6),
                             ),
-                            borderRadius: BorderRadius.circular(6),
+                            child:
+                                (_asistencias[alumno.number.toString()] ??
+                                    false)
+                                ? Icon(
+                                    Icons.check,
+                                    color: Colors.white,
+                                    size: 20,
+                                  )
+                                : null,
                           ),
-                          child:
-                              (_asistencias[alumno.number.toString()] ?? false)
-                              ? Icon(Icons.check, color: Colors.white, size: 20)
-                              : null,
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
               // Línea separadora alineada con el contenido (excepto para el último elemento)
               if (!isLast)
                 Padding(
