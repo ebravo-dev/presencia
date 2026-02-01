@@ -475,6 +475,10 @@ export class ScraperService {
                 const cells = row.querySelectorAll('td');
                 if (cells.length < 5) continue; // Skip invalid rows
 
+                // Log raw cell data for debugging
+                const cellData = Array.from(cells).slice(0, 6).map((c, i) => `[${i}]="${c?.textContent?.trim() || ''}"`);
+                console.log(`📋 Row cells: ${cellData.join(', ')}`);
+
                 const asignatura = cells[0]?.textContent?.trim() || '';
                 const nivel = cells[1]?.textContent?.trim() || '';
                 // Column 2 might be group letter in some tables
@@ -512,6 +516,8 @@ export class ScraperService {
                 // Use possibleGroupLetter if it looks like a letter (single char A-Z)
                 // This will be overwritten later from Control de Asistencia if needed
                 const groupLetter = /^[A-Z]$/.test(possibleGroupLetter) ? possibleGroupLetter : '';
+
+                console.log(`📊 Parsed: code="${code}", groupLetter="${groupLetter}", name="${name.substring(0, 30)}..."`);
 
                 result.push({
                     code,
