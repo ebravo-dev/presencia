@@ -503,10 +503,11 @@ export class ScraperService {
                     }
                 });
 
-                // Extract code from asignatura (e.g., "RC.06661.2873.5-5 DESARROLLO DE...")
-                const codeMatch = asignatura.match(/^([A-Z]{2}\.[A-Z0-9]+\.\d+\.\d+-\d+\.?[A-Z0-9]*)/);
+                // Extract code from asignatura (e.g., "RC.06661.2873.5-5 DESARROLLO DE..." or "(RC.06661.2873.5-5) DESARROLLO...")
+                // The code may be wrapped in parentheses or have other prefixes
+                const codeMatch = asignatura.match(/\(?([A-Z]{2}\.[A-Z0-9]+\.\d+\.\d+-\d+\.?[A-Z0-9]*)\)?/);
                 const code = codeMatch ? codeMatch[1] : asignatura.substring(0, 20);
-                const name = codeMatch ? asignatura.replace(codeMatch[1], '').trim() : asignatura;
+                const name = codeMatch ? asignatura.replace(codeMatch[0], '').trim() : asignatura;
 
                 // Use possibleGroupLetter if it looks like a letter (single char A-Z)
                 // This will be overwritten later from Control de Asistencia if needed
