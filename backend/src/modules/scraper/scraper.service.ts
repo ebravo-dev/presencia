@@ -510,14 +510,15 @@ export class ScraperService {
                 // Extract code from asignatura (e.g., "RC.06661.2873.5-5 DESARROLLO DE..." or "(RC.06661.2873.5-5) DESARROLLO...")
                 // The code may be wrapped in parentheses or have other prefixes
                 const codeMatch = asignatura.match(/\(?([A-Z]{2}\.[A-Z0-9]+\.\d+\.\d+-\d+\.?[A-Z0-9]*)\)?/);
-                const code = codeMatch ? codeMatch[1] : asignatura.substring(0, 20);
+                const baseCode = codeMatch ? codeMatch[1] : asignatura.substring(0, 20);
                 const name = codeMatch ? asignatura.replace(codeMatch[0], '').trim() : asignatura;
 
                 // Use possibleGroupLetter if it looks like a letter (single char A-Z)
-                // This will be overwritten later from Control de Asistencia if needed
                 const groupLetter = /^[A-Z]$/.test(possibleGroupLetter) ? possibleGroupLetter : '';
 
-                console.log(`📊 Parsed: code="${code}", groupLetter="${groupLetter}", name="${name.substring(0, 30)}..."`);
+                // Append group letter to code to make it unique (e.g., RC.06061.2873.5-5-K)
+                // This ensures groups with same base code but different letters are distinct
+                const code = groupLetter ? `${baseCode}-${groupLetter}` : baseCode;
 
                 result.push({
                     code,
@@ -532,7 +533,11 @@ export class ScraperService {
             return result;
         }, foundSelector);
 
-        console.log(`📊 Extracted ${groups.length} groups from page`);
+        // Log extracted groups (this runs in Node.js, so it will appear in logs)
+        console.log(`📊 Extracted ${groups.length} groups from page:`);
+        groups.forEach((g, i) => {
+            console.log(`   [${i + 1}] code="${g.code}", groupLetter="${g.groupLetter}", name="${g.name.substring(0, 40)}..."`);
+        });
         return groups;
     }
 
