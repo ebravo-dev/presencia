@@ -694,6 +694,10 @@ export class ScraperService {
         const groupRows = await page.$$('#grdGrupos .dx-datagrid-rowsview .dx-data-row');
         let groupClicked = false;
 
+        // Extract the group letter from the code (e.g., "RC.06061.2873.5-5-K" -> "K")
+        const letterMatch = groupCode.match(/-([A-Z])$/);
+        const targetGroupLetter = letterMatch ? letterMatch[1] : null;
+
         // Strip the trailing group letter suffix (-K, -M, etc.) if present
         // Then extract the base code pattern for searching
         const codeWithoutLetter = groupCode.replace(/-[A-Z]$/, '');
@@ -701,13 +705,31 @@ export class ScraperService {
         const codeMatch = codeWithoutLetter.match(/RC\.[A-Z0-9]+\.\d+\.\d+-\d+(?:\.[A-Z0-9]+)?/);
         const searchPattern = codeMatch ? codeMatch[0] : codeWithoutLetter;
 
-        console.log(`   🔍 Searching for: ${searchPattern} in ${groupRows.length} rows`);
+        console.log(`   🔍 Searching for: ${searchPattern}, group letter: ${targetGroupLetter || 'any'} in ${groupRows.length} rows`);
 
         for (const row of groupRows) {
             const rowText = await row.textContent();
 
+            // Check if this row contains the code
             if (rowText && rowText.includes(searchPattern)) {
-                console.log(`   ✅ Found group, clicking...`);
+                // If we have a target group letter, verify it matches
+                if (targetGroupLetter) {
+                    // Get the first cell (Gpo column) of this row
+                    const cells = await row.$$('td');
+                    if (cells.length > 0) {
+                        const firstCellText = await cells[0].textContent();
+                        const rowGroupLetter = firstCellText?.trim() || '';
+
+                        console.log(`   📋 Row has code match, Gpo column: "${rowGroupLetter}", looking for: "${targetGroupLetter}"`);
+
+                        if (rowGroupLetter !== targetGroupLetter) {
+                            console.log(`   ⏭️ Skipping row - group letter mismatch`);
+                            continue; // Skip this row, look for another match
+                        }
+                    }
+                }
+
+                console.log(`   ✅ Found matching group, clicking...`);
                 await row.click();
                 groupClicked = true;
                 // Wait longer for tables to refresh
