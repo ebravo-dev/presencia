@@ -693,8 +693,13 @@ export class ScraperService {
         // Find and click the matching group row
         const groupRows = await page.$$('#grdGrupos .dx-datagrid-rowsview .dx-data-row');
         let groupClicked = false;
-        const codeMatch = groupCode.match(/RC\.\d+\.\d+\.\d+-\d+/);
-        const searchPattern = codeMatch ? codeMatch[0] : groupCode;
+
+        // Strip the trailing group letter suffix (-K, -M, etc.) if present
+        // Then extract the base code pattern for searching
+        const codeWithoutLetter = groupCode.replace(/-[A-Z]$/, '');
+        // Match RC.XXXXX patterns (various formats like RC.06061.2873.5-5 or RC.EDP03.3481.4-4.E05)
+        const codeMatch = codeWithoutLetter.match(/RC\.[A-Z0-9]+\.\d+\.\d+-\d+(?:\.[A-Z0-9]+)?/);
+        const searchPattern = codeMatch ? codeMatch[0] : codeWithoutLetter;
 
         console.log(`   🔍 Searching for: ${searchPattern} in ${groupRows.length} rows`);
 

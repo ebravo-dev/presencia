@@ -180,7 +180,9 @@ async function processScrapingJob(
             console.log(`⚠️ Student scraping session failed`);
         }
 
-        const finalStatus = (studentSessionFailed || studentErrors.length > 0) ? 'PARTIAL' : 'COMPLETED';
+        // Use COMPLETED even with errors (errors are captured in the error field)
+        // The PARTIAL status doesn't exist in the enum
+        const finalStatus = 'COMPLETED';
         const errorSummary = studentErrors.length > 0
             ? `Student scraping errors: ${studentErrors.join(' | ')}`
             : studentSessionFailed
@@ -190,7 +192,7 @@ async function processScrapingJob(
             ? `${errorSummary.substring(0, 1000)}...`
             : errorSummary;
 
-        // Mark SyncJob as COMPLETED or PARTIAL
+        // Mark SyncJob as COMPLETED (errors tracked in error field)
         await prisma.syncJob.update({
             where: { id: syncJob.id },
             data: {
