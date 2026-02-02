@@ -329,15 +329,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
             minHeight: 8,
           ),
         ),
-        const SizedBox(height: 8),
-        if (_syncStatus!.currentGroup != null &&
-            _syncStatus!.totalGroups != null)
-          Text(
-            'Grupo ${_syncStatus!.currentGroup} de ${_syncStatus!.totalGroups}',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: UATColors.neutral80),
-          ),
+        // Removed "Grupo X de Y" text because we use totalGroups=100 for percentage
       ],
     );
   }
