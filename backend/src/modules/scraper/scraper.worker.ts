@@ -208,15 +208,18 @@ async function processScrapingJob(
         }
 
         // Determine final status and error message
-        // - COMPLETED: Everything worked (or worked with warnings - errors stored in error field)
-        // - FAILED: Complete failure (handled in catch block)
-        const finalStatus: SyncStatus = SyncStatus.COMPLETED;
+        // - COMPLETED: ALL groups AND students obtained successfully
+        // - FAILED: No students obtained (even if groups saved)
+        let finalStatus: SyncStatus = SyncStatus.COMPLETED;
         let errorSummary: string | null = null;
 
-        if (studentSessionFailed) {
-            // Students failed but groups saved - still mark as completed with error message
-            errorSummary = 'Hubo un problema al obtener los alumnos. Las materias se guardaron pero sin alumnos. Intenta sincronizar de nuevo.';
+        if (studentSessionFailed || studentsCount === 0) {
+            // No students obtained - mark as FAILED so professor can retry
+            finalStatus = SyncStatus.FAILED;
+            errorSummary = 'No se pudieron obtener los alumnos. Por favor intenta sincronizar de nuevo.';
         } else if (studentErrors.length > 0) {
+            // Some groups had errors but we got some students
+            finalStatus = SyncStatus.FAILED;
             errorSummary = `Algunos grupos tuvieron problemas: ${studentErrors.length} errores. Intenta sincronizar de nuevo.`;
         }
 
@@ -226,7 +229,8 @@ async function processScrapingJob(
             data: {
                 status: finalStatus,
                 completedAt: new Date(),
-                currentGroup: result.groups.length,
+                currentGroup: 100, // 100% progress
+                totalGroups: 100,
                 currentGroupName: errorSummary
                     ? errorSummary
                     : `¡Listo! ${result.groups.length} materias y ${studentsCount} alumnos`,

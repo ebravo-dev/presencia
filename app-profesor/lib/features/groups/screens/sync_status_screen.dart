@@ -374,6 +374,34 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
             ),
           ),
 
+        // Retry button (only when failed)
+        if (_syncStatus?.isFailed == true)
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                // Navigate back to trigger a new sync
+                Navigator.of(context).pop();
+                // Show message to user
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Por favor inicia la sincronización de nuevo desde el menú',
+                    ),
+                    duration: Duration(seconds: 3),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Reintentar Sincronización'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ),
+
         const SizedBox(height: 24),
 
         // Info message
