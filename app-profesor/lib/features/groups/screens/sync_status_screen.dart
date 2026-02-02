@@ -96,8 +96,9 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
             // Stop polling for terminal states
             _stopPolling();
 
-            // Auto-navigate when completed
-            if (status.isCompleted && mounted) {
+            // Auto-navigate only when completed successfully (no errors)
+            // If there's an error, user stays on this screen to see the message
+            if (status.isCompleted && status.error == null && mounted) {
               _navigateToGroupsWithRefresh();
             }
           }
@@ -270,6 +271,10 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
       case 'IN_PROGRESS':
         return 'Sincronizando';
       case 'COMPLETED':
+        // Check if there was an error
+        if (_syncStatus?.error != null) {
+          return 'Sincronización Parcial';
+        }
         return '¡Sincronización Completa!';
       case 'FAILED':
         return 'Error en Sincronización';
@@ -281,6 +286,17 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   String _getSubtitleForStatus() {
     if (_syncStatus == null) return '';
 
+    // For COMPLETED with error, show error message
+    if (_syncStatus!.status == 'COMPLETED' && _syncStatus!.error != null) {
+      return _syncStatus!.error!;
+    }
+
+    // Use currentGroupName which now contains detailed status messages
+    if (_syncStatus!.currentGroupName != null &&
+        _syncStatus!.currentGroupName!.isNotEmpty) {
+      return _syncStatus!.currentGroupName!;
+    }
+
     // Use the message from API if available
     if (_syncStatus!.message.isNotEmpty) {
       return _syncStatus!.message;
@@ -291,9 +307,6 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
       case 'PENDING':
         return 'Conectando con el portal UAT...';
       case 'IN_PROGRESS':
-        if (_syncStatus!.currentGroupName != null) {
-          return 'Procesando: ${_syncStatus!.currentGroupName}';
-        }
         return 'Extrayendo información del portal...';
       case 'COMPLETED':
         return 'Tus grupos están listos';

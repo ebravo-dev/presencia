@@ -7,6 +7,7 @@ import {
 } from '../../core/queue/queue.config.js';
 import { scraperService } from './scraper.service.js';
 import { prisma } from '../../core/database/prisma.js';
+import { SyncStatus } from '@prisma/client';
 import { calculateCurrentPeriod } from '../auth/auth.service.js';
 
 /**
@@ -29,15 +30,30 @@ async function processScrapingJob(
     });
     console.log(`📊 Created SyncJob ${syncJob.id}`);
 
-    try {
-        // Update to IN_PROGRESS
+    // Helper function to update progress
+    const updateProgress = async (phase: string, currentGroup?: number, totalGroups?: number) => {
         await prisma.syncJob.update({
             where: { id: syncJob.id },
-            data: { status: 'IN_PROGRESS' },
+            data: {
+                currentGroupName: phase,
+                currentGroup: currentGroup ?? undefined,
+                totalGroups: totalGroups ?? undefined,
+            },
+        });
+    };
+
+    try {
+        // Phase 1: Starting
+        await prisma.syncJob.update({
+            where: { id: syncJob.id },
+            data: {
+                status: 'IN_PROGRESS',
+                currentGroupName: 'Conectando con el portal UAT...',
+            },
         });
 
-        // Delete old groups and students for this professor/period
-        // This ensures fresh data on each sync
+        // Phase 2: Cleaning old data
+        await updateProgress('Preparando sincronización...');
         console.log(`🗑️ Cleaning old data for professor ${email}...`);
         const deletedGroups = await prisma.group.deleteMany({
             where: {
@@ -65,18 +81,16 @@ async function processScrapingJob(
             console.log(`   Cleaned up ${oldJobs.length} old sync jobs`);
         }
 
-        // Scrape groups from UAT portal
+        // Phase 3: Extracting groups from UAT portal
+        await updateProgress('Accediendo al portal UAT...');
         const result = await scraperService.scrapeGroups(email, password);
 
         if (!result.success) {
             throw new Error(result.error || 'Scraping failed');
         }
 
-        // Update SyncJob with total groups
-        await prisma.syncJob.update({
-            where: { id: syncJob.id },
-            data: { totalGroups: result.groups.length },
-        });
+        // Phase 4: Groups found
+        await updateProgress(`${result.groups.length} materias encontradas`, 0, result.groups.length);
 
         // Save groups to database
         let studentsCount = 0;
@@ -117,20 +131,19 @@ async function processScrapingJob(
         const groupCodes = result.groups.map(g => g.code);
         const groupNames = result.groups.map(g => g.name);
 
-        // Process each group and update progress in real-time via callback
+        // Phase 5: Getting students for each group (updated in real-time via callback)
         const studentsResult = await scraperService.scrapeAllStudentsInSession(
             email,
             password,
             groupCodes,
-            async (groupIndex: number, groupCode: string) => {
-                const groupName = groupNames[groupIndex] || groupCode;
-                await prisma.syncJob.update({
-                    where: { id: syncJob.id },
-                    data: {
-                        currentGroup: groupIndex + 1,
-                        currentGroupName: groupName,
-                    },
-                });
+            async (groupIndex: number, _groupCode: string) => {
+                const groupName = groupNames[groupIndex] || `Grupo ${groupIndex + 1}`;
+                // Use updateProgress helper for consistent format
+                await updateProgress(
+                    `Obteniendo alumnos de ${groupName}`,
+                    groupIndex + 1,
+                    result.groups.length
+                );
             }
         );
 
@@ -180,26 +193,30 @@ async function processScrapingJob(
             console.log(`⚠️ Student scraping session failed`);
         }
 
-        // Use COMPLETED even with errors (errors are captured in the error field)
-        // The PARTIAL status doesn't exist in the enum
-        const finalStatus = 'COMPLETED';
-        const errorSummary = studentErrors.length > 0
-            ? `Student scraping errors: ${studentErrors.join(' | ')}`
-            : studentSessionFailed
-                ? 'Student scraping session failed'
-                : null;
-        const trimmedError = errorSummary && errorSummary.length > 1000
-            ? `${errorSummary.substring(0, 1000)}...`
-            : errorSummary;
+        // Determine final status and error message
+        // - COMPLETED: Everything worked (or worked with warnings - errors stored in error field)
+        // - FAILED: Complete failure (handled in catch block)
+        const finalStatus: SyncStatus = SyncStatus.COMPLETED;
+        let errorSummary: string | null = null;
 
-        // Mark SyncJob as COMPLETED (errors tracked in error field)
+        if (studentSessionFailed) {
+            // Students failed but groups saved - still mark as completed with error message
+            errorSummary = 'Hubo un problema al obtener los alumnos. Las materias se guardaron pero sin alumnos. Intenta sincronizar de nuevo.';
+        } else if (studentErrors.length > 0) {
+            errorSummary = `Algunos grupos tuvieron problemas: ${studentErrors.length} errores. Intenta sincronizar de nuevo.`;
+        }
+
+        // Mark SyncJob with final status
         await prisma.syncJob.update({
             where: { id: syncJob.id },
             data: {
                 status: finalStatus,
                 completedAt: new Date(),
                 currentGroup: result.groups.length,
-                error: trimmedError || null,
+                currentGroupName: errorSummary
+                    ? errorSummary
+                    : `¡Listo! ${result.groups.length} materias y ${studentsCount} alumnos`,
+                error: errorSummary,
             },
         });
 
