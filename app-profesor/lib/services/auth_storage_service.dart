@@ -110,6 +110,16 @@ class AuthStorageService {
     }
   }
 
+  /// Limpiar grupos del storage (usado al iniciar nueva sincronización)
+  Future<void> clearGrupos() async {
+    try {
+      await _box?.delete(_gruposKey);
+      Logger.info('Grupos eliminados del storage');
+    } catch (e, stackTrace) {
+      Logger.error('Error al limpiar grupos', e, stackTrace);
+    }
+  }
+
   /// Guardar sesión completa (token + profesor)
   Future<void> saveSession({
     required String token,

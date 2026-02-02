@@ -189,8 +189,9 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
   }
 
   /// Limpiar grupos locales (usado al iniciar nueva sincronización)
-  void clearGrupos() {
+  Future<void> clearGrupos() async {
     state = state.copyWith(grupos: []);
+    await _authStorage.clearGrupos();
   }
 
   /// Sincronizar ciclo (scraping forzado)
@@ -202,7 +203,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     }
 
     // Clear local groups before syncing to avoid showing stale data
-    clearGrupos();
+    await clearGrupos();
 
     // Usar ApiService para iniciar sync forzada
     return _apiService.forceSync(
