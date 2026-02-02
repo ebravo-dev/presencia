@@ -117,19 +117,13 @@ async function processScrapingJob(
         const groupCodes = result.groups.map(g => g.code);
         const groupNames = result.groups.map(g => g.name);
 
-        // Process each group and update progress
-        const studentsResult = await scraperService.scrapeAllStudentsInSession(email, password, groupCodes);
-
-        let studentErrors: string[] = [];
-        let studentSessionFailed = false;
-
-        if (studentsResult.success) {
-            let groupIndex = 0;
-            // Save students to database and update progress
-            for (const [groupCode, students] of studentsResult.studentsByGroup) {
+        // Process each group and update progress in real-time via callback
+        const studentsResult = await scraperService.scrapeAllStudentsInSession(
+            email,
+            password,
+            groupCodes,
+            async (groupIndex: number, groupCode: string) => {
                 const groupName = groupNames[groupIndex] || groupCode;
-
-                // Update sync progress for this group
                 await prisma.syncJob.update({
                     where: { id: syncJob.id },
                     data: {
@@ -137,14 +131,21 @@ async function processScrapingJob(
                         currentGroupName: groupName,
                     },
                 });
+            }
+        );
 
+        let studentErrors: string[] = [];
+        let studentSessionFailed = false;
+
+        if (studentsResult.success) {
+            // Save students to database (progress already updated during scraping)
+            for (const [groupCode, students] of studentsResult.studentsByGroup) {
                 const dbGroup = await prisma.group.findFirst({
                     where: { code: groupCode, professorId, period: currentPeriod },
                 });
 
                 if (!dbGroup) {
                     console.log(`⚠️ Group ${groupCode} not found in database, skipping students`);
-                    groupIndex++;
                     continue;
                 }
 
@@ -167,7 +168,6 @@ async function processScrapingJob(
                     });
                 }
                 studentsCount += students.length;
-                groupIndex++;
             }
 
             if (studentsResult.errors.length > 0) {

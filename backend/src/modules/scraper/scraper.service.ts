@@ -594,12 +594,14 @@ export class ScraperService {
     /**
      * Scrape students for ALL groups in a single login session
      * Much more efficient than calling scrapeStudents per group
+     * @param onProgress - Optional callback to report progress (groupIndex, groupCode)
      * @returns Map of groupCode -> students array
      */
     async scrapeAllStudentsInSession(
         email: string,
         password: string,
-        groupCodes: string[]
+        groupCodes: string[],
+        onProgress?: (groupIndex: number, groupCode: string) => Promise<void>
     ): Promise<{ success: boolean; studentsByGroup: Map<string, ScrapedStudent[]>; errors: string[] }> {
         if (!this.browser) {
             await this.init();
@@ -632,6 +634,11 @@ export class ScraperService {
             for (let i = 0; i < groupCodes.length; i++) {
                 const groupCode = groupCodes[i];
                 console.log(`\n👥 [${i + 1}/${groupCodes.length}] Processing group: ${groupCode}`);
+
+                // Report progress before processing each group
+                if (onProgress) {
+                    await onProgress(i, groupCode);
+                }
 
                 try {
                     // Navigate to Control de Asistencia fresh for each group

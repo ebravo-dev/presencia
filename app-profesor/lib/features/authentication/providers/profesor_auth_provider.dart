@@ -188,6 +188,11 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     await _loadGrupos(forceRefresh: true);
   }
 
+  /// Limpiar grupos locales (usado al iniciar nueva sincronización)
+  void clearGrupos() {
+    state = state.copyWith(grupos: []);
+  }
+
   /// Sincronizar ciclo (scraping forzado)
   Future<Either<String, String>> syncGroups(String password) async {
     if (!state.isAuthenticated ||
@@ -195,6 +200,9 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
         state.token == null) {
       return Left('No hay sesión activa');
     }
+
+    // Clear local groups before syncing to avoid showing stale data
+    clearGrupos();
 
     // Usar ApiService para iniciar sync forzada
     return _apiService.forceSync(
