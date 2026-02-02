@@ -204,32 +204,38 @@ class ApiService {
   String _handleDioError(DioException e) {
     switch (e.type) {
       case DioExceptionType.connectionTimeout:
-        return 'Tiempo de conexión agotado. Verifica tu conexión a internet.';
+        return 'No se pudo conectar al servidor. Verifica tu conexión a internet.';
       case DioExceptionType.sendTimeout:
-        return 'Tiempo de envío agotado. Verifica tu conexión a internet.';
+        return 'El tiempo de espera se agotó. Verifica tu conexión a internet.';
       case DioExceptionType.receiveTimeout:
-        return 'Tiempo de respuesta agotado. El servidor no responde.';
+        return 'El servidor tardó demasiado en responder. Intenta de nuevo más tarde.';
       case DioExceptionType.badResponse:
         switch (e.response?.statusCode) {
           case 400:
-            return e.response?.data['message'] ?? 'Solicitud inválida';
+            return e.response?.data['message'] ??
+                'Los datos enviados no son válidos.';
           case 401:
             return 'Credenciales inválidas. Verifica tu email y contraseña.';
           case 403:
-            return 'No tienes permisos para acceder a este recurso.';
+            return 'No tienes permisos para realizar esta acción.';
           case 404:
-            return 'Recurso no encontrado.';
+            return 'No se encontró el recurso solicitado.';
           case 500:
-            return 'Error interno del servidor. Intenta más tarde.';
+            return 'El servidor está experimentando problemas. Intenta más tarde.';
+          case 502:
+          case 503:
+            return 'El servidor no está disponible en este momento. Intenta de nuevo más tarde.';
+          case 504:
+            return 'El servidor tardó demasiado en responder. Intenta de nuevo.';
           default:
-            return 'Error del servidor: ${e.response?.statusCode}';
+            return 'Ocurrió un problema con el servidor. Intenta de nuevo más tarde.';
         }
       case DioExceptionType.cancel:
-        return 'Solicitud cancelada';
+        return 'La solicitud fue cancelada.';
       case DioExceptionType.connectionError:
-        return 'Error de conexión. Verifica tu conexión a internet.';
+        return 'No se pudo conectar al servidor. Verifica tu conexión a internet.';
       default:
-        return 'Error de conexión desconocido';
+        return 'Ocurrió un problema de conexión. Verifica tu internet e intenta de nuevo.';
     }
   }
 }
