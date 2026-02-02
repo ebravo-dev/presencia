@@ -137,9 +137,9 @@ export class ScraperService {
      * The portal uses DevExpress (dx) components
      */
     private async login(page: Page, email: string, password: string): Promise<void> {
-        // Navigate to login page
+        // Navigate to login page - wait for network to be idle
         await page.goto(UAT_URLS.LOGIN, {
-            waitUntil: 'domcontentloaded',
+            waitUntil: 'networkidle',
             timeout: 60000
         });
 
@@ -147,12 +147,14 @@ export class ScraperService {
         await page.waitForSelector(UAT_SELECTORS.LOGIN.EMAIL_INPUT, { timeout: 30000 });
 
         // Small delay to ensure DevExpress components are ready
-        await page.waitForTimeout(1000);
+        await page.waitForTimeout(2000);
 
         // Fill credentials - DevExpress inputs
         console.log('📝 Filling credentials...');
         await page.fill(UAT_SELECTORS.LOGIN.EMAIL_INPUT, email);
+        await page.waitForTimeout(300);
         await page.fill(UAT_SELECTORS.LOGIN.PASSWORD_INPUT, password);
+        await page.waitForTimeout(300);
 
         // Check privacy checkbox (required by UAT portal)
         // IMPORTANT: Click directly on the checkbox ICON, not the text label
@@ -162,41 +164,79 @@ export class ScraperService {
         if (checkbox) {
             await checkbox.click();
             await page.waitForTimeout(500); // Brief wait for checkbox state to update
+        } else {
+            console.log('⚠️ Privacy checkbox not found, trying alternate selector...');
+            // Try clicking the checkbox container
+            const checkboxAlt = await page.$('#chkAcepto');
+            if (checkboxAlt) {
+                await checkboxAlt.click();
+                await page.waitForTimeout(500);
+            }
         }
 
-        // Submit login
+        // Submit login using Promise.all to wait for navigation
         console.log('🔘 Clicking login button...');
+
+        // Click the login button
         await page.click(UAT_SELECTORS.LOGIN.SUBMIT_BUTTON, { force: true });
 
-        // Wait for the portal to load after login
-        // The UAT portal stays on the same URL but loads the menu dynamically
+        // Wait for either menu to appear OR page to change OR error message
         console.log('⏳ Waiting for portal to load after login...');
-        await page.waitForTimeout(5000); // Give time for JavaScript to execute
 
-        // Check if we got an error message or if the menu loaded
-        const errorElement = await page.$(UAT_SELECTORS.LOGIN.ERROR_MESSAGE);
+        try {
+            // Use Promise.race to detect any of these conditions
+            await Promise.race([
+                page.waitForSelector('#treeViewMenuPrincipal', { timeout: 20000 }),
+                page.waitForSelector('.dx-invalid-message:visible', { timeout: 20000 }),
+                page.waitForURL(/.*Profesor.*/, { timeout: 20000 }),
+            ]);
+        } catch (e) {
+            // Timeout - check current state
+            console.log('⏳ Initial wait timed out, checking page state...');
+        }
+
+        // Additional wait for JS to settle
+        await page.waitForTimeout(2000);
+
+        // Check if we got an error message
+        const errorElement = await page.$('.dx-invalid-message');
         if (errorElement) {
             const errorText = await errorElement.textContent();
-            if (errorText && errorText.includes('Usuario') || errorText?.includes('contraseña')) {
+            if (errorText && (errorText.includes('Usuario') || errorText.includes('contraseña') || errorText.includes('incorrecto'))) {
                 throw new Error(`Login failed: ${errorText}`);
             }
         }
 
-        // Wait for the menu to be visible (sign of successful login)
-        try {
-            await page.waitForSelector('#treeViewMenuPrincipal', { timeout: 10000 });
+        // Check for the menu (sign of successful login)
+        const menu = await page.$('#treeViewMenuPrincipal');
+        if (menu) {
             console.log('🔓 Login successful - menu detected');
-        } catch {
-            // Menu might not be available yet, try to check if login form is gone
-            const loginForm = await page.$(UAT_SELECTORS.LOGIN.SUBMIT_BUTTON);
-            if (loginForm) {
-                // Still on login page - login failed
-                await page.screenshot({ path: './debug-screenshots/login-failed.png' });
-                throw new Error('Login failed - still on login page');
-            }
-            console.log('🔓 Login appears successful (login form gone)');
+            console.log('📍 Current URL:', page.url());
+            return;
         }
 
+        // Check if we navigated to Profesor area
+        const currentUrl = page.url();
+        if (currentUrl.includes('Profesor')) {
+            console.log('🔓 Login successful - navigated to Profesor area');
+            console.log('📍 Current URL:', currentUrl);
+            return;
+        }
+
+        // Still on login page - login failed
+        const loginForm = await page.$(UAT_SELECTORS.LOGIN.SUBMIT_BUTTON);
+        if (loginForm) {
+            // Take screenshot for debugging
+            try {
+                await page.screenshot({ path: '/tmp/login-failed.png' });
+                console.log('📸 Screenshot saved to /tmp/login-failed.png');
+            } catch (e) {
+                console.log('⚠️ Could not save screenshot');
+            }
+            throw new Error(`Login failed - still on login page. URL: ${currentUrl}`);
+        }
+
+        console.log('🔓 Login appears successful (login form gone)');
         console.log('📍 Current URL:', page.url());
     }
 
