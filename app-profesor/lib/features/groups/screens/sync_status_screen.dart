@@ -62,11 +62,12 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     try {
       final token = _authStorage.getToken();
       if (token == null) {
+        _stopPolling();
+        if (!mounted) return;
         setState(() {
           _error = 'Sesión no encontrada';
           _isLoading = false;
         });
-        _stopPolling();
         return;
       }
 
@@ -74,13 +75,15 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
 
       result.fold(
         (error) {
+          _stopPolling();
+          if (!mounted) return;
           setState(() {
             _error = error;
             _isLoading = false;
           });
-          _stopPolling();
         },
         (status) {
+          if (!mounted) return;
           setState(() {
             _syncStatus = status;
             _isLoading = false;
@@ -105,11 +108,12 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
         },
       );
     } catch (e) {
+      _stopPolling();
+      if (!mounted) return;
       setState(() {
         _error = 'Error: $e';
         _isLoading = false;
       });
-      _stopPolling();
     }
   }
 
