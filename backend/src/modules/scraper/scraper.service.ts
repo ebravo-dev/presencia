@@ -137,9 +137,9 @@ export class ScraperService {
      * The portal uses DevExpress (dx) components
      */
     private async login(page: Page, email: string, password: string): Promise<void> {
-        // Navigate to login page - wait for network to be idle
+        // Navigate to login page
         await page.goto(UAT_URLS.LOGIN, {
-            waitUntil: 'networkidle',
+            waitUntil: 'domcontentloaded',
             timeout: 60000
         });
 
