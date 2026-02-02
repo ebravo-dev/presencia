@@ -121,6 +121,21 @@ export class AuthService {
         const decryptedPassword = rsaService.decryptPassword(encryptedPassword);
         const currentPeriod = calculateCurrentPeriod();
 
+        // Check if there's already a sync in progress
+        const existingSync = await prisma.syncJob.findFirst({
+            where: {
+                professorId,
+                status: { in: ['PENDING', 'IN_PROGRESS'] },
+            },
+        });
+
+        if (existingSync) {
+            return {
+                message: 'Ya hay una sincronización en proceso. Espera a que termine.',
+                currentPeriod,
+            };
+        }
+
         // Update lastSyncPeriod
         await prisma.professor.update({
             where: { id: professorId },
