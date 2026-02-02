@@ -1,49 +1,29 @@
 #!/bin/sh
 set -e
 
-echo "🔄 Running database migrations..."
+echo "🚀 Starting Presencia Backend..."
 
-# Try to deploy migrations
-MIGRATE_OUTPUT=$(npx prisma migrate deploy 2>&1) && {
-    echo "$MIGRATE_OUTPUT"
-    echo "✅ Migrations complete, starting server..."
-    exec node dist/app.js
-}
-
-# If we get here, migration failed
-echo "$MIGRATE_OUTPUT"
-echo ""
-echo "⚠️ Migration deploy failed, checking for failed migrations to resolve..."
-
-# Check if it's a P3009 error (failed migrations blocking)
-if echo "$MIGRATE_OUTPUT" | grep -q "P3009"; then
-    echo "🔧 Found failed migrations (P3009), attempting to resolve..."
+# Run migrations (this is idempotent - fast if no changes)
+echo "🔄 Checking database migrations..."
+if npx prisma migrate deploy 2>&1; then
+    echo "✅ Database ready"
+else
+    # Migration failed - try to recover from P3009 (failed migration blocking)
+    echo "⚠️ Migration issue detected, attempting recovery..."
     
-    # Extract the failed migration name using sed (more portable than grep -P)
-    # The error message contains: "The `migration_name` migration started at..."
-    FAILED_MIGRATION=$(echo "$MIGRATE_OUTPUT" | sed -n "s/.*The \`\([^\`]*\)\` migration.*/\1/p" | head -1)
+    # Quick check for P3009 and attempt to resolve
+    FAILED=$(npx prisma migrate status 2>&1 | grep -o "^\d\{14\}.*Failed" | head -1 | awk '{print $1}' || true)
     
-    if [ -n "$FAILED_MIGRATION" ]; then
-        echo "🔧 Resolving failed migration: $FAILED_MIGRATION"
-        
-        # First try to mark it as applied (since the changes might already be in the DB)
-        if npx prisma migrate resolve --applied "$FAILED_MIGRATION" 2>&1; then
-            echo "✅ Marked migration as applied"
-        else
-            echo "⚠️ Could not mark as applied, trying rolled-back..."
-            npx prisma migrate resolve --rolled-back "$FAILED_MIGRATION" 2>&1 || true
-        fi
-        
-        echo "🔄 Retrying migration deploy..."
-        npx prisma migrate deploy
-        
-        echo "✅ Migrations complete, starting server..."
-        exec node dist/app.js
+    if [ -n "$FAILED" ]; then
+        echo "🔧 Resolving failed migration: $FAILED"
+        npx prisma migrate resolve --applied "$FAILED" 2>&1 || true
+        npx prisma migrate deploy 2>&1
+        echo "✅ Database recovered"
     else
-        echo "❌ Could not extract failed migration name from error message"
+        echo "❌ Could not resolve migration issue"
         exit 1
     fi
-else
-    echo "❌ Migration failed for unknown reason (not P3009)"
-    exit 1
 fi
+
+echo "🎯 Starting server..."
+exec node dist/app.js

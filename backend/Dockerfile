@@ -1,15 +1,20 @@
-# Build stage - v2 (force rebuild)
+# Build stage
 FROM node:20-slim AS builder
 
 WORKDIR /app
 
-# Install dependencies
+# Copy package files first (for better caching)
 COPY package*.json ./
+COPY prisma ./prisma
+
+# Install dependencies (cached if package.json unchanged)
 RUN npm install --production=false
+
+# Generate Prisma client (cached if prisma schema unchanged)  
+RUN npm run db:generate
 
 # Copy source and build
 COPY . .
-RUN npm run db:generate
 RUN npm run build
 
 # Production stage
