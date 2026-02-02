@@ -73,10 +73,28 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
     /**
      * GET /professors/classes
      * Get all classes/groups for the authenticated professor
+     * Returns empty array if sync is in progress to prevent loading incomplete data
      */
     fastify.get(
         '/professors/classes',
         async (request: AuthenticatedRequest, reply: FastifyReply) => {
+            // Check if there's a sync in progress - don't return incomplete data
+            const activeSyncJob = await prisma.syncJob.findFirst({
+                where: {
+                    professorId: request.professorId,
+                    status: { in: ['PENDING', 'IN_PROGRESS'] },
+                },
+            });
+
+            if (activeSyncJob) {
+                // Sync in progress - return empty with flag
+                return reply.send({
+                    data: [],
+                    syncInProgress: true,
+                    message: 'Sincronización en progreso, espera a que termine',
+                });
+            }
+
             const groups = await prisma.group.findMany({
                 where: { professorId: request.professorId },
                 select: {
@@ -125,7 +143,7 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
                 };
             });
 
-            return reply.send({ data: formattedGroups });
+            return reply.send({ data: formattedGroups, syncInProgress: false });
         }
     );
 
