@@ -185,14 +185,15 @@ export class ScraperService {
 
         try {
             // Use Promise.race to detect any of these conditions
+            // Timeout increased to 60s because UAT portal can be very slow
             await Promise.race([
-                page.waitForSelector('#treeViewMenuPrincipal', { timeout: 20000 }),
-                page.waitForSelector('.dx-invalid-message:visible', { timeout: 20000 }),
-                page.waitForURL(/.*Profesor.*/, { timeout: 20000 }),
+                page.waitForSelector('#treeViewMenuPrincipal', { timeout: 60000 }),
+                page.waitForSelector('.dx-invalid-message:visible', { timeout: 60000 }),
+                page.waitForURL(/.*Profesor.*/, { timeout: 60000 }),
             ]);
         } catch (e) {
             // Timeout - check current state
-            console.log('⏳ Initial wait timed out, checking page state...');
+            console.log('⏳ Initial wait timed out (60s), checking page state...');
         }
 
         // Additional wait for JS to settle

@@ -30,14 +30,13 @@ async function processScrapingJob(
     });
     console.log(`📊 Created SyncJob ${syncJob.id}`);
 
-    // Step-based progress tracking (6 total steps)
-    // Step 1: Conectando...
-    // Step 2: Sesión iniciada
-    // Step 3: Obteniendo clases
-    // Step 4: N clases encontradas
-    // Step 5: Recolectando alumnos
-    // Step 6: ¡Clases construidas con éxito!
-    const TOTAL_STEPS = 6;
+    // Step-based progress tracking (5 total steps)
+    // Step 1: Conectando con el portal
+    // Step 2: Obteniendo clases
+    // Step 3: N clases encontradas  
+    // Step 4: Recolectando alumnos
+    // Step 5: ¡Completado!
+    const TOTAL_STEPS = 5;
 
     const updateStep = async (step: number, description: string) => {
         await prisma.syncJob.update({
@@ -88,17 +87,16 @@ async function processScrapingJob(
             console.log(`   Cleaned up ${oldJobs.length} old sync jobs`);
         }
 
-        // Step 2: Sesión iniciada - will be set after login success
-        // Step 3: Obteniendo clases
-        await updateStep(3, 'Obteniendo tus clases...');
+        // Step 2: Obteniendo clases (scraping includes login)
+        await updateStep(2, 'Iniciando sesión y obteniendo clases...');
         const result = await scraperService.scrapeGroups(email, password);
 
         if (!result.success) {
             throw new Error(result.error || 'Scraping failed');
         }
 
-        // Step 4: N clases encontradas
-        await updateStep(4, `${result.groups.length} clases encontradas`);
+        // Step 3: N clases encontradas
+        await updateStep(3, `${result.groups.length} clases encontradas`);
 
         // Save groups to database
         let studentsCount = 0;
@@ -140,20 +138,20 @@ async function processScrapingJob(
         const groupNames = result.groups.map(g => g.name);
         const totalGroupCount = result.groups.length;
 
-        // Step 5: Recolectando alumnos
-        await updateStep(5, 'Recolectando alumnos...');
+        // Step 4: Recolectando alumnos
+        await updateStep(4, 'Recolectando alumnos...');
         const studentsResult = await scraperService.scrapeAllStudentsInSession(
             email,
             password,
             groupCodes,
             async (groupIndex: number, _groupCode: string) => {
                 const groupName = groupNames[groupIndex] || `Clase ${groupIndex + 1}`;
-                // Keep step 5 but update the detail message
+                // Keep step 4 but update the detail message
                 await prisma.syncJob.update({
                     where: { id: syncJob.id },
                     data: {
                         currentGroupName: `Obteniendo alumnos de ${groupName} (${groupIndex + 1}/${totalGroupCount})`,
-                        currentGroup: 5,
+                        currentGroup: 4,
                         totalGroups: TOTAL_STEPS,
                     },
                 });
@@ -164,8 +162,8 @@ async function processScrapingJob(
         let studentSessionFailed = false;
 
         if (studentsResult.success) {
-            // Step 6: Finalizing
-            await updateStep(6, 'Guardando datos...');
+            // Step 5: Finalizing - ¡Completado!
+            await updateStep(5, '¡Clases sincronizadas!');
 
             // Save students to database
             for (const [groupCode, students] of studentsResult.studentsByGroup) {
@@ -261,13 +259,15 @@ async function processScrapingJob(
         console.error(`❌ Job ${job.id} failed (attempt ${attemptNumber}/${maxAttempts}):`, errorMessage);
 
         // Determine if this error should be retried
-        // Login failures should NOT be retried (credentials are wrong)
-        const isLoginError = errorMessage.toLowerCase().includes('login failed') ||
-            errorMessage.toLowerCase().includes('credenciales') ||
-            errorMessage.toLowerCase().includes('contraseña') ||
-            errorMessage.toLowerCase().includes('still on login page');
+        // Only EXPLICIT credential errors should NOT be retried
+        // "still on login page" IS retryable because it could be slow page loading
+        const isCredentialError =
+            errorMessage.toLowerCase().includes('contraseña incorrecta') ||
+            errorMessage.toLowerCase().includes('usuario incorrecto') ||
+            errorMessage.toLowerCase().includes('credenciales inválidas') ||
+            errorMessage.toLowerCase().includes('invalid credentials');
 
-        const isRetryable = !isLoginError && attemptNumber < maxAttempts;
+        const isRetryable = !isCredentialError && attemptNumber < maxAttempts;
 
         if (isRetryable) {
             // Update SyncJob to show retry status
@@ -281,7 +281,7 @@ async function processScrapingJob(
             console.log(`🔄 Will retry job ${job.id} (attempt ${attemptNumber + 1}/${maxAttempts})...`);
         } else {
             // Mark SyncJob as FAILED (no more retries)
-            const finalError = isLoginError
+            const finalError = isCredentialError
                 ? 'Error de autenticación. Verifica tus credenciales del portal UAT.'
                 : `Error después de ${attemptNumber} intentos: ${errorMessage}`;
 
@@ -302,8 +302,8 @@ async function processScrapingJob(
             password: '[REDACTED]',
         });
 
-        // For login errors, throw UnrecoverableError to prevent retries
-        if (isLoginError) {
+        // For credential errors, throw UnrecoverableError to prevent retries
+        if (isCredentialError) {
             const { UnrecoverableError } = await import('bullmq');
             throw new UnrecoverableError(errorMessage);
         }

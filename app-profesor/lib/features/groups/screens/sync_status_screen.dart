@@ -26,10 +26,9 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   String? _error;
   Timer? _pollingTimer;
 
-  // Steps definition
+  // Steps definition (5 steps matching backend)
   static const List<String> _stepTitles = [
     'Conectando',
-    'Sesión iniciada',
     'Obteniendo clases',
     'Clases encontradas',
     'Recolectando alumnos',
@@ -305,12 +304,14 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
                     child: isPast
                         ? const Icon(Icons.check, color: Colors.white, size: 18)
                         : isActive
-                        ? Container(
-                            width: 12,
-                            height: 12,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white,
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
                             ),
                           )
                         : null,
