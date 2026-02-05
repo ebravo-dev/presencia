@@ -253,17 +253,46 @@ async function processScrapingJob(
         };
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`❌ Job ${job.id} failed:`, errorMessage);
+        const attemptNumber = job.attemptsMade + 1;
+        const maxAttempts = job.opts.attempts || 3;
 
-        // Mark SyncJob as FAILED
-        await prisma.syncJob.update({
-            where: { id: syncJob.id },
-            data: {
-                status: 'FAILED',
-                error: errorMessage,
-                completedAt: new Date(),
-            },
-        });
+        console.error(`❌ Job ${job.id} failed (attempt ${attemptNumber}/${maxAttempts}):`, errorMessage);
+
+        // Determine if this error should be retried
+        // Login failures should NOT be retried (credentials are wrong)
+        const isLoginError = errorMessage.toLowerCase().includes('login failed') ||
+            errorMessage.toLowerCase().includes('credenciales') ||
+            errorMessage.toLowerCase().includes('contraseña') ||
+            errorMessage.toLowerCase().includes('still on login page');
+
+        const isRetryable = !isLoginError && attemptNumber < maxAttempts;
+
+        if (isRetryable) {
+            // Update SyncJob to show retry status
+            await prisma.syncJob.update({
+                where: { id: syncJob.id },
+                data: {
+                    currentGroupName: `Reintentando... (intento ${attemptNumber + 1}/${maxAttempts})`,
+                    error: `Intento ${attemptNumber} falló: ${errorMessage}`,
+                },
+            });
+            console.log(`🔄 Will retry job ${job.id} (attempt ${attemptNumber + 1}/${maxAttempts})...`);
+        } else {
+            // Mark SyncJob as FAILED (no more retries)
+            const finalError = isLoginError
+                ? 'Error de autenticación. Verifica tus credenciales del portal UAT.'
+                : `Error después de ${attemptNumber} intentos: ${errorMessage}`;
+
+            await prisma.syncJob.update({
+                where: { id: syncJob.id },
+                data: {
+                    status: 'FAILED',
+                    error: finalError,
+                    completedAt: new Date(),
+                },
+            });
+            console.error(`❌ Job ${job.id} permanently failed: ${finalError}`);
+        }
 
         // Clear password even on failure
         await job.updateData({
@@ -271,6 +300,11 @@ async function processScrapingJob(
             password: '[REDACTED]',
         });
 
+        // For login errors, throw UnrecoverableError to prevent retries
+        if (isLoginError) {
+            const { UnrecoverableError } = await import('bullmq');
+            throw new UnrecoverableError(errorMessage);
+        }
 
         throw error;
     }

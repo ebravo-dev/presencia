@@ -243,6 +243,12 @@ export class ScraperService {
     /**
      * Navigate to horarios/schedule page via the DevExpress TreeView menu
      * The menu loads dynamically via JavaScript after login
+     * 
+     * IMPORTANT: Menu structure varies by professor role:
+     * - Some have: Dirección General de Servicios Escolares → Profesor → Consultas
+     * - Others have: Secretaría Académica → Dirección General... → Profesor → Consultas
+     * 
+     * This function handles both cases by expanding all collapsed items until "Profesor" is found.
      */
     private async navigateToHorarios(page: Page): Promise<void> {
         const debugDir = './debug-screenshots';
@@ -262,6 +268,7 @@ export class ScraperService {
             const html = await page.content();
             await fs.promises.writeFile(`${debugDir}/no-menu.html`, html);
             console.log('⚠️ Menu items not found, saved debug files');
+            throw new Error('Menu did not load after login');
         }
 
         // Take screenshot of menu loaded state
@@ -276,28 +283,75 @@ export class ScraperService {
         const menuItems = await page.$$eval('#treeViewMenuPrincipal .dx-treeview-item', items =>
             items.map(item => item.textContent?.trim() || '')
         );
-        console.log('📋 Menu items found:', menuItems);
+        console.log('📋 Initial menu items found:', menuItems);
 
-        // First, expand the root menu item (it's collapsed by default)
-        console.log('🔍 Expanding root menu item...');
-        const toggleButton = await page.$('#treeViewMenuPrincipal .dx-treeview-toggle-item-visibility');
-        if (toggleButton) {
-            console.log('🔘 Found toggle button, clicking to expand...');
-            await toggleButton.click();
-            await page.waitForTimeout(2000);
+        // STEP 1: Expand ALL collapsed toggle buttons until we can see "Profesor"
+        // This handles different menu structures (some professors have extra parent menus)
+        console.log('🔍 Expanding menu tree to find Profesor...');
 
-            // Check what items are now visible after expanding
+        let profesorFound = false;
+        let maxIterations = 5; // Prevent infinite loops
+        let iteration = 0;
+
+        while (!profesorFound && iteration < maxIterations) {
+            iteration++;
+            console.log(`   🔄 Expansion iteration ${iteration}...`);
+
+            // Check if "Profesor" is now visible and clickable
+            const profesorItem = await page.$('#treeViewMenuPrincipal .dx-treeview-item:has-text("Profesor")');
+            if (profesorItem) {
+                // Make sure it's the actual "Profesor" menu item, not just text containing "Profesor"
+                const profesorText = await profesorItem.textContent();
+                if (profesorText?.trim() === 'Profesor') {
+                    console.log('   ✅ Found exact "Profesor" menu item');
+                    profesorFound = true;
+                    break;
+                }
+            }
+
+            // Find all unexpanded toggle buttons and click them
+            const toggleButtons = await page.$$('#treeViewMenuPrincipal .dx-treeview-toggle-item-visibility');
+            if (toggleButtons.length === 0) {
+                console.log('   ⚠️ No more toggle buttons to expand');
+                break;
+            }
+
+            // Click each toggle button that's not expanded yet
+            for (const toggle of toggleButtons) {
+                // Check if this node is already expanded by checking the class
+                const isExpanded = await toggle.evaluate(el => {
+                    const node = el.closest('.dx-treeview-node');
+                    return node?.classList.contains('dx-treeview-node-is-leaf') === false &&
+                        node?.querySelector('.dx-treeview-node-container') !== null;
+                });
+
+                if (!isExpanded) {
+                    await toggle.click();
+                    await page.waitForTimeout(1000);
+                }
+            }
+
+            // Check what items are now visible
             const expandedItems = await page.$$eval('#treeViewMenuPrincipal .dx-treeview-item', items =>
                 items.map(item => item.textContent?.trim() || '')
             );
-            console.log('📋 Menu items after expanding:', expandedItems);
+            console.log(`   📋 Menu items after iteration ${iteration}:`, expandedItems);
+
+            // Check again if Profesor is now visible
+            const checkProfesor = await page.$('#treeViewMenuPrincipal .dx-treeview-item:has-text("Profesor")');
+            if (checkProfesor) {
+                const text = await checkProfesor.textContent();
+                if (text?.trim() === 'Profesor') {
+                    profesorFound = true;
+                }
+            }
         }
 
-        // Take screenshot after expanding root
+        // Take screenshot after expanding tree
         await page.screenshot({ path: `${debugDir}/menu-expanded.png` });
 
-        // Now look for "Profesor" menu item and expand it
-        console.log('🔍 Looking for Profesor menu item...');
+        // STEP 2: Click on "Profesor" to expand its submenu
+        console.log('🔍 Looking for Profesor menu item to expand...');
         const profesorItem = await page.$('#treeViewMenuPrincipal .dx-treeview-item:has-text("Profesor")');
         if (profesorItem) {
             console.log('🔘 Found Profesor, clicking to expand...');
@@ -313,40 +367,41 @@ export class ScraperService {
             // Take screenshot after expanding Profesor
             await page.screenshot({ path: `${debugDir}/profesor-expanded.png` });
         } else {
-            console.log('⚠️ Profesor not found in menu');
+            console.log('⚠️ Profesor not found in menu - trying to continue anyway');
+            await page.screenshot({ path: `${debugDir}/profesor-not-found.png` });
         }
 
-        // Look for "Consultas" in the TreeView and click it to expand
-        console.log('🔍 Looking for Consultas in TreeView...');
-        const consultasItem = await page.$('#treeViewMenuPrincipal .dx-treeview-item:has-text("Consultas")');
-        if (consultasItem) {
-            console.log('🔘 Found Consultas, clicking to expand...');
-            await consultasItem.click();
-            await page.waitForTimeout(2000);
+        // STEP 3: Look for "Consultas Profesor" or "Consultas" and click it
+        console.log('🔍 Looking for Consultas Profesor in TreeView...');
 
-            // After expanding, take another screenshot
+        // Try "Consultas Profesor" first (more specific)
+        let consultasItem = await page.$('#treeViewMenuPrincipal .dx-treeview-item:has-text("Consultas Profesor")');
+
+        // If not found, try just "Consultas"
+        if (!consultasItem) {
+            console.log('   ⚠️ "Consultas Profesor" not found, trying "Consultas"...');
+            consultasItem = await page.$('#treeViewMenuPrincipal .dx-treeview-item:has-text("Consultas")');
+        }
+
+        if (consultasItem) {
+            console.log('🔘 Found Consultas, clicking to navigate...');
+            await consultasItem.click();
+            await page.waitForTimeout(3000);
+
+            // After clicking, take a screenshot
             await page.screenshot({ path: `${debugDir}/consultas-expanded.png` });
         } else {
             console.log('⚠️ Consultas not found in menu');
         }
 
-        // Now look for "Horarios" in the expanded submenu
-        console.log('🔍 Looking for Horarios...');
+        // STEP 4: Check if we need to click "Horarios" separately
+        // (In some menu structures, Consultas navigates directly; in others, there's a Horarios submenu)
+        console.log('🔍 Checking for Horarios submenu...');
         const horariosItem = await page.$('#treeViewMenuPrincipal .dx-treeview-item:has-text("Horarios")');
         if (horariosItem) {
-            console.log('🔘 Found Horarios, clicking...');
+            console.log('🔘 Found Horarios submenu, clicking...');
             await horariosItem.click();
             await page.waitForTimeout(3000);
-        } else {
-            // Try clicking on any link with Horarios text
-            const horariosLink = await page.$('a:has-text("Horarios")');
-            if (horariosLink) {
-                console.log('🔘 Found Horarios link, clicking...');
-                await horariosLink.click();
-                await page.waitForTimeout(3000);
-            } else {
-                console.log('⚠️ Horarios not found in menu');
-            }
         }
 
         // Take screenshot after navigation
@@ -359,9 +414,8 @@ export class ScraperService {
         await this.fillHorariosFilters(page, debugDir);
 
         // Save final HTML for debugging
-        const fs2 = await import('fs');
         const finalHtml = await page.content();
-        await fs2.promises.writeFile(`${debugDir}/horarios-page.html`, finalHtml);
+        await fs.promises.writeFile(`${debugDir}/horarios-page.html`, finalHtml);
     }
 
     /**
