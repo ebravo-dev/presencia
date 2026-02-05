@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Configuración para producción -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <!-- Confiar en certificados del sistema -->
+            <certificates src="system" />
+            <!-- Confiar en certificados de usuario (útil para debugging) -->
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+    
+    <!-- Permitir tráfico a dominios específicos si es necesario -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">apipresencia.110694.xyz</domain>
+        <domain includeSubdomains="true">campus.20040521.xyz</domain>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>
