@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import '../../../shared/models/grupo.dart';
 import '../../../shared/models/asistencia_registro.dart';
 import '../../../services/asistencia_local_service.dart';
-import 'asistencias_pendientes_page.dart';
 
 class GrupoDetailPage extends StatefulWidget {
   final Grupo grupo;
@@ -541,28 +540,11 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Botón de sincronización con texto
+                        // Botón de sincronización con texto (acción deshabilitada temporalmente)
                         GestureDetector(
                           onTap: () {
                             HapticFeedback.lightImpact();
-
-                            // Navegar a la página de pendientes
-                            Navigator.of(context)
-                                .push(
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        AsistenciasPendientesPage(
-                                          claseActual: widget.grupo.subject,
-                                          grupoActualId:
-                                              widget.grupo.identificadorUnico,
-                                          todosLosGrupos: widget.todosLosGrupos,
-                                        ),
-                                  ),
-                                )
-                                .then((_) {
-                                  // Recargar estado al regresar
-                                  _cargarAsistencia();
-                                });
+                            // TODO: Funcionalidad futura - historial de asistencias del grupo
                           },
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8),

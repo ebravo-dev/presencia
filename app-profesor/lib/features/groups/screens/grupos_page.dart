@@ -13,6 +13,7 @@ import '../../../../services/api_service.dart';
 import '../../../../services/auth_storage_service.dart';
 import '../../authentication/providers/profesor_auth_provider.dart';
 import 'grupo_detail_page.dart';
+import 'upload_management_page.dart';
 
 class GruposPage extends ConsumerStatefulWidget {
   const GruposPage({super.key});
@@ -115,6 +116,59 @@ class _GruposPageState extends ConsumerState<GruposPage>
         }
       },
     );
+
+    // Check for pending uploads and show notification
+    _checkPendingUploads();
+  }
+
+  /// Checks for pending uploads and shows a non-invasive notification
+  void _checkPendingUploads() {
+    final asistenciaService = AsistenciaLocalService();
+    final hasPending = asistenciaService.hayAsistenciasPendientes();
+
+    if (hasPending && mounted) {
+      // Show non-invasive snackbar at the bottom
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.cloud_upload, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text('Tienes asistencias por sincronizar'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const UploadManagementPage(),
+                      ),
+                    );
+                  },
+                  child: const Text(
+                    'Ver',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.orange.shade700,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            duration: const Duration(seconds: 5),
+            margin: const EdgeInsets.all(16),
+          ),
+        );
+      });
+    }
   }
 
   void _handleScroll() {
@@ -458,11 +512,16 @@ class _GruposPageState extends ConsumerState<GruposPage>
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Botón de cambiar tema
+                          // Botón de subida de asistencias
                           GestureDetector(
                             onTap: () {
                               HapticFeedback.lightImpact();
-                              // TODO: Implementar cambio de tema
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const UploadManagementPage(),
+                                ),
+                              );
                             },
                             child: Container(
                               width: 44,
@@ -470,7 +529,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                               alignment: Alignment.center,
                               color: Colors.transparent,
                               child: const Icon(
-                                Icons.light_mode,
+                                Icons.upload,
                                 color: Colors.white,
                                 size: 20,
                               ),
