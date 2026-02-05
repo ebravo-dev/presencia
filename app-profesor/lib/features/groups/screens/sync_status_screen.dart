@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/uat_colors.dart';
 import '../../../services/api_service.dart';
 import '../../../services/auth_storage_service.dart';
@@ -25,6 +26,16 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   String? _error;
   Timer? _pollingTimer;
 
+  // Steps definition
+  static const List<String> _stepTitles = [
+    'Conectando',
+    'Sesión iniciada',
+    'Obteniendo clases',
+    'Clases encontradas',
+    'Recolectando alumnos',
+    'Completado',
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -39,8 +50,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
 
   void _startPolling() {
     _pollingTimer?.cancel();
-    // 2 seconds in debug, 5 seconds in release
-    final interval = kDebugMode ? 2 : 5;
+    final interval = kDebugMode ? 2 : 3;
     _pollingTimer = Timer.periodic(Duration(seconds: interval), (_) {
       _checkSyncStatus(isPolling: true);
     });
@@ -89,18 +99,12 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
             _isLoading = false;
           });
 
-          // Handle state changes
           if (status.isInProgress) {
-            // Start polling if not already polling
             if (_pollingTimer == null) {
               _startPolling();
             }
           } else {
-            // Stop polling for terminal states
             _stopPolling();
-
-            // Auto-navigate only when completed successfully (no errors)
-            // If there's an error, user stays on this screen to see the message
             if (status.isCompleted && status.error == null && mounted) {
               _navigateToGroupsWithRefresh();
             }
@@ -118,11 +122,17 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   }
 
   Future<void> _navigateToGroupsWithRefresh() async {
-    // Refresh grupos from the auth provider
     await ref.read(profesorAuthProvider.notifier).refreshGrupos();
-
     if (mounted) {
       context.go('/grupos');
+    }
+  }
+
+  Future<void> _callSupport() async {
+    final phone = _syncStatus?.supportPhone ?? '8331048282';
+    final uri = Uri.parse('tel:$phone');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
     }
   }
 
@@ -131,7 +141,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     return Scaffold(
       backgroundColor: UATColors.surface,
       appBar: AppBar(
-        title: const Text('Estado de Sincronización'),
+        title: const Text('Sincronización'),
         backgroundColor: UATColors.primary,
         foregroundColor: UATColors.onPrimary,
       ),
@@ -139,10 +149,9 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
         child: Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _buildStatusCard(),
-              const SizedBox(height: 24),
+              Expanded(child: _buildContent()),
+              const SizedBox(height: 16),
               _buildActionButtons(),
             ],
           ),
@@ -151,190 +160,348 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     );
   }
 
-  Widget _buildStatusCard() {
+  Widget _buildContent() {
+    if (_isLoading && _syncStatus == null) {
+      return const Center(
+        child: CircularProgressIndicator(color: UATColors.primary),
+      );
+    }
+
+    if (_error != null) {
+      return _buildErrorState();
+    }
+
+    if (_syncStatus == null || _syncStatus!.hasNoSync) {
+      return _buildNoSyncState();
+    }
+
+    if (_syncStatus!.isFailed) {
+      return _buildFailedState();
+    }
+
+    return _buildStepperCard();
+  }
+
+  Widget _buildStepperCard() {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 20,
             offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildStatusIcon(),
-          const SizedBox(height: 16),
-          _buildStatusText(),
-          if (_syncStatus?.isInProgress == true) ...[
-            const SizedBox(height: 24),
-            _buildProgressBar(),
-          ],
+          // Title based on status
+          Text(
+            _syncStatus!.isCompleted
+                ? '¡Sincronización completada!'
+                : 'Sincronizando...',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: UATColors.neutral,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _syncStatus!.message,
+            style: TextStyle(color: UATColors.neutral80, fontSize: 14),
+          ),
+          const SizedBox(height: 32),
+          // Stepper
+          Expanded(child: _buildStepper()),
         ],
       ),
     );
   }
 
-  Widget _buildStatusIcon() {
-    if (_isLoading) {
-      return const CircularProgressIndicator(
-        valueColor: AlwaysStoppedAnimation<Color>(UATColors.primary),
-      );
-    }
+  Widget _buildStepper() {
+    final currentStep = _syncStatus?.step ?? 0;
+    final isCompleted = _syncStatus?.isCompleted == true;
 
-    if (_error != null) {
-      return Icon(Icons.error_outline, size: 64, color: Colors.red.shade400);
-    }
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _stepTitles.length,
+      itemBuilder: (context, index) {
+        final stepNumber = index + 1;
+        final isActive = stepNumber == currentStep;
+        final isPast = stepNumber < currentStep || isCompleted;
+        final isFuture = stepNumber > currentStep && !isCompleted;
 
-    if (_syncStatus == null || _syncStatus!.hasNoSync) {
-      return Icon(Icons.cloud_off, size: 64, color: Colors.grey.shade400);
-    }
-
-    if (_syncStatus!.isCompleted) {
-      return Icon(Icons.check_circle, size: 64, color: Colors.green.shade400);
-    }
-
-    if (_syncStatus!.isFailed) {
-      return Icon(Icons.error, size: 64, color: Colors.red.shade400);
-    }
-
-    // In progress
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        SizedBox(
-          width: 80,
-          height: 80,
-          child: CircularProgressIndicator(
-            value: (_syncStatus!.percentage / 100).clamp(0.0, 1.0),
-            strokeWidth: 6,
-            backgroundColor: Colors.grey.shade200,
-            valueColor: const AlwaysStoppedAnimation<Color>(UATColors.primary),
-          ),
-        ),
-        Text(
-          '${_syncStatus!.percentage}%',
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: UATColors.primary,
-          ),
-        ),
-      ],
+        return _buildStepItem(
+          stepNumber: stepNumber,
+          title: _stepTitles[index],
+          subtitle: isActive ? _syncStatus?.stepDescription : null,
+          isActive: isActive,
+          isPast: isPast,
+          isFuture: isFuture,
+          isLast: index == _stepTitles.length - 1,
+        );
+      },
     );
   }
 
-  Widget _buildStatusText() {
-    String title;
-    String subtitle;
+  Widget _buildStepItem({
+    required int stepNumber,
+    required String title,
+    String? subtitle,
+    required bool isActive,
+    required bool isPast,
+    required bool isFuture,
+    required bool isLast,
+  }) {
+    // Determine colors
+    Color circleColor;
+    Color circleInnerColor;
+    Color textColor;
+    FontWeight fontWeight;
 
-    if (_isLoading) {
-      title = 'Consultando...';
-      subtitle = 'Obteniendo estado de sincronización';
-    } else if (_error != null) {
-      title = 'Error';
-      subtitle = _error!;
-    } else if (_syncStatus == null || _syncStatus!.hasNoSync) {
-      title = 'Sin sincronizaciones';
-      subtitle = 'No hay sincronizaciones previas';
+    if (isPast) {
+      circleColor = UATColors.primary;
+      circleInnerColor = Colors.white;
+      textColor = UATColors.neutral;
+      fontWeight = FontWeight.w500;
+    } else if (isActive) {
+      circleColor = UATColors.primary;
+      circleInnerColor = UATColors.primary;
+      textColor = UATColors.primary;
+      fontWeight = FontWeight.bold;
     } else {
-      title = _getTitleForStatus(_syncStatus!.status);
-      subtitle = _getSubtitleForStatus();
+      circleColor = Colors.grey.shade300;
+      circleInnerColor = Colors.grey.shade300;
+      textColor = Colors.grey.shade400;
+      fontWeight = FontWeight.normal;
     }
 
-    return Column(
-      children: [
-        Text(
-          title,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: UATColors.neutral,
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Circle and line column
+          SizedBox(
+            width: 40,
+            child: Column(
+              children: [
+                // Circle indicator
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: circleColor.withOpacity(
+                      isPast || isActive ? 1 : 0.3,
+                    ),
+                    border: Border.all(color: circleColor, width: 2),
+                  ),
+                  child: Center(
+                    child: isPast
+                        ? const Icon(Icons.check, color: Colors.white, size: 18)
+                        : isActive
+                        ? Container(
+                            width: 12,
+                            height: 12,
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white,
+                            ),
+                          )
+                        : null,
+                  ),
+                ),
+                // Connecting line
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      color: isPast ? UATColors.primary : Colors.grey.shade300,
+                    ),
+                  ),
+              ],
+            ),
           ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          subtitle,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: UATColors.neutral80),
-          textAlign: TextAlign.center,
-        ),
-      ],
+          const SizedBox(width: 12),
+          // Text column
+          Expanded(
+            child: Container(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 24),
+              decoration: isActive
+                  ? BoxDecoration(
+                      color: UATColors.primary.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(12),
+                    )
+                  : null,
+              child: Padding(
+                padding: isActive
+                    ? const EdgeInsets.all(12)
+                    : const EdgeInsets.only(top: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: textColor,
+                        fontWeight: fontWeight,
+                        fontSize: isActive ? 16 : 14,
+                      ),
+                    ),
+                    if (subtitle != null && subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          color: UATColors.neutral80,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  String _getTitleForStatus(String status) {
-    switch (status) {
-      case 'PENDING':
-        return 'Preparando...';
-      case 'IN_PROGRESS':
-        return 'Sincronizando';
-      case 'COMPLETED':
-        // Check if there was an error
-        if (_syncStatus?.error != null) {
-          return 'Sincronización Parcial';
-        }
-        return '¡Sincronización Completa!';
-      case 'FAILED':
-        return 'Error en Sincronización';
-      default:
-        return 'Estado Desconocido';
-    }
-  }
-
-  String _getSubtitleForStatus() {
-    if (_syncStatus == null) return '';
-
-    // For COMPLETED with error, show error message
-    if (_syncStatus!.status == 'COMPLETED' && _syncStatus!.error != null) {
-      return _syncStatus!.error!;
-    }
-
-    // Use currentGroupName which now contains detailed status messages
-    if (_syncStatus!.currentGroupName != null &&
-        _syncStatus!.currentGroupName!.isNotEmpty) {
-      return _syncStatus!.currentGroupName!;
-    }
-
-    // Use the message from API if available
-    if (_syncStatus!.message.isNotEmpty) {
-      return _syncStatus!.message;
-    }
-
-    // Fallback messages
-    switch (_syncStatus!.status) {
-      case 'PENDING':
-        return 'Conectando con el portal UAT...';
-      case 'IN_PROGRESS':
-        return 'Extrayendo información del portal...';
-      case 'COMPLETED':
-        return 'Tus grupos están listos';
-      case 'FAILED':
-        return _syncStatus!.error ?? 'Error desconocido';
-      default:
-        return '';
-    }
-  }
-
-  Widget _buildProgressBar() {
-    return Column(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: LinearProgressIndicator(
-            value: (_syncStatus!.percentage / 100).clamp(0.0, 1.0),
-            backgroundColor: Colors.grey.shade200,
-            valueColor: const AlwaysStoppedAnimation<Color>(UATColors.primary),
-            minHeight: 8,
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
+          const SizedBox(height: 16),
+          Text(
+            'Error',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
           ),
-        ),
-        // Removed "Grupo X de Y" text because we use totalGroups=100 for percentage
-      ],
+          const SizedBox(height: 8),
+          Text(
+            _error!,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: UATColors.neutral80),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNoSyncState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.cloud_off, size: 64, color: Colors.grey.shade400),
+          const SizedBox(height: 16),
+          Text(
+            'Sin sincronizaciones',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'No hay sincronizaciones previas',
+            style: TextStyle(color: UATColors.neutral80),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFailedState() {
+    final errorMessage = _syncStatus?.error ?? 'Error desconocido';
+    final isRetrying = errorMessage.contains('Reintentando');
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Error icon
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.red.shade50,
+            ),
+            child: Icon(
+              isRetrying ? Icons.refresh : Icons.warning_rounded,
+              size: 40,
+              color: Colors.red.shade400,
+            ),
+          ),
+          const SizedBox(height: 24),
+          // Title
+          Text(
+            isRetrying ? 'Reintentando...' : 'Error en Sincronización',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: UATColors.neutral,
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Error message
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              errorMessage,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.red.shade700, fontSize: 14),
+            ),
+          ),
+          const SizedBox(height: 24),
+          // Humanized message
+          Text(
+            'La página de la UAT puede estar lenta o en mantenimiento.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: UATColors.neutral80, fontSize: 13),
+          ),
+          const SizedBox(height: 24),
+          // Support button
+          OutlinedButton.icon(
+            onPressed: _callSupport,
+            icon: const Icon(Icons.phone),
+            label: const Text('Marcar a soporte'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              side: const BorderSide(color: UATColors.primary),
+              foregroundColor: UATColors.primary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -347,46 +514,47 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
           child: OutlinedButton.icon(
             onPressed: _isLoading ? null : () => _checkSyncStatus(),
             icon: const Icon(Icons.refresh),
-            label: const Text('Revisar sincronización'),
+            label: const Text('Actualizar estado'),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
               side: const BorderSide(color: UATColors.primary),
               foregroundColor: UATColors.primary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ),
-
         const SizedBox(height: 12),
-
-        // Download groups button (only when completed)
+        // View groups button (only when completed)
         if (_syncStatus?.isCompleted == true)
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: _navigateToGroupsWithRefresh,
-              icon: const Icon(Icons.download),
-              label: const Text('Ver mis grupos'),
+              icon: const Icon(Icons.check_circle),
+              label: const Text('Ver mis clases'),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: UATColors.primary,
                 foregroundColor: UATColors.onPrimary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
           ),
-
         // Retry button (only when failed)
-        if (_syncStatus?.isFailed == true)
+        if (_syncStatus?.isFailed == true) ...[
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: () {
-                // Navigate back to trigger a new sync
                 Navigator.of(context).pop();
-                // Show message to user
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text(
-                      'Por favor inicia la sincronización de nuevo desde el menú',
+                      'Inicia la sincronización de nuevo desde el menú',
                     ),
                     duration: Duration(seconds: 3),
                   ),
@@ -398,12 +566,14 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: Colors.orange,
                 foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
           ),
-
-        const SizedBox(height: 24),
-
+        ],
+        const SizedBox(height: 16),
         // Info message
         Container(
           padding: const EdgeInsets.all(16),
@@ -414,11 +584,11 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
           ),
           child: Row(
             children: [
-              Icon(Icons.info_outline, color: Colors.blue.shade700),
+              Icon(Icons.cloud_done, color: Colors.blue.shade700),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Los grupos se sincronizan en la nube. Puedes cerrar la app y volver más tarde.',
+                  'La sincronización continúa en la nube. Puedes cerrar la app.',
                   style: TextStyle(color: Colors.blue.shade800, fontSize: 13),
                 ),
               ),

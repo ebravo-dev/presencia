@@ -165,40 +165,37 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
                     data: {
                         status: 'NO_SYNC',
                         message: 'No hay sincronizaciones previas',
+                        step: 0,
+                        totalSteps: 6,
                     },
                 });
             }
 
-            // Calculate percentage
-            const percentage = syncJob.totalGroups && syncJob.currentGroup
-                ? Math.round((syncJob.currentGroup / syncJob.totalGroups) * 100)
-                : 0;
+            // Get step info (currentGroup = step number, totalGroups = total steps)
+            const currentStep = syncJob.currentGroup || 0;
+            const totalSteps = syncJob.totalGroups || 6;
 
-            // Build descriptive message
+            // Calculate percentage for backwards compatibility
+            const percentage = totalSteps > 0 ? Math.round((currentStep / totalSteps) * 100) : 0;
+
+            // Build descriptive message based on step
             let message: string;
             switch (syncJob.status) {
                 case 'PENDING':
                     message = 'Preparando sincronización...';
                     break;
                 case 'IN_PROGRESS':
-                    if (syncJob.currentGroup && syncJob.totalGroups) {
-                        message = `Procesando grupo ${syncJob.currentGroup} de ${syncJob.totalGroups}`;
-                        if (syncJob.currentGroupName) {
-                            message += ` (${syncJob.currentGroupName})`;
-                        }
-                    } else {
-                        message = 'Conectando con el portal UAT...';
-                    }
+                    message = syncJob.currentGroupName || 'Procesando...';
                     break;
                 case 'COMPLETED':
                     if (syncJob.error) {
-                        message = `Sincronización completada con advertencias - ${syncJob.totalGroups || 0} grupos procesados`;
+                        message = `Sincronización completada con advertencias`;
                     } else {
-                        message = `Sincronización completada - ${syncJob.totalGroups || 0} grupos procesados`;
+                        message = '¡Clases construidas con éxito!';
                     }
                     break;
                 case 'FAILED':
-                    message = `Error: ${syncJob.error || 'Error desconocido'}`;
+                    message = syncJob.error || 'Error desconocido';
                     break;
                 default:
                     message = 'Estado desconocido';
@@ -207,14 +204,16 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
             return reply.send({
                 data: {
                     status: syncJob.status,
-                    totalGroups: syncJob.totalGroups,
-                    currentGroup: syncJob.currentGroup,
-                    currentGroupName: syncJob.currentGroupName,
-                    percentage,
+                    step: currentStep,
+                    totalSteps,
+                    stepDescription: syncJob.currentGroupName,
+                    percentage, // Keep for backwards compatibility
                     message,
                     startedAt: syncJob.startedAt,
                     completedAt: syncJob.completedAt,
                     error: syncJob.error,
+                    // Support phone for error states
+                    supportPhone: '8331048282',
                 },
             });
         }

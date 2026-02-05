@@ -30,35 +30,37 @@ async function processScrapingJob(
     });
     console.log(`📊 Created SyncJob ${syncJob.id}`);
 
-    // Helper function to update progress with percentage
-    // We use currentGroup/totalGroups to calculate percentage
-    // For initial phases, we set totalGroups=100 so currentGroup IS the percentage
-    const updateProgress = async (phase: string, percentage?: number) => {
+    // Step-based progress tracking (6 total steps)
+    // Step 1: Conectando...
+    // Step 2: Sesión iniciada
+    // Step 3: Obteniendo clases
+    // Step 4: N clases encontradas
+    // Step 5: Recolectando alumnos
+    // Step 6: ¡Clases construidas con éxito!
+    const TOTAL_STEPS = 6;
+
+    const updateStep = async (step: number, description: string) => {
         await prisma.syncJob.update({
             where: { id: syncJob.id },
             data: {
-                currentGroupName: phase,
-                // Use percentage directly: currentGroup/100 = percentage%
-                currentGroup: percentage ?? undefined,
-                totalGroups: percentage !== undefined ? 100 : undefined,
+                currentGroupName: description,
+                currentGroup: step,
+                totalGroups: TOTAL_STEPS,
             },
         });
     };
 
     try {
-        // Phase 1: Starting (5%)
+        // Step 1: Conectando
         await prisma.syncJob.update({
             where: { id: syncJob.id },
             data: {
                 status: 'IN_PROGRESS',
                 currentGroupName: 'Conectando con el portal UAT...',
-                currentGroup: 5,
-                totalGroups: 100,
+                currentGroup: 1,
+                totalGroups: TOTAL_STEPS,
             },
         });
-
-        // Phase 2: Cleaning old data (10%)
-        await updateProgress('Preparando sincronización...', 10);
         console.log(`🗑️ Cleaning old data for professor ${email}...`);
         const deletedGroups = await prisma.group.deleteMany({
             where: {
@@ -86,16 +88,17 @@ async function processScrapingJob(
             console.log(`   Cleaned up ${oldJobs.length} old sync jobs`);
         }
 
-        // Phase 3: Extracting groups from UAT portal (15%)
-        await updateProgress('Accediendo al portal UAT...', 15);
+        // Step 2: Sesión iniciada - will be set after login success
+        // Step 3: Obteniendo clases
+        await updateStep(3, 'Obteniendo tus clases...');
         const result = await scraperService.scrapeGroups(email, password);
 
         if (!result.success) {
             throw new Error(result.error || 'Scraping failed');
         }
 
-        // Phase 4: Groups found (20%)
-        await updateProgress(`${result.groups.length} materias encontradas`, 20);
+        // Step 4: N clases encontradas
+        await updateStep(4, `${result.groups.length} clases encontradas`);
 
         // Save groups to database
         let studentsCount = 0;
@@ -137,22 +140,21 @@ async function processScrapingJob(
         const groupNames = result.groups.map(g => g.name);
         const totalGroupCount = result.groups.length;
 
-        // Phase 5: Getting students for each group (25% to 90% distributed across groups)
+        // Step 5: Recolectando alumnos
+        await updateStep(5, 'Recolectando alumnos...');
         const studentsResult = await scraperService.scrapeAllStudentsInSession(
             email,
             password,
             groupCodes,
             async (groupIndex: number, _groupCode: string) => {
-                const groupName = groupNames[groupIndex] || `Grupo ${groupIndex + 1}`;
-                // Calculate percentage: 25% base + (65% distributed across groups)
-                // So each group contributes 65/totalGroupCount percent
-                const progressPercent = Math.round(25 + ((groupIndex + 1) / totalGroupCount) * 65);
+                const groupName = groupNames[groupIndex] || `Clase ${groupIndex + 1}`;
+                // Keep step 5 but update the detail message
                 await prisma.syncJob.update({
                     where: { id: syncJob.id },
                     data: {
-                        currentGroupName: `Obteniendo alumnos de ${groupName}`,
-                        currentGroup: progressPercent,
-                        totalGroups: 100,
+                        currentGroupName: `Obteniendo alumnos de ${groupName} (${groupIndex + 1}/${totalGroupCount})`,
+                        currentGroup: 5,
+                        totalGroups: TOTAL_STEPS,
                     },
                 });
             }
@@ -162,8 +164,8 @@ async function processScrapingJob(
         let studentSessionFailed = false;
 
         if (studentsResult.success) {
-            // Phase 6: Saving data (95%)
-            await updateProgress('Guardando datos...', 95);
+            // Step 6: Finalizing
+            await updateStep(6, 'Guardando datos...');
 
             // Save students to database
             for (const [groupCode, students] of studentsResult.studentsByGroup) {

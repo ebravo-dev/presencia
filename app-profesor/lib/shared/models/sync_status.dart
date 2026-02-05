@@ -1,33 +1,35 @@
 /// Modelo para la respuesta del endpoint /professors/sync-status
 class SyncStatusResponse {
   final String status;
-  final int? totalGroups;
-  final int? currentGroup;
-  final String? currentGroupName;
+  final int step;
+  final int totalSteps;
+  final String? stepDescription;
   final int percentage;
   final String message;
   final DateTime? startedAt;
   final DateTime? completedAt;
   final String? error;
+  final String? supportPhone;
 
   SyncStatusResponse({
     required this.status,
-    this.totalGroups,
-    this.currentGroup,
-    this.currentGroupName,
+    required this.step,
+    required this.totalSteps,
+    this.stepDescription,
     required this.percentage,
     required this.message,
     this.startedAt,
     this.completedAt,
     this.error,
+    this.supportPhone,
   });
 
   factory SyncStatusResponse.fromJson(Map<String, dynamic> json) {
     return SyncStatusResponse(
       status: json['status'] as String,
-      totalGroups: json['totalGroups'] as int?,
-      currentGroup: json['currentGroup'] as int?,
-      currentGroupName: json['currentGroupName'] as String?,
+      step: json['step'] as int? ?? 0,
+      totalSteps: json['totalSteps'] as int? ?? 6,
+      stepDescription: json['stepDescription'] as String?,
       percentage: json['percentage'] as int? ?? 0,
       message: json['message'] as String? ?? '',
       startedAt: json['startedAt'] != null
@@ -37,6 +39,7 @@ class SyncStatusResponse {
           ? DateTime.parse(json['completedAt'] as String)
           : null,
       error: json['error'] as String?,
+      supportPhone: json['supportPhone'] as String?,
     );
   }
 
