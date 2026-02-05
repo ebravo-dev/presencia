@@ -509,24 +509,6 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   Widget _buildActionButtons() {
     return Column(
       children: [
-        // Refresh button
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _isLoading ? null : () => _checkSyncStatus(),
-            icon: const Icon(Icons.refresh),
-            label: const Text('Actualizar estado'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              side: const BorderSide(color: UATColors.primary),
-              foregroundColor: UATColors.primary,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
         // View groups button (only when completed)
         if (_syncStatus?.isCompleted == true)
           SizedBox(

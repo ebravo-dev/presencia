@@ -1086,20 +1086,25 @@ class _GruposPageState extends ConsumerState<GruposPage>
                   child: TextFormField(
                     controller: passwordController,
                     obscureText: obscureText,
-                    style: const TextStyle(color: Colors.white),
+                    style: const TextStyle(color: Colors.black),
                     decoration: InputDecoration(
-                      labelText: 'Contraseña UAT',
-                      labelStyle: TextStyle(color: Colors.grey.shade400),
+                      hintText: 'Contraseña UAT',
+                      hintStyle: TextStyle(color: Colors.grey.shade600),
+                      filled: true,
+                      fillColor: Colors.white,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.grey.shade700),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.blueAccent),
+                        borderSide: const BorderSide(
+                          color: Colors.blueAccent,
+                          width: 2,
+                        ),
                       ),
                       suffixIcon: IconButton(
                         icon: Icon(
