@@ -52,15 +52,18 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
                 }
 
                 try {
-                    // Get latest sync job for this professor
-                    const syncJob = await prisma.syncJob.findFirst({
-                        where: { professorId },
+                    // Get latest ACTIVE sync job for this professor (only PENDING or IN_PROGRESS)
+                    const activeSyncJob = await prisma.syncJob.findFirst({
+                        where: {
+                            professorId,
+                            status: { in: ['PENDING', 'IN_PROGRESS'] },
+                        },
                         orderBy: { startedAt: 'desc' },
                     });
 
-                    if (syncJob) {
-                        const currentStatus = syncJob.status;
-                        const currentStep = syncJob.currentGroup;
+                    if (activeSyncJob) {
+                        const currentStatus = activeSyncJob.status;
+                        const currentStep = activeSyncJob.currentGroup;
 
                         // Check if there's a change
                         if (currentStatus !== lastStatus || currentStep !== lastStep) {
@@ -74,24 +77,16 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
                         // Send update to client
                         const event = {
                             type: 'progress',
-                            status: syncJob.status,
-                            step: syncJob.currentGroup || 0,
-                            totalSteps: syncJob.totalGroups || 5,
-                            message: syncJob.currentGroupName || '',
-                            error: syncJob.error,
-                            attemptsMade: syncJob.error?.includes('intento') ?
-                                parseInt(syncJob.error.match(/intento (\d+)/)?.[1] || '0') : 0,
+                            status: activeSyncJob.status,
+                            step: activeSyncJob.currentGroup || 0,
+                            totalSteps: activeSyncJob.totalGroups || 5,
+                            message: activeSyncJob.currentGroupName || '',
+                            error: activeSyncJob.error,
+                            attemptsMade: activeSyncJob.error?.includes('intento') ?
+                                parseInt(activeSyncJob.error.match(/intento (\d+)/)?.[1] || '0') : 0,
                         };
 
                         reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
-
-                        // Close connection if job is done
-                        if (syncJob.status === 'COMPLETED' || syncJob.status === 'FAILED') {
-                            setTimeout(() => {
-                                clearInterval(interval);
-                                reply.raw.end();
-                            }, 1000);
-                        }
 
                         // Timeout if no changes for too long
                         if (noChangeCount >= MAX_NO_CHANGE) {
@@ -103,11 +98,35 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
                             reply.raw.end();
                         }
                     } else {
-                        // No sync job found
-                        reply.raw.write(`data: ${JSON.stringify({
-                            type: 'no_job',
-                            message: 'No hay sincronización activa'
-                        })}\n\n`);
+                        // No active sync job - check if there's a recently completed one
+                        const recentJob = await prisma.syncJob.findFirst({
+                            where: { professorId },
+                            orderBy: { startedAt: 'desc' },
+                        });
+
+                        if (recentJob && (recentJob.status === 'COMPLETED' || recentJob.status === 'FAILED')) {
+                            // Send final state and close
+                            const event = {
+                                type: 'progress',
+                                status: recentJob.status,
+                                step: recentJob.currentGroup || 0,
+                                totalSteps: recentJob.totalGroups || 5,
+                                message: recentJob.status === 'COMPLETED'
+                                    ? '¡Sincronización completada!'
+                                    : (recentJob.error || 'Error en sincronización'),
+                                error: recentJob.error,
+                                isCompleted: true,
+                            };
+                            reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+                            clearInterval(interval);
+                            reply.raw.end();
+                        } else {
+                            // No sync job at all
+                            reply.raw.write(`data: ${JSON.stringify({
+                                type: 'no_job',
+                                message: 'No hay sincronización activa'
+                            })}\n\n`);
+                        }
                     }
                 } catch (error) {
                     console.error('SSE polling error:', error);
