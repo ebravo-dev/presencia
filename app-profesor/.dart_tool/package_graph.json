@@ -19,6 +19,7 @@
         "go_router",
         "hive",
         "hive_flutter",
+        "http",
         "json_annotation",
         "permission_handler",
         "pointycastle",
@@ -304,6 +305,16 @@
       "version": "4.9.0",
       "dependencies": [
         "meta"
+      ]
+    },
+    {
+      "name": "http",
+      "version": "1.6.0",
+      "dependencies": [
+        "async",
+        "http_parser",
+        "meta",
+        "web"
       ]
     },
     {
@@ -1013,14 +1024,9 @@
       ]
     },
     {
-      "name": "dio_web_adapter",
-      "version": "2.1.1",
-      "dependencies": [
-        "dio",
-        "http_parser",
-        "meta",
-        "web"
-      ]
+      "name": "web",
+      "version": "1.1.1",
+      "dependencies": []
     },
     {
       "name": "http_parser",
@@ -1030,6 +1036,16 @@
         "source_span",
         "string_scanner",
         "typed_data"
+      ]
+    },
+    {
+      "name": "dio_web_adapter",
+      "version": "2.1.1",
+      "dependencies": [
+        "dio",
+        "http_parser",
+        "meta",
+        "web"
       ]
     },
     {
@@ -1138,11 +1154,6 @@
       "dependencies": [
         "web"
       ]
-    },
-    {
-      "name": "web",
-      "version": "1.1.1",
-      "dependencies": []
     },
     {
       "name": "typed_data",

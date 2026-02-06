@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/uat_colors.dart';
 import '../../../services/api_service.dart';
 import '../../../services/auth_storage_service.dart';
+import '../../../services/sse_service.dart';
 import '../../../shared/models/sync_status.dart';
 import '../../authentication/providers/profesor_auth_provider.dart';
 
@@ -20,11 +21,15 @@ class SyncStatusScreen extends ConsumerStatefulWidget {
 class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   final ApiService _apiService = ApiService();
   final AuthStorageService _authStorage = AuthStorageService();
+  final SSEService _sseService = SSEService();
 
   SyncStatusResponse? _syncStatus;
   bool _isLoading = false;
+  bool _isRetrying = false;
   String? _error;
   Timer? _pollingTimer;
+  StreamSubscription<SyncEvent>? _sseSubscription;
+  bool _retryAvailable = false;
 
   // Steps definition (5 steps matching backend)
   static const List<String> _stepTitles = [
@@ -38,13 +43,116 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   @override
   void initState() {
     super.initState();
-    _checkSyncStatus();
+    _initSync();
   }
 
   @override
   void dispose() {
     _pollingTimer?.cancel();
+    _sseSubscription?.cancel();
+    _sseService.disconnect();
     super.dispose();
+  }
+
+  /// Initialize sync - try SSE first, fallback to polling
+  Future<void> _initSync() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    final token = _authStorage.getToken();
+    if (token == null) {
+      setState(() {
+        _error = 'Sesión no encontrada';
+        _isLoading = false;
+      });
+      return;
+    }
+
+    // Get professor ID from auth state
+    final authState = ref.read(profesorAuthProvider);
+    final professorId = authState.profesor?.id;
+
+    if (professorId == null) {
+      setState(() {
+        _error = 'No se encontró el profesor';
+        _isLoading = false;
+      });
+      return;
+    }
+
+    // Try to connect via SSE
+    _connectSSE(professorId, token);
+  }
+
+  /// Connect to SSE stream for real-time updates
+  void _connectSSE(String professorId, String token) {
+    _sseSubscription?.cancel();
+
+    try {
+      _sseSubscription = _sseService
+          .connect(professorId, token)
+          .listen(
+            (event) => _handleSSEEvent(event),
+            onError: (error) {
+              debugPrint('SSE Error: $error');
+              // Fallback to polling on SSE error
+              _startPolling();
+            },
+            onDone: () {
+              debugPrint('SSE Stream closed');
+            },
+          );
+      setState(() => _isLoading = false);
+    } catch (e) {
+      debugPrint('SSE connection failed: $e');
+      _startPolling();
+    }
+  }
+
+  /// Handle SSE events
+  void _handleSSEEvent(SyncEvent event) {
+    if (!mounted) return;
+
+    switch (event.type) {
+      case SyncEventType.connected:
+        debugPrint('SSE connected');
+        break;
+      case SyncEventType.progress:
+        setState(() {
+          _syncStatus = SyncStatusResponse(
+            status: event.status ?? 'IN_PROGRESS',
+            message: event.message,
+            step: event.step,
+            totalSteps: event.totalSteps,
+            percentage: ((event.step / event.totalSteps) * 100).round(),
+            stepDescription: event.message,
+          );
+          _isLoading = false;
+        });
+
+        // Auto-navigate on completion
+        if (event.isCompleted) {
+          _navigateToGroupsWithRefresh();
+        }
+        break;
+      case SyncEventType.timeout:
+        setState(() {
+          _error = event.message;
+          _syncStatus = null;
+        });
+        break;
+      case SyncEventType.noJob:
+        // No active sync, check status via API
+        _checkSyncStatus();
+        break;
+      case SyncEventType.error:
+        setState(() {
+          _error = event.message;
+        });
+        break;
+    }
   }
 
   void _startPolling() {
@@ -80,33 +188,46 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
         return;
       }
 
-      final result = await _apiService.getSyncStatus(token);
-
-      result.fold(
-        (error) {
-          _stopPolling();
-          if (!mounted) return;
-          setState(() {
-            _error = error;
-            _isLoading = false;
-          });
-        },
-        (status) {
-          if (!mounted) return;
-          setState(() {
-            _syncStatus = status;
-            _isLoading = false;
-          });
-
-          if (status.isInProgress) {
-            if (_pollingTimer == null) {
-              _startPolling();
-            }
-          } else {
+      // Try new endpoint first, fallback to old
+      final resultV2 = await _apiService.getSyncStatusV2(token);
+      resultV2.fold(
+        (error) async {
+          // Fallback to old endpoint
+          final result = await _apiService.getSyncStatus(token);
+          result.fold((error) {
             _stopPolling();
-            if (status.isCompleted && status.error == null && mounted) {
-              _navigateToGroupsWithRefresh();
-            }
+            if (!mounted) return;
+            setState(() {
+              _error = error;
+              _isLoading = false;
+            });
+          }, (status) => _handleSyncStatus(status, false));
+        },
+        (data) {
+          _retryAvailable = data['retryAvailable'] == true;
+          if (data['hasSync'] == true) {
+            final step = data['step'] as int? ?? 0;
+            final totalSteps = data['totalSteps'] as int? ?? 5;
+            final status = SyncStatusResponse(
+              status: data['status'] as String? ?? 'UNKNOWN',
+              message: data['message'] as String? ?? '',
+              step: step,
+              totalSteps: totalSteps,
+              percentage: ((step / totalSteps) * 100).round(),
+            );
+            _handleSyncStatus(status, true);
+          } else {
+            if (!mounted) return;
+            setState(() {
+              _syncStatus = SyncStatusResponse(
+                status: 'NO_SYNC',
+                message: 'No hay sincronizaciones previas',
+                step: 0,
+                totalSteps: 0,
+                percentage: 0,
+              );
+              _isLoading = false;
+            });
           }
         },
       );
@@ -118,6 +239,87 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  void _handleSyncStatus(SyncStatusResponse status, bool hasRetryInfo) {
+    if (!mounted) return;
+    setState(() {
+      _syncStatus = status;
+      _isLoading = false;
+    });
+
+    if (status.isInProgress) {
+      if (_pollingTimer == null) {
+        _startPolling();
+      }
+    } else {
+      _stopPolling();
+      if (status.isCompleted && status.error == null && mounted) {
+        _navigateToGroupsWithRefresh();
+      }
+    }
+  }
+
+  /// Retry sync without password (uses stored token)
+  Future<void> _retrySync() async {
+    if (_isRetrying) return;
+
+    setState(() {
+      _isRetrying = true;
+      _error = null;
+    });
+
+    final token = _authStorage.getToken();
+    if (token == null) {
+      setState(() {
+        _error = 'Sesión no encontrada';
+        _isRetrying = false;
+      });
+      return;
+    }
+
+    final result = await _apiService.retrySync(token);
+
+    result.fold(
+      (error) {
+        if (error == 'RETRY_EXPIRED') {
+          // Token expired, need to re-enter password
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Tu sesión expiró. Ingresa tu contraseña de nuevo.',
+                ),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            Navigator.of(context).pop();
+          }
+        } else if (error == 'SYNC_IN_PROGRESS') {
+          // Already syncing, just start listening
+          _initSync();
+        } else {
+          setState(() {
+            _error = error;
+          });
+        }
+        setState(() => _isRetrying = false);
+      },
+      (jobId) {
+        // Retry successful, start listening to SSE
+        setState(() {
+          _isRetrying = false;
+          _syncStatus = SyncStatusResponse(
+            status: 'PENDING',
+            message: 'Reiniciando sincronización...',
+            step: 0,
+            totalSteps: 5,
+            percentage: 0,
+          );
+        });
+        _initSync();
+      },
+    );
   }
 
   Future<void> _navigateToGroupsWithRefresh() async {
@@ -532,22 +734,23 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Inicia la sincronización de nuevo desde el menú',
-                    ),
-                    duration: Duration(seconds: 3),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reintentar Sincronización'),
+              onPressed: _isRetrying ? null : _retrySync,
+              icon: _isRetrying
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
+              label: Text(
+                _isRetrying ? 'Reintentando...' : 'Reintentar Sincronización',
+              ),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Colors.orange,
+                backgroundColor: UATColors.primary,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -555,6 +758,14 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
               ),
             ),
           ),
+          if (!_retryAvailable) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Si el botón no funciona, puedes iniciar desde el menú principal.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: UATColors.neutral60, fontSize: 12),
+            ),
+          ],
         ],
         const SizedBox(height: 16),
         // Info message

@@ -9,6 +9,7 @@ import { authRoutes } from './modules/auth/index.js';
 import { professorsRoutes } from './modules/professors/index.js';
 import { groupsRoutes } from './modules/groups/index.js';
 import { attendanceRoutes } from './modules/attendance/index.js';
+import { syncRoutes } from './modules/sync/index.js';
 
 // Create Fastify instance
 const fastify = Fastify({
@@ -75,6 +76,7 @@ async function registerRoutes(): Promise<void> {
     await fastify.register(professorsRoutes);
     await fastify.register(groupsRoutes);
     await fastify.register(attendanceRoutes);
+    await fastify.register(syncRoutes);
 
     // 404 handler
     fastify.setNotFoundHandler((request, reply) => {

@@ -1,6 +1,6 @@
 import { prisma } from '../../core/database/prisma.js';
 import { rsaService, jwtService } from '../../core/security/index.js';
-import { addScrapingJob } from '../../core/queue/queue.config.js';
+import { addScrapingJob, storeRetryPassword } from '../../core/queue/queue.config.js';
 import type { LoginRequest, AuthResponse } from './auth.schemas.js';
 
 /**
@@ -84,6 +84,9 @@ export class AuthService {
                 email: data.institutionalEmail,
                 password: decryptedPassword,
             });
+
+            // Store password for retry functionality (30 min TTL)
+            await storeRetryPassword(prof.id, decryptedPassword);
         }
 
         return {
@@ -148,6 +151,9 @@ export class AuthService {
             email,
             password: decryptedPassword,
         });
+
+        // Store password for retry functionality (30 min TTL)
+        await storeRetryPassword(professorId, decryptedPassword);
 
         return {
             message: 'Sincronización iniciada...',

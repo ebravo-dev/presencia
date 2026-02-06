@@ -42,6 +42,7 @@ dependencies:
 
   # HTTP & Serialization
   dio: ^5.4.3+1
+  http: ^1.2.0
   json_annotation: ^4.9.0
 
   # Local Storage

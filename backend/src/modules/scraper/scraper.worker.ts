@@ -322,6 +322,7 @@ export function createScrapingWorker(): Worker<ScrapingJobData, ScrapingJobResul
         {
             connection: redisConnection,
             concurrency: 1, // Process one job at a time (single scraper instance)
+            maxStalledCount: 2, // Tolerate 2 stalls before failing (for server restarts)
             limiter: {
                 max: 5, // Max 5 jobs per minute (avoid overloading UAT portal)
                 duration: 60000,

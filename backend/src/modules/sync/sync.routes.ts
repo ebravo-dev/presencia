@@ -1,0 +1,244 @@
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { prisma } from '../../core/database/prisma.js';
+import { addScrapingJob, storeRetryPassword, getRetryPassword } from '../../core/queue/queue.config.js';
+import { rsaService } from '../../core/security/index.js';
+
+/**
+ * Sync routes - SSE streaming and retry functionality
+ */
+export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
+    /**
+     * GET /sync/stream/:professorId
+     * Server-Sent Events endpoint for real-time sync progress updates
+     * Requires JWT authentication
+     */
+    fastify.get<{ Params: { professorId: string } }>(
+        '/sync/stream/:professorId',
+        {
+            preHandler: [fastify.authenticate],
+        },
+        async (request: FastifyRequest<{ Params: { professorId: string } }>, reply: FastifyReply) => {
+            const { professorId } = request.params;
+            const user = request.user as { professorId: string };
+
+            // Verify user owns this professor ID
+            if (user.professorId !== professorId) {
+                return reply.code(403).send({
+                    error: 'Forbidden',
+                    message: 'No tienes permiso para ver este progreso',
+                });
+            }
+
+            // Set SSE headers
+            reply.raw.setHeader('Content-Type', 'text/event-stream');
+            reply.raw.setHeader('Cache-Control', 'no-cache');
+            reply.raw.setHeader('Connection', 'keep-alive');
+            reply.raw.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+
+            // Send initial connection message
+            reply.raw.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
+
+            let isClientConnected = true;
+            let lastStatus: string | null = null;
+            let lastStep: number | null = null;
+            let noChangeCount = 0;
+            const MAX_NO_CHANGE = 30; // 30 * 2s = 60s timeout if no changes
+
+            // Polling interval for sync job status
+            const interval = setInterval(async () => {
+                if (!isClientConnected) {
+                    clearInterval(interval);
+                    return;
+                }
+
+                try {
+                    // Get latest sync job for this professor
+                    const syncJob = await prisma.syncJob.findFirst({
+                        where: { professorId },
+                        orderBy: { startedAt: 'desc' },
+                    });
+
+                    if (syncJob) {
+                        const currentStatus = syncJob.status;
+                        const currentStep = syncJob.currentGroup;
+
+                        // Check if there's a change
+                        if (currentStatus !== lastStatus || currentStep !== lastStep) {
+                            noChangeCount = 0;
+                            lastStatus = currentStatus;
+                            lastStep = currentStep;
+                        } else {
+                            noChangeCount++;
+                        }
+
+                        // Send update to client
+                        const event = {
+                            type: 'progress',
+                            status: syncJob.status,
+                            step: syncJob.currentGroup || 0,
+                            totalSteps: syncJob.totalGroups || 5,
+                            message: syncJob.currentGroupName || '',
+                            error: syncJob.error,
+                            attemptsMade: syncJob.error?.includes('intento') ?
+                                parseInt(syncJob.error.match(/intento (\d+)/)?.[1] || '0') : 0,
+                        };
+
+                        reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+
+                        // Close connection if job is done
+                        if (syncJob.status === 'COMPLETED' || syncJob.status === 'FAILED') {
+                            setTimeout(() => {
+                                clearInterval(interval);
+                                reply.raw.end();
+                            }, 1000);
+                        }
+
+                        // Timeout if no changes for too long
+                        if (noChangeCount >= MAX_NO_CHANGE) {
+                            reply.raw.write(`data: ${JSON.stringify({
+                                type: 'timeout',
+                                message: 'Sin cambios por mucho tiempo. ¿El servidor sigue funcionando?'
+                            })}\n\n`);
+                            clearInterval(interval);
+                            reply.raw.end();
+                        }
+                    } else {
+                        // No sync job found
+                        reply.raw.write(`data: ${JSON.stringify({
+                            type: 'no_job',
+                            message: 'No hay sincronización activa'
+                        })}\n\n`);
+                    }
+                } catch (error) {
+                    console.error('SSE polling error:', error);
+                    reply.raw.write(`data: ${JSON.stringify({
+                        type: 'error',
+                        message: 'Error interno del servidor'
+                    })}\n\n`);
+                }
+            }, 2000); // Poll every 2 seconds
+
+            // Handle client disconnect
+            request.raw.on('close', () => {
+                isClientConnected = false;
+                clearInterval(interval);
+            });
+
+            // Prevent Fastify from sending response (we're handling it manually)
+            return reply;
+        }
+    );
+
+    /**
+     * POST /sync/retry
+     * Retry a failed sync without re-entering password
+     * Uses stored password from Redis (30 min TTL)
+     */
+    fastify.post(
+        '/sync/retry',
+        {
+            preHandler: [fastify.authenticate],
+        },
+        async (request: FastifyRequest, reply: FastifyReply) => {
+            const user = request.user as { professorId: string; email: string };
+
+            try {
+                // Get stored password from Redis
+                const password = await getRetryPassword(user.professorId);
+
+                if (!password) {
+                    return reply.code(410).send({
+                        error: 'RETRY_EXPIRED',
+                        message: 'Tu sesión de sincronización expiró. Ingresa tu contraseña de nuevo.',
+                    });
+                }
+
+                // Check if there's already an active job
+                const activeJob = await prisma.syncJob.findFirst({
+                    where: {
+                        professorId: user.professorId,
+                        status: { in: ['PENDING', 'IN_PROGRESS'] },
+                    },
+                });
+
+                if (activeJob) {
+                    return reply.code(409).send({
+                        error: 'SYNC_IN_PROGRESS',
+                        message: 'Ya hay una sincronización en progreso.',
+                    });
+                }
+
+                // Create new scraping job
+                const job = await addScrapingJob({
+                    professorId: user.professorId,
+                    email: user.email,
+                    password,
+                });
+
+                // Refresh the retry password TTL
+                await storeRetryPassword(user.professorId, password);
+
+                return reply.code(200).send({
+                    success: true,
+                    jobId: job.id,
+                    message: 'Sincronización reiniciada',
+                });
+            } catch (error) {
+                console.error('Retry sync error:', error);
+                return reply.code(500).send({
+                    error: 'Internal Server Error',
+                    message: 'Error al reiniciar la sincronización',
+                });
+            }
+        }
+    );
+
+    /**
+     * GET /sync/status
+     * Get current sync status (for initial load before SSE connects)
+     */
+    fastify.get(
+        '/sync/status',
+        {
+            preHandler: [fastify.authenticate],
+        },
+        async (request: FastifyRequest, reply: FastifyReply) => {
+            const user = request.user as { professorId: string };
+
+            try {
+                const syncJob = await prisma.syncJob.findFirst({
+                    where: { professorId: user.professorId },
+                    orderBy: { startedAt: 'desc' },
+                });
+
+                if (!syncJob) {
+                    return reply.code(200).send({
+                        hasSync: false,
+                        message: 'No hay sincronizaciones previas',
+                    });
+                }
+
+                // Check if retry is available (password still in Redis)
+                const retryAvailable = !!(await getRetryPassword(user.professorId));
+
+                return reply.code(200).send({
+                    hasSync: true,
+                    status: syncJob.status,
+                    step: syncJob.currentGroup || 0,
+                    totalSteps: syncJob.totalGroups || 5,
+                    message: syncJob.currentGroupName || '',
+                    error: syncJob.error,
+                    startedAt: syncJob.startedAt,
+                    completedAt: syncJob.completedAt,
+                    retryAvailable,
+                });
+            } catch (error) {
+                console.error('Get sync status error:', error);
+                return reply.code(500).send({
+                    error: 'Internal Server Error',
+                    message: 'Error al obtener el estado de sincronización',
+                });
+            }
+        }
+    );
+}
