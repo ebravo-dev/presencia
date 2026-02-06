@@ -87,12 +87,31 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
             });
 
             if (activeSyncJob) {
-                // Sync in progress - return empty with flag
-                return reply.send({
-                    data: [],
-                    syncInProgress: true,
-                    message: 'Sincronización en progreso, espera a que termine',
-                });
+                // Auto-reset stuck syncs (> 10 minutes)
+                const stuckThreshold = 10 * 60 * 1000;
+                const syncAge = activeSyncJob.startedAt
+                    ? Date.now() - activeSyncJob.startedAt.getTime()
+                    : 0;
+
+                if (syncAge > stuckThreshold) {
+                    console.log(`🔧 [classes] Sync ${activeSyncJob.id} stuck for ${Math.round(syncAge / 60000)} min, marking as FAILED`);
+                    await prisma.syncJob.update({
+                        where: { id: activeSyncJob.id },
+                        data: {
+                            status: 'FAILED',
+                            error: 'Sincronización cancelada (timeout automático)',
+                            completedAt: new Date(),
+                        },
+                    });
+                    // Continue to return classes (don't block)
+                } else {
+                    // Sync in progress - return empty with flag
+                    return reply.send({
+                        data: [],
+                        syncInProgress: true,
+                        message: 'Sincronización en progreso, espera a que termine',
+                    });
+                }
             }
 
             const groups = await prisma.group.findMany({
@@ -167,6 +186,41 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
                         message: 'No hay sincronizaciones previas',
                         step: 0,
                         totalSteps: 6,
+                    },
+                });
+            }
+
+            // Auto-reset stuck syncs (> 10 minutes in PENDING or IN_PROGRESS)
+            const stuckThreshold = 10 * 60 * 1000; // 10 minutes
+            const isStuck = ['PENDING', 'IN_PROGRESS'].includes(syncJob.status);
+            const syncAge = syncJob.startedAt
+                ? Date.now() - syncJob.startedAt.getTime()
+                : 0;
+
+            if (isStuck && syncAge > stuckThreshold) {
+                console.log(`🔧 [sync-status] Sync ${syncJob.id} stuck for ${Math.round(syncAge / 60000)} min, marking as FAILED`);
+                await prisma.syncJob.update({
+                    where: { id: syncJob.id },
+                    data: {
+                        status: 'FAILED',
+                        error: 'Sincronización cancelada (timeout automático)',
+                        completedAt: new Date(),
+                    },
+                });
+
+                // Return the updated status
+                return reply.send({
+                    data: {
+                        status: 'FAILED',
+                        step: syncJob.currentGroup || 0,
+                        totalSteps: syncJob.totalGroups || 6,
+                        stepDescription: syncJob.currentGroupName,
+                        percentage: 0,
+                        message: 'Sincronización cancelada (timeout automático)',
+                        startedAt: syncJob.startedAt,
+                        completedAt: new Date(),
+                        error: 'Sincronización cancelada (timeout automático)',
+                        supportPhone: '8331048282',
                     },
                 });
             }
