@@ -121,6 +121,7 @@ export class AuthService {
         email: string,
         encryptedPassword: string
     ): Promise<{ message: string; currentPeriod: string }> {
+        console.log(`🔄 forceSync called for professor ${professorId}`);
         const decryptedPassword = rsaService.decryptPassword(encryptedPassword);
         const currentPeriod = calculateCurrentPeriod();
 
@@ -133,10 +134,30 @@ export class AuthService {
         });
 
         if (existingSync) {
-            return {
-                message: 'Ya hay una sincronización en proceso. Espera a que termine.',
-                currentPeriod,
-            };
+            console.log(`⚠️ Found existing sync: ${existingSync.id} status=${existingSync.status} started=${existingSync.startedAt}`);
+
+            // If sync has been stuck for more than 10 minutes, mark it as failed and continue
+            const stuckThreshold = 10 * 60 * 1000; // 10 minutes
+            const syncAge = existingSync.startedAt
+                ? Date.now() - existingSync.startedAt.getTime()
+                : 0;
+
+            if (syncAge > stuckThreshold) {
+                console.log(`🔧 Sync stuck for ${Math.round(syncAge / 60000)} minutes, marking as FAILED`);
+                await prisma.syncJob.update({
+                    where: { id: existingSync.id },
+                    data: {
+                        status: 'FAILED',
+                        error: 'Sincronización cancelada (timeout automático)',
+                        completedAt: new Date(),
+                    },
+                });
+            } else {
+                return {
+                    message: 'Ya hay una sincronización en proceso. Espera a que termine.',
+                    currentPeriod,
+                };
+            }
         }
 
         // Update lastSyncPeriod
@@ -145,6 +166,7 @@ export class AuthService {
             data: { lastSyncPeriod: currentPeriod },
         });
 
+        console.log(`📤 Queuing scraping job for ${email}`);
         // Queue scraping job
         await addScrapingJob({
             professorId,
