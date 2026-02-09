@@ -284,7 +284,7 @@ async function processScrapingJob(
             // Mark SyncJob as FAILED (no more retries)
             const finalError = isCredentialError
                 ? 'Error de autenticación. Verifica tus credenciales del portal UAT.'
-                : `Error después de ${attemptNumber} intentos: ${errorMessage}`;
+                : 'La página del portal UAT tardó demasiado en responder. Intenta de nuevo más tarde.';
 
             await prisma.syncJob.update({
                 where: { id: syncJob.id },

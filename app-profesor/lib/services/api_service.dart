@@ -242,6 +242,7 @@ class ApiService {
 
       final response = await _dio.post(
         '/sync/retry',
+        data: {}, // Send empty JSON body to avoid Fastify body parsing error
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
 

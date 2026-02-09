@@ -348,19 +348,29 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
         }
         setState(() => _isRetrying = false);
       },
-      (jobId) {
-        // Retry successful, start listening to SSE
+      (jobId) async {
+        // Retry successful - show connecting state immediately
         setState(() {
           _isRetrying = false;
+          _error = null;
+          _retryAvailable = false;
           _syncStatus = SyncStatusResponse(
             status: 'PENDING',
-            message: 'Reiniciando sincronización...',
-            step: 0,
+            message: 'Conectando con el servidor...',
+            step: 1,
             totalSteps: 5,
-            percentage: 0,
+            percentage: 20,
+            stepDescription: 'Conectando con el servidor...',
           );
         });
-        _initSync();
+
+        // Wait a moment for the backend to create the job in DB
+        await Future.delayed(const Duration(seconds: 2));
+
+        // Now start listening to SSE
+        if (mounted) {
+          _initSync();
+        }
       },
     );
   }
