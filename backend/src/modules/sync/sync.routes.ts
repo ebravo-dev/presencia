@@ -42,7 +42,7 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
             let lastStatus: string | null = null;
             let lastStep: number | null = null;
             let noChangeCount = 0;
-            const MAX_NO_CHANGE = 30; // 30 * 2s = 60s timeout if no changes
+            const MAX_NO_CHANGE = 60; // 60 * 2s = 120s timeout if no changes
 
             // Polling interval for sync job status
             const interval = setInterval(async () => {
@@ -92,7 +92,7 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
                         if (noChangeCount >= MAX_NO_CHANGE) {
                             reply.raw.write(`data: ${JSON.stringify({
                                 type: 'timeout',
-                                message: 'Sin cambios por mucho tiempo. ¿El servidor sigue funcionando?'
+                                message: 'El portal de la UAT está tardando más de lo esperado. Intenta de nuevo más tarde.'
                             })}\n\n`);
                             clearInterval(interval);
                             reply.raw.end();
