@@ -1073,69 +1073,71 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 ),
               ],
             ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Ingresa tu contraseña de la UAT para descargar tus clases actualizadas.',
-                  style: TextStyle(fontSize: 14, color: Colors.white70),
-                ),
-                const SizedBox(height: 16),
-                Form(
-                  key: formKey,
-                  child: TextFormField(
-                    controller: passwordController,
-                    obscureText: obscureText,
-                    style: const TextStyle(color: Colors.black),
-                    decoration: InputDecoration(
-                      hintText: 'Contraseña UAT',
-                      hintStyle: TextStyle(color: Colors.grey.shade600),
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: Colors.blueAccent,
-                          width: 2,
-                        ),
-                      ),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          obscureText
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                          color: Colors.grey,
-                        ),
-                        onPressed: () {
-                          setState(() => obscureText = !obscureText);
-                        },
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Ingresa tu contraseña';
-                      }
-                      return null;
-                    },
-                  ),
-                ),
-                if (isLoading) ...[
-                  const SizedBox(height: 20),
-                  const CircularProgressIndicator(color: Colors.blueAccent),
-                  const SizedBox(height: 8),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   const Text(
-                    'Solicitando sincronización...',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                    'Ingresa tu contraseña de la UAT para descargar tus clases actualizadas.',
+                    style: TextStyle(fontSize: 14, color: Colors.white70),
                   ),
+                  const SizedBox(height: 16),
+                  Form(
+                    key: formKey,
+                    child: TextFormField(
+                      controller: passwordController,
+                      obscureText: obscureText,
+                      style: const TextStyle(color: Colors.black),
+                      decoration: InputDecoration(
+                        hintText: 'Contraseña UAT',
+                        hintStyle: TextStyle(color: Colors.grey.shade600),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                            color: Colors.blueAccent,
+                            width: 2,
+                          ),
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            obscureText
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                            color: Colors.grey,
+                          ),
+                          onPressed: () {
+                            setState(() => obscureText = !obscureText);
+                          },
+                        ),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Ingresa tu contraseña';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                  if (isLoading) ...[
+                    const SizedBox(height: 20),
+                    const CircularProgressIndicator(color: Colors.blueAccent),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Solicitando sincronización...',
+                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
             actions: [
               TextButton(

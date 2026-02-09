@@ -202,6 +202,9 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
       return Left('No hay sesión activa');
     }
 
+    // Set sync in progress flag for app redirect on reopen
+    await _authStorage.setSyncInProgress(true);
+
     // Clear local groups before syncing to avoid showing stale data
     await clearGrupos();
 

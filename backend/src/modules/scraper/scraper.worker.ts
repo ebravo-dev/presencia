@@ -259,9 +259,10 @@ async function processScrapingJob(
         console.error(`❌ Job ${job.id} failed (attempt ${attemptNumber}/${maxAttempts}):`, errorMessage);
 
         // Determine if this error should be retried
-        // Only EXPLICIT credential errors should NOT be retried
-        // "still on login page" IS retryable because it could be slow page loading
+        // CREDENTIAL_ERROR should NOT be retried (wrong password/username)
+        // PORTAL_ERROR should be retried (slow portal, timeout)
         const isCredentialError =
+            errorMessage.includes('CREDENTIAL_ERROR') ||
             errorMessage.toLowerCase().includes('contraseña incorrecta') ||
             errorMessage.toLowerCase().includes('usuario incorrecto') ||
             errorMessage.toLowerCase().includes('credenciales inválidas') ||

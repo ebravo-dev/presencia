@@ -14,6 +14,7 @@ class AuthStorageService {
   static const String _tokenKey = 'jwt_token';
   static const String _profesorKey = 'profesor_data';
   static const String _gruposKey = 'grupos_data';
+  static const String _syncInProgressKey = 'sync_in_progress';
 
   Box? _box;
 
@@ -184,6 +185,27 @@ class AuthStorageService {
       return true;
     } catch (e) {
       Logger.error('Error al validar token', e);
+      return false;
+    }
+  }
+
+  /// Set sync in progress flag
+  Future<void> setSyncInProgress(bool value) async {
+    try {
+      await _box?.put(_syncInProgressKey, value);
+      Logger.info('Sync in progress flag set to: $value');
+    } catch (e, stackTrace) {
+      Logger.error('Error setting sync in progress flag', e, stackTrace);
+    }
+  }
+
+  /// Check if sync is in progress
+  bool isSyncInProgress() {
+    try {
+      return _box?.get(_syncInProgressKey, defaultValue: false) as bool? ??
+          false;
+    } catch (e) {
+      Logger.error('Error getting sync in progress flag', e);
       return false;
     }
   }

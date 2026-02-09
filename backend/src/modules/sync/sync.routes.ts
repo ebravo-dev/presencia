@@ -105,9 +105,14 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
                         });
 
                         if (recentJob && (recentJob.status === 'COMPLETED' || recentJob.status === 'FAILED')) {
+                            // Determine if this was a credential error
+                            const isCredentialError = recentJob.error?.includes('CREDENTIAL_ERROR') ||
+                                recentJob.error?.toLowerCase().includes('contraseña') ||
+                                recentJob.error?.toLowerCase().includes('usuario');
+
                             // Send final state and close
                             const event = {
-                                type: 'progress',
+                                type: recentJob.status === 'COMPLETED' ? 'completed' : 'failed',
                                 status: recentJob.status,
                                 step: recentJob.currentGroup || 0,
                                 totalSteps: recentJob.totalGroups || 5,
@@ -115,7 +120,9 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
                                     ? '¡Sincronización completada!'
                                     : (recentJob.error || 'Error en sincronización'),
                                 error: recentJob.error,
-                                isCompleted: true,
+                                errorType: isCredentialError ? 'credential' : 'portal',
+                                isCompleted: recentJob.status === 'COMPLETED',
+                                isFailed: recentJob.status === 'FAILED',
                             };
                             reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
                             clearInterval(interval);

@@ -56,16 +56,25 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
 
   /// Initialize sync - try SSE first, fallback to polling
   Future<void> _initSync() async {
+    // Set initial "Conectando" state immediately so professor sees progress
     setState(() {
-      _isLoading = true;
+      _isLoading = false;
       _error = null;
+      _syncStatus = SyncStatusResponse(
+        status: 'PENDING',
+        message: 'Conectando con el servidor...',
+        step: 1,
+        totalSteps: 5,
+        percentage: 20,
+        stepDescription: 'Conectando con el servidor...',
+      );
     });
 
     final token = _authStorage.getToken();
     if (token == null) {
       setState(() {
         _error = 'Sesión no encontrada';
-        _isLoading = false;
+        _syncStatus = null;
       });
       return;
     }
@@ -77,7 +86,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     if (professorId == null) {
       setState(() {
         _error = 'No se encontró el profesor';
-        _isLoading = false;
+        _syncStatus = null;
       });
       return;
     }
@@ -137,11 +146,22 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
           _navigateToGroupsWithRefresh();
         }
         break;
+      case SyncEventType.completed:
+        // Sync completed successfully - navigate to grupos
+        _navigateToGroupsWithRefresh();
+        break;
+      case SyncEventType.failed:
+        // Sync failed - show error with appropriate message
+        _handleSyncFailed(event);
+        break;
       case SyncEventType.timeout:
         setState(() {
           _error = event.message;
           _syncStatus = null;
+          _retryAvailable = true;
         });
+        // Clear sync flag on timeout
+        _authStorage.setSyncInProgress(false);
         break;
       case SyncEventType.noJob:
         // No active sync, check status via API
@@ -150,9 +170,32 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
       case SyncEventType.error:
         setState(() {
           _error = event.message;
+          _retryAvailable = true;
         });
+        // Clear sync flag on error
+        _authStorage.setSyncInProgress(false);
         break;
     }
+  }
+
+  /// Handle failed sync event - show appropriate error message
+  void _handleSyncFailed(SyncEvent event) {
+    // Clear sync in progress flag
+    _authStorage.setSyncInProgress(false);
+
+    setState(() {
+      if (event.isCredentialError) {
+        _error =
+            'Contraseña incorrecta. Verifica tus credenciales del portal UAT.';
+      } else {
+        _error = event.message.isNotEmpty
+            ? event.message
+            : 'Error en la sincronización. Intenta de nuevo.';
+      }
+      _syncStatus = null;
+      _retryAvailable = !event
+          .isCredentialError; // Only allow retry for non-credential errors
+    });
   }
 
   void _startPolling() {
@@ -323,6 +366,8 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   }
 
   Future<void> _navigateToGroupsWithRefresh() async {
+    // Clear sync in progress flag since sync is complete
+    await _authStorage.setSyncInProgress(false);
     await ref.read(profesorAuthProvider.notifier).refreshGrupos();
     if (mounted) {
       context.go('/grupos');
@@ -339,22 +384,27 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: UATColors.surface,
-      appBar: AppBar(
-        title: const Text('Sincronización'),
-        backgroundColor: UATColors.primary,
-        foregroundColor: UATColors.onPrimary,
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            children: [
-              Expanded(child: _buildContent()),
-              const SizedBox(height: 16),
-              _buildActionButtons(),
-            ],
+    // Prevent back navigation during sync
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        backgroundColor: UATColors.surface,
+        appBar: AppBar(
+          title: const Text('Sincronización'),
+          backgroundColor: UATColors.primary,
+          foregroundColor: UATColors.onPrimary,
+          automaticallyImplyLeading: false, // Remove back button
+        ),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              children: [
+                Expanded(child: _buildContent()),
+                const SizedBox(height: 16),
+                _buildActionButtons(),
+              ],
+            ),
           ),
         ),
       ),
@@ -579,24 +629,81 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
 
   Widget _buildErrorState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
-          const SizedBox(height: 16),
-          Text(
-            'Error',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _error!,
-            textAlign: TextAlign.center,
-            style: TextStyle(color: UATColors.neutral80),
-          ),
-        ],
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
+            const SizedBox(height: 16),
+            Text(
+              'Error',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: UATColors.neutral80),
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Buttons based on retry availability
+            if (_retryAvailable) ...[
+              // Retry button for portal errors
+              SizedBox(
+                width: 240,
+                child: ElevatedButton.icon(
+                  onPressed: _isRetrying ? null : _retrySync,
+                  icon: _isRetrying
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.refresh),
+                  label: Text(_isRetrying ? 'Reintentando...' : 'Reintentar'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    backgroundColor: UATColors.primary,
+                    foregroundColor: UATColors.onPrimary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            // Go back button (always shown)
+            SizedBox(
+              width: 240,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  // Clear sync flag and navigate back to grupos
+                  _authStorage.setSyncInProgress(false);
+                  context.go('/grupos');
+                },
+                icon: const Icon(Icons.arrow_back),
+                label: const Text('Volver a mis clases'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  side: const BorderSide(color: UATColors.primary),
+                  foregroundColor: UATColors.primary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

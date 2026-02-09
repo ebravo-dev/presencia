@@ -68,6 +68,7 @@ class AuthStateNotifier extends ChangeNotifier {
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authNotifier = ref.watch(authStateListenableProvider);
+  final authStorage = AuthStorageService();
 
   return GoRouter(
     refreshListenable: authNotifier,
@@ -75,6 +76,13 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final isAuthenticated = authNotifier.isAuthenticated;
       final isLoggingIn = state.matchedLocation == '/login';
+      final isOnSyncStatus = state.matchedLocation == '/sync-status';
+      final isSyncInProgress = authStorage.isSyncInProgress();
+
+      // Si está autenticado y hay sync en progreso, ir a sync-status
+      if (isAuthenticated && isSyncInProgress && !isOnSyncStatus) {
+        return '/sync-status';
+      }
 
       // Si está autenticado y está en login, ir a grupos
       if (isAuthenticated && isLoggingIn) {

@@ -5,7 +5,15 @@ import '../core/constants/api_constants.dart';
 import '../core/utils/utils.dart';
 
 /// Event types received from SSE stream
-enum SyncEventType { connected, progress, timeout, noJob, error }
+enum SyncEventType {
+  connected,
+  progress,
+  completed,
+  failed,
+  timeout,
+  noJob,
+  error,
+}
 
 /// Represents a sync progress event from SSE stream
 class SyncEvent {
@@ -15,6 +23,7 @@ class SyncEvent {
   final int totalSteps;
   final String message;
   final String? error;
+  final String? errorType; // 'credential' or 'portal'
   final int attemptsMade;
 
   SyncEvent({
@@ -24,6 +33,7 @@ class SyncEvent {
     this.totalSteps = 5,
     this.message = '',
     this.error,
+    this.errorType,
     this.attemptsMade = 0,
   });
 
@@ -34,6 +44,12 @@ class SyncEvent {
     switch (typeStr) {
       case 'connected':
         type = SyncEventType.connected;
+        break;
+      case 'completed':
+        type = SyncEventType.completed;
+        break;
+      case 'failed':
+        type = SyncEventType.failed;
         break;
       case 'timeout':
         type = SyncEventType.timeout;
@@ -55,12 +71,16 @@ class SyncEvent {
       totalSteps: json['totalSteps'] as int? ?? 5,
       message: json['message'] as String? ?? '',
       error: json['error'] as String?,
+      errorType: json['errorType'] as String?,
       attemptsMade: json['attemptsMade'] as int? ?? 0,
     );
   }
 
-  bool get isCompleted => status == 'COMPLETED';
-  bool get isFailed => status == 'FAILED';
+  bool get isCompleted =>
+      status == 'COMPLETED' || type == SyncEventType.completed;
+  bool get isFailed => status == 'FAILED' || type == SyncEventType.failed;
+  bool get isCredentialError => errorType == 'credential';
+  bool get isPortalError => errorType == 'portal';
   bool get isInProgress => status == 'IN_PROGRESS' || status == 'PENDING';
   bool get isRetrying => message.contains('Reintentando') || attemptsMade > 0;
 

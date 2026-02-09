@@ -234,7 +234,29 @@ export class ScraperService {
             } catch (e) {
                 console.log('⚠️ Could not save screenshot');
             }
-            throw new Error(`Login failed - still on login page. URL: ${currentUrl}`);
+
+            // Check for credential error messages on the page
+            // DevExpress shows validation messages in .dx-invalid-message elements
+            const errorMessages = await page.$$eval(
+                '.dx-invalid-message, .dx-overlay-content .dx-button-content, .dx-popup-content',
+                els => els.map(e => e.textContent?.trim() || '').join(' ')
+            );
+            console.log('🔍 Error messages found on page:', errorMessages);
+
+            // Check if this looks like a credential error
+            const isCredentialError =
+                errorMessages.toLowerCase().includes('incorrecto') ||
+                errorMessages.toLowerCase().includes('inválido') ||
+                errorMessages.toLowerCase().includes('invalid') ||
+                errorMessages.toLowerCase().includes('usuario') ||
+                errorMessages.toLowerCase().includes('contraseña');
+
+            if (isCredentialError) {
+                throw new Error(`CREDENTIAL_ERROR: Contraseña o usuario incorrecto`);
+            }
+
+            // Not a credential error - likely portal slow/timeout
+            throw new Error(`PORTAL_ERROR: Login failed - portal may be slow. URL: ${currentUrl}`);
         }
 
         console.log('🔓 Login appears successful (login form gone)');
