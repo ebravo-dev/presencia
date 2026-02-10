@@ -1048,6 +1048,139 @@ class _GruposPageState extends ConsumerState<GruposPage>
   }
 
   void _showSyncDialog(BuildContext context) {
+    bool isLoading = false;
+
+    // Check if we have a stored password
+    final authStorage = AuthStorageService();
+    final storedPassword = authStorage.getEncryptedPassword();
+
+    if (storedPassword == null) {
+      // No stored password - show password dialog as fallback
+      _showSyncDialogWithPassword(context);
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            backgroundColor: Colors.grey.shade900,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: const Row(
+              children: [
+                Icon(Icons.sync_rounded, color: Colors.blueAccent),
+                SizedBox(width: 12),
+                Text(
+                  'Sincronizar Ciclo',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Se descargarán tus clases actualizadas del portal UAT.',
+                    style: TextStyle(fontSize: 14, color: Colors.white70),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          color: Colors.orange,
+                          size: 20,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Las asistencias no subidas y los datos locales serán reemplazados con la información actualizada del portal.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.orange,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (isLoading) ...[
+                    const SizedBox(height: 20),
+                    const CircularProgressIndicator(color: Colors.blueAccent),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Solicitando sincronización...',
+                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isLoading ? null : () => Navigator.of(context).pop(),
+                child: const Text(
+                  'Cancelar',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              ),
+              FilledButton(
+                onPressed: isLoading
+                    ? null
+                    : () async {
+                        setState(() => isLoading = true);
+
+                        final result = await ref
+                            .read(profesorAuthProvider.notifier)
+                            .syncGroups(storedPassword);
+
+                        if (context.mounted) {
+                          Navigator.of(context).pop();
+
+                          result.fold(
+                            (error) =>
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(error),
+                                    backgroundColor: Colors.red,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                ),
+                            (message) {
+                              // Navegar a pantalla de estado de sincronización
+                              context.push('/sync-status');
+                            },
+                          );
+                        }
+                      },
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Sincronizar'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Fallback dialog when no stored password is available
+  void _showSyncDialogWithPassword(BuildContext context) {
     final passwordController = TextEditingController();
     final formKey = GlobalKey<FormState>();
     bool obscureText = true;
@@ -1080,6 +1213,35 @@ class _GruposPageState extends ConsumerState<GruposPage>
                   const Text(
                     'Ingresa tu contraseña de la UAT para descargar tus clases actualizadas.',
                     style: TextStyle(fontSize: 14, color: Colors.white70),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          color: Colors.orange,
+                          size: 20,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Las asistencias no subidas y los datos locales serán reemplazados con la información actualizada del portal.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.orange,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Form(
@@ -1172,7 +1334,6 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                     ),
                                   ),
                               (message) {
-                                // Navegar a pantalla de estado de sincronización
                                 context.push('/sync-status');
                               },
                             );
@@ -1263,7 +1424,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                   style: TextStyle(color: Colors.white),
                 ),
                 subtitle: Text(
-                  'Descargar clases del portal (requiere contraseña)',
+                  'Descargar clases actualizadas del portal',
                   style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
                 ),
                 onTap: () {
