@@ -42,7 +42,7 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
             let lastStatus: string | null = null;
             let lastStep: number | null = null;
             let noChangeCount = 0;
-            const MAX_NO_CHANGE = 60; // 60 * 2s = 120s timeout if no changes
+            const MAX_NO_CHANGE = 150; // 150 * 2s = 300s (5 min) timeout if no changes
 
             // Polling interval for sync job status
             const interval = setInterval(async () => {
@@ -71,7 +71,14 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
                             lastStatus = currentStatus;
                             lastStep = currentStep;
                         } else {
-                            noChangeCount++;
+                            // Only count no-change for PENDING jobs (not yet started)
+                            // IN_PROGRESS jobs may take time per group, that's normal
+                            if (currentStatus === 'PENDING') {
+                                noChangeCount++;
+                            } else {
+                                // For IN_PROGRESS, reset counter more slowly
+                                noChangeCount += 0.5;
+                            }
                         }
 
                         // Send update to client

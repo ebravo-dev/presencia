@@ -155,13 +155,9 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
         _handleSyncFailed(event);
         break;
       case SyncEventType.timeout:
-        setState(() {
-          _error = event.message;
-          _syncStatus = null;
-          _retryAvailable = true;
-        });
-        // Clear sync flag on timeout
-        _authStorage.setSyncInProgress(false);
+        // SSE timed out, but sync may have completed in the background
+        // Check the actual status before showing error
+        _checkIfSyncCompleted(event.message);
         break;
       case SyncEventType.noJob:
         // No active sync, check status via API
@@ -196,6 +192,57 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
       _retryAvailable = !event
           .isCredentialError; // Only allow retry for non-credential errors
     });
+  }
+
+  /// Check if sync actually completed after SSE timeout
+  /// The sync may continue running on the server even after SSE disconnects
+  Future<void> _checkIfSyncCompleted(String timeoutMessage) async {
+    final token = _authStorage.getToken();
+    if (token == null) {
+      setState(() {
+        _error = timeoutMessage;
+        _syncStatus = null;
+        _retryAvailable = true;
+      });
+      _authStorage.setSyncInProgress(false);
+      return;
+    }
+
+    // Check the actual sync status via API
+    final result = await _apiService.getSyncStatusV2(token);
+
+    result.fold(
+      (error) {
+        // API error - show original timeout message
+        setState(() {
+          _error = timeoutMessage;
+          _syncStatus = null;
+          _retryAvailable = true;
+        });
+        _authStorage.setSyncInProgress(false);
+      },
+      (data) {
+        final status = data['status'] as String?;
+
+        if (status == 'COMPLETED') {
+          // Sync actually completed! Navigate to grupos
+          debugPrint('SSE timed out but sync completed - navigating to grupos');
+          _navigateToGroupsWithRefresh();
+        } else if (status == 'IN_PROGRESS' || status == 'PENDING') {
+          // Still running - reconnect SSE
+          debugPrint('SSE timed out but sync still running - reconnecting');
+          _initSync();
+        } else {
+          // FAILED or unknown - show timeout error
+          setState(() {
+            _error = timeoutMessage;
+            _syncStatus = null;
+            _retryAvailable = true;
+          });
+          _authStorage.setSyncInProgress(false);
+        }
+      },
+    );
   }
 
   void _startPolling() {
