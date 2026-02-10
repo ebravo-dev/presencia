@@ -177,16 +177,11 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
 
   /// Handle failed sync event - show appropriate error message
   void _handleSyncFailed(SyncEvent event) {
-    // Clear sync in progress flag
-    _authStorage.setSyncInProgress(false);
-
     if (event.isCredentialError) {
-      // Credential error - clear persisted session immediately so that
-      // closing/reopening the app goes to login, not grupos.
-      // We clear storage directly (not via provider.logout()) to avoid
-      // triggering the router redirect before the user reads the error.
-      _authStorage.clearSession();
-
+      // Credential error - keep session & syncInProgress intact.
+      // If the user closes the app, reopening will route to sync-status
+      // where the failed job will be detected and this error shown again.
+      // Session is only cleared when user taps 'Ir al inicio de sesión'.
       setState(() {
         _error =
             'Credenciales incorrectas. Verifica tu usuario y contraseña del portal UAT.';
@@ -195,6 +190,9 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
         _isCredentialError = true;
       });
     } else {
+      // Non-credential error (portal timeout, etc.) - clear sync flag
+      _authStorage.setSyncInProgress(false);
+
       setState(() {
         _error = event.message.isNotEmpty
             ? event.message
@@ -752,7 +750,8 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
               child: _isCredentialError
                   ? ElevatedButton.icon(
                       onPressed: () {
-                        // Now logout and redirect to login
+                        // NOW clear everything and redirect to login
+                        _authStorage.setSyncInProgress(false);
                         ref.read(profesorAuthProvider.notifier).logout();
                         context.go('/login');
                       },
