@@ -30,6 +30,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   Timer? _pollingTimer;
   StreamSubscription<SyncEvent>? _sseSubscription;
   bool _retryAvailable = false;
+  bool _isCredentialError = false;
 
   // Steps definition (5 steps matching backend)
   static const List<String> _stepTitles = [
@@ -179,19 +180,28 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     // Clear sync in progress flag
     _authStorage.setSyncInProgress(false);
 
-    setState(() {
-      if (event.isCredentialError) {
+    if (event.isCredentialError) {
+      // Credential error - clear stored password
+      // Don't logout yet - let user see the error message first
+      _authStorage.clearEncryptedPassword();
+
+      setState(() {
         _error =
-            'Contraseña incorrecta. Verifica tus credenciales del portal UAT.';
-      } else {
+            'Credenciales incorrectas. Verifica tu usuario y contraseña del portal UAT.';
+        _syncStatus = null;
+        _retryAvailable = false;
+        _isCredentialError = true;
+      });
+    } else {
+      setState(() {
         _error = event.message.isNotEmpty
             ? event.message
             : 'Error en la sincronización. Intenta de nuevo.';
-      }
-      _syncStatus = null;
-      _retryAvailable = !event
-          .isCredentialError; // Only allow retry for non-credential errors
-    });
+        _syncStatus = null;
+        _retryAvailable = true;
+        _isCredentialError = false;
+      });
+    }
   }
 
   /// Check if sync actually completed after SSE timeout
@@ -734,26 +744,44 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
               ),
               const SizedBox(height: 12),
             ],
-            // Go back button (always shown)
+            // Bottom button depends on error type
             SizedBox(
               width: 240,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  // Clear sync flag and navigate back to grupos
-                  _authStorage.setSyncInProgress(false);
-                  context.go('/grupos');
-                },
-                icon: const Icon(Icons.arrow_back),
-                label: const Text('Volver a mis clases'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  side: const BorderSide(color: UATColors.primary),
-                  foregroundColor: UATColors.primary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
+              child: _isCredentialError
+                  ? ElevatedButton.icon(
+                      onPressed: () {
+                        // Now logout and redirect to login
+                        ref.read(profesorAuthProvider.notifier).logout();
+                        context.go('/login');
+                      },
+                      icon: const Icon(Icons.login),
+                      label: const Text('Ir al inicio de sesión'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        backgroundColor: UATColors.primary,
+                        foregroundColor: UATColors.onPrimary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    )
+                  : OutlinedButton.icon(
+                      onPressed: () {
+                        // Clear sync flag and navigate back to grupos
+                        _authStorage.setSyncInProgress(false);
+                        context.go('/grupos');
+                      },
+                      icon: const Icon(Icons.arrow_back),
+                      label: const Text('Volver a mis clases'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: const BorderSide(color: UATColors.primary),
+                        foregroundColor: UATColors.primary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
             ),
           ],
         ),
