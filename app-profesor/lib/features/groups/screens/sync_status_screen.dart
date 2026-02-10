@@ -181,9 +181,11 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     _authStorage.setSyncInProgress(false);
 
     if (event.isCredentialError) {
-      // Credential error - clear stored password
-      // Don't logout yet - let user see the error message first
-      _authStorage.clearEncryptedPassword();
+      // Credential error - clear persisted session immediately so that
+      // closing/reopening the app goes to login, not grupos.
+      // We clear storage directly (not via provider.logout()) to avoid
+      // triggering the router redirect before the user reads the error.
+      _authStorage.clearSession();
 
       setState(() {
         _error =
