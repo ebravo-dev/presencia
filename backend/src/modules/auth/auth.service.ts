@@ -65,26 +65,20 @@ export class AuthService {
             email: prof.institutionalEmail,
         });
 
-        // Only queue scraping if:
-        // 1. New professor (first login ever)
-        // 2. Period changed since last sync
-        // 3. Professor has no groups in current period (e.g., previous sync failed)
-        const shouldScrape = isNewProfessor || periodChanged || hasNoGroups;
+        // Always queue scraping to validate credentials against UAT portal
+        // This ensures the password is always checked, even for returning professors
+        // Update lastSyncPeriod
+        await prisma.professor.update({
+            where: { id: prof.id },
+            data: { lastSyncPeriod: currentPeriod },
+        });
 
-        if (shouldScrape) {
-            // Update lastSyncPeriod
-            await prisma.professor.update({
-                where: { id: prof.id },
-                data: { lastSyncPeriod: currentPeriod },
-            });
-
-            // Queue scraping job to fetch groups from UAT
-            await addScrapingJob({
-                professorId: prof.id,
-                email: data.institutionalEmail,
-                password: decryptedPassword,
-            });
-        }
+        // Queue scraping job to fetch groups from UAT (also validates credentials)
+        await addScrapingJob({
+            professorId: prof.id,
+            email: data.institutionalEmail,
+            password: decryptedPassword,
+        });
 
         return {
             token,
@@ -93,11 +87,9 @@ export class AuthService {
                 institutionalEmail: prof.institutionalEmail,
                 name: prof.name,
             },
-            message: shouldScrape
-                ? 'Login exitoso. Sincronizando grupos...'
-                : 'Login exitoso.',
+            message: 'Login exitoso. Sincronizando grupos...',
             currentPeriod,
-            needsSync: shouldScrape,
+            needsSync: true,
         };
     }
 

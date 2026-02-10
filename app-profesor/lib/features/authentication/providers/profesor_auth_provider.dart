@@ -104,13 +104,19 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
             profesor: loginResponse.profesor,
           );
 
+          // Save password for sync/retry and set sync flag
+          if (loginResponse.needsSync == true) {
+            await _authStorage.saveEncryptedPassword(password);
+            await _authStorage.setSyncInProgress(true);
+          }
+
           state = state.copyWith(
             status: ProfesorAuthStatus.authenticated,
             profesor: loginResponse.profesor,
             token: loginResponse.token,
           );
 
-          // Cargar grupos del profesor
+          // Cargar grupos del profesor (from local cache if available)
           await _loadGrupos();
         },
       );
