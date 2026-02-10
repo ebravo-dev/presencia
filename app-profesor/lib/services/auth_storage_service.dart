@@ -15,6 +15,7 @@ class AuthStorageService {
   static const String _profesorKey = 'profesor_data';
   static const String _gruposKey = 'grupos_data';
   static const String _syncInProgressKey = 'sync_in_progress';
+  static const String _encryptedPasswordKey = 'encrypted_password';
 
   Box? _box;
 
@@ -148,6 +149,8 @@ class AuthStorageService {
       await _box?.delete(_tokenKey);
       await _box?.delete(_profesorKey);
       await _box?.delete(_gruposKey);
+      await _box?.delete(_syncInProgressKey);
+      await _box?.delete(_encryptedPasswordKey);
       Logger.info('Sesión eliminada correctamente');
     } catch (e, stackTrace) {
       Logger.error('Error al limpiar sesión', e, stackTrace);
@@ -207,6 +210,36 @@ class AuthStorageService {
     } catch (e) {
       Logger.error('Error getting sync in progress flag', e);
       return false;
+    }
+  }
+
+  /// Guardar contraseña encriptada (RSA) para retry de sync
+  Future<void> saveEncryptedPassword(String encryptedPassword) async {
+    try {
+      await _box?.put(_encryptedPasswordKey, encryptedPassword);
+      Logger.info('Contraseña encriptada guardada para retry');
+    } catch (e, stackTrace) {
+      Logger.error('Error al guardar contraseña encriptada', e, stackTrace);
+    }
+  }
+
+  /// Obtener contraseña encriptada (RSA) para retry de sync
+  String? getEncryptedPassword() {
+    try {
+      return _box?.get(_encryptedPasswordKey) as String?;
+    } catch (e) {
+      Logger.error('Error al obtener contraseña encriptada', e);
+      return null;
+    }
+  }
+
+  /// Borrar contraseña encriptada
+  Future<void> clearEncryptedPassword() async {
+    try {
+      await _box?.delete(_encryptedPasswordKey);
+      Logger.info('Contraseña encriptada eliminada');
+    } catch (e, stackTrace) {
+      Logger.error('Error al eliminar contraseña encriptada', e, stackTrace);
     }
   }
 }

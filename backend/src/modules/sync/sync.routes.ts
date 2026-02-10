@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../../core/database/prisma.js';
-import { addScrapingJob, storeRetryPassword, getRetryPassword } from '../../core/queue/queue.config.js';
+import { addScrapingJob } from '../../core/queue/queue.config.js';
 import { rsaService } from '../../core/security/index.js';
 
 /**
@@ -156,70 +156,6 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
     );
 
     /**
-     * POST /sync/retry
-     * Retry a failed sync without re-entering password
-     * Uses stored password from Redis (30 min TTL)
-     */
-    fastify.post(
-        '/sync/retry',
-        {
-            preHandler: [fastify.authenticate],
-        },
-        async (request: FastifyRequest, reply: FastifyReply) => {
-            const user = request.user as { professorId: string; email: string };
-
-            try {
-                // Get stored password from Redis
-                const password = await getRetryPassword(user.professorId);
-
-                if (!password) {
-                    return reply.code(410).send({
-                        error: 'RETRY_EXPIRED',
-                        message: 'Tu sesión de sincronización expiró. Ingresa tu contraseña de nuevo.',
-                    });
-                }
-
-                // Check if there's already an active job
-                const activeJob = await prisma.syncJob.findFirst({
-                    where: {
-                        professorId: user.professorId,
-                        status: { in: ['PENDING', 'IN_PROGRESS'] },
-                    },
-                });
-
-                if (activeJob) {
-                    return reply.code(409).send({
-                        error: 'SYNC_IN_PROGRESS',
-                        message: 'Ya hay una sincronización en progreso.',
-                    });
-                }
-
-                // Create new scraping job
-                const job = await addScrapingJob({
-                    professorId: user.professorId,
-                    email: user.email,
-                    password,
-                });
-
-                // Refresh the retry password TTL
-                await storeRetryPassword(user.professorId, password);
-
-                return reply.code(200).send({
-                    success: true,
-                    jobId: job.id,
-                    message: 'Sincronización reiniciada',
-                });
-            } catch (error) {
-                console.error('Retry sync error:', error);
-                return reply.code(500).send({
-                    error: 'Internal Server Error',
-                    message: 'Error al reiniciar la sincronización',
-                });
-            }
-        }
-    );
-
-    /**
      * GET /sync/status
      * Get current sync status (for initial load before SSE connects)
      */
@@ -244,9 +180,6 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
                     });
                 }
 
-                // Check if retry is available (password still in Redis)
-                const retryAvailable = !!(await getRetryPassword(user.professorId));
-
                 return reply.code(200).send({
                     hasSync: true,
                     status: syncJob.status,
@@ -256,7 +189,6 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
                     error: syncJob.error,
                     startedAt: syncJob.startedAt,
                     completedAt: syncJob.completedAt,
-                    retryAvailable,
                 });
             } catch (error) {
                 console.error('Get sync status error:', error);

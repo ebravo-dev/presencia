@@ -303,7 +303,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     }
   }
 
-  /// Retry sync without password (uses stored token)
+  /// Retry sync using locally stored password
   Future<void> _retrySync() async {
     if (_isRetrying) return;
 
@@ -313,57 +313,53 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     });
 
     final token = _authStorage.getToken();
-    if (token == null) {
+    final password = _authStorage.getEncryptedPassword();
+    final authState = ref.read(profesorAuthProvider);
+    final email = authState.profesor?.institutionalEmail;
+
+    if (token == null || password == null || email == null) {
       setState(() {
-        _error = 'Sesión no encontrada';
+        _error = 'Sesión expirada. Vuelve a iniciar sesión.';
         _isRetrying = false;
+        _retryAvailable = false;
       });
       return;
     }
 
-    final result = await _apiService.retrySync(token);
+    // Set sync in progress flag
+    await _authStorage.setSyncInProgress(true);
+
+    // Show connecting state immediately
+    setState(() {
+      _isRetrying = false;
+      _error = null;
+      _retryAvailable = false;
+      _syncStatus = SyncStatusResponse(
+        status: 'PENDING',
+        message: 'Conectando con el servidor...',
+        step: 1,
+        totalSteps: 5,
+        percentage: 20,
+        stepDescription: 'Conectando con el servidor...',
+      );
+    });
+
+    // Call the same sync endpoint with stored password
+    final result = await _apiService.forceSync(
+      email: email,
+      password: password,
+      token: token,
+    );
 
     result.fold(
       (error) {
-        if (error == 'RETRY_EXPIRED') {
-          // Token expired, need to re-enter password
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Tu sesión expiró. Ingresa tu contraseña de nuevo.',
-                ),
-                backgroundColor: Colors.orange,
-              ),
-            );
-            Navigator.of(context).pop();
-          }
-        } else if (error == 'SYNC_IN_PROGRESS') {
-          // Already syncing, just start listening
-          _initSync();
-        } else {
-          setState(() {
-            _error = error;
-          });
-        }
-        setState(() => _isRetrying = false);
-      },
-      (jobId) async {
-        // Retry successful - show connecting state immediately
         setState(() {
-          _isRetrying = false;
-          _error = null;
-          _retryAvailable = false;
-          _syncStatus = SyncStatusResponse(
-            status: 'PENDING',
-            message: 'Conectando con el servidor...',
-            step: 1,
-            totalSteps: 5,
-            percentage: 20,
-            stepDescription: 'Conectando con el servidor...',
-          );
+          _error = error;
+          _retryAvailable = true;
         });
-
+        _authStorage.setSyncInProgress(false);
+      },
+      (message) async {
         // Wait a moment for the backend to create the job in DB
         await Future.delayed(const Duration(seconds: 2));
 

@@ -205,6 +205,9 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     // Set sync in progress flag for app redirect on reopen
     await _authStorage.setSyncInProgress(true);
 
+    // Save encrypted password locally for retry
+    await _authStorage.saveEncryptedPassword(password);
+
     // Clear local groups before syncing to avoid showing stale data
     await clearGrupos();
 

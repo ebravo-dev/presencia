@@ -233,52 +233,6 @@ class ApiService {
     }
   }
 
-  /// Reintenta la sincronización sin necesidad de contraseña
-  /// Usa el token temporal almacenado en Redis (válido por 30 min)
-  /// Endpoint: POST /sync/retry
-  Future<Either<String, String>> retrySync(String token) async {
-    try {
-      Logger.info('Intentando retry de sincronización');
-
-      final response = await _dio.post(
-        '/sync/retry',
-        data: {}, // Send empty JSON body to avoid Fastify body parsing error
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
-      );
-
-      if (response.statusCode == 200) {
-        final jobId = response.data['jobId'] as String?;
-        Logger.info('Retry exitoso, nuevo jobId: $jobId');
-        return Right(jobId ?? 'retry-started');
-      } else {
-        final errorMessage = response.data['message'] ?? 'Error al reintentar';
-        Logger.error('Error en retry: $errorMessage');
-        return Left(errorMessage);
-      }
-    } on DioException catch (e) {
-      // Check for RETRY_EXPIRED error (410 Gone)
-      if (e.response?.statusCode == 410) {
-        final error = e.response?.data['error'] as String?;
-        if (error == 'RETRY_EXPIRED') {
-          Logger.info('Retry token expirado');
-          return const Left('RETRY_EXPIRED');
-        }
-      }
-      // Check for SYNC_IN_PROGRESS error (409 Conflict)
-      if (e.response?.statusCode == 409) {
-        Logger.info('Ya hay una sincronización en progreso');
-        return const Left('SYNC_IN_PROGRESS');
-      }
-
-      final errorMessage = _handleDioError(e);
-      Logger.error('Error de conexión en retry: $errorMessage', e);
-      return Left(errorMessage);
-    } catch (e, stackTrace) {
-      Logger.error('Error inesperado en retry', e, stackTrace);
-      return Left('Error inesperado: ${e.toString()}');
-    }
-  }
-
   /// Maneja errores de Dio y devuelve mensajes amigables
   String _handleDioError(DioException e) {
     switch (e.type) {
