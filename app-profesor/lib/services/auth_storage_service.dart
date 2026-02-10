@@ -242,4 +242,22 @@ class AuthStorageService {
       Logger.error('Error al eliminar contraseña encriptada', e, stackTrace);
     }
   }
+
+  /// Guardar último email usado (para pre-llenar login tras error)
+  Future<void> saveLastEmail(String email) async {
+    try {
+      await _box?.put('last_email', email);
+    } catch (e) {
+      Logger.error('Error al guardar último email', e);
+    }
+  }
+
+  /// Obtener último email usado
+  String? getLastEmail() {
+    try {
+      return _box?.get('last_email') as String?;
+    } catch (e) {
+      return null;
+    }
+  }
 }

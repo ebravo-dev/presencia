@@ -115,7 +115,9 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
                             // Determine if this was a credential error
                             const isCredentialError = recentJob.error?.includes('CREDENTIAL_ERROR') ||
                                 recentJob.error?.toLowerCase().includes('contraseña') ||
-                                recentJob.error?.toLowerCase().includes('usuario');
+                                recentJob.error?.toLowerCase().includes('usuario') ||
+                                recentJob.error?.toLowerCase().includes('autenticación') ||
+                                recentJob.error?.toLowerCase().includes('credencial');
 
                             // Send final state and close
                             const event = {

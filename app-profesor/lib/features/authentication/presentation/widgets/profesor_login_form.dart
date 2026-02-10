@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/uat_colors.dart';
 import '../../providers/profesor_auth_provider.dart';
+import '../../../../services/auth_storage_service.dart';
 import '../../../../shared/widgets/email_suggestion_bar.dart';
 
 class ProfesorLoginForm extends ConsumerStatefulWidget {
@@ -28,6 +29,12 @@ class _ProfesorLoginFormState extends ConsumerState<ProfesorLoginForm> {
     _passwordController.addListener(_validateForm);
     _emailController.addListener(_onEmailChanged);
     _emailFocusNode.addListener(_onEmailFocusChanged);
+
+    // Pre-fill email from last login attempt (e.g., after credential error)
+    final lastEmail = AuthStorageService().getLastEmail();
+    if (lastEmail != null && lastEmail.isNotEmpty) {
+      _emailController.text = lastEmail;
+    }
   }
 
   @override
@@ -104,6 +111,9 @@ class _ProfesorLoginFormState extends ConsumerState<ProfesorLoginForm> {
       } catch (e) {
         // Ignorar errores de autofill
       }
+
+      // Save email for pre-fill on credential error return
+      AuthStorageService().saveLastEmail(_emailController.text.trim());
 
       ref
           .read(profesorAuthProvider.notifier)
