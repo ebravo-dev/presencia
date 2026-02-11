@@ -171,7 +171,7 @@
     },
     {
       "name": "dbus",
-      "rootUri": "file:///Users/ebravo/.pub-cache/hosted/pub.dev/dbus-0.7.11",
+      "rootUri": "file:///Users/ebravo/.pub-cache/hosted/pub.dev/dbus-0.7.12",
       "packageUri": "lib/",
       "languageVersion": "2.17"
     },
@@ -230,42 +230,6 @@
       "languageVersion": "3.8"
     },
     {
-      "name": "flutter_blue_plus",
-      "rootUri": "file:///Users/ebravo/.pub-cache/hosted/pub.dev/flutter_blue_plus-1.35.10",
-      "packageUri": "lib/",
-      "languageVersion": "3.0"
-    },
-    {
-      "name": "flutter_blue_plus_android",
-      "rootUri": "file:///Users/ebravo/.pub-cache/hosted/pub.dev/flutter_blue_plus_android-5.0.3",
-      "packageUri": "lib/",
-      "languageVersion": "3.0"
-    },
-    {
-      "name": "flutter_blue_plus_darwin",
-      "rootUri": "file:///Users/ebravo/.pub-cache/hosted/pub.dev/flutter_blue_plus_darwin-5.0.1",
-      "packageUri": "lib/",
-      "languageVersion": "3.0"
-    },
-    {
-      "name": "flutter_blue_plus_linux",
-      "rootUri": "file:///Users/ebravo/.pub-cache/hosted/pub.dev/flutter_blue_plus_linux-5.0.0",
-      "packageUri": "lib/",
-      "languageVersion": "3.0"
-    },
-    {
-      "name": "flutter_blue_plus_platform_interface",
-      "rootUri": "file:///Users/ebravo/.pub-cache/hosted/pub.dev/flutter_blue_plus_platform_interface-5.0.0",
-      "packageUri": "lib/",
-      "languageVersion": "3.0"
-    },
-    {
-      "name": "flutter_blue_plus_web",
-      "rootUri": "file:///Users/ebravo/.pub-cache/hosted/pub.dev/flutter_blue_plus_web-5.0.1",
-      "packageUri": "lib/",
-      "languageVersion": "3.3"
-    },
-    {
       "name": "flutter_driver",
       "rootUri": "file:///Users/ebravo/Documents/flutter/flutter/packages/flutter_driver",
       "packageUri": "lib/",
@@ -294,6 +258,12 @@
       "rootUri": "file:///Users/ebravo/Documents/flutter/flutter/packages/flutter_test",
       "packageUri": "lib/",
       "languageVersion": "3.8"
+    },
+    {
+      "name": "flutter_web_bluetooth",
+      "rootUri": "file:///Users/ebravo/.pub-cache/hosted/pub.dev/flutter_web_bluetooth-1.1.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.3"
     },
     {
       "name": "flutter_web_plugins",
@@ -626,12 +596,6 @@
       "languageVersion": "2.17"
     },
     {
-      "name": "rxdart",
-      "rootUri": "file:///Users/ebravo/.pub-cache/hosted/pub.dev/rxdart-0.28.0",
-      "packageUri": "lib/",
-      "languageVersion": "2.12"
-    },
-    {
       "name": "shelf",
       "rootUri": "file:///Users/ebravo/.pub-cache/hosted/pub.dev/shelf-1.4.2",
       "packageUri": "lib/",
@@ -738,6 +702,12 @@
       "rootUri": "file:///Users/ebravo/.pub-cache/hosted/pub.dev/typed_data-1.4.0",
       "packageUri": "lib/",
       "languageVersion": "3.5"
+    },
+    {
+      "name": "universal_ble",
+      "rootUri": "file:///Users/ebravo/.pub-cache/hosted/pub.dev/universal_ble-1.1.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.1"
     },
     {
       "name": "url_launcher",

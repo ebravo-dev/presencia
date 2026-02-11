@@ -13,7 +13,6 @@
         "encrypt",
         "equatable",
         "flutter",
-        "flutter_blue_plus",
         "flutter_localizations",
         "flutter_riverpod",
         "go_router",
@@ -25,6 +24,7 @@
         "pointycastle",
         "riverpod_annotation",
         "table_calendar",
+        "universal_ble",
         "url_launcher"
       ],
       "devDependencies": [
@@ -271,15 +271,13 @@
       "dependencies": []
     },
     {
-      "name": "flutter_blue_plus",
-      "version": "1.35.10",
+      "name": "universal_ble",
+      "version": "1.1.0",
       "dependencies": [
+        "bluez",
         "flutter",
-        "flutter_blue_plus_android",
-        "flutter_blue_plus_darwin",
-        "flutter_blue_plus_linux",
-        "flutter_blue_plus_platform_interface",
-        "flutter_blue_plus_web"
+        "flutter_web_bluetooth",
+        "plugin_platform_interface"
       ]
     },
     {
@@ -969,46 +967,26 @@
       "dependencies": []
     },
     {
-      "name": "flutter_blue_plus_web",
-      "version": "5.0.1",
+      "name": "bluez",
+      "version": "0.8.3",
       "dependencies": [
-        "flutter",
-        "flutter_blue_plus_platform_interface",
-        "flutter_web_plugins",
+        "dbus"
+      ]
+    },
+    {
+      "name": "flutter_web_bluetooth",
+      "version": "1.1.0",
+      "dependencies": [
+        "logging",
+        "meta",
         "web"
       ]
     },
     {
-      "name": "flutter_blue_plus_linux",
-      "version": "5.0.0",
+      "name": "plugin_platform_interface",
+      "version": "2.1.8",
       "dependencies": [
-        "bluez",
-        "flutter",
-        "flutter_blue_plus_platform_interface",
-        "rxdart"
-      ]
-    },
-    {
-      "name": "flutter_blue_plus_darwin",
-      "version": "5.0.1",
-      "dependencies": [
-        "flutter",
-        "flutter_blue_plus_platform_interface"
-      ]
-    },
-    {
-      "name": "flutter_blue_plus_android",
-      "version": "5.0.3",
-      "dependencies": [
-        "flutter",
-        "flutter_blue_plus_platform_interface"
-      ]
-    },
-    {
-      "name": "flutter_blue_plus_platform_interface",
-      "version": "5.0.0",
-      "dependencies": [
-        "flutter"
+        "meta"
       ]
     },
     {
@@ -1224,22 +1202,13 @@
       ]
     },
     {
-      "name": "plugin_platform_interface",
-      "version": "2.1.8",
+      "name": "dbus",
+      "version": "0.7.12",
       "dependencies": [
-        "meta"
-      ]
-    },
-    {
-      "name": "rxdart",
-      "version": "0.28.0",
-      "dependencies": []
-    },
-    {
-      "name": "bluez",
-      "version": "0.8.3",
-      "dependencies": [
-        "dbus"
+        "args",
+        "ffi",
+        "meta",
+        "xml"
       ]
     },
     {
@@ -1310,13 +1279,12 @@
       ]
     },
     {
-      "name": "dbus",
-      "version": "0.7.11",
+      "name": "xml",
+      "version": "6.6.1",
       "dependencies": [
-        "args",
-        "ffi",
+        "collection",
         "meta",
-        "xml"
+        "petitparser"
       ]
     },
     {
@@ -1330,15 +1298,6 @@
       "dependencies": [
         "meta",
         "path"
-      ]
-    },
-    {
-      "name": "xml",
-      "version": "6.6.1",
-      "dependencies": [
-        "collection",
-        "meta",
-        "petitparser"
       ]
     },
     {
