@@ -901,6 +901,8 @@ export class ScraperService {
         const fs = await import('fs');
         await fs.promises.mkdir(debugDir, { recursive: true });
 
+        const debugKey = groupCode.replace(/[^A-Za-z0-9_.-]/g, '_');
+
         const groupClicked = await this.findAndClickGroupRow(page, groupCode, debugDir);
 
         if (!groupClicked) {
@@ -936,16 +938,16 @@ export class ScraperService {
             console.log(`   ✅ Asistencia table loaded`);
         } catch {
             console.log(`   ⚠️ Asistencia table did not load`);
-            await page.screenshot({ path: `${debugDir}/no-asistencia-${searchPattern}.png` });
+            await page.screenshot({ path: `${debugDir}/no-asistencia-${debugKey}.png` });
             return [];
         }
 
         // Take screenshot for debugging
-        await page.screenshot({ path: `${debugDir}/students-${searchPattern}.png` });
+        await page.screenshot({ path: `${debugDir}/students-${debugKey}.png` });
 
         // Extract students
         const students = await this.extractStudents(page);
-        console.log(`   📊 Extracted ${students.length} students for ${searchPattern}`);
+        console.log(`   📊 Extracted ${students.length} students for ${groupCode}`);
 
         return students;
     }
@@ -1029,8 +1031,8 @@ export class ScraperService {
                 continue;
             }
 
-            const headerMatches = await page.evaluate(
-                (expectedDay, expectedDayName) => {
+            const headerMatches = await page.evaluate<boolean, { expectedDay: number; expectedDayName: string }>(
+                ({ expectedDay, expectedDayName }) => {
                     const headerRow = document.querySelector('#grdAsistencias .dx-datagrid-headers .dx-header-row');
                     if (!headerRow) return false;
                     const cells = Array.from(headerRow.querySelectorAll('td'));
@@ -1043,8 +1045,7 @@ export class ScraperService {
                         return dayNum === expectedDay && dayName.toLowerCase() === expectedDayName.toLowerCase();
                     });
                 },
-                targetDay,
-                targetDayName
+                { expectedDay: targetDay, expectedDayName: targetDayName }
             );
 
             if (headerMatches) {
@@ -1093,7 +1094,8 @@ export class ScraperService {
         columnIndex: number,
         desiredChecked: boolean
     ): Promise<boolean> {
-        const rowIndex = await page.evaluate((targetName, targetMatricula) => {
+        const rowIndex = await page.evaluate<number, { targetName: string; targetMatricula: string }>(
+            ({ targetName, targetMatricula }) => {
             const normalize = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
             const rows = Array.from(document.querySelectorAll('#grdAsistencias .dx-datagrid-rowsview .dx-data-row'));
             for (let i = 0; i < rows.length; i++) {
@@ -1109,7 +1111,9 @@ export class ScraperService {
                 }
             }
             return -1;
-        }, student.name, student.matricula);
+        },
+            { targetName: student.name, targetMatricula: student.matricula }
+        );
 
         if (rowIndex < 0) {
             console.log(`   ⚠️ Student not found in grid: ${student.name}`);
