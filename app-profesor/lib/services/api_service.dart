@@ -312,6 +312,9 @@ class ApiService {
             return 'No tienes permisos para realizar esta acción.';
           case 404:
             return 'No se encontró el recurso solicitado.';
+          case 409:
+            return e.response?.data['message'] ??
+                'Ya hay una subida en proceso para esta asistencia.';
           case 500:
             return 'El servidor está experimentando problemas. Intenta más tarde.';
           case 502:

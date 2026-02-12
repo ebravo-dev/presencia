@@ -831,6 +831,9 @@ export class ScraperService {
         });
 
         const page = await context.newPage();
+        // Fail faster during attendance upload to avoid long hanging UX.
+        page.setDefaultTimeout(15000);
+        page.setDefaultNavigationTimeout(30000);
         const debugDir = './debug-screenshots';
 
         try {

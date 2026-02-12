@@ -32,6 +32,9 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
 
+  String _progressMessage = 'Preparando...';
+  bool _dialogOpen = false;
+
   @override
   void initState() {
     super.initState();
@@ -100,17 +103,15 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     setState(() => _isUploading = true);
     HapticFeedback.mediumImpact();
 
+    _progressMessage = 'Preparando subida...';
+    _showProgressDialog();
+
     try {
-      bool allSuccess = true;
       for (final asistencia in _pendientes) {
         final success = await _subirRegistro(asistencia);
         if (!success) {
-          allSuccess = false;
+          throw Exception('Error sincronizando asistencias');
         }
-      }
-
-      if (!allSuccess) {
-        throw Exception('Error sincronizando asistencias');
       }
 
       await _cargarAsistencias();
@@ -130,6 +131,9 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       }
     } catch (e) {
       Logger.error('Error subiendo asistencias', e, StackTrace.current);
+
+      _closeProgressDialog();
+
       if (mounted) {
         HapticFeedback.heavyImpact();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -149,7 +153,71 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       if (mounted) {
         setState(() => _isUploading = false);
       }
+
+      _closeProgressDialog();
     }
+  }
+
+  void _showProgressDialog() {
+    if (!mounted || _dialogOpen) return;
+    _dialogOpen = true;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocalState) {
+          return Dialog(
+            backgroundColor: const Color(0xFF2C2C2E),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 50,
+                    height: 50,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Subiendo asistencias...',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _progressMessage,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 13,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    ).then((_) {
+      _dialogOpen = false;
+    });
+  }
+
+  void _closeProgressDialog() {
+    if (!mounted || !_dialogOpen) return;
+    Navigator.of(context, rootNavigator: true).pop();
   }
 
   Future<bool> _subirRegistro(AsistenciaRegistro registro) async {
@@ -189,7 +257,10 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     );
 
     return await result.fold(
-      (_) async => false,
+      (error) async {
+        _progressMessage = error;
+        return false;
+      },
       (_) async {
         final syncSuccess = await _waitForSyncCompletion(
           profesor.id,
@@ -283,6 +354,11 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     await _sseSubscription?.cancel();
     _sseSubscription = _sseService.connect(professorId, token).listen(
       (event) {
+        if (event.message.isNotEmpty) {
+          setState(() {
+            _progressMessage = event.message;
+          });
+        }
         if (event.isCompleted) {
           if (!completer.isCompleted) {
             completer.complete(true);

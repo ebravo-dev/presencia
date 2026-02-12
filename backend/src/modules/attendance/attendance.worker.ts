@@ -148,36 +148,25 @@ async function processAttendanceUploadJob(
         };
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        const attemptNumber = job.attemptsMade + 1;
-        const maxAttempts = job.opts.attempts || 3;
-        const isRetryable = attemptNumber < maxAttempts;
 
-        if (isRetryable) {
-            await prisma.syncJob.update({
-                where: { id: syncJobId },
-                data: {
-                    currentGroupName: `Reintentando... (intento ${attemptNumber + 1}/${maxAttempts})`,
-                    error: `Intento ${attemptNumber} falló: ${errorMessage}`,
-                },
-            });
-        } else {
-            await prisma.attendanceRecord.update({
-                where: { id: attendanceRecordId },
-                data: {
-                    portalSyncStatus: PortalSyncStatus.FAILED,
-                    portalSyncError: errorMessage,
-                },
-            });
+        // Fail fast: do not auto-retry attendance uploads.
+        await prisma.attendanceRecord.update({
+            where: { id: attendanceRecordId },
+            data: {
+                portalSyncStatus: PortalSyncStatus.FAILED,
+                portalSyncError: errorMessage,
+            },
+        });
 
-            await prisma.syncJob.update({
-                where: { id: syncJobId },
-                data: {
-                    status: SyncStatus.FAILED,
-                    completedAt: new Date(),
-                    error: errorMessage,
-                },
-            });
-        }
+        await prisma.syncJob.update({
+            where: { id: syncJobId },
+            data: {
+                status: SyncStatus.FAILED,
+                completedAt: new Date(),
+                currentGroupName: errorMessage,
+                error: errorMessage,
+            },
+        });
 
         await job.updateData({
             ...job.data,

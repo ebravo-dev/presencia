@@ -82,11 +82,9 @@ export const attendanceUploadQueue = new Queue<
     {
         connection: redisConnection,
         defaultJobOptions: {
-            attempts: 3,
-            backoff: {
-                type: 'exponential',
-                delay: 5000,
-            },
+            // Attendance uploads should fail fast to avoid a cyclical UX.
+            // The professor can manually retry from the app.
+            attempts: 1,
             removeOnComplete: {
                 count: 100,
             },
