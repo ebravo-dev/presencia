@@ -61,6 +61,9 @@ model AttendanceRecord {
   date        DateTime     @db.Date
   groupId     String       @map("group_id")
   professorId String       @map("professor_id")
+  portalSyncStatus PortalSyncStatus @default(NOT_REQUESTED) @map("portal_sync_status")
+  portalSyncError  String?          @map("portal_sync_error")
+  portalSyncedAt   DateTime?        @map("portal_synced_at")
   createdAt   DateTime     @default(now()) @map("created_at")
   group       Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
   professor   Professor    @relation(fields: [professorId], references: [id], onDelete: Cascade)
@@ -103,6 +106,14 @@ enum AttendanceStatus {
   ABSENT
   LATE
   EXCUSED
+}
+
+enum PortalSyncStatus {
+  NOT_REQUESTED
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
 }
 
 enum SyncStatus {

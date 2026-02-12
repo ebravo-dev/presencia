@@ -106,7 +106,8 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
 
           // Save password for sync/retry and set sync flag
           if (loginResponse.needsSync == true) {
-            await _authStorage.saveEncryptedPassword(password);
+            final encryptedPassword = _apiService.encryptPassword(password);
+            await _authStorage.saveEncryptedPassword(encryptedPassword);
             await _authStorage.setSyncInProgress(true);
           }
 
@@ -212,7 +213,8 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     await _authStorage.setSyncInProgress(true);
 
     // Save encrypted password locally for retry
-    await _authStorage.saveEncryptedPassword(password);
+    final encryptedPassword = _apiService.encryptPassword(password);
+    await _authStorage.saveEncryptedPassword(encryptedPassword);
 
     // Clear local groups before syncing to avoid showing stale data
     await clearGrupos();

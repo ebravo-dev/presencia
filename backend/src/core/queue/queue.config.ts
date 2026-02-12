@@ -5,6 +5,7 @@ import { env } from '../config/env.js';
 // Queue names
 export const QUEUE_NAMES = {
     SCRAPING: 'scraping',
+    ATTENDANCE_UPLOAD: 'attendance-upload',
 } as const;
 
 // Scraping job data types
@@ -18,6 +19,27 @@ export interface ScrapingJobResult {
     success: boolean;
     groupsCount?: number;
     studentsCount?: number;
+    error?: string;
+}
+
+export interface AttendanceUploadJobData {
+    professorId: string;
+    email: string;
+    password: string; // Decrypted password (only in memory)
+    attendanceRecordId: string;
+    syncJobId: string;
+    groupId: string;
+    date: string; // YYYY-MM-DD
+    attendances: Array<{
+        studentId: string;
+        status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED';
+    }>;
+}
+
+export interface AttendanceUploadJobResult {
+    success: boolean;
+    attendanceRecordId?: string;
+    processedCount?: number;
     error?: string;
 }
 
@@ -51,6 +73,30 @@ export const scrapingQueue = new Queue<ScrapingJobData, ScrapingJobResult, strin
     }
 );
 
+export const attendanceUploadQueue = new Queue<
+    AttendanceUploadJobData,
+    AttendanceUploadJobResult,
+    string
+>(
+    QUEUE_NAMES.ATTENDANCE_UPLOAD,
+    {
+        connection: redisConnection,
+        defaultJobOptions: {
+            attempts: 3,
+            backoff: {
+                type: 'exponential',
+                delay: 5000,
+            },
+            removeOnComplete: {
+                count: 100,
+            },
+            removeOnFail: {
+                count: 50,
+            },
+        },
+    }
+);
+
 /**
  * Add a scraping job to the queue
  * The password is passed in memory and never persisted to Redis
@@ -65,18 +111,55 @@ export async function addScrapingJob(data: ScrapingJobData): Promise<Job<Scrapin
     return job;
 }
 
+export async function addAttendanceUploadJob(
+    data: AttendanceUploadJobData
+): Promise<Job<AttendanceUploadJobData, AttendanceUploadJobResult, string>> {
+    const job = await attendanceUploadQueue.add('upload-attendance', data, {
+        jobId: `attendance-${data.professorId}-${data.groupId}-${data.date}`,
+    });
+
+    console.log(`📤 Attendance upload job added: ${job.id}`);
+    return job;
+}
+
 /**
  * Get queue stats for monitoring
  */
 export async function getQueueStats() {
-    const [waiting, active, completed, failed] = await Promise.all([
+    const [
+        scrapingWaiting,
+        scrapingActive,
+        scrapingCompleted,
+        scrapingFailed,
+        attendanceWaiting,
+        attendanceActive,
+        attendanceCompleted,
+        attendanceFailed,
+    ] = await Promise.all([
         scrapingQueue.getWaitingCount(),
         scrapingQueue.getActiveCount(),
         scrapingQueue.getCompletedCount(),
         scrapingQueue.getFailedCount(),
+        attendanceUploadQueue.getWaitingCount(),
+        attendanceUploadQueue.getActiveCount(),
+        attendanceUploadQueue.getCompletedCount(),
+        attendanceUploadQueue.getFailedCount(),
     ]);
 
-    return { waiting, active, completed, failed };
+    return {
+        scraping: {
+            waiting: scrapingWaiting,
+            active: scrapingActive,
+            completed: scrapingCompleted,
+            failed: scrapingFailed,
+        },
+        attendanceUpload: {
+            waiting: attendanceWaiting,
+            active: attendanceActive,
+            completed: attendanceCompleted,
+            failed: attendanceFailed,
+        },
+    };
 }
 
 /**
@@ -84,6 +167,7 @@ export async function getQueueStats() {
  */
 export async function closeQueue(): Promise<void> {
     await scrapingQueue.close();
+    await attendanceUploadQueue.close();
     console.log('📤 Queue connections closed');
 }
 

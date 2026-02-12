@@ -8,7 +8,7 @@ import { initializeScrapingWorker } from './modules/scraper/index.js';
 import { authRoutes } from './modules/auth/index.js';
 import { professorsRoutes } from './modules/professors/index.js';
 import { groupsRoutes } from './modules/groups/index.js';
-import { attendanceRoutes } from './modules/attendance/index.js';
+import { attendanceRoutes, initializeAttendanceUploadWorker } from './modules/attendance/index.js';
 import { syncRoutes } from './modules/sync/index.js';
 
 // Create Fastify instance
@@ -147,6 +147,14 @@ async function start(): Promise<void> {
         } catch (scraperError) {
             console.warn('⚠️ Scraping worker failed to initialize:', scraperError instanceof Error ? scraperError.message : scraperError);
             console.warn('⚠️ Server will continue without scraping capabilities');
+        }
+
+        // Initialize attendance upload worker (optional)
+        try {
+            await initializeAttendanceUploadWorker();
+        } catch (attendanceError) {
+            console.warn('⚠️ Attendance worker failed to initialize:', attendanceError instanceof Error ? attendanceError.message : attendanceError);
+            console.warn('⚠️ Server will continue without attendance upload capabilities');
         }
 
         // Start server

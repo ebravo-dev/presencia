@@ -35,6 +35,23 @@ class ApiService {
     );
   }
 
+  String encryptPassword(String password) {
+    return _encryptionService.encryptPassword(password);
+  }
+
+  bool isLikelyEncrypted(String value) {
+    if (value.length < 80) return false;
+    final base64Regex = RegExp(r'^[A-Za-z0-9+/=]+$');
+    return base64Regex.hasMatch(value);
+  }
+
+  String ensureEncryptedPassword(String value) {
+    if (isLikelyEncrypted(value)) {
+      return value;
+    }
+    return _encryptionService.encryptPassword(value);
+  }
+
   /// Autentica un profesor usando email y password
   /// Si el profesor no existe, se crea automáticamente (upsert)
   /// Endpoint: POST /professors/login
@@ -229,6 +246,48 @@ class ApiService {
       return Left(errorMessage);
     } catch (e) {
       Logger.error('Error inesperado obteniendo estado v2', e);
+      return Left('Error inesperado: ${e.toString()}');
+    }
+  }
+
+  /// Subir asistencia al servidor
+  /// Endpoint: POST /attendance
+  Future<Either<String, Map<String, dynamic>>> uploadAttendance({
+    required String token,
+    required String groupId,
+    required DateTime date,
+    required List<Map<String, dynamic>> attendances,
+    required String encryptedPassword,
+    bool forceUpload = false,
+  }) async {
+    try {
+      final formattedDate =
+          '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+      final response = await _dio.post(
+        '/attendance',
+        data: {
+          'groupId': groupId,
+          'date': formattedDate,
+          'encryptedPassword': encryptedPassword,
+          'forceUpload': forceUpload,
+          'attendances': attendances,
+        },
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return Right(response.data as Map<String, dynamic>);
+      }
+
+      final errorMessage = response.data['message'] ?? 'Error al subir asistencia';
+      return Left(errorMessage);
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error('Error de conexión subiendo asistencia: $errorMessage', e);
+      return Left(errorMessage);
+    } catch (e, stackTrace) {
+      Logger.error('Error inesperado subiendo asistencia', e, stackTrace);
       return Left('Error inesperado: ${e.toString()}');
     }
   }

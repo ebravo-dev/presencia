@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -6,6 +7,10 @@ import 'package:table_calendar/table_calendar.dart';
 import '../../../services/asistencia_local_service.dart';
 import '../../../shared/models/asistencia_registro.dart';
 import '../../../core/utils/utils.dart';
+import '../../../services/api_service.dart';
+import '../../../services/auth_storage_service.dart';
+import '../../../services/sse_service.dart';
+import '../../../shared/models/grupo.dart';
 
 class UploadManagementPage extends StatefulWidget {
   const UploadManagementPage({super.key});
@@ -16,6 +21,10 @@ class UploadManagementPage extends StatefulWidget {
 
 class _UploadManagementPageState extends State<UploadManagementPage> {
   final AsistenciaLocalService _asistenciaService = AsistenciaLocalService();
+  final ApiService _apiService = ApiService();
+  final AuthStorageService _authStorage = AuthStorageService();
+  final SSEService _sseService = SSEService();
+  StreamSubscription<SyncEvent>? _sseSubscription;
   List<AsistenciaRegistro> _pendientes = [];
   List<AsistenciaRegistro> _sincronizadas = [];
   bool _isLoading = true;
@@ -27,6 +36,13 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   void initState() {
     super.initState();
     _cargarAsistencias();
+  }
+
+  @override
+  void dispose() {
+    _sseSubscription?.cancel();
+    _sseService.disconnect();
+    super.dispose();
   }
 
   Future<void> _cargarAsistencias() async {
@@ -85,12 +101,16 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     HapticFeedback.mediumImpact();
 
     try {
-      // TODO: Implementar la lógica de subida al servidor
-      await Future.delayed(const Duration(seconds: 2));
-
-      // Marcar como sincronizadas
+      bool allSuccess = true;
       for (final asistencia in _pendientes) {
-        await _asistenciaService.marcarComoSincronizada(asistencia.id);
+        final success = await _subirRegistro(asistencia);
+        if (!success) {
+          allSuccess = false;
+        }
+      }
+
+      if (!allSuccess) {
+        throw Exception('Error sincronizando asistencias');
       }
 
       await _cargarAsistencias();
@@ -130,6 +150,165 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         setState(() => _isUploading = false);
       }
     }
+  }
+
+  Future<bool> _subirRegistro(AsistenciaRegistro registro) async {
+    final token = _authStorage.getToken();
+    final profesor = _authStorage.getProfesor();
+    final grupos = _authStorage.getGrupos();
+
+    if (token == null || profesor == null || grupos == null) {
+      return false;
+    }
+
+    final grupo = _resolveGrupo(grupos, registro.grupoId);
+    if (grupo == null) {
+      return false;
+    }
+
+    final registroActualizado = await _migrarRegistroSiNecesario(registro, grupo);
+
+    final attendances = _buildAttendances(registroActualizado, grupo);
+    if (attendances.isEmpty) {
+      return false;
+    }
+
+    final storedPassword = _authStorage.getEncryptedPassword();
+    if (storedPassword == null || storedPassword.isEmpty) {
+      return false;
+    }
+
+    final encryptedPassword = _apiService.ensureEncryptedPassword(storedPassword);
+
+    final result = await _apiService.uploadAttendance(
+      token: token,
+      groupId: grupo.id,
+      date: registroActualizado.fecha,
+      attendances: attendances,
+      encryptedPassword: encryptedPassword,
+    );
+
+    return await result.fold(
+      (_) async => false,
+      (_) async {
+        final syncSuccess = await _waitForSyncCompletion(
+          profesor.id,
+          token,
+        );
+        if (syncSuccess) {
+          await _asistenciaService.marcarComoSincronizada(
+            registroActualizado.id,
+          );
+          return true;
+        }
+        return false;
+      },
+    );
+  }
+
+  Grupo? _resolveGrupo(List<Grupo> grupos, String grupoId) {
+    final direct = grupos.firstWhere(
+      (g) => g.id == grupoId,
+      orElse: () => const Grupo(
+        id: '',
+        group: '',
+        classroom: '',
+        name: '',
+        students: const [],
+      ),
+    );
+
+    if (direct.id.isNotEmpty) return direct;
+
+    final byLegacy = grupos.firstWhere(
+      (g) => g.identificadorUnico == grupoId,
+      orElse: () => const Grupo(
+        id: '',
+        group: '',
+        classroom: '',
+        name: '',
+        students: const [],
+      ),
+    );
+
+    return byLegacy.id.isNotEmpty ? byLegacy : null;
+  }
+
+  Future<AsistenciaRegistro> _migrarRegistroSiNecesario(
+    AsistenciaRegistro registro,
+    Grupo grupo,
+  ) async {
+    if (registro.grupoId == grupo.id) {
+      return registro;
+    }
+
+    final nuevoId =
+        '${grupo.id}_${registro.fecha.year}-${registro.fecha.month}-${registro.fecha.day}';
+    final actualizado = registro.copyWith(grupoId: grupo.id, id: nuevoId);
+    await _asistenciaService.guardarAsistencia(actualizado);
+    await _asistenciaService.eliminarAsistencia(registro.id);
+    return actualizado;
+  }
+
+  List<Map<String, dynamic>> _buildAttendances(
+    AsistenciaRegistro registro,
+    Grupo grupo,
+  ) {
+    final studentIdMap = <String, String>{};
+    for (final student in grupo.students) {
+      if (student.id != null) {
+        studentIdMap[student.id!] = student.id!;
+        studentIdMap[student.number.toString()] = student.id!;
+      }
+    }
+
+    final attendances = <Map<String, dynamic>>[];
+    registro.asistenciasAlumnos.forEach((key, present) {
+      final studentId = studentIdMap[key];
+      if (studentId == null) {
+        return;
+      }
+      attendances.add({
+        'studentId': studentId,
+        'status': present ? 'PRESENT' : 'ABSENT',
+      });
+    });
+
+    return attendances;
+  }
+
+  Future<bool> _waitForSyncCompletion(String professorId, String token) async {
+    final completer = Completer<bool>();
+
+    await _sseSubscription?.cancel();
+    _sseSubscription = _sseService.connect(professorId, token).listen(
+      (event) {
+        if (event.isCompleted) {
+          if (!completer.isCompleted) {
+            completer.complete(true);
+          }
+        }
+
+        if (event.isFailed) {
+          if (!completer.isCompleted) {
+            completer.complete(false);
+          }
+        }
+      },
+      onError: (_) {
+        if (!completer.isCompleted) {
+          completer.complete(false);
+        }
+      },
+    );
+
+    final result = await completer.future.timeout(
+      const Duration(minutes: 5),
+      onTimeout: () => false,
+    );
+
+    _sseService.disconnect();
+    return result;
   }
 
   @override

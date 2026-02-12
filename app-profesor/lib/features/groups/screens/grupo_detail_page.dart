@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../shared/models/grupo.dart';
+import '../../../shared/models/alumno.dart';
 import '../../../shared/models/asistencia_registro.dart';
 import '../../../services/asistencia_local_service.dart';
 import '../../../services/bluetooth_attendance_service.dart';
+import '../../../services/auth_storage_service.dart';
 
 class GrupoDetailPage extends StatefulWidget {
   final Grupo grupo;
@@ -35,6 +37,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     with TickerProviderStateMixin {
   // Mapa para controlar el estado de asistencia de cada estudiante
   final Map<String, bool> _asistencias = {};
+  final AuthStorageService _authStorage = AuthStorageService();
   late AnimationController _buttonAnimationController;
   late AnimationController _studentsAnimationController;
   late Animation<double> _studentsOpacity;
@@ -972,19 +975,49 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     return '$hour:$minute';
   }
 
+  String _alumnoKey(Alumno alumno) {
+    return alumno.id ?? alumno.number.toString();
+  }
+
+  Map<String, bool> _normalizarAsistencias(
+    Map<String, bool> asistencias,
+  ) {
+    final numberToId = <String, String>{};
+    for (final alumno in widget.grupo.students) {
+      if (alumno.id != null) {
+        numberToId[alumno.number.toString()] = alumno.id!;
+      }
+    }
+
+    final normalized = <String, bool>{};
+    asistencias.forEach((key, value) {
+      final normalizedKey = numberToId[key] ?? key;
+      normalized[normalizedKey] = value;
+    });
+
+    return normalized;
+  }
+
   // Cargar asistencia existente para la fecha seleccionada
   void _cargarAsistencia() {
-    final registro = _asistenciaService.obtenerAsistenciaPorGrupoYFecha(
-      widget.grupo.identificadorUnico,
+    final registroActual = _asistenciaService.obtenerAsistenciaPorGrupoYFecha(
+      widget.grupo.id,
       _selectedDateTime,
     );
+    final registroLegado = registroActual == null
+        ? _asistenciaService.obtenerAsistenciaPorGrupoYFecha(
+            widget.grupo.identificadorUnico,
+            _selectedDateTime,
+          )
+        : null;
+    final registro = registroActual ?? registroLegado;
 
     if (registro != null) {
       setState(() {
         _entradaProfesor = registro.horaEntrada;
         _salidaProfesor = registro.horaSalida;
         _asistencias.clear();
-        _asistencias.addAll(registro.asistenciasAlumnos);
+        _asistencias.addAll(_normalizarAsistencias(registro.asistenciasAlumnos));
       });
 
       // Actualizar el nombre de la clase si está vacío (asistencias antiguas)
@@ -1008,12 +1041,14 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   // Guardar asistencia localmente
   Future<void> _guardarAsistencia() async {
     final registroId =
-        '${widget.grupo.identificadorUnico}_${_selectedDateTime.year}-${_selectedDateTime.month}-${_selectedDateTime.day}';
+      '${widget.grupo.id}_${_selectedDateTime.year}-${_selectedDateTime.month}-${_selectedDateTime.day}';
+
+    final profesorId = _authStorage.getProfesor()?.id ?? 'unknown_professor';
 
     final registro = AsistenciaRegistro(
       id: registroId,
-      grupoId: widget.grupo.identificadorUnico,
-      profesorId: 'profesor_id', // TODO: Obtener del auth provider
+      grupoId: widget.grupo.id,
+      profesorId: profesorId,
       fecha: _selectedDateTime,
       horaEntrada: _entradaProfesor,
       horaSalida: _salidaProfesor,
@@ -1740,7 +1775,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         onApplyAttendance: (matchedStudents) {
           setState(() {
             for (final alumno in matchedStudents) {
-              _asistencias[alumno.number.toString()] = true;
+              _asistencias[_alumnoKey(alumno)] = true;
             }
           });
           _guardarAsistencia();
@@ -1915,8 +1950,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                   HapticFeedback.mediumImpact();
                   setState(() {
                     final currentValue =
-                        _asistencias[alumno.number.toString()] ?? false;
-                    _asistencias[alumno.number.toString()] = !currentValue;
+                        _asistencias[_alumnoKey(alumno)] ?? false;
+                    _asistencias[_alumnoKey(alumno)] = !currentValue;
                   });
                   // Guardar en almacenamiento local
                   await _guardarAsistencia();
@@ -1957,7 +1992,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                         curve: Curves.easeInOut,
                         decoration: BoxDecoration(
                           color:
-                              (_asistencias[alumno.number.toString()] ?? false)
+                              (_asistencias[_alumnoKey(alumno)] ?? false)
                               ? widget.gradientColors[0].withOpacity(0.15)
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
@@ -1970,13 +2005,13 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                             height: 28,
                             decoration: BoxDecoration(
                               color:
-                                  (_asistencias[alumno.number.toString()] ??
+                                  (_asistencias[_alumnoKey(alumno)] ??
                                       false)
                                   ? widget.gradientColors[0]
                                   : Colors.transparent,
                               border: Border.all(
                                 color:
-                                    (_asistencias[alumno.number.toString()] ??
+                                    (_asistencias[_alumnoKey(alumno)] ??
                                         false)
                                     ? widget.gradientColors[0]
                                     : Colors.grey.shade600,
@@ -1985,7 +2020,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child:
-                                (_asistencias[alumno.number.toString()] ??
+                                (_asistencias[_alumnoKey(alumno)] ??
                                     false)
                                 ? Icon(
                                     Icons.check,

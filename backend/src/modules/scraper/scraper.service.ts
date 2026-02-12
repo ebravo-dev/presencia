@@ -30,6 +30,13 @@ export interface ScrapeResult {
     error?: string;
 }
 
+export interface AttendanceUploadStudent {
+    studentId: string;
+    matricula: string;
+    name: string;
+    status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED';
+}
+
 /**
  * UAT Portal Scraper Service
  * Handles login and data extraction from the university portal
@@ -801,6 +808,89 @@ export class ScraperService {
     }
 
     /**
+     * Submit attendance for a single group and date
+     * Idempotent: reads checkbox state before clicking
+     */
+    async submitAttendanceForGroup(params: {
+        email: string;
+        password: string;
+        groupCode: string;
+        date: string; // YYYY-MM-DD
+        students: AttendanceUploadStudent[];
+        onProgress?: (studentName: string, index: number) => Promise<void>;
+    }): Promise<void> {
+        const { email, password, groupCode, date, students, onProgress } = params;
+
+        if (!this.browser) {
+            await this.init();
+        }
+
+        const context = await this.browser!.newContext({
+            viewport: { width: 1280, height: 720 },
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        });
+
+        const page = await context.newPage();
+        const debugDir = './debug-screenshots';
+
+        try {
+            console.log(`🔐 Logging in as ${email}...`);
+            await this.login(page, email, password);
+
+            console.log('📋 Navigating to Control de Asistencia...');
+            await this.navigateToControlAsistencia(page);
+
+            console.log(`📝 Selecting group ${groupCode}...`);
+            const groupSelected = await this.findAndClickGroupRow(page, groupCode, debugDir);
+            if (!groupSelected) {
+                throw new Error(`Group ${groupCode} not found in Control de Asistencia`);
+            }
+
+            console.log(`📅 Selecting week for date ${date}...`);
+            await this.selectWeekContainingDate(page, date, debugDir);
+
+            console.log('🔎 Resolving attendance column...');
+            const columnIndex = await this.getAttendanceColumnIndex(page, date);
+
+            let hasChanges = false;
+
+            for (let i = 0; i < students.length; i++) {
+                const student = students[i];
+                const desiredChecked = student.status !== 'ABSENT';
+
+                if (onProgress) {
+                    await onProgress(student.name, i);
+                }
+
+                const updated = await this.setStudentAttendanceState(
+                    page,
+                    student,
+                    columnIndex,
+                    desiredChecked
+                );
+
+                if (updated) {
+                    hasChanges = true;
+                }
+            }
+
+            if (hasChanges) {
+                console.log('💾 Saving attendance changes...');
+                await this.saveAttendance(page, debugDir);
+            } else {
+                console.log('✅ No changes needed, attendance already up to date');
+            }
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            console.error('❌ Attendance submission failed:', errorMessage);
+            await page.screenshot({ path: `${debugDir}/attendance-upload-error.png` });
+            throw error;
+        } finally {
+            await context.close();
+        }
+    }
+
+    /**
      * Select a specific group and extract its students (within an existing session)
      */
     private async selectGroupAndExtractStudents(
@@ -811,59 +901,9 @@ export class ScraperService {
         const fs = await import('fs');
         await fs.promises.mkdir(debugDir, { recursive: true });
 
-        // Wait for Grupos table
-        await page.waitForSelector('#grdGrupos .dx-datagrid-rowsview .dx-data-row', { timeout: 10000 });
-
-        // Find and click the matching group row
-        const groupRows = await page.$$('#grdGrupos .dx-datagrid-rowsview .dx-data-row');
-        let groupClicked = false;
-
-        // Extract the group letter from the code (e.g., "RC.06061.2873.5-5-K" -> "K")
-        const letterMatch = groupCode.match(/-([A-Z])$/);
-        const targetGroupLetter = letterMatch ? letterMatch[1] : null;
-
-        // Strip the trailing group letter suffix (-K, -M, etc.) if present
-        // Then extract the base code pattern for searching
-        const codeWithoutLetter = groupCode.replace(/-[A-Z]$/, '');
-        // Match RC.XXXXX patterns (various formats like RC.06061.2873.5-5 or RC.EDP03.3481.4-4.E05)
-        const codeMatch = codeWithoutLetter.match(/RC\.[A-Z0-9]+\.\d+\.\d+-\d+(?:\.[A-Z0-9]+)?/);
-        const searchPattern = codeMatch ? codeMatch[0] : codeWithoutLetter;
-
-        console.log(`   🔍 Searching for: ${searchPattern}, group letter: ${targetGroupLetter || 'any'} in ${groupRows.length} rows`);
-
-        for (const row of groupRows) {
-            const rowText = await row.textContent();
-
-            // Check if this row contains the code
-            if (rowText && rowText.includes(searchPattern)) {
-                // If we have a target group letter, verify it matches
-                if (targetGroupLetter) {
-                    // Get the first cell (Gpo column) of this row
-                    const cells = await row.$$('td');
-                    if (cells.length > 0) {
-                        const firstCellText = await cells[0].textContent();
-                        const rowGroupLetter = firstCellText?.trim() || '';
-
-                        console.log(`   📋 Row has code match, Gpo column: "${rowGroupLetter}", looking for: "${targetGroupLetter}"`);
-
-                        if (rowGroupLetter !== targetGroupLetter) {
-                            console.log(`   ⏭️ Skipping row - group letter mismatch`);
-                            continue; // Skip this row, look for another match
-                        }
-                    }
-                }
-
-                console.log(`   ✅ Found matching group, clicking...`);
-                await row.click();
-                groupClicked = true;
-                // Wait longer for tables to refresh
-                await page.waitForTimeout(3000);
-                break;
-            }
-        }
+        const groupClicked = await this.findAndClickGroupRow(page, groupCode, debugDir);
 
         if (!groupClicked) {
-            console.log(`   ❌ Group ${searchPattern} not found in table`);
             throw new Error(`Group ${groupCode} not found in table`);
         }
 
@@ -908,6 +948,236 @@ export class ScraperService {
         console.log(`   📊 Extracted ${students.length} students for ${searchPattern}`);
 
         return students;
+    }
+
+    private async findAndClickGroupRow(
+        page: Page,
+        groupCode: string,
+        debugDir: string
+    ): Promise<boolean> {
+        const fs = await import('fs');
+        await fs.promises.mkdir(debugDir, { recursive: true });
+
+        await page.waitForSelector('#grdGrupos .dx-datagrid-rowsview .dx-data-row', { timeout: 10000 });
+
+        const groupRows = await page.$$('#grdGrupos .dx-datagrid-rowsview .dx-data-row');
+        let groupClicked = false;
+
+        const letterMatch = groupCode.match(/-([A-Z])$/);
+        const targetGroupLetter = letterMatch ? letterMatch[1] : null;
+
+        const codeWithoutLetter = groupCode.replace(/-[A-Z]$/, '');
+        const codeMatch = codeWithoutLetter.match(/RC\.[A-Z0-9]+\.\d+\.\d+-\d+(?:\.[A-Z0-9]+)?/);
+        const searchPattern = codeMatch ? codeMatch[0] : codeWithoutLetter;
+
+        console.log(`   🔍 Searching for: ${searchPattern}, group letter: ${targetGroupLetter || 'any'} in ${groupRows.length} rows`);
+
+        for (const row of groupRows) {
+            const rowText = await row.textContent();
+            if (rowText && rowText.includes(searchPattern)) {
+                if (targetGroupLetter) {
+                    const cells = await row.$$('td');
+                    if (cells.length > 0) {
+                        const firstCellText = await cells[0].textContent();
+                        const rowGroupLetter = firstCellText?.trim() || '';
+                        if (rowGroupLetter !== targetGroupLetter) {
+                            continue;
+                        }
+                    }
+                }
+
+                console.log(`   ✅ Found matching group, clicking...`);
+                await row.click();
+                groupClicked = true;
+                await page.waitForTimeout(3000);
+                break;
+            }
+        }
+
+        if (!groupClicked) {
+            console.log(`   ❌ Group ${searchPattern} not found in table`);
+            await page.screenshot({ path: `${debugDir}/group-not-found.png` });
+        }
+
+        return groupClicked;
+    }
+
+    private async selectWeekContainingDate(
+        page: Page,
+        date: string,
+        debugDir: string
+    ): Promise<void> {
+        const target = new Date(`${date}T00:00:00`);
+        const targetDay = target.getDate();
+        const dayNames = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
+        const targetDayName = dayNames[target.getDay()];
+
+        await page.waitForSelector('#grdSemanas .dx-datagrid-rowsview .dx-data-row', { timeout: 10000 });
+        const weekRows = await page.$$('#grdSemanas .dx-datagrid-rowsview .dx-data-row');
+
+        if (weekRows.length === 0) {
+            throw new Error('No week rows available');
+        }
+
+        for (const [index, row] of weekRows.entries()) {
+            await row.click();
+            await page.waitForTimeout(2000);
+
+            try {
+                await page.waitForSelector('#grdAsistencias .dx-datagrid-headers .dx-header-row', { timeout: 10000 });
+            } catch {
+                continue;
+            }
+
+            const headerMatches = await page.evaluate(
+                (expectedDay, expectedDayName) => {
+                    const headerRow = document.querySelector('#grdAsistencias .dx-datagrid-headers .dx-header-row');
+                    if (!headerRow) return false;
+                    const cells = Array.from(headerRow.querySelectorAll('td'));
+                    return cells.some((cell) => {
+                        const text = cell.textContent?.replace(/\s+/g, ' ').trim() || '';
+                        const match = text.match(/^(Lu|Ma|Mi|Ju|Vi|Sa|Do)\s*(\d{1,2})/i);
+                        if (!match) return false;
+                        const dayName = match[1];
+                        const dayNum = parseInt(match[2], 10);
+                        return dayNum === expectedDay && dayName.toLowerCase() === expectedDayName.toLowerCase();
+                    });
+                },
+                targetDay,
+                targetDayName
+            );
+
+            if (headerMatches) {
+                console.log(`   ✅ Week row ${index + 1} matches date ${date}`);
+                return;
+            }
+        }
+
+        await page.screenshot({ path: `${debugDir}/week-not-found.png` });
+        throw new Error(`No week contains date ${date}`);
+    }
+
+    private async getAttendanceColumnIndex(page: Page, date: string): Promise<number> {
+        const target = new Date(`${date}T00:00:00`);
+        const targetDay = target.getDate();
+        const dayNames = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
+        const targetDayName = dayNames[target.getDay()];
+
+        const headerColumns = await page.evaluate(() => {
+            const headerRow = document.querySelector('#grdAsistencias .dx-datagrid-headers .dx-header-row');
+            if (!headerRow) return [];
+            return Array.from(headerRow.querySelectorAll('td')).map((cell, index) => {
+                return {
+                    index,
+                    text: cell.textContent?.replace(/\s+/g, ' ').trim() || '',
+                };
+            });
+        });
+
+        for (const header of headerColumns) {
+            const match = header.text.match(/^(Lu|Ma|Mi|Ju|Vi|Sa|Do)\s*(\d{1,2})/i);
+            if (!match) continue;
+            const dayName = match[1];
+            const dayNum = parseInt(match[2], 10);
+            if (dayNum === targetDay && dayName.toLowerCase() === targetDayName.toLowerCase()) {
+                return header.index;
+            }
+        }
+
+        throw new Error(`Attendance column not found for date ${date}`);
+    }
+
+    private async setStudentAttendanceState(
+        page: Page,
+        student: AttendanceUploadStudent,
+        columnIndex: number,
+        desiredChecked: boolean
+    ): Promise<boolean> {
+        const rowIndex = await page.evaluate((targetName, targetMatricula) => {
+            const normalize = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
+            const rows = Array.from(document.querySelectorAll('#grdAsistencias .dx-datagrid-rowsview .dx-data-row'));
+            for (let i = 0; i < rows.length; i++) {
+                const cells = rows[i].querySelectorAll('td');
+                const nameCell = cells[1]?.textContent || '';
+                const rowText = rows[i].textContent || '';
+                if (
+                    normalize(nameCell) === normalize(targetName) ||
+                    normalize(rowText).includes(normalize(targetName)) ||
+                    (targetMatricula && normalize(rowText).includes(normalize(targetMatricula)))
+                ) {
+                    return i;
+                }
+            }
+            return -1;
+        }, student.name, student.matricula);
+
+        if (rowIndex < 0) {
+            console.log(`   ⚠️ Student not found in grid: ${student.name}`);
+            return false;
+        }
+
+        const row = page.locator('#grdAsistencias .dx-datagrid-rowsview .dx-data-row').nth(rowIndex);
+        await row.scrollIntoViewIfNeeded();
+
+        const cell = row.locator('td').nth(columnIndex);
+        const checkbox = cell.locator('[role="checkbox"], .dx-checkbox').first();
+
+        const isChecked = await checkbox.evaluate((element) => {
+            const input = element.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+            if (input) return input.checked;
+
+            const ariaChecked = element.getAttribute('aria-checked');
+            if (ariaChecked !== null) {
+                return ariaChecked === 'true';
+            }
+
+            if (element.classList.contains('dx-checkbox-checked')) {
+                return true;
+            }
+
+            const icon = element.querySelector('.dx-checkbox-icon');
+            if (icon && (icon.classList.contains('dx-checkbox-checked') || icon.classList.contains('dx-checkbox-icon-checked'))) {
+                return true;
+            }
+
+            return false;
+        });
+
+        if (isChecked === desiredChecked) {
+            return false;
+        }
+
+        const clickTarget = await checkbox.locator('.dx-checkbox-icon').first();
+        if (await clickTarget.count()) {
+            await clickTarget.click();
+        } else {
+            await checkbox.click();
+        }
+
+        await page.waitForTimeout(300);
+        return true;
+    }
+
+    private async saveAttendance(page: Page, debugDir: string): Promise<void> {
+        const saveButton = page.locator('#btn_Guardar_grdAsistencias');
+
+        if (await saveButton.count()) {
+            try {
+                await saveButton.click({ force: true });
+                await page.waitForTimeout(2000);
+                return;
+            } catch (error) {
+                console.log('⚠️ Save button click failed, attempting fallback', error);
+            }
+        }
+
+        await page.evaluate(() => {
+            const button = document.querySelector('#btn_Guardar_grdAsistencias') as HTMLElement | null;
+            button?.click();
+        });
+
+        await page.waitForTimeout(2000);
+        await page.screenshot({ path: `${debugDir}/attendance-saved.png` });
     }
 
     /**

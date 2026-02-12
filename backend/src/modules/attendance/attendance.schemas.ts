@@ -7,6 +7,8 @@ import { AttendanceStatus } from '@prisma/client';
 export const registerAttendanceSchema = z.object({
     groupId: z.string().min(1, 'Group ID requerido'),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha debe ser YYYY-MM-DD'),
+    encryptedPassword: z.string().min(1, 'Encrypted password requerido'),
+    forceUpload: z.boolean().optional(),
     attendances: z.array(
         z.object({
             studentId: z.string().min(1, 'Student ID requerido'),

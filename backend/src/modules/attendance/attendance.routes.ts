@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../../core/database/prisma.js';
-import { jwtService } from '../../core/security/index.js';
+import { jwtService, rsaService } from '../../core/security/index.js';
+import { addAttendanceUploadJob } from '../../core/queue/queue.config.js';
+import { PortalSyncStatus, SyncStatus } from '@prisma/client';
 import {
     registerAttendanceSchema,
     attendanceHistoryQuerySchema,
@@ -55,7 +57,7 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
         async (request, reply) => {
             try {
                 const validated = registerAttendanceSchema.parse(request.body);
-                const { groupId, date, attendances } = validated;
+                const { groupId, date, attendances, encryptedPassword, forceUpload } = validated;
                 const professorId = (request as AuthenticatedRequest).professorId!;
 
                 // Verify professor owns this group
@@ -112,6 +114,84 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                     });
                 }
 
+                const refreshedRecord = await prisma.attendanceRecord.findUnique({
+                    where: { id: attendanceRecord.id },
+                });
+
+                if (!refreshedRecord) {
+                    return reply.code(500).send({
+                        statusCode: 500,
+                        error: 'Internal Server Error',
+                        message: 'No se pudo leer el registro de asistencia',
+                    });
+                }
+
+                if (
+                    refreshedRecord.portalSyncStatus === PortalSyncStatus.COMPLETED &&
+                    !forceUpload
+                ) {
+                    return reply.code(200).send({
+                        data: {
+                            attendanceRecordId: refreshedRecord.id,
+                            date,
+                            groupId,
+                            attendancesCount: attendances.length,
+                        },
+                        message: 'Asistencia ya fue subida al portal',
+                    });
+                }
+
+                if (refreshedRecord.portalSyncStatus === PortalSyncStatus.IN_PROGRESS) {
+                    return reply.code(409).send({
+                        statusCode: 409,
+                        error: 'Conflict',
+                        message: 'La asistencia ya se esta subiendo al portal',
+                    });
+                }
+
+                const professor = await prisma.professor.findUnique({
+                    where: { id: professorId },
+                });
+
+                if (!professor) {
+                    return reply.code(404).send({
+                        statusCode: 404,
+                        error: 'Not Found',
+                        message: 'Profesor no encontrado',
+                    });
+                }
+
+                const decryptedPassword = rsaService.decryptPassword(encryptedPassword);
+
+                const syncJob = await prisma.syncJob.create({
+                    data: {
+                        professorId,
+                        status: SyncStatus.PENDING,
+                        totalGroups: attendances.length,
+                        currentGroup: 0,
+                        currentGroupName: 'Preparando subida de asistencia...',
+                    },
+                });
+
+                await prisma.attendanceRecord.update({
+                    where: { id: refreshedRecord.id },
+                    data: {
+                        portalSyncStatus: PortalSyncStatus.PENDING,
+                        portalSyncError: null,
+                    },
+                });
+
+                await addAttendanceUploadJob({
+                    professorId,
+                    email: professor.institutionalEmail,
+                    password: decryptedPassword,
+                    attendanceRecordId: refreshedRecord.id,
+                    syncJobId: syncJob.id,
+                    groupId,
+                    date,
+                    attendances,
+                });
+
                 return reply.code(201).send({
                     data: {
                         attendanceRecordId: attendanceRecord.id,
@@ -119,7 +199,7 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                         groupId,
                         attendancesCount: attendances.length,
                     },
-                    message: 'Asistencia registrada exitosamente',
+                    message: 'Asistencia registrada y en cola para subir',
                 });
             } catch (error) {
                 request.log.error(error);

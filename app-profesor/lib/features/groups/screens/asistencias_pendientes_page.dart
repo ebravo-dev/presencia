@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
 import '../../../shared/models/asistencia_registro.dart';
 import '../../../shared/models/grupo.dart';
 import '../../../services/asistencia_local_service.dart';
+import '../../../services/api_service.dart';
+import '../../../services/auth_storage_service.dart';
+import '../../../services/sse_service.dart';
 
 class AsistenciasPendientesPage extends StatefulWidget {
   final String claseActual; // Nombre completo de la materia
@@ -23,6 +27,10 @@ class AsistenciasPendientesPage extends StatefulWidget {
 
 class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
   final AsistenciaLocalService _asistenciaService = AsistenciaLocalService();
+  final ApiService _apiService = ApiService();
+  final AuthStorageService _authStorage = AuthStorageService();
+  final SSEService _sseService = SSEService();
+  StreamSubscription<SyncEvent>? _sseSubscription;
   List<AsistenciaRegistro> _asistenciasPendientes = [];
   bool _isLoading = true;
   bool _isSyncing = false;
@@ -43,7 +51,7 @@ class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
 
     // Buscar el índice del grupo en la lista original
     final index = widget.todosLosGrupos!.indexWhere(
-      (g) => g.identificadorUnico == grupoId,
+      (g) => g.id == grupoId || g.identificadorUnico == grupoId,
     );
 
     if (index == -1) return _cardGradients[0];
@@ -55,6 +63,13 @@ class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
     super.initState();
     _actualizarAsistenciasSinNombre();
     _cargarAsistenciasPendientes();
+  }
+
+  @override
+  void dispose() {
+    _sseSubscription?.cancel();
+    _sseService.disconnect();
+    super.dispose();
   }
 
   // Actualizar asistencias antiguas que no tienen nombreClase
@@ -114,39 +129,7 @@ class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
       _isSyncing = true;
     });
 
-    // Simular sincronización
-    // TODO: Implementar llamada real al API
-    await Future.delayed(const Duration(seconds: 2));
-
-    // Simular éxito/fallo
-    final exito = DateTime.now().second % 2 == 0;
-
-    if (exito) {
-      // Marcar como sincronizada
-      await _asistenciaService.marcarComoSincronizada(registro.id);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Asistencia del ${_formatearFecha(registro.fecha)} sincronizada',
-            ),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error al sincronizar. Intente nuevamente.'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    }
+    await _subirRegistro(registro, showSnackbars: true);
 
     setState(() {
       _isSyncing = false;
@@ -197,23 +180,19 @@ class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
       ),
     );
 
-    // Simular sincronización
-    // TODO: Implementar llamada real al API
-    await Future.delayed(const Duration(seconds: 3));
+    bool allSuccess = true;
+    for (final registro in _asistenciasPendientes) {
+      final success = await _subirRegistro(registro, showSnackbars: false);
+      if (!success) {
+        allSuccess = false;
+      }
+    }
 
     if (mounted) {
       Navigator.of(context).pop();
     }
 
-    // Simular resultado
-    final exito = DateTime.now().second % 2 == 0;
-
-    if (exito) {
-      // Marcar todas como sincronizadas
-      for (var registro in _asistenciasPendientes) {
-        await _asistenciaService.marcarComoSincronizada(registro.id);
-      }
-
+    if (allSuccess) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -243,6 +222,239 @@ class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
     });
 
     _cargarAsistenciasPendientes();
+  }
+
+  Future<bool> _subirRegistro(
+    AsistenciaRegistro registro, {
+    required bool showSnackbars,
+  }) async {
+    final token = _authStorage.getToken();
+    final profesor = _authStorage.getProfesor();
+    if (token == null || profesor == null) {
+      if (showSnackbars && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Sesión no válida. Inicia sesión de nuevo.'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return false;
+    }
+
+    final grupo = _resolveGrupo(registro.grupoId);
+    if (grupo == null) {
+      if (showSnackbars && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se encontró el grupo para esta asistencia.'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return false;
+    }
+
+    final registroActualizado = await _migrarRegistroSiNecesario(registro, grupo);
+
+    final attendances = _buildAttendances(registroActualizado, grupo);
+    if (attendances.isEmpty) {
+      if (showSnackbars && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudieron resolver alumnos para la asistencia.'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return false;
+    }
+
+    final storedPassword = _authStorage.getEncryptedPassword();
+    if (storedPassword == null || storedPassword.isEmpty) {
+      if (showSnackbars && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Falta la contraseña para subir asistencia.'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return false;
+    }
+
+    final encryptedPassword = _apiService.ensureEncryptedPassword(storedPassword);
+
+    final result = await _apiService.uploadAttendance(
+      token: token,
+      groupId: grupo.id,
+      date: registroActualizado.fecha,
+      attendances: attendances,
+      encryptedPassword: encryptedPassword,
+    );
+
+    final uploadSuccess = await result.fold(
+      (error) async {
+        if (showSnackbars && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(error),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return false;
+      },
+      (_) async {
+        final syncSuccess = await _waitForSyncCompletion(
+          profesor.id,
+          token,
+        );
+        if (syncSuccess) {
+          await _asistenciaService.marcarComoSincronizada(
+            registroActualizado.id,
+          );
+          if (showSnackbars && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Asistencia del ${_formatearFecha(registroActualizado.fecha)} sincronizada',
+                ),
+                backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+          return true;
+        }
+
+        if (showSnackbars && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('La subida no se completo. Intenta de nuevo.'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return false;
+      },
+    );
+
+    return uploadSuccess;
+  }
+
+  Grupo? _resolveGrupo(String grupoId) {
+    final grupos = widget.todosLosGrupos ?? _authStorage.getGrupos();
+    if (grupos == null) return null;
+
+    final direct = grupos.firstWhere(
+      (g) => g.id == grupoId,
+      orElse: () => const Grupo(
+        id: '',
+        group: '',
+        classroom: '',
+        name: '',
+        students: const [],
+      ),
+    );
+
+    if (direct.id.isNotEmpty) return direct;
+
+    final byLegacy = grupos.firstWhere(
+      (g) => g.identificadorUnico == grupoId,
+      orElse: () => const Grupo(
+        id: '',
+        group: '',
+        classroom: '',
+        name: '',
+        students: const [],
+      ),
+    );
+
+    return byLegacy.id.isNotEmpty ? byLegacy : null;
+  }
+
+  Future<AsistenciaRegistro> _migrarRegistroSiNecesario(
+    AsistenciaRegistro registro,
+    Grupo grupo,
+  ) async {
+    if (registro.grupoId == grupo.id) {
+      return registro;
+    }
+
+    final nuevoId =
+        '${grupo.id}_${registro.fecha.year}-${registro.fecha.month}-${registro.fecha.day}';
+    final actualizado = registro.copyWith(grupoId: grupo.id, id: nuevoId);
+    await _asistenciaService.guardarAsistencia(actualizado);
+    await _asistenciaService.eliminarAsistencia(registro.id);
+    return actualizado;
+  }
+
+  List<Map<String, dynamic>> _buildAttendances(
+    AsistenciaRegistro registro,
+    Grupo grupo,
+  ) {
+    final studentIdMap = <String, String>{};
+    for (final student in grupo.students) {
+      if (student.id != null) {
+        studentIdMap[student.id!] = student.id!;
+        studentIdMap[student.number.toString()] = student.id!;
+      }
+    }
+
+    final attendances = <Map<String, dynamic>>[];
+    registro.asistenciasAlumnos.forEach((key, present) {
+      final studentId = studentIdMap[key];
+      if (studentId == null) {
+        return;
+      }
+      attendances.add({
+        'studentId': studentId,
+        'status': present ? 'PRESENT' : 'ABSENT',
+      });
+    });
+
+    return attendances;
+  }
+
+  Future<bool> _waitForSyncCompletion(String professorId, String token) async {
+    final completer = Completer<bool>();
+
+    await _sseSubscription?.cancel();
+    _sseSubscription = _sseService.connect(professorId, token).listen(
+      (event) {
+        if (event.isCompleted) {
+          if (!completer.isCompleted) {
+            completer.complete(true);
+          }
+        }
+
+        if (event.isFailed) {
+          if (!completer.isCompleted) {
+            completer.complete(false);
+          }
+        }
+      },
+      onError: (_) {
+        if (!completer.isCompleted) {
+          completer.complete(false);
+        }
+      },
+    );
+
+    final result = await completer.future.timeout(
+      const Duration(minutes: 5),
+      onTimeout: () => false,
+    );
+
+    _sseService.disconnect();
+    return result;
   }
 
   String _formatearFecha(DateTime fecha) {
