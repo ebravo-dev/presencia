@@ -42,7 +42,11 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
             let lastStatus: string | null = null;
             let lastStep: number | null = null;
             let noChangeCount = 0;
+            let pollCount = 0;
             const MAX_NO_CHANGE = 150; // 150 * 2s = 300s (5 min) timeout if no changes
+            // Grace period: don't send final events from old jobs during the
+            // first few polls — the new PENDING job might not be visible yet.
+            const GRACE_POLLS = 5; // 5 * 2s = 10s grace
 
             // Polling interval for sync job status
             const interval = setInterval(async () => {
@@ -50,6 +54,8 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
                     clearInterval(interval);
                     return;
                 }
+
+                pollCount++;
 
                 try {
                     // Get latest ACTIVE sync job for this professor (only PENDING or IN_PROGRESS)
@@ -71,12 +77,9 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
                             lastStatus = currentStatus;
                             lastStep = currentStep;
                         } else {
-                            // Only count no-change for PENDING jobs (not yet started)
-                            // IN_PROGRESS jobs may take time per group, that's normal
                             if (currentStatus === 'PENDING') {
                                 noChangeCount++;
                             } else {
-                                // For IN_PROGRESS, reset counter more slowly
                                 noChangeCount += 0.5;
                             }
                         }
@@ -89,8 +92,6 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
                             totalSteps: activeSyncJob.totalGroups || 5,
                             message: activeSyncJob.currentGroupName || '',
                             error: activeSyncJob.error,
-                            attemptsMade: activeSyncJob.error?.includes('intento') ?
-                                parseInt(activeSyncJob.error.match(/intento (\d+)/)?.[1] || '0') : 0,
                         };
 
                         reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -105,28 +106,39 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
                             reply.raw.end();
                         }
                     } else {
-                        // No active sync job - check if there's a recently completed one
+                        // No active sync job found.
+                        // During grace period, the PENDING job may not exist yet — keep waiting.
+                        if (pollCount <= GRACE_POLLS) {
+                            reply.raw.write(`data: ${JSON.stringify({
+                                type: 'progress',
+                                status: 'PENDING',
+                                step: 0,
+                                totalSteps: 1,
+                                message: 'Preparando subida de asistencia...',
+                            })}\n\n`);
+                            return;
+                        }
+
+                        // After grace period, check for recently completed/failed jobs
                         const recentJob = await prisma.syncJob.findFirst({
                             where: { professorId },
                             orderBy: { startedAt: 'desc' },
                         });
 
                         if (recentJob && (recentJob.status === 'COMPLETED' || recentJob.status === 'FAILED')) {
-                            // Determine if this was a credential error
                             const isCredentialError = recentJob.error?.includes('CREDENTIAL_ERROR') ||
                                 recentJob.error?.toLowerCase().includes('contraseña') ||
                                 recentJob.error?.toLowerCase().includes('usuario') ||
                                 recentJob.error?.toLowerCase().includes('autenticación') ||
                                 recentJob.error?.toLowerCase().includes('credencial');
 
-                            // Send final state and close
                             const event = {
                                 type: recentJob.status === 'COMPLETED' ? 'completed' : 'failed',
                                 status: recentJob.status,
                                 step: recentJob.currentGroup || 0,
                                 totalSteps: recentJob.totalGroups || 5,
                                 message: recentJob.status === 'COMPLETED'
-                                    ? '¡Sincronización completada!'
+                                    ? '¡Asistencia subida correctamente!'
                                     : (recentJob.error || 'Error en sincronización'),
                                 error: recentJob.error,
                                 errorType: isCredentialError ? 'credential' : 'portal',
@@ -137,7 +149,6 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
                             clearInterval(interval);
                             reply.raw.end();
                         } else {
-                            // No sync job at all
                             reply.raw.write(`data: ${JSON.stringify({
                                 type: 'no_job',
                                 message: 'No hay sincronización activa'

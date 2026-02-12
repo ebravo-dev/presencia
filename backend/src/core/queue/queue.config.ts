@@ -112,8 +112,20 @@ export async function addScrapingJob(data: ScrapingJobData): Promise<Job<Scrapin
 export async function addAttendanceUploadJob(
     data: AttendanceUploadJobData
 ): Promise<Job<AttendanceUploadJobData, AttendanceUploadJobResult, string>> {
+    // Remove any previous failed/completed job for the same group+date
+    // to avoid BullMQ silently ignoring a duplicate jobId.
+    const baseId = `attendance-${data.professorId}-${data.groupId}-${data.date}`;
+    const existingJob = await attendanceUploadQueue.getJob(baseId);
+    if (existingJob) {
+        const state = await existingJob.getState();
+        if (state === 'failed' || state === 'completed') {
+            await existingJob.remove();
+            console.log(`🗑️ Removed old ${state} job: ${baseId}`);
+        }
+    }
+
     const job = await attendanceUploadQueue.add('upload-attendance', data, {
-        jobId: `attendance-${data.professorId}-${data.groupId}-${data.date}`,
+        jobId: baseId,
     });
 
     console.log(`📤 Attendance upload job added: ${job.id}`);

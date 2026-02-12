@@ -30,6 +30,8 @@ async function processAttendanceUploadJob(
         attendances,
     } = job.data;
 
+    console.log(`🔄 Processing attendance job ${job.id} for professor ${professorId}, group ${groupId}, date ${date}`);
+
     const attendanceRecord = await prisma.attendanceRecord.findUnique({
         where: { id: attendanceRecordId },
         include: {
@@ -185,10 +187,6 @@ export function createAttendanceUploadWorker(): Worker<AttendanceUploadJobData, 
             connection: redisConnection,
             concurrency: 1,
             maxStalledCount: 2,
-            limiter: {
-                max: 3,
-                duration: 60000,
-            },
         }
     );
 
@@ -202,6 +200,14 @@ export function createAttendanceUploadWorker(): Worker<AttendanceUploadJobData, 
 
     worker.on('error', (error) => {
         console.error('❌ Attendance worker error:', error);
+    });
+
+    worker.on('stalled', (jobId) => {
+        console.warn(`⚠️ Attendance job stalled: ${jobId}`);
+    });
+
+    worker.on('ready', () => {
+        console.log('👷 Attendance upload worker ready and listening for jobs');
     });
 
     console.log('👷 Attendance upload worker started');

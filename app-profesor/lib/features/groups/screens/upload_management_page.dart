@@ -32,8 +32,8 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
 
-  String _progressMessage = 'Preparando...';
   bool _dialogOpen = false;
+  final ValueNotifier<String> _progressNotifier = ValueNotifier('Preparando...');
 
   @override
   void initState() {
@@ -45,6 +45,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   void dispose() {
     _sseSubscription?.cancel();
     _sseService.disconnect();
+    _progressNotifier.dispose();
     super.dispose();
   }
 
@@ -103,7 +104,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     setState(() => _isUploading = true);
     HapticFeedback.mediumImpact();
 
-    _progressMessage = 'Preparando subida...';
+    _progressNotifier.value = 'Preparando subida...';
     _showProgressDialog();
 
     try {
@@ -161,54 +162,54 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   void _showProgressDialog() {
     if (!mounted || _dialogOpen) return;
     _dialogOpen = true;
+    _progressNotifier.value = 'Preparando subida...';
 
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setLocalState) {
-          return Dialog(
-            backgroundColor: const Color(0xFF2C2C2E),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(
-                    width: 50,
-                    height: 50,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 3,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Subiendo asistencias...',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _progressMessage,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
-                      fontSize: 13,
-                      height: 1.3,
-                    ),
-                  ),
-                ],
+      builder: (context) => Dialog(
+        backgroundColor: const Color(0xFF2C2C2E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 50,
+                height: 50,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                ),
               ),
-            ),
-          );
-        },
+              const SizedBox(height: 20),
+              const Text(
+                'Subiendo asistencias...',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ValueListenableBuilder<String>(
+                valueListenable: _progressNotifier,
+                builder: (context, message, _) => Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.8),
+                    fontSize: 13,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     ).then((_) {
       _dialogOpen = false;
@@ -258,7 +259,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
 
     return await result.fold(
       (error) async {
-        _progressMessage = error;
+        _progressNotifier.value = error;
         return false;
       },
       (_) async {
@@ -355,9 +356,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     _sseSubscription = _sseService.connect(professorId, token).listen(
       (event) {
         if (event.message.isNotEmpty) {
-          setState(() {
-            _progressMessage = event.message;
-          });
+          _progressNotifier.value = event.message;
         }
         if (event.isCompleted) {
           if (!completer.isCompleted) {
