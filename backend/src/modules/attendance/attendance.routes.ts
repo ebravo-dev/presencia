@@ -94,6 +94,14 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                     },
                 });
 
+                // Check if any attendance status actually changed before upserting
+                const existingAttendances = await prisma.attendance.findMany({
+                    where: { attendanceRecordId: attendanceRecord.id },
+                    select: { studentId: true, status: true },
+                });
+                const existingMap = new Map(existingAttendances.map(a => [a.studentId, a.status]));
+                const hasChanges = attendances.some(a => existingMap.get(a.studentId) !== a.status);
+
                 // Upsert individual attendances
                 for (const attendance of attendances) {
                     await prisma.attendance.upsert({
@@ -128,7 +136,8 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
 
                 if (
                     refreshedRecord.portalSyncStatus === PortalSyncStatus.COMPLETED &&
-                    !forceUpload
+                    !forceUpload &&
+                    !hasChanges
                 ) {
                     return reply.code(200).send({
                         data: {
