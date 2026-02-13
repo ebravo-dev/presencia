@@ -167,17 +167,21 @@ export class ScraperService {
         // IMPORTANT: Click directly on the checkbox ICON, not the text label
         // Clicking the text opens an unnecessary privacy popup dialog
         console.log('☑️ Accepting privacy terms...');
-        const checkbox = await page.$(UAT_SELECTORS.LOGIN.PRIVACY_CHECKBOX);
-        if (checkbox) {
-            await checkbox.click();
-            await page.waitForTimeout(500); // Brief wait for checkbox state to update
-        } else {
-            console.log('⚠️ Privacy checkbox not found, trying alternate selector...');
-            // Try clicking the checkbox container
-            const checkboxAlt = await page.$('#chkAcepto');
-            if (checkboxAlt) {
-                await checkboxAlt.click();
+        try {
+            // Use force:true because the dx-checkbox-icon may not report as "visible"
+            // to Playwright even though it's clickable (DevExpress CSS quirk).
+            await page.click(UAT_SELECTORS.LOGIN.PRIVACY_CHECKBOX, {
+                force: true,
+                timeout: 10000,
+            });
+            await page.waitForTimeout(500);
+        } catch {
+            console.log('⚠️ Privacy checkbox icon not found, trying container...');
+            try {
+                await page.click('#chkAcepto', { force: true, timeout: 5000 });
                 await page.waitForTimeout(500);
+            } catch {
+                console.log('⚠️ Privacy checkbox not clickable, continuing...');
             }
         }
 
@@ -831,14 +835,17 @@ export class ScraperService {
         });
 
         const page = await context.newPage();
-        // Fail faster during attendance upload to avoid long hanging UX.
-        page.setDefaultTimeout(15000);
-        page.setDefaultNavigationTimeout(30000);
+        // Use generous timeouts for login (portal can be slow)
+        page.setDefaultNavigationTimeout(60000);
         const debugDir = './debug-screenshots';
 
         try {
             console.log(`🔐 Logging in as ${email}...`);
             await this.login(page, email, password);
+
+            // After login, tighten timeouts to fail fast on scraping errors
+            page.setDefaultTimeout(15000);
+            page.setDefaultNavigationTimeout(30000);
 
             console.log('📋 Navigating to Control de Asistencia...');
             await this.navigateToControlAsistencia(page);
@@ -992,7 +999,8 @@ export class ScraperService {
                 }
 
                 console.log(`   ✅ Found matching group, clicking...`);
-                await row.click();
+                await row.scrollIntoViewIfNeeded();
+                await row.click({ force: true });
                 groupClicked = true;
                 await page.waitForTimeout(3000);
                 break;
@@ -1025,7 +1033,8 @@ export class ScraperService {
         }
 
         for (const [index, row] of weekRows.entries()) {
-            await row.click();
+            await row.scrollIntoViewIfNeeded();
+            await row.click({ force: true });
             await page.waitForTimeout(2000);
 
             try {
@@ -1202,8 +1211,20 @@ export class ScraperService {
             timeout: 30000,
         });
 
-        // Wait for page content to load
-        await page.waitForTimeout(3000);
+        // Wait for the Grupos grid to be fully rendered with visible rows
+        console.log('⏳ Waiting for Grupos grid to render...');
+        try {
+            await page.waitForSelector('#grdGrupos .dx-datagrid-rowsview .dx-data-row', {
+                state: 'visible',
+                timeout: 20000,
+            });
+            console.log('✅ Grupos grid is visible');
+        } catch {
+            console.log('⚠️ Grupos grid rows not visible after 20s, continuing...');
+        }
+
+        // Small extra wait for DevExpress JS to finish initializing
+        await page.waitForTimeout(1000);
 
         await page.screenshot({ path: `${debugDir}/control-asistencia-page.png` });
         console.log('📍 Current URL:', page.url());
