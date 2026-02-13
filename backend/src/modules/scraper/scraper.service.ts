@@ -1114,8 +1114,10 @@ export class ScraperService {
             // Expand Asistencia accordion section
             await this.expandAccordionSection(page, 'Asistencia');
 
+            // Wait for the attendance DATA rows to load (not just the header)
             try {
-                await page.waitForSelector('#grdAsistencias .dx-datagrid-headers .dx-header-row', { timeout: 10000 });
+                await page.waitForSelector('#grdAsistencias .dx-datagrid-rowsview .dx-data-row', { timeout: 15000 });
+                console.log(`   ✅ Asistencia data rows loaded`);
             } catch {
                 throw new Error(`Asistencia table did not load after selecting week for ${date}`);
             }
@@ -1170,16 +1172,31 @@ export class ScraperService {
         const dayNames = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
         const targetDayName = dayNames[target.getDay()];
 
-        const headerColumns = await page.evaluate(() => {
-            const headerRow = document.querySelector('#grdAsistencias .dx-datagrid-headers .dx-header-row');
-            if (!headerRow) return [];
-            return Array.from(headerRow.querySelectorAll('td')).map((cell, index) => {
-                return {
-                    index,
-                    text: cell.textContent?.replace(/\s+/g, ' ').trim() || '',
-                };
+        // Ensure we wait for headers with day columns (not just the empty header row)
+        // Retry a few times since the grid may still be rendering
+        let headerColumns: { index: number; text: string }[] = [];
+        for (let attempt = 0; attempt < 5; attempt++) {
+            headerColumns = await page.evaluate(() => {
+                const headerRow = document.querySelector('#grdAsistencias .dx-datagrid-headers .dx-header-row');
+                if (!headerRow) return [];
+                return Array.from(headerRow.querySelectorAll('td')).map((cell, index) => {
+                    return {
+                        index,
+                        text: cell.textContent?.replace(/\s+/g, ' ').trim() || '',
+                    };
+                });
             });
-        });
+
+            // Check if we have day columns (Lu, Ma, Mi, etc.)
+            const hasDayColumns = headerColumns.some(h => /^(Lu|Ma|Mi|Ju|Vi|Sa|Do)/i.test(h.text));
+            if (hasDayColumns) break;
+
+            console.log(`   ⏳ Headers not ready yet (attempt ${attempt + 1}), waiting...`);
+            await page.waitForTimeout(2000);
+        }
+
+        console.log(`   📋 Attendance headers found: ${headerColumns.map(h => `[${h.index}]="${h.text}"`).join(', ')}`);
+        console.log(`   🎯 Looking for: ${targetDayName} ${targetDay}`);
 
         for (const header of headerColumns) {
             const match = header.text.match(/^(Lu|Ma|Mi|Ju|Vi|Sa|Do)\s*(\d{1,2})/i);
@@ -1187,11 +1204,14 @@ export class ScraperService {
             const dayName = match[1];
             const dayNum = parseInt(match[2], 10);
             if (dayNum === targetDay && dayName.toLowerCase() === targetDayName.toLowerCase()) {
+                console.log(`   ✅ Found column ${header.index} for ${targetDayName} ${targetDay}`);
                 return header.index;
             }
         }
 
-        throw new Error(`Attendance column not found for date ${date}`);
+        // Take screenshot for debugging
+        await page.screenshot({ path: './debug-screenshots/column-not-found.png' });
+        throw new Error(`Attendance column not found for date ${date} (headers: ${headerColumns.map(h => h.text).join(', ')})`);
     }
 
     private async setStudentAttendanceState(
