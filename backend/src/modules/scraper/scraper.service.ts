@@ -860,6 +860,8 @@ export class ScraperService {
             await this.selectWeekContainingDate(page, date, debugDir);
 
             console.log('🔎 Resolving attendance column...');
+            // Ensure Asistencia section is expanded before reading headers
+            await this.expandAccordionSection(page, 'Asistencia');
             const columnIndex = await this.getAttendanceColumnIndex(page, date);
 
             let hasChanges = false;
@@ -921,6 +923,7 @@ export class ScraperService {
 
         // Wait for Semanas table to update (it should show this group's weeks)
         console.log(`   ⏳ Waiting for Semanas table...`);
+        await this.expandAccordionSection(page, 'Semanas');
         try {
             await page.waitForSelector('#grdSemanas .dx-datagrid-rowsview .dx-data-row', { timeout: 10000 });
         } catch {
@@ -938,8 +941,11 @@ export class ScraperService {
 
         // Click FIRST week row (must click, even if one was already selected)
         console.log(`   👆 Clicking week row 1...`);
-        await weekRows[0].click();
+        await weekRows[0].evaluate((el) => (el as HTMLElement).click());
         await page.waitForTimeout(3000);
+
+        // Expand the Asistencia accordion section
+        await this.expandAccordionSection(page, 'Asistencia');
 
         // Wait for Asistencia table to load
         console.log(`   ⏳ Waiting for Asistencia table...`);
@@ -962,6 +968,37 @@ export class ScraperService {
         return students;
     }
 
+    /**
+     * Expand a DevExpress Accordion section by its title text.
+     * The portal uses accordion panels for Busqueda, Grupos, Semanas, Asistencia.
+     * If a section is collapsed, its content (grids) is in the DOM but not visible.
+     */
+    private async expandAccordionSection(page: Page, sectionTitle: string): Promise<void> {
+        // Check if the section's content is already visible by looking at the
+        // accordion-item's 'opened' state.
+        const expanded = await page.evaluate((title) => {
+            const items = Array.from(document.querySelectorAll('.dx-accordion-item'));
+            for (const item of items) {
+                const titleEl = item.querySelector('.dx-accordion-item-title');
+                if (titleEl && titleEl.textContent?.trim().includes(title)) {
+                    // DevExpress marks opened items with dx-accordion-item-opened
+                    if (item.classList.contains('dx-accordion-item-opened')) {
+                        return true; // already expanded
+                    }
+                    // Click the title to expand
+                    (titleEl as HTMLElement).click();
+                    return false; // was collapsed, now expanding
+                }
+            }
+            return true; // section not found, assume it's fine
+        }, sectionTitle);
+
+        if (!expanded) {
+            console.log(`   📂 Expanded accordion section: ${sectionTitle}`);
+            await page.waitForTimeout(1000); // wait for animation
+        }
+    }
+
     private async findAndClickGroupRow(
         page: Page,
         groupCode: string,
@@ -969,6 +1006,9 @@ export class ScraperService {
     ): Promise<boolean> {
         const fs = await import('fs');
         await fs.promises.mkdir(debugDir, { recursive: true });
+
+        // Ensure the Grupos accordion section is expanded
+        await this.expandAccordionSection(page, 'Grupos');
 
         await page.waitForSelector('#grdGrupos .dx-datagrid-rowsview .dx-data-row', { timeout: 10000 });
 
@@ -999,8 +1039,8 @@ export class ScraperService {
                 }
 
                 console.log(`   ✅ Found matching group, clicking...`);
-                await row.scrollIntoViewIfNeeded();
-                await row.click({ force: true });
+                // Use JS click to avoid visibility issues inside accordion panels
+                await row.evaluate((el) => (el as HTMLElement).click());
                 groupClicked = true;
                 await page.waitForTimeout(3000);
                 break;
@@ -1025,6 +1065,9 @@ export class ScraperService {
         const dayNames = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
         const targetDayName = dayNames[target.getDay()];
 
+        // Expand the Semanas accordion section (might be collapsed after group click)
+        await this.expandAccordionSection(page, 'Semanas');
+
         await page.waitForSelector('#grdSemanas .dx-datagrid-rowsview .dx-data-row', { timeout: 10000 });
         const weekRows = await page.$$('#grdSemanas .dx-datagrid-rowsview .dx-data-row');
 
@@ -1032,10 +1075,61 @@ export class ScraperService {
             throw new Error('No week rows available');
         }
 
-        for (const [index, row] of weekRows.entries()) {
-            await row.scrollIntoViewIfNeeded();
-            await row.click({ force: true });
+        console.log(`   📅 Found ${weekRows.length} week rows, looking for day ${targetDayName} ${targetDay}`);
+
+        // First, try to find the right week by reading date ranges from the table
+        // (avoids clicking each row): columns are Semana, Fecha Inicial, Fecha Final, Capturada
+        const weekIndex = await page.evaluate<number, { targetDateStr: string }>(
+            ({ targetDateStr }) => {
+                const targetDate = new Date(targetDateStr + 'T00:00:00');
+                const rows = Array.from(document.querySelectorAll('#grdSemanas .dx-datagrid-rowsview .dx-data-row'));
+                for (let i = 0; i < rows.length; i++) {
+                    const cells = rows[i].querySelectorAll('td');
+                    // cells[1] = Fecha Inicial (DD/MM/YYYY), cells[2] = Fecha Final (DD/MM/YYYY)
+                    const startText = cells[1]?.textContent?.trim() || '';
+                    const endText = cells[2]?.textContent?.trim() || '';
+                    // Parse DD/MM/YYYY
+                    const parseDate = (s: string) => {
+                        const m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+                        if (!m) return null;
+                        return new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
+                    };
+                    const start = parseDate(startText);
+                    const end = parseDate(endText);
+                    if (start && end && targetDate >= start && targetDate <= end) {
+                        return i;
+                    }
+                }
+                return -1;
+            },
+            { targetDateStr: date }
+        );
+
+        if (weekIndex >= 0) {
+            console.log(`   ✅ Date ${date} is in week row ${weekIndex + 1}, clicking...`);
+            // Use JS click to avoid visibility issues inside accordion panels
+            await weekRows[weekIndex].evaluate((el) => (el as HTMLElement).click());
             await page.waitForTimeout(2000);
+
+            // Expand Asistencia accordion section
+            await this.expandAccordionSection(page, 'Asistencia');
+
+            try {
+                await page.waitForSelector('#grdAsistencias .dx-datagrid-headers .dx-header-row', { timeout: 10000 });
+            } catch {
+                throw new Error(`Asistencia table did not load after selecting week for ${date}`);
+            }
+            return;
+        }
+
+        // Fallback: click each week row and check headers
+        console.log(`   ⚠️ Could not find week by date range, trying each row...`);
+        for (const [index, row] of weekRows.entries()) {
+            await row.evaluate((el) => (el as HTMLElement).click());
+            await page.waitForTimeout(2000);
+
+            // Expand Asistencia accordion section
+            await this.expandAccordionSection(page, 'Asistencia');
 
             try {
                 await page.waitForSelector('#grdAsistencias .dx-datagrid-headers .dx-header-row', { timeout: 10000 });
@@ -1133,7 +1227,8 @@ export class ScraperService {
         }
 
         const row = page.locator('#grdAsistencias .dx-datagrid-rowsview .dx-data-row').nth(rowIndex);
-        await row.scrollIntoViewIfNeeded();
+        // Use JS scroll — Playwright's scrollIntoViewIfNeeded fails inside collapsed accordions
+        await row.evaluate((el) => el.scrollIntoView({ block: 'center' }));
 
         const cell = row.locator('td').nth(columnIndex);
         const checkbox = cell.locator('[role="checkbox"], .dx-checkbox').first();
