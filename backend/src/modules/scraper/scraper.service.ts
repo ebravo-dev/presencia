@@ -1172,28 +1172,43 @@ export class ScraperService {
         const dayNames = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
         const targetDayName = dayNames[target.getDay()];
 
-        // Ensure we wait for headers with day columns (not just the empty header row)
-        // Retry a few times since the grid may still be rendering
-        let headerColumns: { index: number; text: string; innerText: string }[] = [];
+        // DevExpress DataGrid uses multi-row (banded) headers:
+        //   Row 0: "No." (rowspan=2), "Nombre" (rowspan=2), band-header (colspan=N)
+        //   Row 1: "Lu 9", "Ma 10", "Mi 11", "Ju 12", "Vi 13"
+        // Data rows are flat: [No., Nombre, Lu, Ma, Mi, Ju, Vi]
+        // So day column index in data row = (index in day header row) + offset
+        // where offset = (data row cell count) - (day header row cell count)
+
+        interface HeaderInfo { rowIdx: number; cellIdx: number; text: string; innerText: string }
+        let allHeaders: HeaderInfo[] = [];
+        let dataColCount = 0;
+
         for (let attempt = 0; attempt < 5; attempt++) {
-            headerColumns = await page.evaluate(() => {
-                // Try multiple selectors for the header row
-                const headerRow = document.querySelector('#grdAsistencias .dx-datagrid-headers .dx-header-row');
-                if (!headerRow) return [];
-                // Use 'td, th' to cover both possible header cell elements
-                return Array.from(headerRow.querySelectorAll('td, th')).map((cell, index) => {
-                    return {
-                        index,
-                        // textContent concatenates all text nodes (may lose whitespace)
-                        text: cell.textContent?.replace(/\s+/g, ' ').trim() || '',
-                        // innerText respects <br> and block elements as separators
-                        innerText: (cell as HTMLElement).innerText?.replace(/\s+/g, ' ').trim() || '',
-                    };
+            const result = await page.evaluate(() => {
+                const headerRows = Array.from(
+                    document.querySelectorAll('#grdAsistencias .dx-datagrid-headers .dx-header-row')
+                );
+                const headers: { rowIdx: number; cellIdx: number; text: string; innerText: string }[] = [];
+                headerRows.forEach((row, rowIdx) => {
+                    Array.from(row.querySelectorAll('td, th')).forEach((cell, cellIdx) => {
+                        headers.push({
+                            rowIdx,
+                            cellIdx,
+                            text: cell.textContent?.replace(/\s+/g, ' ').trim() || '',
+                            innerText: (cell as HTMLElement).innerText?.replace(/\s+/g, ' ').trim() || '',
+                        });
+                    });
                 });
+                // Count cells in first data row to determine flat column count
+                const firstDataRow = document.querySelector('#grdAsistencias .dx-datagrid-rowsview .dx-data-row');
+                const dataCols = firstDataRow ? firstDataRow.querySelectorAll('td').length : 0;
+                return { headers, dataCols };
             });
 
-            // Check if we have day columns (Lu, Ma, Mi, etc.)
-            const hasDayColumns = headerColumns.some(h =>
+            allHeaders = result.headers;
+            dataColCount = result.dataCols;
+
+            const hasDayColumns = allHeaders.some(h =>
                 /(Lu|Ma|Mi|Ju|Vi|Sa|Do)/i.test(h.text) || /(Lu|Ma|Mi|Ju|Vi|Sa|Do)/i.test(h.innerText)
             );
             if (hasDayColumns) break;
@@ -1202,27 +1217,39 @@ export class ScraperService {
             await page.waitForTimeout(2000);
         }
 
-        console.log(`   📋 Attendance headers found: ${headerColumns.map(h => `[${h.index}] text="${h.text}" innerText="${h.innerText}"`).join(', ')}`);
+        // Log ALL header rows for debugging
+        const rowGroups = new Map<number, HeaderInfo[]>();
+        for (const h of allHeaders) {
+            if (!rowGroups.has(h.rowIdx)) rowGroups.set(h.rowIdx, []);
+            rowGroups.get(h.rowIdx)!.push(h);
+        }
+        for (const [rowIdx, cells] of rowGroups) {
+            console.log(`   📋 Header row ${rowIdx}: ${cells.map(c => `[${c.cellIdx}] "${c.text}"`).join(', ')}`);
+        }
+        console.log(`   📊 Data row has ${dataColCount} columns`);
         console.log(`   🎯 Looking for: ${targetDayName} ${targetDay}`);
 
-        for (const header of headerColumns) {
-            // Try both textContent and innerText for matching
-            for (const rawText of [header.text, header.innerText]) {
-                // Match patterns like: "Lu 9", "Lu9", "Lu\n9", "Lun 9", etc.
+        // Find the header row that contains day columns
+        for (const h of allHeaders) {
+            for (const rawText of [h.text, h.innerText]) {
                 const match = rawText.match(/(Lu|Ma|Mi|Ju|Vi|Sa|Do)\w*\s*(\d{1,2})/i);
                 if (!match) continue;
                 const dayName = match[1];
                 const dayNum = parseInt(match[2], 10);
                 if (dayNum === targetDay && dayName.toLowerCase() === targetDayName.toLowerCase()) {
-                    console.log(`   ✅ Found column ${header.index} for ${targetDayName} ${targetDay}`);
-                    return header.index;
+                    // Calculate offset: how many columns before this header row in the data row
+                    const dayRowCells = rowGroups.get(h.rowIdx)!;
+                    const offset = dataColCount - dayRowCells.length;
+                    const dataColumnIndex = h.cellIdx + offset;
+                    console.log(`   ✅ Found "${rawText}" in header row ${h.rowIdx} cell ${h.cellIdx}, offset=${offset}, data column=${dataColumnIndex}`);
+                    return dataColumnIndex;
                 }
             }
         }
 
         // Take screenshot for debugging
         await page.screenshot({ path: './debug-screenshots/column-not-found.png' });
-        throw new Error(`Attendance column not found for date ${date} (headers: ${headerColumns.map(h => h.text).join(', ')})`);
+        throw new Error(`Attendance column not found for date ${date} (headers: ${allHeaders.map(h => `r${h.rowIdx}[${h.cellIdx}]="${h.text}"`).join(', ')})`);
     }
 
     private async setStudentAttendanceState(
