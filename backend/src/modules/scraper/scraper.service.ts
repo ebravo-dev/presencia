@@ -1143,10 +1143,10 @@ export class ScraperService {
                 ({ expectedDay, expectedDayName }) => {
                     const headerRow = document.querySelector('#grdAsistencias .dx-datagrid-headers .dx-header-row');
                     if (!headerRow) return false;
-                    const cells = Array.from(headerRow.querySelectorAll('td'));
+                    const cells = Array.from(headerRow.querySelectorAll('td, th'));
                     return cells.some((cell) => {
-                        const text = cell.textContent?.replace(/\s+/g, ' ').trim() || '';
-                        const match = text.match(/^(Lu|Ma|Mi|Ju|Vi|Sa|Do)\s*(\d{1,2})/i);
+                        const text = (cell as HTMLElement).innerText?.replace(/\s+/g, ' ').trim() || '';
+                        const match = text.match(/(Lu|Ma|Mi|Ju|Vi|Sa|Do)\w*\s*(\d{1,2})/i);
                         if (!match) return false;
                         const dayName = match[1];
                         const dayNum = parseInt(match[2], 10);
@@ -1174,38 +1174,49 @@ export class ScraperService {
 
         // Ensure we wait for headers with day columns (not just the empty header row)
         // Retry a few times since the grid may still be rendering
-        let headerColumns: { index: number; text: string }[] = [];
+        let headerColumns: { index: number; text: string; innerText: string }[] = [];
         for (let attempt = 0; attempt < 5; attempt++) {
             headerColumns = await page.evaluate(() => {
+                // Try multiple selectors for the header row
                 const headerRow = document.querySelector('#grdAsistencias .dx-datagrid-headers .dx-header-row');
                 if (!headerRow) return [];
-                return Array.from(headerRow.querySelectorAll('td')).map((cell, index) => {
+                // Use 'td, th' to cover both possible header cell elements
+                return Array.from(headerRow.querySelectorAll('td, th')).map((cell, index) => {
                     return {
                         index,
+                        // textContent concatenates all text nodes (may lose whitespace)
                         text: cell.textContent?.replace(/\s+/g, ' ').trim() || '',
+                        // innerText respects <br> and block elements as separators
+                        innerText: (cell as HTMLElement).innerText?.replace(/\s+/g, ' ').trim() || '',
                     };
                 });
             });
 
             // Check if we have day columns (Lu, Ma, Mi, etc.)
-            const hasDayColumns = headerColumns.some(h => /^(Lu|Ma|Mi|Ju|Vi|Sa|Do)/i.test(h.text));
+            const hasDayColumns = headerColumns.some(h =>
+                /(Lu|Ma|Mi|Ju|Vi|Sa|Do)/i.test(h.text) || /(Lu|Ma|Mi|Ju|Vi|Sa|Do)/i.test(h.innerText)
+            );
             if (hasDayColumns) break;
 
             console.log(`   ⏳ Headers not ready yet (attempt ${attempt + 1}), waiting...`);
             await page.waitForTimeout(2000);
         }
 
-        console.log(`   📋 Attendance headers found: ${headerColumns.map(h => `[${h.index}]="${h.text}"`).join(', ')}`);
+        console.log(`   📋 Attendance headers found: ${headerColumns.map(h => `[${h.index}] text="${h.text}" innerText="${h.innerText}"`).join(', ')}`);
         console.log(`   🎯 Looking for: ${targetDayName} ${targetDay}`);
 
         for (const header of headerColumns) {
-            const match = header.text.match(/^(Lu|Ma|Mi|Ju|Vi|Sa|Do)\s*(\d{1,2})/i);
-            if (!match) continue;
-            const dayName = match[1];
-            const dayNum = parseInt(match[2], 10);
-            if (dayNum === targetDay && dayName.toLowerCase() === targetDayName.toLowerCase()) {
-                console.log(`   ✅ Found column ${header.index} for ${targetDayName} ${targetDay}`);
-                return header.index;
+            // Try both textContent and innerText for matching
+            for (const rawText of [header.text, header.innerText]) {
+                // Match patterns like: "Lu 9", "Lu9", "Lu\n9", "Lun 9", etc.
+                const match = rawText.match(/(Lu|Ma|Mi|Ju|Vi|Sa|Do)\w*\s*(\d{1,2})/i);
+                if (!match) continue;
+                const dayName = match[1];
+                const dayNum = parseInt(match[2], 10);
+                if (dayNum === targetDay && dayName.toLowerCase() === targetDayName.toLowerCase()) {
+                    console.log(`   ✅ Found column ${header.index} for ${targetDayName} ${targetDay}`);
+                    return header.index;
+                }
             }
         }
 
@@ -1251,38 +1262,65 @@ export class ScraperService {
         await row.evaluate((el) => el.scrollIntoView({ block: 'center' }));
 
         const cell = row.locator('td').nth(columnIndex);
-        const checkbox = cell.locator('[role="checkbox"], .dx-checkbox').first();
 
-        const isChecked = await checkbox.evaluate((element) => {
-            const input = element.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
-            if (input) return input.checked;
+        // DevExpress renders boolean grid cells in various ways:
+        // 1. A dx-checkbox widget with role="checkbox"
+        // 2. A simple checkbox input
+        // 3. A clickable cell that toggles on click
+        // Try to find a checkbox element first, fall back to clicking the cell
+        const checkboxCount = await cell.locator('[role="checkbox"], .dx-checkbox, input[type="checkbox"]').count();
 
-            const ariaChecked = element.getAttribute('aria-checked');
-            if (ariaChecked !== null) {
-                return ariaChecked === 'true';
+        if (checkboxCount > 0) {
+            const checkbox = cell.locator('[role="checkbox"], .dx-checkbox, input[type="checkbox"]').first();
+
+            const isChecked = await checkbox.evaluate((element) => {
+                // Check input element
+                if (element instanceof HTMLInputElement) return element.checked;
+                const input = element.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+                if (input) return input.checked;
+
+                // Check aria-checked attribute
+                const ariaChecked = element.getAttribute('aria-checked');
+                if (ariaChecked !== null) return ariaChecked === 'true';
+
+                // Check DevExpress CSS class
+                if (element.classList.contains('dx-checkbox-checked')) return true;
+
+                const icon = element.querySelector('.dx-checkbox-icon');
+                if (icon && (icon.classList.contains('dx-checkbox-checked') || icon.classList.contains('dx-checkbox-icon-checked'))) {
+                    return true;
+                }
+
+                return false;
+            });
+
+            if (isChecked === desiredChecked) {
+                return false;
             }
 
-            if (element.classList.contains('dx-checkbox-checked')) {
-                return true;
+            // Try clicking the icon inside the checkbox, then the checkbox itself
+            const iconTarget = checkbox.locator('.dx-checkbox-icon').first();
+            if (await iconTarget.count()) {
+                await iconTarget.evaluate((el) => (el as HTMLElement).click());
+            } else {
+                await checkbox.evaluate((el) => (el as HTMLElement).click());
             }
-
-            const icon = element.querySelector('.dx-checkbox-icon');
-            if (icon && (icon.classList.contains('dx-checkbox-checked') || icon.classList.contains('dx-checkbox-icon-checked'))) {
-                return true;
-            }
-
-            return false;
-        });
-
-        if (isChecked === desiredChecked) {
-            return false;
-        }
-
-        const clickTarget = await checkbox.locator('.dx-checkbox-icon').first();
-        if (await clickTarget.count()) {
-            await clickTarget.click();
         } else {
-            await checkbox.click();
+            // No explicit checkbox — read current state from cell content and click cell to toggle
+            const cellChecked = await cell.evaluate((el) => {
+                // Some grids use text "✓" or images for checked state
+                const text = el.textContent?.trim() || '';
+                return text.includes('✓') || text.includes('✔') ||
+                       el.querySelector('.dx-checkbox-checked') !== null ||
+                       el.querySelector('input:checked') !== null;
+            });
+
+            if (cellChecked === desiredChecked) {
+                return false;
+            }
+
+            // Click the cell to toggle
+            await cell.evaluate((el) => (el as HTMLElement).click());
         }
 
         await page.waitForTimeout(300);
