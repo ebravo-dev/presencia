@@ -34,3 +34,9 @@ playwright-report/
 test-results/
 private.pem
 public.pem
+
+# Local test scripts (may contain credentials)
+src/test-attendance-upload.ts
+src/test-scraper.ts
+src/test-scraper-students.ts
+debug-screenshots/
