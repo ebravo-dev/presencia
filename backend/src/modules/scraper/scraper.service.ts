@@ -864,8 +864,7 @@ export class ScraperService {
             await this.expandAccordionSection(page, 'Asistencia');
             const columnIndex = await this.getAttendanceColumnIndex(page, date);
 
-            let hasChanges = false;
-
+            console.log(`📋 Setting attendance for ${students.length} students (column ${columnIndex})...`);
             for (let i = 0; i < students.length; i++) {
                 const student = students[i];
                 const desiredChecked = student.status !== 'ABSENT';
@@ -874,24 +873,16 @@ export class ScraperService {
                     await onProgress(student.name, i);
                 }
 
-                const updated = await this.setStudentAttendanceState(
+                await this.setStudentAttendanceState(
                     page,
                     student,
                     columnIndex,
                     desiredChecked
                 );
-
-                if (updated) {
-                    hasChanges = true;
-                }
             }
 
-            if (hasChanges) {
-                console.log('💾 Saving attendance changes...');
-                await this.saveAttendance(page, debugDir);
-            } else {
-                console.log('✅ No changes needed, attendance already up to date');
-            }
+            console.log('💾 Saving attendance via GuardarGenericoPantalla()...');
+            await this.saveAttendance(page, debugDir);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             console.error('❌ Attendance submission failed:', errorMessage);
@@ -1257,123 +1248,77 @@ export class ScraperService {
         student: AttendanceUploadStudent,
         columnIndex: number,
         desiredChecked: boolean
-    ): Promise<boolean> {
-        const rowIndex = await page.evaluate<number, { targetName: string; targetMatricula: string }>(
-            ({ targetName, targetMatricula }) => {
-            const normalize = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
-            const rows = Array.from(document.querySelectorAll('#grdAsistencias .dx-datagrid-rowsview .dx-data-row'));
-            for (let i = 0; i < rows.length; i++) {
-                const cells = rows[i].querySelectorAll('td');
-                const nameCell = cells[1]?.textContent || '';
-                const rowText = rows[i].textContent || '';
-                if (
-                    normalize(nameCell) === normalize(targetName) ||
-                    normalize(rowText).includes(normalize(targetName)) ||
-                    (targetMatricula && normalize(rowText).includes(normalize(targetMatricula)))
-                ) {
-                    return i;
+    ): Promise<void> {
+        // The UAT portal uses plain <input type="checkbox"> elements with IDs like cbPl_{dia}_{id_alumno}_{num_pase_lista}
+        // GuardarGenericoPantalla() reads the .checked property of each input to build the save payload.
+        // So we just need to SET .checked — no need to click anything.
+        const result = await page.evaluate<
+            { found: boolean; name?: string; changed?: boolean },
+            { targetName: string; targetMatricula: string; colIndex: number; checked: boolean }
+        >(
+            ({ targetName, targetMatricula, colIndex, checked }) => {
+                const normalize = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
+                const rows = Array.from(document.querySelectorAll('#grdAsistencias .dx-datagrid-rowsview .dx-data-row'));
+                for (const row of rows) {
+                    const cells = row.querySelectorAll('td');
+                    const nameCell = cells[1]?.textContent || '';
+                    const rowText = row.textContent || '';
+                    if (
+                        normalize(nameCell) === normalize(targetName) ||
+                        normalize(rowText).includes(normalize(targetName)) ||
+                        (targetMatricula && normalize(rowText).includes(normalize(targetMatricula)))
+                    ) {
+                        const cell = cells[colIndex];
+                        const input = cell?.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+                        if (input) {
+                            const wasChecked = input.checked;
+                            input.checked = checked;
+                            return { found: true, name: nameCell.trim(), changed: wasChecked !== checked };
+                        }
+                        return { found: true, name: nameCell.trim(), changed: false };
+                    }
                 }
-            }
-            return -1;
-        },
-            { targetName: student.name, targetMatricula: student.matricula }
+                return { found: false };
+            },
+            { targetName: student.name, targetMatricula: student.matricula, colIndex: columnIndex, checked: desiredChecked }
         );
 
-        if (rowIndex < 0) {
+        if (!result.found) {
             console.log(`   ⚠️ Student not found in grid: ${student.name}`);
-            return false;
-        }
-
-        const row = page.locator('#grdAsistencias .dx-datagrid-rowsview .dx-data-row').nth(rowIndex);
-        // Use JS scroll — Playwright's scrollIntoViewIfNeeded fails inside collapsed accordions
-        await row.evaluate((el) => el.scrollIntoView({ block: 'center' }));
-
-        const cell = row.locator('td').nth(columnIndex);
-
-        // DevExpress renders boolean grid cells in various ways:
-        // 1. A dx-checkbox widget with role="checkbox"
-        // 2. A simple checkbox input
-        // 3. A clickable cell that toggles on click
-        // Try to find a checkbox element first, fall back to clicking the cell
-        const checkboxCount = await cell.locator('[role="checkbox"], .dx-checkbox, input[type="checkbox"]').count();
-
-        if (checkboxCount > 0) {
-            const checkbox = cell.locator('[role="checkbox"], .dx-checkbox, input[type="checkbox"]').first();
-
-            const isChecked = await checkbox.evaluate((element) => {
-                // Check input element
-                if (element instanceof HTMLInputElement) return element.checked;
-                const input = element.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
-                if (input) return input.checked;
-
-                // Check aria-checked attribute
-                const ariaChecked = element.getAttribute('aria-checked');
-                if (ariaChecked !== null) return ariaChecked === 'true';
-
-                // Check DevExpress CSS class
-                if (element.classList.contains('dx-checkbox-checked')) return true;
-
-                const icon = element.querySelector('.dx-checkbox-icon');
-                if (icon && (icon.classList.contains('dx-checkbox-checked') || icon.classList.contains('dx-checkbox-icon-checked'))) {
-                    return true;
-                }
-
-                return false;
-            });
-
-            if (isChecked === desiredChecked) {
-                return false;
-            }
-
-            // Try clicking the icon inside the checkbox, then the checkbox itself
-            const iconTarget = checkbox.locator('.dx-checkbox-icon').first();
-            if (await iconTarget.count()) {
-                await iconTarget.evaluate((el) => (el as HTMLElement).click());
-            } else {
-                await checkbox.evaluate((el) => (el as HTMLElement).click());
-            }
         } else {
-            // No explicit checkbox — read current state from cell content and click cell to toggle
-            const cellChecked = await cell.evaluate((el) => {
-                // Some grids use text "✓" or images for checked state
-                const text = el.textContent?.trim() || '';
-                return text.includes('✓') || text.includes('✔') ||
-                       el.querySelector('.dx-checkbox-checked') !== null ||
-                       el.querySelector('input:checked') !== null;
-            });
-
-            if (cellChecked === desiredChecked) {
-                return false;
-            }
-
-            // Click the cell to toggle
-            await cell.evaluate((el) => (el as HTMLElement).click());
+            const status = desiredChecked ? '✅' : '❌';
+            const changeNote = result.changed ? ' (changed)' : ' (already set)';
+            console.log(`   ${status} ${result.name}: ${desiredChecked ? 'PRESENT' : 'ABSENT'}${changeNote}`);
         }
-
-        await page.waitForTimeout(300);
-        return true;
     }
 
     private async saveAttendance(page: Page, debugDir: string): Promise<void> {
-        const saveButton = page.locator('#btn_Guardar_grdAsistencias');
+        // The UAT portal uses GuardarGenericoPantalla() which:
+        // 1. Reads all checkbox .checked states from #grdAsistencias
+        // 2. POSTs to /Profesor/ControlAsistencia/GuardaAsistencias
+        // 3. Shows success/error alert
+        // We intercept the AJAX response to verify success.
 
-        if (await saveButton.count()) {
-            try {
-                await saveButton.click({ force: true });
-                await page.waitForTimeout(2000);
-                return;
-            } catch (error) {
-                console.log('⚠️ Save button click failed, attempting fallback', error);
-            }
-        }
+        const saveResponsePromise = page.waitForResponse(
+            (response) => response.url().includes('GuardaAsistencias'),
+            { timeout: 30000 }
+        );
 
+        // Call the portal's save function directly
         await page.evaluate(() => {
-            const button = document.querySelector('#btn_Guardar_grdAsistencias') as HTMLElement | null;
-            button?.click();
+            (window as any).GuardarGenericoPantalla();
         });
 
-        await page.waitForTimeout(2000);
-        await page.screenshot({ path: `${debugDir}/attendance-saved.png` });
+        const response = await saveResponsePromise;
+        const responseBody = await response.json();
+        console.log(`   📡 Save response: ${JSON.stringify(responseBody)}`);
+
+        if (!responseBody.exito) {
+            await page.screenshot({ path: `${debugDir}/attendance-save-error.png` });
+            throw new Error(`Portal save failed: ${responseBody.mensaje || 'Unknown error'}`);
+        }
+
+        console.log(`   ✅ ${responseBody.mensaje}`);
     }
 
     /**
