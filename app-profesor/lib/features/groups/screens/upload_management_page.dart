@@ -349,6 +349,40 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     return attendances;
   }
 
+  void _showPendingDetailsModal() {
+    // Sort: today first, then most recent
+    final sorted = List<AsistenciaRegistro>.from(_pendientes)
+      ..sort((a, b) => b.fecha.compareTo(a.fecha));
+
+    final grupos = _authStorage.getGrupos() ?? [];
+    // Build student name lookup: studentId -> name
+    final studentNames = <String, String>{};
+    for (final grupo in grupos) {
+      for (final student in grupo.students) {
+        if (student.id != null) {
+          studentNames[student.id!] = student.name;
+        }
+      }
+    }
+    // Build grupo name lookup: grupoId -> Grupo
+    final grupoMap = <String, Grupo>{};
+    for (final grupo in grupos) {
+      grupoMap[grupo.id] = grupo;
+      grupoMap[grupo.identificadorUnico] = grupo;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _PendingDetailsModal(
+        pendientes: sorted,
+        studentNames: studentNames,
+        grupoMap: grupoMap,
+      ),
+    );
+  }
+
   Future<bool> _waitForSyncCompletion(String professorId, String token) async {
     final completer = Completer<bool>();
 
@@ -528,62 +562,61 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   Widget _buildPendingState() {
     return Column(
       children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1C1C1E),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.orange.withOpacity(0.3), width: 1),
-          ),
-          child: Column(
-            children: [
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.15),
-                  shape: BoxShape.circle,
+        GestureDetector(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            _showPendingDetailsModal();
+          },
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C1C1E),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.orange.withOpacity(0.3), width: 1),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.cloud_upload_rounded,
+                    size: 44,
+                    color: Colors.orange,
+                  ),
                 ),
-                child: const Icon(
-                  Icons.cloud_upload_rounded,
-                  size: 44,
-                  color: Colors.orange,
+                const SizedBox(height: 20),
+                const Text(
+                  'Tienes asistencias por subir',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Tienes asistencias por subir',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+                const SizedBox(height: 8),
+                Text(
+                  '${_pendientes.length} registro${_pendientes.length == 1 ? '' : 's'} pendiente${_pendientes.length == 1 ? '' : 's'}',
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
                 ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '${_pendientes.length} registro${_pendientes.length == 1 ? '' : 's'} pendiente${_pendientes.length == 1 ? '' : 's'}',
-                style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-              ),
-              const SizedBox(height: 20),
-              // Botón Ver calendario - abre modal
-              GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  _showCalendarModal();
-                },
-                child: Row(
+                const SizedBox(height: 20),
+                Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      Icons.calendar_month,
+                      Icons.list_alt_rounded,
                       color: Colors.blue.shade400,
                       size: 18,
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      'Ver calendario',
+                      'Ver detalles',
                       style: TextStyle(
                         color: Colors.blue.shade400,
                         fontSize: 14,
@@ -592,14 +625,14 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                     ),
                     const SizedBox(width: 4),
                     Icon(
-                      Icons.open_in_new,
+                      Icons.chevron_right,
                       color: Colors.blue.shade400,
-                      size: 16,
+                      size: 18,
                     ),
                   ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         const Spacer(),
@@ -967,6 +1000,292 @@ class _CalendarModalState extends State<_CalendarModal> {
           style: TextStyle(color: Colors.grey.shade300, fontSize: 14),
         ),
       ],
+    );
+  }
+}
+
+/// Modal bottom sheet showing pending attendance details
+class _PendingDetailsModal extends StatefulWidget {
+  final List<AsistenciaRegistro> pendientes;
+  final Map<String, String> studentNames;
+  final Map<String, Grupo> grupoMap;
+
+  const _PendingDetailsModal({
+    required this.pendientes,
+    required this.studentNames,
+    required this.grupoMap,
+  });
+
+  @override
+  State<_PendingDetailsModal> createState() => _PendingDetailsModalState();
+}
+
+class _PendingDetailsModalState extends State<_PendingDetailsModal> {
+  final Set<int> _expandedIndices = {};
+
+  String _formatFecha(DateTime fecha) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final fechaNorm = DateTime(fecha.year, fecha.month, fecha.day);
+    final diff = today.difference(fechaNorm).inDays;
+
+    final diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+    final meses = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+    final diaSemana = diasSemana[fecha.weekday - 1];
+    final fechaStr = '${fecha.day} ${meses[fecha.month]}';
+
+    if (diff == 0) return 'Hoy · $diaSemana $fechaStr';
+    if (diff == 1) return 'Ayer · $diaSemana $fechaStr';
+    if (diff == 2) return 'Antier · $diaSemana $fechaStr';
+    return '$diaSemana $fechaStr';
+  }
+
+  String _resolveStudentName(String key) {
+    return widget.studentNames[key] ?? key;
+  }
+
+  String _resolveGrupoName(String grupoId) {
+    final grupo = widget.grupoMap[grupoId];
+    if (grupo != null) {
+      return '${grupo.name} · Grupo ${grupo.groupLetter}';
+    }
+    return grupoId;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.75,
+      decoration: const BoxDecoration(
+        color: Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Handle bar
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade600,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // Title
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
+            child: Text(
+              'Asistencias Pendientes',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              '${widget.pendientes.length} registro${widget.pendientes.length == 1 ? '' : 's'}',
+              style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+            ),
+          ),
+          const Divider(color: Color(0xFF3A3A3C), height: 1),
+          // List
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: widget.pendientes.length,
+              separatorBuilder: (_, __) => const Divider(
+                color: Color(0xFF3A3A3C),
+                height: 1,
+                indent: 16,
+                endIndent: 16,
+              ),
+              itemBuilder: (context, index) {
+                final registro = widget.pendientes[index];
+                final isExpanded = _expandedIndices.contains(index);
+                return _buildRegistroTile(registro, index, isExpanded);
+              },
+            ),
+          ),
+          // Close button
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.grey.shade800,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  'Cerrar',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRegistroTile(AsistenciaRegistro registro, int index, bool isExpanded) {
+    final presentes = registro.asistenciasAlumnos.values.where((v) => v).length;
+    final total = registro.asistenciasAlumnos.length;
+    final grupoLabel = registro.nombreClase ?? _resolveGrupoName(registro.grupoId);
+
+    return Column(
+      children: [
+        // Header row (tappable)
+        InkWell(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            setState(() {
+              if (isExpanded) {
+                _expandedIndices.remove(index);
+              } else {
+                _expandedIndices.add(index);
+              }
+            });
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                // Orange dot
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: const BoxDecoration(
+                    color: Colors.orange,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Date + group info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _formatFecha(registro.fecha),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        grupoLabel,
+                        style: TextStyle(
+                          color: Colors.grey.shade400,
+                          fontSize: 13,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Present count chip
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$presentes/$total',
+                    style: TextStyle(
+                      color: Colors.green.shade400,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Expand arrow
+                AnimatedRotation(
+                  turns: isExpanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: Colors.grey.shade400,
+                    size: 24,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Expandable details
+        AnimatedCrossFade(
+          firstChild: const SizedBox.shrink(),
+          secondChild: _buildStudentList(registro),
+          crossFadeState: isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 200),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStudentList(AsistenciaRegistro registro) {
+    // Sort: present students first, then absent
+    final entries = registro.asistenciasAlumnos.entries.toList()
+      ..sort((a, b) {
+        if (a.value != b.value) return a.value ? -1 : 1;
+        return _resolveStudentName(a.key).compareTo(_resolveStudentName(b.key));
+      });
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(38, 0, 16, 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2C2C2E),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: entries.map((entry) {
+          final name = _resolveStudentName(entry.key);
+          final present = entry.value;
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Row(
+              children: [
+                Icon(
+                  present ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                  color: present ? Colors.green.shade400 : Colors.red.shade400,
+                  size: 18,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    name,
+                    style: TextStyle(
+                      color: present ? Colors.white : Colors.grey.shade500,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 }
