@@ -261,16 +261,9 @@ class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
 
     final attendances = _buildAttendances(registroActualizado, grupo);
     if (attendances.isEmpty) {
-      if (showSnackbars && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No se pudieron resolver alumnos para la asistencia.'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-      return false;
+      // No changes vs last synced state — just mark as synced locally
+      await _asistenciaService.marcarComoSincronizada(registroActualizado.id);
+      return true;
     }
 
     final storedPassword = _authStorage.getEncryptedPassword();
@@ -408,11 +401,16 @@ class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
       }
     }
 
+    final synced = registro.asistenciasSincronizadas;
     final attendances = <Map<String, dynamic>>[];
     registro.asistenciasAlumnos.forEach((key, present) {
       final studentId = studentIdMap[key];
       if (studentId == null) {
         return;
+      }
+      // If we have a synced snapshot, only include students whose state changed
+      if (synced != null && synced[key] == present) {
+        return; // No change for this student, skip
       }
       attendances.add({
         'studentId': studentId,

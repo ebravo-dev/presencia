@@ -28,13 +28,14 @@ class AsistenciaRegistroAdapter extends TypeAdapter<AsistenciaRegistro> {
       fechaCreacion: fields[8] as DateTime,
       fechaActualizacion: fields[9] as DateTime?,
       nombreClase: fields[10] as String?,
+      asistenciasSincronizadas: (fields[11] as Map?)?.cast<String, bool>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, AsistenciaRegistro obj) {
     writer
-      ..writeByte(11)
+      ..writeByte(12)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -56,7 +57,9 @@ class AsistenciaRegistroAdapter extends TypeAdapter<AsistenciaRegistro> {
       ..writeByte(9)
       ..write(obj.fechaActualizacion)
       ..writeByte(10)
-      ..write(obj.nombreClase);
+      ..write(obj.nombreClase)
+      ..writeByte(11)
+      ..write(obj.asistenciasSincronizadas);
   }
 
   @override

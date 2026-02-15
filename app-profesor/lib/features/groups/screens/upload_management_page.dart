@@ -85,7 +85,8 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     }
   }
 
-  /// Check the server for records that were already synced (e.g. app was closed during upload)
+  /// Check the server for records that were already synced (e.g. app was closed during upload).
+  /// Only reconciles if the local attendance data hasn't changed since the last sync.
   Future<void> _reconciliarConServidor(List<AsistenciaRegistro> pendientes) async {
     final token = _authStorage.getToken();
     if (token == null) return;
@@ -106,10 +107,28 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       final dateStr = '${registro.fecha.year}-${registro.fecha.month.toString().padLeft(2, '0')}-${registro.fecha.day.toString().padLeft(2, '0')}';
       final key = '${registro.grupoId}_$dateStr';
       if (syncedMap[key] == true) {
-        Logger.info('Reconciliación: marcando como sincronizada $key');
-        await _asistenciaService.marcarComoSincronizada(registro.id);
+        // Only mark as synced if the local data hasn't changed since last sync
+        if (_attendanceMatchesSyncedSnapshot(registro)) {
+          Logger.info('Reconciliación: marcando como sincronizada $key');
+          await _asistenciaService.marcarComoSincronizada(registro.id);
+        } else {
+          Logger.info('Reconciliación: $key tiene cambios locales, mantener como pendiente');
+        }
       }
     }
+  }
+
+  /// Returns true if the current attendance data matches the last synced snapshot
+  /// (meaning no local changes were made after the sync).
+  bool _attendanceMatchesSyncedSnapshot(AsistenciaRegistro registro) {
+    final synced = registro.asistenciasSincronizadas;
+    if (synced == null) return false; // No snapshot = never synced or old record, don't auto-reconcile
+    final current = registro.asistenciasAlumnos;
+    if (current.length != synced.length) return false;
+    for (final entry in current.entries) {
+      if (synced[entry.key] != entry.value) return false;
+    }
+    return true;
   }
 
   // Get dates that have pending uploads
@@ -390,7 +409,10 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
 
     final attendances = _buildAttendances(registroActualizado, grupo);
     if (attendances.isEmpty) {
-      return false;
+      // No changes vs last synced state — just mark as synced locally
+      await _asistenciaService.marcarComoSincronizada(registroActualizado.id);
+      _progressNotifier.value = 'Sin cambios, ya sincronizado';
+      return true;
     }
 
     final storedPassword = _authStorage.getEncryptedPassword();
@@ -485,11 +507,16 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       }
     }
 
+    final synced = registro.asistenciasSincronizadas;
     final attendances = <Map<String, dynamic>>[];
     registro.asistenciasAlumnos.forEach((key, present) {
       final studentId = studentIdMap[key];
       if (studentId == null) {
         return;
+      }
+      // If we have a synced snapshot, only include students whose state changed
+      if (synced != null && synced[key] == present) {
+        return; // No change for this student, skip
       }
       attendances.add({
         'studentId': studentId,

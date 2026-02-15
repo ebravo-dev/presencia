@@ -119,6 +119,7 @@ class AsistenciaLocalService {
         final actualizado = registro.copyWith(
           sincronizado: true,
           fechaActualizacion: DateTime.now(),
+          asistenciasSincronizadas: Map<String, bool>.from(registro.asistenciasAlumnos),
         );
         await _safeBox.put(id, actualizado);
         Logger.info('Asistencia marcada como sincronizada: $id');
