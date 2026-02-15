@@ -292,6 +292,34 @@ class ApiService {
     }
   }
 
+  /// Check which attendance records have been synced to the portal
+  /// Returns a map of "groupId_date" -> synced (bool)
+  Future<Map<String, bool>> checkSyncedRecords({
+    required String token,
+    required List<Map<String, String>> records,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/attendance/check-synced',
+        data: {'records': records},
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+
+      final result = <String, bool>{};
+      if (response.statusCode == 200) {
+        final data = response.data['data'] as List<dynamic>? ?? [];
+        for (final item in data) {
+          final key = '${item['groupId']}_${item['date']}';
+          result[key] = item['synced'] == true;
+        }
+      }
+      return result;
+    } catch (e) {
+      Logger.error('Error checking synced records', e);
+      return {};
+    }
+  }
+
   /// Maneja errores de Dio y devuelve mensajes amigables
   String _handleDioError(DioException e) {
     switch (e.type) {

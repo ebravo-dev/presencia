@@ -293,6 +293,58 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
     );
 
     /**
+     * POST /attendance/check-synced
+     * Check which attendance records have been synced to the portal
+     * Body: { records: [{ groupId, date }] }
+     */
+    fastify.post<{
+        Body: { records: Array<{ groupId: string; date: string }> };
+    }>(
+        '/attendance/check-synced',
+        async (request, reply) => {
+            try {
+                const professorId = (request as AuthenticatedRequest).professorId!;
+                const { records } = request.body;
+
+                if (!Array.isArray(records) || records.length === 0) {
+                    return reply.send({ data: [] });
+                }
+
+                const results = await Promise.all(
+                    records.map(async ({ groupId, date }) => {
+                        const record = await prisma.attendanceRecord.findFirst({
+                            where: {
+                                groupId,
+                                professorId,
+                                date: new Date(date),
+                            },
+                            select: {
+                                portalSyncStatus: true,
+                                portalSyncedAt: true,
+                            },
+                        });
+                        return {
+                            groupId,
+                            date,
+                            synced: record?.portalSyncStatus === PortalSyncStatus.COMPLETED,
+                            status: record?.portalSyncStatus ?? 'NOT_FOUND',
+                        };
+                    })
+                );
+
+                return reply.send({ data: results });
+            } catch (error) {
+                request.log.error(error);
+                return reply.code(500).send({
+                    statusCode: 500,
+                    error: 'Internal Server Error',
+                    message: 'Error al verificar estado de sincronización',
+                });
+            }
+        }
+    );
+
+    /**
      * GET /attendance/:groupId/summary
      * Get attendance summary/statistics for a group
      */

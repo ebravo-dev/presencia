@@ -10,6 +10,7 @@ import '../../../core/utils/utils.dart';
 import '../../../services/api_service.dart';
 import '../../../services/auth_storage_service.dart';
 import '../../../services/sse_service.dart';
+import '../../../services/sync_service.dart';
 import '../../../shared/models/grupo.dart';
 
 class UploadManagementPage extends StatefulWidget {
@@ -24,6 +25,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   final ApiService _apiService = ApiService();
   final AuthStorageService _authStorage = AuthStorageService();
   final SSEService _sseService = SSEService();
+  final SyncService _syncService = SyncService();
   StreamSubscription<SyncEvent>? _sseSubscription;
   List<AsistenciaRegistro> _pendientes = [];
   List<AsistenciaRegistro> _sincronizadas = [];
@@ -34,6 +36,10 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
 
   bool _dialogOpen = false;
   final ValueNotifier<String> _progressNotifier = ValueNotifier('Preparando...');
+  final ValueNotifier<int> _stepNotifier = ValueNotifier(0);
+  final ValueNotifier<int> _totalStepsNotifier = ValueNotifier(1);
+  int _currentRecordIndex = 0;
+  int _totalRecords = 0;
 
   @override
   void initState() {
@@ -46,6 +52,8 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     _sseSubscription?.cancel();
     _sseService.disconnect();
     _progressNotifier.dispose();
+    _stepNotifier.dispose();
+    _totalStepsNotifier.dispose();
     super.dispose();
   }
 
@@ -53,14 +61,54 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     setState(() => _isLoading = true);
     try {
       final pendientes = _asistenciaService.obtenerAsistenciasPendientes();
+
+      // Check if any "pending" records were already synced on the server
+      if (pendientes.isNotEmpty) {
+        await _reconciliarConServidor(pendientes);
+      }
+
+      // Re-fetch after reconciliation
+      final pendientesActualizados = _asistenciaService.obtenerAsistenciasPendientes();
       setState(() {
-        _pendientes = pendientes;
-        _sincronizadas = []; // TODO: Get synced ones from service
+        _pendientes = pendientesActualizados;
+        _sincronizadas = [];
         _isLoading = false;
       });
     } catch (e) {
       Logger.error('Error cargando asistencias', e, StackTrace.current);
-      setState(() => _isLoading = false);
+      // Still show whatever we have locally
+      final pendientes = _asistenciaService.obtenerAsistenciasPendientes();
+      setState(() {
+        _pendientes = pendientes;
+        _isLoading = false;
+      });
+    }
+  }
+
+  /// Check the server for records that were already synced (e.g. app was closed during upload)
+  Future<void> _reconciliarConServidor(List<AsistenciaRegistro> pendientes) async {
+    final token = _authStorage.getToken();
+    if (token == null) return;
+
+    final records = pendientes.map((r) {
+      final dateStr = '${r.fecha.year}-${r.fecha.month.toString().padLeft(2, '0')}-${r.fecha.day.toString().padLeft(2, '0')}';
+      return {'groupId': r.grupoId, 'date': dateStr};
+    }).toList();
+
+    final syncedMap = await _apiService.checkSyncedRecords(
+      token: token,
+      records: records,
+    );
+
+    if (syncedMap.isEmpty) return;
+
+    for (final registro in pendientes) {
+      final dateStr = '${registro.fecha.year}-${registro.fecha.month.toString().padLeft(2, '0')}-${registro.fecha.day.toString().padLeft(2, '0')}';
+      final key = '${registro.grupoId}_$dateStr';
+      if (syncedMap[key] == true) {
+        Logger.info('Reconciliación: marcando como sincronizada $key');
+        await _asistenciaService.marcarComoSincronizada(registro.id);
+      }
     }
   }
 
@@ -101,15 +149,43 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   Future<void> _subirAsistencias() async {
     if (_pendientes.isEmpty) return;
 
+    // Check connectivity before starting
+    final hasInternet = await _syncService.hasInternetConnection();
+    if (!hasInternet) {
+      if (mounted) {
+        HapticFeedback.heavyImpact();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Sin conexión a internet. Tienes ${_pendientes.length} registro${_pendientes.length == 1 ? '' : 's'} guardado${_pendientes.length == 1 ? '' : 's'} localmente. Cuando tengas conexión podrás sincronizarlos.',
+            ),
+            backgroundColor: Colors.orange.shade800,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 5),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() => _isUploading = true);
     HapticFeedback.mediumImpact();
 
+    _currentRecordIndex = 0;
+    _totalRecords = _pendientes.length;
     _progressNotifier.value = 'Preparando subida...';
+    _stepNotifier.value = 0;
+    _totalStepsNotifier.value = 1;
     _showProgressDialog();
 
     try {
-      for (final asistencia in _pendientes) {
-        final success = await _subirRegistro(asistencia);
+      for (int i = 0; i < _pendientes.length; i++) {
+        _currentRecordIndex = i + 1;
+        _progressNotifier.value = 'Subiendo registro $_currentRecordIndex de $_totalRecords...';
+        final success = await _subirRegistro(_pendientes[i]);
         if (!success) {
           throw Exception('Error sincronizando asistencias');
         }
@@ -186,15 +262,64 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                 ),
               ),
               const SizedBox(height: 20),
-              const Text(
-                'Subiendo asistencias...',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+              // Record progress (e.g. "Registro 1 de 3")
+              if (_totalRecords > 1)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'Registro $_currentRecordIndex de $_totalRecords',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                )
+              else
+                const Text(
+                  'Subiendo asistencias...',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
               const SizedBox(height: 12),
+              // Step-by-step progress bar
+              ValueListenableBuilder<int>(
+                valueListenable: _totalStepsNotifier,
+                builder: (context, totalSteps, _) {
+                  return ValueListenableBuilder<int>(
+                    valueListenable: _stepNotifier,
+                    builder: (context, step, _) {
+                      final progress = totalSteps > 0 ? step / totalSteps : 0.0;
+                      return Column(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: progress,
+                              backgroundColor: Colors.white.withOpacity(0.1),
+                              valueColor: const AlwaysStoppedAnimation<Color>(Colors.orange),
+                              minHeight: 6,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            totalSteps > 1 ? '$step / $totalSteps alumnos' : '',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.5),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+              // Current message from SSE
               ValueListenableBuilder<String>(
                 valueListenable: _progressNotifier,
                 builder: (context, message, _) => Text(
@@ -206,6 +331,32 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                     height: 1.3,
                   ),
                 ),
+              ),
+              const SizedBox(height: 16),
+              const Divider(color: Color(0xFF3A3A3C), height: 1),
+              const SizedBox(height: 12),
+              // "You can close" hint
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    color: Colors.blue.shade400,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      'Puedes cerrar la app, las asistencias se seguirán subiendo.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.blue.shade400,
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -392,7 +543,14 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         if (event.message.isNotEmpty) {
           _progressNotifier.value = event.message;
         }
+        if (event.step > 0) {
+          _stepNotifier.value = event.step;
+        }
+        if (event.totalSteps > 0) {
+          _totalStepsNotifier.value = event.totalSteps;
+        }
         if (event.isCompleted) {
+          _stepNotifier.value = _totalStepsNotifier.value; // fill to 100%
           if (!completer.isCompleted) {
             completer.complete(true);
           }
