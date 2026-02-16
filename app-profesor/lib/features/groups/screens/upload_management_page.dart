@@ -35,11 +35,8 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   DateTime? _selectedDay;
 
   bool _dialogOpen = false;
-  final ValueNotifier<String> _progressNotifier = ValueNotifier('Preparando...');
-  final ValueNotifier<int> _stepNotifier = ValueNotifier(0);
-  final ValueNotifier<int> _totalStepsNotifier = ValueNotifier(1);
-  int _currentRecordIndex = 0;
-  int _totalRecords = 0;
+  // Stepper-based progress tracking
+  final ValueNotifier<List<_SyncStepData>> _stepsNotifier = ValueNotifier([]);
 
   @override
   void initState() {
@@ -51,9 +48,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   void dispose() {
     _sseSubscription?.cancel();
     _sseService.disconnect();
-    _progressNotifier.dispose();
-    _stepNotifier.dispose();
-    _totalStepsNotifier.dispose();
+    _stepsNotifier.dispose();
     super.dispose();
   }
 
@@ -193,27 +188,37 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     setState(() => _isUploading = true);
     HapticFeedback.mediumImpact();
 
-    _currentRecordIndex = 0;
-    _totalRecords = _pendientes.length;
-    _progressNotifier.value = 'Preparando subida...';
-    _stepNotifier.value = 0;
-    _totalStepsNotifier.value = 1;
+    // Build step list: one set of steps per record
+    final grupos = _authStorage.getGrupos() ?? [];
+    final steps = <_SyncStepData>[];
+    for (final reg in _pendientes) {
+      final grupo = _resolveGrupo(grupos, reg.grupoId);
+      final className = reg.nombreClase ?? grupo?.name ?? reg.grupoId;
+      steps.add(_SyncStepData(label: className, status: _StepStatus.pending));
+    }
+    _stepsNotifier.value = List.from(steps);
     _showProgressDialog();
 
-    try {
-      for (int i = 0; i < _pendientes.length; i++) {
-        _currentRecordIndex = i + 1;
-        _progressNotifier.value = 'Subiendo registro $_currentRecordIndex de $_totalRecords...';
-        final success = await _subirRegistro(_pendientes[i]);
-        if (!success) {
-          throw Exception('Error sincronizando asistencias');
-        }
+    int successCount = 0;
+    for (int i = 0; i < _pendientes.length; i++) {
+      _updateStep(i, _StepStatus.inProgress);
+      final success = await _subirRegistro(_pendientes[i]);
+      if (success) {
+        _updateStep(i, _StepStatus.completed);
+        successCount++;
+      } else {
+        _updateStep(i, _StepStatus.failed);
       }
+    }
 
-      await _cargarAsistencias();
+    await _cargarAsistencias();
 
-      if (mounted) {
-        HapticFeedback.heavyImpact();
+    if (mounted) {
+      HapticFeedback.heavyImpact();
+      if (successCount == _pendientes.length) {
+        // All done — update last step indicator and auto-close after a moment
+        await Future.delayed(const Duration(milliseconds: 800));
+        _closeProgressDialog();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('¡Asistencias subidas correctamente!'),
@@ -224,19 +229,21 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
             ),
           ),
         );
-      }
-    } catch (e) {
-      Logger.error('Error subiendo asistencias', e, StackTrace.current);
-
-      _closeProgressDialog();
-
-      if (mounted) {
-        HapticFeedback.heavyImpact();
+      } else if (successCount > 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text(
-              'Error al subir asistencias. Intenta de nuevo.',
+            content: Text('$successCount de ${_pendientes.length} registros subidos. Los fallidos se pueden reintentar.'),
+            backgroundColor: Colors.orange.shade700,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
             ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Error al subir asistencias. Intenta de nuevo.'),
             backgroundColor: Colors.red.shade700,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
@@ -245,118 +252,66 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
           ),
         );
       }
-    } finally {
-      if (mounted) {
-        setState(() => _isUploading = false);
-      }
-
-      _closeProgressDialog();
     }
+
+    if (mounted) {
+      setState(() => _isUploading = false);
+    }
+  }
+
+  void _updateStep(int index, _StepStatus status) {
+    final steps = List<_SyncStepData>.from(_stepsNotifier.value);
+    steps[index] = steps[index].copyWith(status: status);
+    _stepsNotifier.value = steps;
   }
 
   void _showProgressDialog() {
     if (!mounted || _dialogOpen) return;
     _dialogOpen = true;
-    _progressNotifier.value = 'Preparando subida...';
 
     showDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (context) => Dialog(
         backgroundColor: const Color(0xFF2C2C2E),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(
-                width: 50,
-                height: 50,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
-                ),
-              ),
-              const SizedBox(height: 20),
-              // Record progress (e.g. "Registro 1 de 3")
-              if (_totalRecords > 1)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    'Registro $_currentRecordIndex de $_totalRecords',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                )
-              else
-                const Text(
-                  'Subiendo asistencias...',
+              // Title
+              const Center(
+                child: Text(
+                  'Subiendo asistencias',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 16,
+                    fontSize: 18,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-              const SizedBox(height: 12),
-              // Step-by-step progress bar
-              ValueListenableBuilder<int>(
-                valueListenable: _totalStepsNotifier,
-                builder: (context, totalSteps, _) {
-                  return ValueListenableBuilder<int>(
-                    valueListenable: _stepNotifier,
-                    builder: (context, step, _) {
-                      final progress = totalSteps > 0 ? step / totalSteps : 0.0;
-                      return Column(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
-                            child: LinearProgressIndicator(
-                              value: progress,
-                              backgroundColor: Colors.white.withOpacity(0.1),
-                              valueColor: const AlwaysStoppedAnimation<Color>(Colors.orange),
-                              minHeight: 6,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            totalSteps > 1 ? '$step / $totalSteps alumnos' : '',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.5),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      );
-                    },
+              ),
+              const SizedBox(height: 20),
+              // Stepper
+              ValueListenableBuilder<List<_SyncStepData>>(
+                valueListenable: _stepsNotifier,
+                builder: (context, steps, _) {
+                  return Column(
+                    children: [
+                      for (int i = 0; i < steps.length; i++)
+                        _buildStepRow(steps[i], i, steps.length),
+                    ],
                   );
                 },
-              ),
-              const SizedBox(height: 8),
-              // Current message from SSE
-              ValueListenableBuilder<String>(
-                valueListenable: _progressNotifier,
-                builder: (context, message, _) => Text(
-                  message,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.8),
-                    fontSize: 13,
-                    height: 1.3,
-                  ),
-                ),
               ),
               const SizedBox(height: 16),
               const Divider(color: Color(0xFF3A3A3C), height: 1),
               const SizedBox(height: 12),
-              // "You can close" hint
+              // "You can close" hint + close button
               Row(
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
                     Icons.info_outline_rounded,
@@ -364,10 +319,9 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                     size: 16,
                   ),
                   const SizedBox(width: 6),
-                  Flexible(
+                  Expanded(
                     child: Text(
-                      'Puedes cerrar la app, las asistencias se seguirán subiendo.',
-                      textAlign: TextAlign.center,
+                      'Puedes cerrar, las asistencias se seguirán subiendo.',
                       style: TextStyle(
                         color: Colors.blue.shade400,
                         fontSize: 12,
@@ -377,6 +331,20 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              Center(
+                child: TextButton(
+                  onPressed: () => _closeProgressDialog(),
+                  child: Text(
+                    'Cerrar',
+                    style: TextStyle(
+                      color: Colors.grey.shade400,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -384,6 +352,115 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     ).then((_) {
       _dialogOpen = false;
     });
+  }
+
+  Widget _buildStepRow(_SyncStepData step, int index, int total) {
+    final isLast = index == total - 1;
+    final icon = _stepIcon(step.status);
+    final color = _stepColor(step.status);
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Vertical line + icon
+          SizedBox(
+            width: 32,
+            child: Column(
+              children: [
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(child: icon),
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 2),
+                      color: step.status == _StepStatus.completed
+                          ? Colors.green.withValues(alpha: 0.4)
+                          : Colors.white.withValues(alpha: 0.1),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          // Label + subtitle
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    step.label,
+                    style: TextStyle(
+                      color: step.status == _StepStatus.pending
+                          ? Colors.grey.shade500
+                          : Colors.white,
+                      fontSize: 14,
+                      fontWeight: step.status == _StepStatus.inProgress
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                    ),
+                  ),
+                  if (step.subtitle != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        step.subtitle!,
+                        style: TextStyle(
+                          color: color.withValues(alpha: 0.8),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _stepIcon(_StepStatus status) {
+    switch (status) {
+      case _StepStatus.completed:
+        return Icon(Icons.check_rounded, size: 14, color: Colors.green.shade400);
+      case _StepStatus.inProgress:
+        return SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.orange.shade400),
+          ),
+        );
+      case _StepStatus.failed:
+        return Icon(Icons.close_rounded, size: 14, color: Colors.red.shade400);
+      case _StepStatus.pending:
+        return Icon(Icons.circle_outlined, size: 12, color: Colors.grey.shade600);
+    }
+  }
+
+  Color _stepColor(_StepStatus status) {
+    switch (status) {
+      case _StepStatus.completed:
+        return Colors.green.shade400;
+      case _StepStatus.inProgress:
+        return Colors.orange.shade400;
+      case _StepStatus.failed:
+        return Colors.red.shade400;
+      case _StepStatus.pending:
+        return Colors.grey.shade600;
+    }
   }
 
   void _closeProgressDialog() {
@@ -411,7 +488,6 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     if (attendances.isEmpty) {
       // No changes vs last synced state — just mark as synced locally
       await _asistenciaService.marcarComoSincronizada(registroActualizado.id);
-      _progressNotifier.value = 'Sin cambios, ya sincronizado';
       return true;
     }
 
@@ -432,7 +508,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
 
     return await result.fold(
       (error) async {
-        _progressNotifier.value = error;
+        Logger.error('Error al subir: $error');
         return false;
       },
       (_) async {
@@ -567,32 +643,15 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     await _sseSubscription?.cancel();
     _sseSubscription = _sseService.connect(professorId, token).listen(
       (event) {
-        if (event.message.isNotEmpty) {
-          _progressNotifier.value = event.message;
-        }
-        if (event.step > 0) {
-          _stepNotifier.value = event.step;
-        }
-        if (event.totalSteps > 0) {
-          _totalStepsNotifier.value = event.totalSteps;
-        }
         if (event.isCompleted) {
-          _stepNotifier.value = _totalStepsNotifier.value; // fill to 100%
-          if (!completer.isCompleted) {
-            completer.complete(true);
-          }
+          if (!completer.isCompleted) completer.complete(true);
         }
-
         if (event.isFailed) {
-          if (!completer.isCompleted) {
-            completer.complete(false);
-          }
+          if (!completer.isCompleted) completer.complete(false);
         }
       },
       onError: (_) {
-        if (!completer.isCompleted) {
-          completer.complete(false);
-        }
+        if (!completer.isCompleted) completer.complete(false);
       },
     );
 
@@ -1473,4 +1532,31 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
       ),
     );
   }
+}
+
+// --- Stepper data models ---
+
+enum _StepStatus { pending, inProgress, completed, failed }
+
+class _SyncStepData {
+  final String label;
+  final _StepStatus status;
+  final String? subtitle;
+
+  const _SyncStepData({
+    required this.label,
+    required this.status,
+    this.subtitle,
+  });
+
+  _SyncStepData copyWith({
+    String? label,
+    _StepStatus? status,
+    String? subtitle,
+  }) =>
+      _SyncStepData(
+        label: label ?? this.label,
+        status: status ?? this.status,
+        subtitle: subtitle ?? this.subtitle,
+      );
 }
