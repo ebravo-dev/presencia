@@ -404,7 +404,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     // Call the same sync endpoint with stored password
     final result = await _apiService.forceSync(
       email: email,
-      password: password,
+      encryptedPassword: password,
       token: token,
     );
 

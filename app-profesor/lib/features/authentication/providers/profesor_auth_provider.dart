@@ -213,7 +213,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     await _authStorage.setSyncInProgress(true);
 
     // Save encrypted password locally for retry
-    final encryptedPassword = _apiService.encryptPassword(password);
+    final encryptedPassword = _apiService.ensureEncryptedPassword(password);
     await _authStorage.saveEncryptedPassword(encryptedPassword);
 
     // Clear local groups before syncing to avoid showing stale data
@@ -222,7 +222,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     // Usar ApiService para iniciar sync forzada
     return _apiService.forceSync(
       email: state.profesor!.institutionalEmail,
-      password: password,
+      encryptedPassword: encryptedPassword,
       token: state.token!,
     );
   }

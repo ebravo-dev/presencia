@@ -146,14 +146,11 @@ class ApiService {
   /// Endpoint: POST /professors/sync
   Future<Either<String, String>> forceSync({
     required String email,
-    required String password,
+    required String encryptedPassword,
     required String token,
   }) async {
     try {
       Logger.info('Iniciando sincronización forzada para: $email');
-
-      // Encriptar contraseña
-      final encryptedPassword = _encryptionService.encryptPassword(password);
 
       final response = await _dio.post(
         '/professors/sync',
