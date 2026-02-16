@@ -34,7 +34,6 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
 
-  bool _dialogOpen = false;
   // Stepper-based progress tracking
   final ValueNotifier<List<_SyncStepData>> _stepsNotifier = ValueNotifier([]);
 
@@ -103,7 +102,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       final key = '${registro.grupoId}_$dateStr';
       if (syncedMap[key] == true) {
         // Only mark as synced if the local data hasn't changed since last sync
-        if (_attendanceMatchesSyncedSnapshot(registro)) {
+        if (registro.asistenciasSincronizadas == null || _attendanceMatchesSyncedSnapshot(registro)) {
           Logger.info('Reconciliación: marcando como sincronizada $key');
           await _asistenciaService.marcarComoSincronizada(registro.id);
         } else {
@@ -188,213 +187,236 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     setState(() => _isUploading = true);
     HapticFeedback.mediumImpact();
 
-    // Build step list: one set of steps per record
+    // Initialize 4 fixed steps
+    _stepsNotifier.value = [
+      _SyncStepData(label: 'Conectando al servidor', status: _StepStatus.inProgress),
+      _SyncStepData(label: 'Conectado', status: _StepStatus.pending),
+      _SyncStepData(label: 'Subiendo asistencia', status: _StepStatus.pending),
+      _SyncStepData(label: '¡Terminado!', status: _StepStatus.pending),
+    ];
+
     final grupos = _authStorage.getGrupos() ?? [];
-    final steps = <_SyncStepData>[];
-    for (final reg in _pendientes) {
+    int successCount = 0;
+    final total = _pendientes.length;
+
+    for (int i = 0; i < _pendientes.length; i++) {
+      final reg = _pendientes[i];
       final grupo = _resolveGrupo(grupos, reg.grupoId);
       final className = reg.nombreClase ?? grupo?.name ?? reg.grupoId;
-      steps.add(_SyncStepData(label: className, status: _StepStatus.pending));
-    }
-    _stepsNotifier.value = List.from(steps);
-    _showProgressDialog();
 
-    int successCount = 0;
-    for (int i = 0; i < _pendientes.length; i++) {
-      _updateStep(i, _StepStatus.inProgress);
-      final success = await _subirRegistro(_pendientes[i]);
+      // Update step 2 label with current class
+      final classLabel = total > 1
+          ? 'Subiendo: $className (${i + 1}/$total)'
+          : 'Subiendo: $className';
+      final step2Status = i == 0 ? _StepStatus.pending : _StepStatus.inProgress;
+      _updateStep(2, step2Status, label: classLabel, subtitle: '');
+
+      final success = await _subirRegistro(reg);
       if (success) {
-        _updateStep(i, _StepStatus.completed);
+        _updateStep(2, _StepStatus.completed);
         successCount++;
       } else {
-        _updateStep(i, _StepStatus.failed);
+        _updateStep(2, _StepStatus.failed);
       }
+    }
+
+    // Final step states
+    if (successCount == total) {
+      _updateStep(3, _StepStatus.completed);
+      HapticFeedback.heavyImpact();
+      await Future.delayed(const Duration(seconds: 2));
+    } else if (successCount > 0) {
+      _updateStep(3, _StepStatus.failed,
+          subtitle: '$successCount de $total subidos. Los fallidos se pueden reintentar.');
+      HapticFeedback.heavyImpact();
+      await Future.delayed(const Duration(seconds: 3));
+    } else {
+      _updateStep(2, _StepStatus.failed);
+      _updateStep(3, _StepStatus.failed,
+          subtitle: 'Error al subir asistencias. Intenta de nuevo.');
+      HapticFeedback.heavyImpact();
+      await Future.delayed(const Duration(seconds: 3));
     }
 
     await _cargarAsistencias();
-
-    if (mounted) {
-      HapticFeedback.heavyImpact();
-      if (successCount == _pendientes.length) {
-        // All done — update last step indicator and auto-close after a moment
-        await Future.delayed(const Duration(milliseconds: 800));
-        _closeProgressDialog();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('¡Asistencias subidas correctamente!'),
-            backgroundColor: Colors.green.shade700,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-      } else if (successCount > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$successCount de ${_pendientes.length} registros subidos. Los fallidos se pueden reintentar.'),
-            backgroundColor: Colors.orange.shade700,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Error al subir asistencias. Intenta de nuevo.'),
-            backgroundColor: Colors.red.shade700,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-      }
-    }
-
     if (mounted) {
       setState(() => _isUploading = false);
     }
   }
 
-  void _updateStep(int index, _StepStatus status) {
+  void _updateStep(int index, _StepStatus status, {String? subtitle, String? label}) {
     final steps = List<_SyncStepData>.from(_stepsNotifier.value);
-    steps[index] = steps[index].copyWith(status: status);
+    steps[index] = steps[index].copyWith(status: status, subtitle: subtitle, label: label);
     _stepsNotifier.value = steps;
   }
 
-  void _showProgressDialog() {
-    if (!mounted || _dialogOpen) return;
-    _dialogOpen = true;
+  Widget _buildUploadingState() {
+    return ValueListenableBuilder<List<_SyncStepData>>(
+      valueListenable: _stepsNotifier,
+      builder: (context, steps, _) {
+        final allCompleted = steps.every((s) => s.status == _StepStatus.completed);
+        final anyFailed = steps.any((s) => s.status == _StepStatus.failed);
+        final activeStep = steps.cast<_SyncStepData?>().firstWhere(
+          (s) => s!.status == _StepStatus.inProgress,
+          orElse: () => null,
+        );
 
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => Dialog(
-        backgroundColor: const Color(0xFF2C2C2E),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Title
-              const Center(
-                child: Text(
-                  'Subiendo asistencias',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+        return Column(
+          children: [
+            // Stepper card
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1C1C1E),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Text(
+                    allCompleted
+                        ? '¡Sincronización completada!'
+                        : anyFailed
+                            ? 'Error en sincronización'
+                            : 'Sincronizando...',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
+                  if (activeStep?.subtitle != null && activeStep!.subtitle!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      activeStep.subtitle!,
+                      style: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 32),
+                  // Steps
+                  for (int i = 0; i < steps.length; i++)
+                    _buildStepItem(steps[i], i, steps.length),
+                ],
+              ),
+            ),
+            const Spacer(),
+            // Bottom info bar
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.blue.withValues(alpha: 0.2),
                 ),
               ),
-              const SizedBox(height: 20),
-              // Stepper
-              ValueListenableBuilder<List<_SyncStepData>>(
-                valueListenable: _stepsNotifier,
-                builder: (context, steps, _) {
-                  return Column(
-                    children: [
-                      for (int i = 0; i < steps.length; i++)
-                        _buildStepRow(steps[i], i, steps.length),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 16),
-              const Divider(color: Color(0xFF3A3A3C), height: 1),
-              const SizedBox(height: 12),
-              // "You can close" hint + close button
-              Row(
+              child: Row(
                 children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    color: Colors.blue.shade400,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 6),
+                  Icon(Icons.cloud_done, color: Colors.blue.shade400),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Puedes cerrar, las asistencias se seguirán subiendo.',
+                      'La sincronización continúa en la nube.\nPuedes cerrar la app.',
                       style: TextStyle(
                         color: Colors.blue.shade400,
-                        fontSize: 12,
-                        height: 1.3,
+                        fontSize: 13,
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Center(
-                child: TextButton(
-                  onPressed: () => _closeProgressDialog(),
-                  child: Text(
-                    'Cerrar',
-                    style: TextStyle(
-                      color: Colors.grey.shade400,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ).then((_) {
-      _dialogOpen = false;
-    });
+            ),
+            const SizedBox(height: 40),
+          ],
+        );
+      },
+    );
   }
 
-  Widget _buildStepRow(_SyncStepData step, int index, int total) {
+  Widget _buildStepItem(_SyncStepData step, int index, int total) {
     final isLast = index == total - 1;
-    final icon = _stepIcon(step.status);
-    final color = _stepColor(step.status);
+    final isActive = step.status == _StepStatus.inProgress;
+    final isPast = step.status == _StepStatus.completed;
+    final isFailed = step.status == _StepStatus.failed;
+
+    Color circleColor;
+    if (isPast) {
+      circleColor = Colors.orange;
+    } else if (isActive) {
+      circleColor = Colors.orange;
+    } else if (isFailed) {
+      circleColor = Colors.red;
+    } else {
+      circleColor = Colors.grey.shade700;
+    }
 
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Vertical line + icon
+          // Circle + line
           SizedBox(
-            width: 32,
+            width: 40,
             child: Column(
               children: [
                 Container(
-                  width: 24,
-                  height: 24,
+                  width: 32,
+                  height: 32,
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.15),
                     shape: BoxShape.circle,
+                    color: isPast || isActive || isFailed
+                        ? circleColor
+                        : Colors.transparent,
+                    border: Border.all(color: circleColor, width: 2),
                   ),
-                  child: Center(child: icon),
+                  child: Center(
+                    child: isPast
+                        ? const Icon(Icons.check, color: Colors.white, size: 18)
+                        : isActive
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : isFailed
+                                ? const Icon(Icons.close, color: Colors.white, size: 18)
+                                : null,
+                  ),
                 ),
                 if (!isLast)
                   Expanded(
                     child: Container(
                       width: 2,
-                      margin: const EdgeInsets.symmetric(vertical: 2),
-                      color: step.status == _StepStatus.completed
-                          ? Colors.green.withValues(alpha: 0.4)
-                          : Colors.white.withValues(alpha: 0.1),
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      color: isPast ? Colors.orange : Colors.grey.shade800,
                     ),
                   ),
               ],
             ),
           ),
-          const SizedBox(width: 10),
-          // Label + subtitle
+          const SizedBox(width: 12),
+          // Text content with optional highlight for active step
           Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : 16),
+            child: Container(
+              margin: EdgeInsets.only(bottom: isLast ? 0 : 24),
+              padding: isActive
+                  ? const EdgeInsets.all(12)
+                  : const EdgeInsets.only(top: 4),
+              decoration: isActive
+                  ? BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    )
+                  : null,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -402,25 +424,24 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                     step.label,
                     style: TextStyle(
                       color: step.status == _StepStatus.pending
-                          ? Colors.grey.shade500
+                          ? Colors.grey.shade600
                           : Colors.white,
-                      fontSize: 14,
-                      fontWeight: step.status == _StepStatus.inProgress
-                          ? FontWeight.w600
-                          : FontWeight.w400,
+                      fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                      fontSize: isActive ? 16 : 14,
                     ),
                   ),
-                  if (step.subtitle != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        step.subtitle!,
-                        style: TextStyle(
-                          color: color.withValues(alpha: 0.8),
-                          fontSize: 12,
-                        ),
+                  if ((isActive || isFailed) &&
+                      step.subtitle != null &&
+                      step.subtitle!.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      step.subtitle!,
+                      style: TextStyle(
+                        color: isFailed ? Colors.red.shade300 : Colors.grey.shade400,
+                        fontSize: 12,
                       ),
                     ),
+                  ],
                 ],
               ),
             ),
@@ -428,44 +449,6 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         ],
       ),
     );
-  }
-
-  Widget _stepIcon(_StepStatus status) {
-    switch (status) {
-      case _StepStatus.completed:
-        return Icon(Icons.check_rounded, size: 14, color: Colors.green.shade400);
-      case _StepStatus.inProgress:
-        return SizedBox(
-          width: 14,
-          height: 14,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.orange.shade400),
-          ),
-        );
-      case _StepStatus.failed:
-        return Icon(Icons.close_rounded, size: 14, color: Colors.red.shade400);
-      case _StepStatus.pending:
-        return Icon(Icons.circle_outlined, size: 12, color: Colors.grey.shade600);
-    }
-  }
-
-  Color _stepColor(_StepStatus status) {
-    switch (status) {
-      case _StepStatus.completed:
-        return Colors.green.shade400;
-      case _StepStatus.inProgress:
-        return Colors.orange.shade400;
-      case _StepStatus.failed:
-        return Colors.red.shade400;
-      case _StepStatus.pending:
-        return Colors.grey.shade600;
-    }
-  }
-
-  void _closeProgressDialog() {
-    if (!mounted || !_dialogOpen) return;
-    Navigator.of(context, rootNavigator: true).pop();
   }
 
   Future<bool> _subirRegistro(AsistenciaRegistro registro) async {
@@ -643,10 +626,35 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     await _sseSubscription?.cancel();
     _sseSubscription = _sseService.connect(professorId, token).listen(
       (event) {
+        if (event.type == SyncEventType.connected) {
+          // SSE handshake done → step 0 complete
+          if (_stepsNotifier.value[0].status != _StepStatus.completed) {
+            _updateStep(0, _StepStatus.completed);
+          }
+          if (_stepsNotifier.value[1].status != _StepStatus.completed) {
+            _updateStep(1, _StepStatus.inProgress, subtitle: 'Esperando al servidor...');
+          }
+        } else if (event.type == SyncEventType.progress) {
+          if (event.status == 'IN_PROGRESS') {
+            // Worker picked up the job
+            if (_stepsNotifier.value[1].status != _StepStatus.completed) {
+              _updateStep(1, _StepStatus.completed);
+            }
+            _updateStep(2, _StepStatus.inProgress, subtitle: event.message);
+          } else if (event.message.isNotEmpty) {
+            // PENDING state with a message
+            if (_stepsNotifier.value[1].status != _StepStatus.completed) {
+              _updateStep(1, _StepStatus.inProgress, subtitle: event.message);
+            }
+          }
+        }
+
         if (event.isCompleted) {
+          _updateStep(2, _StepStatus.completed, subtitle: 'Asistencia subida correctamente');
           if (!completer.isCompleted) completer.complete(true);
         }
         if (event.isFailed) {
+          _updateStep(2, _StepStatus.failed, subtitle: event.message);
           if (!completer.isCompleted) completer.complete(false);
         }
       },
@@ -735,9 +743,11 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         ),
         const SizedBox(height: 40),
         Expanded(
-          child: _pendientes.isEmpty
-              ? _buildAllSyncedState()
-              : _buildPendingState(),
+          child: _isUploading
+              ? _buildUploadingState()
+              : _pendientes.isEmpty
+                  ? _buildAllSyncedState()
+                  : _buildPendingState(),
         ),
       ],
     );
