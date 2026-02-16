@@ -153,13 +153,10 @@ class SSEService {
                   Logger.debug('SSE: Received event: $event');
                   _controller?.add(event);
 
-                  // Close stream if sync completed or failed
-                  if (event.isCompleted || event.isFailed) {
-                    Logger.info('SSE: Sync finished, closing stream');
-                    Future.delayed(const Duration(seconds: 1), () {
-                      disconnect();
-                    });
-                  }
+                  // Don't auto-disconnect here — the caller manages disconnection.
+                  // Auto-disconnecting caused a race condition when uploading
+                  // multiple records: the delayed disconnect killed the next
+                  // record's SSE connection.
                 } catch (e) {
                   Logger.error('SSE: Error parsing event: $e');
                 }
