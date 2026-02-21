@@ -121,52 +121,16 @@ class _GruposPageState extends ConsumerState<GruposPage>
     _checkPendingUploads();
   }
 
+  bool _showPendingBanner = false;
+
   /// Checks for pending uploads and shows a non-invasive notification
   void _checkPendingUploads() {
     final asistenciaService = AsistenciaLocalService();
     final hasPending = asistenciaService.hayAsistenciasPendientes();
 
     if (hasPending && mounted) {
-      // Show non-invasive snackbar at the bottom
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.cloud_upload, color: Colors.white, size: 20),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text('Tienes asistencias por sincronizar'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const UploadManagementPage(),
-                      ),
-                    );
-                  },
-                  child: const Text(
-                    'Ver',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.orange.shade700,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            duration: const Duration(seconds: 5),
-            margin: const EdgeInsets.all(16),
-          ),
-        );
+      setState(() {
+        _showPendingBanner = true;
       });
     }
   }
@@ -561,6 +525,115 @@ class _GruposPageState extends ConsumerState<GruposPage>
               ],
             ),
           ),
+          // Pending attendance banner (glassmorphism style)
+          if (_showPendingBanner)
+            Positioned(
+              bottom: MediaQuery.of(context).padding.bottom + 16,
+              left: 20,
+              right: 20,
+              child: AnimatedSlide(
+                offset: _showPendingBanner ? Offset.zero : const Offset(0, 2),
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeOutCubic,
+                child: AnimatedOpacity(
+                  opacity: _showPendingBanner ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 400),
+                  child: GestureDetector(
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      setState(() {
+                        _showPendingBanner = false;
+                      });
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const UploadManagementPage(),
+                        ),
+                      );
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1C1C1E).withOpacity(0.78),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.12),
+                              width: 0.5,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              // Pulsing indicator dot
+                              AnimatedBuilder(
+                                animation: _pulseController,
+                                builder: (context, child) {
+                                  return Container(
+                                    width: 10,
+                                    height: 10,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Color.lerp(
+                                        const Color(0xFFFF9500),
+                                        const Color(0xFFFFCC00),
+                                        _pulseController.value,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: const Color(0xFFFF9500)
+                                              .withOpacity(
+                                                0.4 +
+                                                    (_pulseController.value *
+                                                        0.3),
+                                              ),
+                                          blurRadius: 6,
+                                          spreadRadius: 1,
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                              const SizedBox(width: 12),
+                              // Cloud icon
+                              Icon(
+                                Icons.cloud_upload_outlined,
+                                color: Colors.white.withOpacity(0.9),
+                                size: 20,
+                              ),
+                              const SizedBox(width: 10),
+                              // Text
+                              Expanded(
+                                child: Text(
+                                  'Asistencias pendientes por subir',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.92),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    letterSpacing: -0.2,
+                                  ),
+                                ),
+                              ),
+                              // Chevron
+                              Icon(
+                                Icons.chevron_right_rounded,
+                                color: Colors.white.withOpacity(0.5),
+                                size: 22,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

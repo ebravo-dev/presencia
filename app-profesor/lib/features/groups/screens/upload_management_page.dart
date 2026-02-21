@@ -54,39 +54,64 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   Future<void> _cargarAsistencias() async {
     setState(() => _isLoading = true);
     try {
+      // Mostrar datos locales de inmediato — sin esperar la red
       final pendientes = _asistenciaService.obtenerAsistenciasPendientes();
-
-      // Check if any "pending" records were already synced on the server
-      if (pendientes.isNotEmpty) {
-        await _reconciliarConServidor(pendientes);
+      final sincronizadas = _asistenciaService
+          .obtenerAsistenciasSincronizadas();
+      if (mounted) {
+        setState(() {
+          _pendientes = pendientes;
+          _sincronizadas = sincronizadas;
+          _isLoading = false;
+        });
       }
 
-      // Re-fetch after reconciliation
-      final pendientesActualizados = _asistenciaService.obtenerAsistenciasPendientes();
-      setState(() {
-        _pendientes = pendientesActualizados;
-        _sincronizadas = [];
-        _isLoading = false;
-      });
+      // Reconciliar con servidor en background (no bloquea la UI)
+      if (pendientes.isNotEmpty) {
+        _reconciliarEnBackground(pendientes);
+      }
     } catch (e) {
       Logger.error('Error cargando asistencias', e, StackTrace.current);
-      // Still show whatever we have locally
-      final pendientes = _asistenciaService.obtenerAsistenciasPendientes();
-      setState(() {
-        _pendientes = pendientes;
-        _isLoading = false;
-      });
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  /// Reconcilia con el servidor sin bloquear la UI.
+  /// Si algo cambió, actualiza el estado silenciosamente.
+  void _reconciliarEnBackground(List<AsistenciaRegistro> pendientes) {
+    _reconciliarConServidor(pendientes)
+        .then((_) {
+          final pendientesActualizados = _asistenciaService
+              .obtenerAsistenciasPendientes();
+          final sincronizadasActualizadas = _asistenciaService
+              .obtenerAsistenciasSincronizadas();
+          if (mounted && pendientesActualizados.length != _pendientes.length) {
+            setState(() {
+              _pendientes = pendientesActualizados;
+              _sincronizadas = sincronizadasActualizadas;
+            });
+          }
+        })
+        .catchError((e) {
+          Logger.error(
+            'Error en reconciliación en background',
+            e,
+            StackTrace.current,
+          );
+        });
   }
 
   /// Check the server for records that were already synced (e.g. app was closed during upload).
   /// Only reconciles if the local attendance data hasn't changed since the last sync.
-  Future<void> _reconciliarConServidor(List<AsistenciaRegistro> pendientes) async {
+  Future<void> _reconciliarConServidor(
+    List<AsistenciaRegistro> pendientes,
+  ) async {
     final token = _authStorage.getToken();
     if (token == null) return;
 
     final records = pendientes.map((r) {
-      final dateStr = '${r.fecha.year}-${r.fecha.month.toString().padLeft(2, '0')}-${r.fecha.day.toString().padLeft(2, '0')}';
+      final dateStr =
+          '${r.fecha.year}-${r.fecha.month.toString().padLeft(2, '0')}-${r.fecha.day.toString().padLeft(2, '0')}';
       return {'groupId': r.grupoId, 'date': dateStr};
     }).toList();
 
@@ -98,15 +123,19 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     if (syncedMap.isEmpty) return;
 
     for (final registro in pendientes) {
-      final dateStr = '${registro.fecha.year}-${registro.fecha.month.toString().padLeft(2, '0')}-${registro.fecha.day.toString().padLeft(2, '0')}';
+      final dateStr =
+          '${registro.fecha.year}-${registro.fecha.month.toString().padLeft(2, '0')}-${registro.fecha.day.toString().padLeft(2, '0')}';
       final key = '${registro.grupoId}_$dateStr';
       if (syncedMap[key] == true) {
         // Only mark as synced if the local data hasn't changed since last sync
-        if (registro.asistenciasSincronizadas == null || _attendanceMatchesSyncedSnapshot(registro)) {
+        if (registro.asistenciasSincronizadas == null ||
+            _attendanceMatchesSyncedSnapshot(registro)) {
           Logger.info('Reconciliación: marcando como sincronizada $key');
           await _asistenciaService.marcarComoSincronizada(registro.id);
         } else {
-          Logger.info('Reconciliación: $key tiene cambios locales, mantener como pendiente');
+          Logger.info(
+            'Reconciliación: $key tiene cambios locales, mantener como pendiente',
+          );
         }
       }
     }
@@ -116,7 +145,8 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   /// (meaning no local changes were made after the sync).
   bool _attendanceMatchesSyncedSnapshot(AsistenciaRegistro registro) {
     final synced = registro.asistenciasSincronizadas;
-    if (synced == null) return false; // No snapshot = never synced or old record, don't auto-reconcile
+    if (synced == null)
+      return false; // No snapshot = never synced or old record, don't auto-reconcile
     final current = registro.asistenciasAlumnos;
     if (current.length != synced.length) return false;
     for (final entry in current.entries) {
@@ -189,7 +219,10 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
 
     // Initialize 4 fixed steps
     _stepsNotifier.value = [
-      _SyncStepData(label: 'Conectando al servidor', status: _StepStatus.inProgress),
+      _SyncStepData(
+        label: 'Conectando al servidor',
+        status: _StepStatus.inProgress,
+      ),
       _SyncStepData(label: 'Conectado', status: _StepStatus.pending),
       _SyncStepData(label: 'Subiendo asistencia', status: _StepStatus.pending),
       _SyncStepData(label: '¡Terminado!', status: _StepStatus.pending),
@@ -226,14 +259,21 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       HapticFeedback.heavyImpact();
       await Future.delayed(const Duration(seconds: 2));
     } else if (successCount > 0) {
-      _updateStep(3, _StepStatus.failed,
-          subtitle: '$successCount de $total subidos. Los fallidos se pueden reintentar.');
+      _updateStep(
+        3,
+        _StepStatus.failed,
+        subtitle:
+            '$successCount de $total subidos. Los fallidos se pueden reintentar.',
+      );
       HapticFeedback.heavyImpact();
       await Future.delayed(const Duration(seconds: 3));
     } else {
       _updateStep(2, _StepStatus.failed);
-      _updateStep(3, _StepStatus.failed,
-          subtitle: 'Error al subir asistencias. Intenta de nuevo.');
+      _updateStep(
+        3,
+        _StepStatus.failed,
+        subtitle: 'Error al subir asistencias. Intenta de nuevo.',
+      );
       HapticFeedback.heavyImpact();
       await Future.delayed(const Duration(seconds: 3));
     }
@@ -244,9 +284,18 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     }
   }
 
-  void _updateStep(int index, _StepStatus status, {String? subtitle, String? label}) {
+  void _updateStep(
+    int index,
+    _StepStatus status, {
+    String? subtitle,
+    String? label,
+  }) {
     final steps = List<_SyncStepData>.from(_stepsNotifier.value);
-    steps[index] = steps[index].copyWith(status: status, subtitle: subtitle, label: label);
+    steps[index] = steps[index].copyWith(
+      status: status,
+      subtitle: subtitle,
+      label: label,
+    );
     _stepsNotifier.value = steps;
   }
 
@@ -254,7 +303,9 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     return ValueListenableBuilder<List<_SyncStepData>>(
       valueListenable: _stepsNotifier,
       builder: (context, steps, _) {
-        final allCompleted = steps.every((s) => s.status == _StepStatus.completed);
+        final allCompleted = steps.every(
+          (s) => s.status == _StepStatus.completed,
+        );
         final anyFailed = steps.any((s) => s.status == _StepStatus.failed);
         final activeStep = steps.cast<_SyncStepData?>().firstWhere(
           (s) => s!.status == _StepStatus.inProgress,
@@ -279,15 +330,16 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                     allCompleted
                         ? '¡Sincronización completada!'
                         : anyFailed
-                            ? 'Error en sincronización'
-                            : 'Sincronizando...',
+                        ? 'Error en sincronización'
+                        : 'Sincronizando...',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  if (activeStep?.subtitle != null && activeStep!.subtitle!.isNotEmpty) ...[
+                  if (activeStep?.subtitle != null &&
+                      activeStep!.subtitle!.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Text(
                       activeStep.subtitle!,
@@ -312,9 +364,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
               decoration: BoxDecoration(
                 color: Colors.blue.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Colors.blue.withValues(alpha: 0.2),
-                ),
+                border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
               ),
               child: Row(
                 children: [
@@ -379,17 +429,19 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                     child: isPast
                         ? const Icon(Icons.check, color: Colors.white, size: 18)
                         : isActive
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                ),
-                              )
-                            : isFailed
-                                ? const Icon(Icons.close, color: Colors.white, size: 18)
-                                : null,
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                        : isFailed
+                        ? const Icon(Icons.close, color: Colors.white, size: 18)
+                        : null,
                   ),
                 ),
                 if (!isLast)
@@ -437,7 +489,9 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                     Text(
                       step.subtitle!,
                       style: TextStyle(
-                        color: isFailed ? Colors.red.shade300 : Colors.grey.shade400,
+                        color: isFailed
+                            ? Colors.red.shade300
+                            : Colors.grey.shade400,
                         fontSize: 12,
                       ),
                     ),
@@ -465,7 +519,10 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       return false;
     }
 
-    final registroActualizado = await _migrarRegistroSiNecesario(registro, grupo);
+    final registroActualizado = await _migrarRegistroSiNecesario(
+      registro,
+      grupo,
+    );
 
     final attendances = _buildAttendances(registroActualizado, grupo);
     if (attendances.isEmpty) {
@@ -479,7 +536,9 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       return false;
     }
 
-    final encryptedPassword = _apiService.ensureEncryptedPassword(storedPassword);
+    final encryptedPassword = _apiService.ensureEncryptedPassword(
+      storedPassword,
+    );
 
     final result = await _apiService.uploadAttendance(
       token: token,
@@ -495,10 +554,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         return false;
       },
       (_) async {
-        final syncSuccess = await _waitForSyncCompletion(
-          profesor.id,
-          token,
-        );
+        final syncSuccess = await _waitForSyncCompletion(profesor.id, token);
         if (syncSuccess) {
           await _asistenciaService.marcarComoSincronizada(
             registroActualizado.id,
@@ -624,44 +680,58 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     final completer = Completer<bool>();
 
     await _sseSubscription?.cancel();
-    _sseSubscription = _sseService.connect(professorId, token).listen(
-      (event) {
-        if (event.type == SyncEventType.connected) {
-          // SSE handshake done → step 0 complete
-          if (_stepsNotifier.value[0].status != _StepStatus.completed) {
-            _updateStep(0, _StepStatus.completed);
-          }
-          if (_stepsNotifier.value[1].status != _StepStatus.completed) {
-            _updateStep(1, _StepStatus.inProgress, subtitle: 'Esperando al servidor...');
-          }
-        } else if (event.type == SyncEventType.progress) {
-          if (event.status == 'IN_PROGRESS') {
-            // Worker picked up the job
-            if (_stepsNotifier.value[1].status != _StepStatus.completed) {
-              _updateStep(1, _StepStatus.completed);
+    _sseSubscription = _sseService
+        .connect(professorId, token)
+        .listen(
+          (event) {
+            if (event.type == SyncEventType.connected) {
+              // SSE handshake done → step 0 complete
+              if (_stepsNotifier.value[0].status != _StepStatus.completed) {
+                _updateStep(0, _StepStatus.completed);
+              }
+              if (_stepsNotifier.value[1].status != _StepStatus.completed) {
+                _updateStep(
+                  1,
+                  _StepStatus.inProgress,
+                  subtitle: 'Esperando al servidor...',
+                );
+              }
+            } else if (event.type == SyncEventType.progress) {
+              if (event.status == 'IN_PROGRESS') {
+                // Worker picked up the job
+                if (_stepsNotifier.value[1].status != _StepStatus.completed) {
+                  _updateStep(1, _StepStatus.completed);
+                }
+                _updateStep(2, _StepStatus.inProgress, subtitle: event.message);
+              } else if (event.message.isNotEmpty) {
+                // PENDING state with a message
+                if (_stepsNotifier.value[1].status != _StepStatus.completed) {
+                  _updateStep(
+                    1,
+                    _StepStatus.inProgress,
+                    subtitle: event.message,
+                  );
+                }
+              }
             }
-            _updateStep(2, _StepStatus.inProgress, subtitle: event.message);
-          } else if (event.message.isNotEmpty) {
-            // PENDING state with a message
-            if (_stepsNotifier.value[1].status != _StepStatus.completed) {
-              _updateStep(1, _StepStatus.inProgress, subtitle: event.message);
-            }
-          }
-        }
 
-        if (event.isCompleted) {
-          _updateStep(2, _StepStatus.completed, subtitle: 'Asistencia subida correctamente');
-          if (!completer.isCompleted) completer.complete(true);
-        }
-        if (event.isFailed) {
-          _updateStep(2, _StepStatus.failed, subtitle: event.message);
-          if (!completer.isCompleted) completer.complete(false);
-        }
-      },
-      onError: (_) {
-        if (!completer.isCompleted) completer.complete(false);
-      },
-    );
+            if (event.isCompleted) {
+              _updateStep(
+                2,
+                _StepStatus.completed,
+                subtitle: 'Asistencia subida correctamente',
+              );
+              if (!completer.isCompleted) completer.complete(true);
+            }
+            if (event.isFailed) {
+              _updateStep(2, _StepStatus.failed, subtitle: event.message);
+              if (!completer.isCompleted) completer.complete(false);
+            }
+          },
+          onError: (_) {
+            if (!completer.isCompleted) completer.complete(false);
+          },
+        );
 
     final result = await completer.future.timeout(
       const Duration(minutes: 5),
@@ -723,6 +793,41 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
               ),
             ),
           ),
+          // Botón Ver calendario — glassmorphism, esquina superior derecha
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            right: 12,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(22),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2C2C2E).withOpacity(0.72),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.1),
+                      width: 0.5,
+                    ),
+                  ),
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(
+                      Icons.calendar_month_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    onPressed: () {
+                      HapticFeedback.lightImpact();
+                      _showCalendarModal();
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -732,13 +837,16 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     return Column(
       children: [
         const SizedBox(height: 80),
-        const Text(
-          'Sincronización',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 34,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.4,
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'Sincronización',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 34,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.4,
+            ),
           ),
         ),
         const SizedBox(height: 40),
@@ -746,8 +854,8 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
           child: _isUploading
               ? _buildUploadingState()
               : _pendientes.isEmpty
-                  ? _buildAllSyncedState()
-                  : _buildPendingState(),
+              ? _buildAllSyncedState()
+              : _buildPendingState(),
         ),
       ],
     );
@@ -785,29 +893,6 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
           style: TextStyle(color: Colors.grey.shade400, fontSize: 16),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 24),
-        // Botón Ver calendario
-        GestureDetector(
-          onTap: () {
-            HapticFeedback.lightImpact();
-            _showCalendarModal();
-          },
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.calendar_month, color: Colors.blue.shade400, size: 18),
-              const SizedBox(width: 6),
-              Text(
-                'Ver calendario',
-                style: TextStyle(
-                  color: Colors.blue.shade400,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
         const SizedBox(height: 80),
       ],
     );
@@ -823,110 +908,145 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
           },
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: const Color(0xFF1C1C1E),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.orange.withOpacity(0.3), width: 1),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.06),
+                width: 0.5,
+              ),
             ),
             child: Column(
               children: [
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.cloud_upload_rounded,
-                    size: 44,
-                    color: Colors.orange,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'Tienes asistencias por subir',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${_pendientes.length} registro${_pendientes.length == 1 ? '' : 's'} pendiente${_pendientes.length == 1 ? '' : 's'}',
-                  style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-                ),
-                const SizedBox(height: 20),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.list_alt_rounded,
-                      color: Colors.blue.shade400,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Ver detalles',
-                      style: TextStyle(
-                        color: Colors.blue.shade400,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.pending_actions_rounded,
+                        size: 24,
+                        color: Colors.orange,
                       ),
                     ),
-                    const SizedBox(width: 4),
-                    Icon(
-                      Icons.chevron_right,
-                      color: Colors.blue.shade400,
-                      size: 18,
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Asistencias pendientes',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${_pendientes.length} registro${_pendientes.length == 1 ? '' : 's'} por subir',
+                            style: TextStyle(
+                              color: Colors.grey.shade400,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-        ),
-        const Spacer(),
-        Container(
-          width: double.infinity,
-          height: 56,
-          margin: const EdgeInsets.only(bottom: 40),
-          child: ElevatedButton(
-            onPressed: _isUploading ? null : _subirAsistencias,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              elevation: 0,
-            ),
-            child: _isUploading
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2.5,
-                    ),
-                  )
-                : const Row(
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.cloud_upload_rounded, size: 24),
-                      SizedBox(width: 12),
+                      Icon(
+                        Icons.list_alt_rounded,
+                        color: Colors.grey.shade300,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
                       Text(
-                        'Subir Asistencias',
+                        'Revisar detalles',
                         style: TextStyle(
-                          fontSize: 18,
+                          color: Colors.grey.shade300,
+                          fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
                   ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        // Botón Subir Asistencias — estilo card con ícono teal
+        GestureDetector(
+          onTap: _isUploading ? null : _subirAsistencias,
+          child: Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 40),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C1C1E),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.06),
+                width: 0.5,
+              ),
+            ),
+            child: Row(
+              children: [
+                // Ícono teal
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E3A38),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: _isUploading
+                      ? const Center(
+                          child: SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              color: Color(0xFF4DB8A8),
+                              strokeWidth: 2.5,
+                            ),
+                          ),
+                        )
+                      : const Icon(
+                          Icons.cloud_upload_rounded,
+                          color: Color(0xFF4DB8A8),
+                          size: 24,
+                        ),
+                ),
+                const SizedBox(width: 16),
+                Text(
+                  'Subir Asistencias',
+                  style: TextStyle(
+                    color: _isUploading ? Colors.grey.shade600 : Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ],
@@ -1165,6 +1285,60 @@ class _CalendarModalState extends State<_CalendarModal> {
                       ),
                     );
                   },
+                  selectedBuilder: (context, day, focusedDay) {
+                    final normalizedDay = DateTime(
+                      day.year,
+                      day.month,
+                      day.day,
+                    );
+                    final isPending = widget.pendingDates.contains(
+                      normalizedDay,
+                    );
+                    final isSynced = widget.syncedDates.contains(normalizedDay);
+                    final indicatorColor = isPending
+                        ? Colors.orange
+                        : isSynced
+                        ? Colors.green
+                        : null;
+                    return Container(
+                      margin: const EdgeInsets.all(4),
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade600,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${day.day}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (indicatorColor != null)
+                            Positioned(
+                              bottom: 2,
+                              child: Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: indicatorColor,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -1283,8 +1457,30 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
     final fechaNorm = DateTime(fecha.year, fecha.month, fecha.day);
     final diff = today.difference(fechaNorm).inDays;
 
-    final diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-    final meses = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    final diasSemana = [
+      'Lunes',
+      'Martes',
+      'Miércoles',
+      'Jueves',
+      'Viernes',
+      'Sábado',
+      'Domingo',
+    ];
+    final meses = [
+      '',
+      'Ene',
+      'Feb',
+      'Mar',
+      'Abr',
+      'May',
+      'Jun',
+      'Jul',
+      'Ago',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dic',
+    ];
 
     final diaSemana = diasSemana[fecha.weekday - 1];
     final fechaStr = '${fecha.day} ${meses[fecha.month]}';
@@ -1299,12 +1495,16 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
     return widget.studentNames[key] ?? key;
   }
 
-  String _resolveGrupoName(String grupoId) {
-    final grupo = widget.grupoMap[grupoId];
+  /// Returns (className, groupMeta) where groupMeta is "Grupo K · Salón 301"
+  (String, String?) _resolveGrupoMeta(AsistenciaRegistro registro) {
+    final grupo = widget.grupoMap[registro.grupoId];
     if (grupo != null) {
-      return '${grupo.name} · Grupo ${grupo.groupLetter}';
+      final className = registro.nombreClase ?? grupo.name;
+      final meta = 'Grupo ${grupo.groupLetter} · ${grupo.classroom}';
+      return (className, meta);
     }
-    return grupoId;
+    final fallback = registro.nombreClase ?? registro.grupoId;
+    return (fallback, null);
   }
 
   @override
@@ -1395,10 +1595,26 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
     );
   }
 
-  Widget _buildRegistroTile(AsistenciaRegistro registro, int index, bool isExpanded) {
-    final presentes = registro.asistenciasAlumnos.values.where((v) => v).length;
-    final total = registro.asistenciasAlumnos.length;
-    final grupoLabel = registro.nombreClase ?? _resolveGrupoName(registro.grupoId);
+  /// Returns only entries that changed vs the last synced snapshot.
+  /// If no snapshot exists, returns all entries (first-time upload).
+  Map<String, bool> _changedEntries(AsistenciaRegistro registro) {
+    final synced = registro.asistenciasSincronizadas;
+    if (synced == null) return registro.asistenciasAlumnos;
+    return Map.fromEntries(
+      registro.asistenciasAlumnos.entries.where(
+        (e) => synced[e.key] != e.value,
+      ),
+    );
+  }
+
+  Widget _buildRegistroTile(
+    AsistenciaRegistro registro,
+    int index,
+    bool isExpanded,
+  ) {
+    final changed = _changedEntries(registro);
+    final total = changed.length;
+    final (className, grupoMeta) = _resolveGrupoMeta(registro);
 
     return Column(
       children: [
@@ -1443,29 +1659,44 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        grupoLabel,
+                        className,
                         style: TextStyle(
                           color: Colors.grey.shade400,
                           fontSize: 13,
                         ),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      if (grupoMeta != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          grupoMeta,
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 12,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
-                // Present count chip
+                // Changed count chip
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.15),
+                    color: Colors.orange.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    '$presentes/$total',
+                    total == 1 ? '$total cambio' : '$total cambios',
                     style: TextStyle(
-                      color: Colors.green.shade400,
+                      color: Colors.orange.shade400,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
@@ -1488,9 +1719,15 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
         ),
         // Expandable details
         AnimatedCrossFade(
-          firstChild: const SizedBox.shrink(),
-          secondChild: _buildStudentList(registro),
-          crossFadeState: isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          alignment: Alignment.topCenter,
+          firstChild: const SizedBox(width: double.infinity, height: 0),
+          secondChild: SizedBox(
+            width: double.infinity,
+            child: _buildStudentList(registro),
+          ),
+          crossFadeState: isExpanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
           duration: const Duration(milliseconds: 200),
         ),
       ],
@@ -1498,8 +1735,12 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
   }
 
   Widget _buildStudentList(AsistenciaRegistro registro) {
-    // Sort: present students first, then absent
-    final entries = registro.asistenciasAlumnos.entries.toList()
+    // Only show students whose attendance changed vs last synced snapshot
+    final changed = _changedEntries(registro);
+    final hasSnapshot = registro.asistenciasSincronizadas != null;
+
+    // Sort: present (new) first, then absent
+    final entries = changed.entries.toList()
       ..sort((a, b) {
         if (a.value != b.value) return a.value ? -1 : 1;
         return _resolveStudentName(a.key).compareTo(_resolveStudentName(b.key));
@@ -1513,32 +1754,49 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
-        children: entries.map((entry) {
-          final name = _resolveStudentName(entry.key);
-          final present = entry.value;
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 5),
-            child: Row(
-              children: [
-                Icon(
-                  present ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                  color: present ? Colors.green.shade400 : Colors.red.shade400,
-                  size: 18,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (hasSnapshot)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Cambios desde la última subida:',
+                style: TextStyle(
+                  color: Colors.grey.shade500,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    name,
-                    style: TextStyle(
-                      color: present ? Colors.white : Colors.grey.shade500,
-                      fontSize: 14,
+              ),
+            ),
+          ...entries.map((entry) {
+            final name = _resolveStudentName(entry.key);
+            final present = entry.value;
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(
+                children: [
+                  Icon(
+                    present ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                    color: present
+                        ? Colors.green.shade400
+                        : Colors.red.shade400,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      name,
+                      style: TextStyle(
+                        color: present ? Colors.white : Colors.grey.shade500,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
+                ],
+              ),
+            );
+          }),
+        ],
       ),
     );
   }
@@ -1563,10 +1821,9 @@ class _SyncStepData {
     String? label,
     _StepStatus? status,
     String? subtitle,
-  }) =>
-      _SyncStepData(
-        label: label ?? this.label,
-        status: status ?? this.status,
-        subtitle: subtitle ?? this.subtitle,
-      );
+  }) => _SyncStepData(
+    label: label ?? this.label,
+    status: status ?? this.status,
+    subtitle: subtitle ?? this.subtitle,
+  );
 }

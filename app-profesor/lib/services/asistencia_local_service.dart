@@ -101,6 +101,18 @@ class AsistenciaLocalService {
     }
   }
 
+  // Obtener asistencias ya sincronizadas
+  List<AsistenciaRegistro> obtenerAsistenciasSincronizadas() {
+    try {
+      return _safeBox.values
+          .where((registro) => registro.sincronizado)
+          .toList();
+    } catch (e, stackTrace) {
+      Logger.error('Error obteniendo asistencias sincronizadas', e, stackTrace);
+      return [];
+    }
+  }
+
   // Verificar si hay asistencias pendientes de sincronizar
   bool hayAsistenciasPendientes() {
     try {
@@ -119,7 +131,9 @@ class AsistenciaLocalService {
         final actualizado = registro.copyWith(
           sincronizado: true,
           fechaActualizacion: DateTime.now(),
-          asistenciasSincronizadas: Map<String, bool>.from(registro.asistenciasAlumnos),
+          asistenciasSincronizadas: Map<String, bool>.from(
+            registro.asistenciasAlumnos,
+          ),
         );
         await _safeBox.put(id, actualizado);
         Logger.info('Asistencia marcada como sincronizada: $id');
@@ -142,6 +156,25 @@ class AsistenciaLocalService {
     } catch (e, stackTrace) {
       Logger.error('Error eliminando asistencia', e, stackTrace);
       rethrow;
+    }
+  }
+
+  // Limpiar SOLO las asistencias ya sincronizadas (usada al re-sincronizar ciclo)
+  // Preserva registros pendientes de subir para no perder trabajo del profesor.
+  Future<void> limpiarSincronizadas() async {
+    try {
+      final sincronizadas = _safeBox.values
+          .where((registro) => registro.sincronizado)
+          .map((r) => r.id)
+          .toList();
+      for (final id in sincronizadas) {
+        await _safeBox.delete(id);
+      }
+      Logger.info(
+        'Asistencias sincronizadas eliminadas: ${sincronizadas.length} registros',
+      );
+    } catch (e, stackTrace) {
+      Logger.error('Error limpiando asistencias sincronizadas', e, stackTrace);
     }
   }
 

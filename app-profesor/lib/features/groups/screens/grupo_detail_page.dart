@@ -979,9 +979,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     return alumno.id ?? alumno.number.toString();
   }
 
-  Map<String, bool> _normalizarAsistencias(
-    Map<String, bool> asistencias,
-  ) {
+  Map<String, bool> _normalizarAsistencias(Map<String, bool> asistencias) {
     final numberToId = <String, String>{};
     for (final alumno in widget.grupo.students) {
       if (alumno.id != null) {
@@ -1017,7 +1015,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         _entradaProfesor = registro.horaEntrada;
         _salidaProfesor = registro.horaSalida;
         _asistencias.clear();
-        _asistencias.addAll(_normalizarAsistencias(registro.asistenciasAlumnos));
+        _asistencias.addAll(
+          _normalizarAsistencias(registro.asistenciasAlumnos),
+        );
       });
 
       // Actualizar el nombre de la clase si está vacío (asistencias antiguas)
@@ -1041,9 +1041,13 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   // Guardar asistencia localmente
   Future<void> _guardarAsistencia() async {
     final registroId =
-      '${widget.grupo.id}_${_selectedDateTime.year}-${_selectedDateTime.month}-${_selectedDateTime.day}';
+        '${widget.grupo.id}_${_selectedDateTime.year}-${_selectedDateTime.month}-${_selectedDateTime.day}';
 
     final profesorId = _authStorage.getProfesor()?.id ?? 'unknown_professor';
+
+    // Preserve the synced snapshot from the existing record so that
+    // post-upload modifications are properly detected as "pending".
+    final existente = _asistenciaService.obtenerAsistencia(registroId);
 
     final registro = AsistenciaRegistro(
       id: registroId,
@@ -1054,9 +1058,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       horaSalida: _salidaProfesor,
       asistenciasAlumnos: Map.from(_asistencias),
       sincronizado: false,
-      fechaCreacion: DateTime.now(),
+      fechaCreacion: existente?.fechaCreacion ?? DateTime.now(),
       fechaActualizacion: DateTime.now(),
       nombreClase: widget.grupo.subject,
+      asistenciasSincronizadas: existente?.asistenciasSincronizadas,
     );
 
     await _asistenciaService.guardarAsistencia(registro);
@@ -1991,8 +1996,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                         duration: const Duration(milliseconds: 200),
                         curve: Curves.easeInOut,
                         decoration: BoxDecoration(
-                          color:
-                              (_asistencias[_alumnoKey(alumno)] ?? false)
+                          color: (_asistencias[_alumnoKey(alumno)] ?? false)
                               ? widget.gradientColors[0].withOpacity(0.15)
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
@@ -2004,24 +2008,19 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                             width: 28,
                             height: 28,
                             decoration: BoxDecoration(
-                              color:
-                                  (_asistencias[_alumnoKey(alumno)] ??
-                                      false)
+                              color: (_asistencias[_alumnoKey(alumno)] ?? false)
                                   ? widget.gradientColors[0]
                                   : Colors.transparent,
                               border: Border.all(
                                 color:
-                                    (_asistencias[_alumnoKey(alumno)] ??
-                                        false)
+                                    (_asistencias[_alumnoKey(alumno)] ?? false)
                                     ? widget.gradientColors[0]
                                     : Colors.grey.shade600,
                                 width: 2.5,
                               ),
                               borderRadius: BorderRadius.circular(6),
                             ),
-                            child:
-                                (_asistencias[_alumnoKey(alumno)] ??
-                                    false)
+                            child: (_asistencias[_alumnoKey(alumno)] ?? false)
                                 ? Icon(
                                     Icons.check,
                                     color: Colors.white,

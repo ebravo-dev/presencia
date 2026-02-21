@@ -277,7 +277,8 @@ class ApiService {
         return Right(response.data as Map<String, dynamic>);
       }
 
-      final errorMessage = response.data['message'] ?? 'Error al subir asistencia';
+      final errorMessage =
+          response.data['message'] ?? 'Error al subir asistencia';
       return Left(errorMessage);
     } on DioException catch (e) {
       final errorMessage = _handleDioError(e);
@@ -299,7 +300,12 @@ class ApiService {
       final response = await _dio.post(
         '/attendance/check-synced',
         data: {'records': records},
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
+        options: Options(
+          headers: {'Authorization': 'Bearer $token'},
+          // Short timeout: this is a background/optional check
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ),
       );
 
       final result = <String, bool>{};
