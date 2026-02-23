@@ -1250,10 +1250,11 @@ export class ScraperService {
         desiredChecked: boolean
     ): Promise<void> {
         // The UAT portal uses plain <input type="checkbox"> elements with IDs like cbPl_{dia}_{id_alumno}_{num_pase_lista}
+        // Multi-hour classes have MULTIPLE checkboxes within the SAME cell (one per hour/pase de lista).
         // GuardarGenericoPantalla() reads the .checked property of each input to build the save payload.
-        // So we just need to SET .checked — no need to click anything.
+        // We need to set ALL checkboxes in the target cell, not just the first one.
         const result = await page.evaluate<
-            { found: boolean; name?: string; changed?: boolean },
+            { found: boolean; name?: string; totalCheckboxes?: number; changedCount?: number },
             { targetName: string; targetMatricula: string; colIndex: number; checked: boolean }
         >(
             ({ targetName, targetMatricula, colIndex, checked }) => {
@@ -1269,13 +1270,19 @@ export class ScraperService {
                         (targetMatricula && normalize(rowText).includes(normalize(targetMatricula)))
                     ) {
                         const cell = cells[colIndex];
-                        const input = cell?.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
-                        if (input) {
-                            const wasChecked = input.checked;
-                            input.checked = checked;
-                            return { found: true, name: nameCell.trim(), changed: wasChecked !== checked };
+                        // Use querySelectorAll to find ALL checkboxes in this cell (multi-hour support)
+                        const inputs = cell?.querySelectorAll('input[type="checkbox"]') as NodeListOf<HTMLInputElement> | undefined;
+                        if (inputs && inputs.length > 0) {
+                            let changedCount = 0;
+                            for (const input of Array.from(inputs)) {
+                                if (input.checked !== checked) {
+                                    input.checked = checked;
+                                    changedCount++;
+                                }
+                            }
+                            return { found: true, name: nameCell.trim(), totalCheckboxes: inputs.length, changedCount };
                         }
-                        return { found: true, name: nameCell.trim(), changed: false };
+                        return { found: true, name: nameCell.trim(), totalCheckboxes: 0, changedCount: 0 };
                     }
                 }
                 return { found: false };
@@ -1287,8 +1294,9 @@ export class ScraperService {
             console.log(`   ⚠️ Student not found in grid: ${student.name}`);
         } else {
             const status = desiredChecked ? '✅' : '❌';
-            const changeNote = result.changed ? ' (changed)' : ' (already set)';
-            console.log(`   ${status} ${result.name}: ${desiredChecked ? 'PRESENT' : 'ABSENT'}${changeNote}`);
+            const hoursInfo = result.totalCheckboxes! > 1 ? ` (${result.totalCheckboxes} hours)` : '';
+            const changeNote = result.changedCount! > 0 ? ` (${result.changedCount} changed)` : ' (already set)';
+            console.log(`   ${status} ${result.name}: ${desiredChecked ? 'PRESENT' : 'ABSENT'}${hoursInfo}${changeNote}`);
         }
     }
 
