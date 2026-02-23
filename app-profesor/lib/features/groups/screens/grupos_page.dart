@@ -123,14 +123,14 @@ class _GruposPageState extends ConsumerState<GruposPage>
 
   bool _showPendingBanner = false;
 
-  /// Checks for pending uploads and shows a non-invasive notification
+  /// Checks for pending uploads and shows/hides the banner accordingly
   void _checkPendingUploads() {
     final asistenciaService = AsistenciaLocalService();
     final hasPending = asistenciaService.hayAsistenciasPendientes();
 
-    if (hasPending && mounted) {
+    if (mounted) {
       setState(() {
-        _showPendingBanner = true;
+        _showPendingBanner = hasPending;
       });
     }
   }
@@ -485,7 +485,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                   builder: (context) =>
                                       const UploadManagementPage(),
                                 ),
-                              );
+                              ).then((_) => _checkPendingUploads());
                             },
                             child: Container(
                               width: 44,
@@ -548,7 +548,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                         MaterialPageRoute(
                           builder: (context) => const UploadManagementPage(),
                         ),
-                      );
+                      ).then((_) => _checkPendingUploads());
                     },
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(16),
