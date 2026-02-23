@@ -123,6 +123,25 @@ class AsistenciaLocalService {
     }
   }
 
+  /// Saves a snapshot of the current asistenciasAlumnos WITHOUT marking as synced.
+  /// Called at HTTP-send time so reconciliation can later compare current data
+  /// against what was actually sent to the server.
+  Future<void> guardarSnapshotEnviado(String id) async {
+    try {
+      final registro = _safeBox.get(id);
+      if (registro != null) {
+        final actualizado = registro.copyWith(
+          asistenciasSincronizadas: Map<String, bool>.from(
+            registro.asistenciasAlumnos,
+          ),
+        );
+        await _safeBox.put(id, actualizado);
+      }
+    } catch (e, stackTrace) {
+      Logger.error('Error guardando snapshot enviado', e, stackTrace);
+    }
+  }
+
   // Marcar asistencia como sincronizada
   Future<void> marcarComoSincronizada(String id) async {
     try {
@@ -144,7 +163,6 @@ class AsistenciaLocalService {
         e,
         stackTrace,
       );
-      rethrow;
     }
   }
 

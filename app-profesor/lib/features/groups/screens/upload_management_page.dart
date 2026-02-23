@@ -29,13 +29,19 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   StreamSubscription<SyncEvent>? _sseSubscription;
   List<AsistenciaRegistro> _pendientes = [];
   List<AsistenciaRegistro> _sincronizadas = [];
+  // Keys (grupoId_date) of records that are currently syncing on the server
+  // but the app wasn't present to see the completion (e.g. professor left & came back).
+  Set<String> _syncingOnServer = {};
   bool _isLoading = true;
   bool _isUploading = false;
+  bool _isPolling = false;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
 
   // Stepper-based progress tracking
   final ValueNotifier<List<_SyncStepData>> _stepsNotifier = ValueNotifier([]);
+  // Guards access to _stepsNotifier and setState after widget is disposed
+  bool _disposed = false;
 
   @override
   void initState() {
@@ -45,6 +51,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
 
   @override
   void dispose() {
+    _disposed = true;
     _sseSubscription?.cancel();
     _sseService.disconnect();
     _stepsNotifier.dispose();
@@ -52,6 +59,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   }
 
   Future<void> _cargarAsistencias() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       // Mostrar datos locales de inmediato — sin esperar la red
@@ -85,10 +93,18 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
               .obtenerAsistenciasPendientes();
           final sincronizadasActualizadas = _asistenciaService
               .obtenerAsistenciasSincronizadas();
-          if (mounted && pendientesActualizados.length != _pendientes.length) {
+          if (mounted) {
             setState(() {
               _pendientes = pendientesActualizados;
               _sincronizadas = sincronizadasActualizadas;
+              // Clear any server-syncing flags that were resolved
+              _syncingOnServer.removeWhere((key) {
+                return !pendientesActualizados.any((r) {
+                  final dateStr =
+                      '${r.fecha.year}-${r.fecha.month.toString().padLeft(2, '0')}-${r.fecha.day.toString().padLeft(2, '0')}';
+                  return '${r.grupoId}_$dateStr' == key;
+                });
+              });
             });
           }
         })
@@ -101,8 +117,9 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         });
   }
 
-  /// Check the server for records that were already synced (e.g. app was closed during upload).
-  /// Only reconciles if the local attendance data hasn't changed since the last sync.
+  /// Check the server for records that were already synced or are syncing
+  /// (e.g. app was closed during upload).
+  /// Only reconciles completed records if the local data hasn't changed.
   Future<void> _reconciliarConServidor(
     List<AsistenciaRegistro> pendientes,
   ) async {
@@ -115,42 +132,98 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       return {'groupId': r.grupoId, 'date': dateStr};
     }).toList();
 
-    final syncedMap = await _apiService.checkSyncedRecords(
+    final statusMap = await _apiService.checkSyncedRecordsStatus(
       token: token,
       records: records,
     );
 
-    if (syncedMap.isEmpty) return;
+    if (statusMap.isEmpty) return;
+
+    final newSyncingOnServer = <String>{};
 
     for (final registro in pendientes) {
       final dateStr =
           '${registro.fecha.year}-${registro.fecha.month.toString().padLeft(2, '0')}-${registro.fecha.day.toString().padLeft(2, '0')}';
       final key = '${registro.grupoId}_$dateStr';
-      if (syncedMap[key] == true) {
-        // Only mark as synced if the local data hasn't changed since last sync
-        if (registro.asistenciasSincronizadas == null ||
-            _attendanceMatchesSyncedSnapshot(registro)) {
+      final status = statusMap[key];
+
+      if (status == 'COMPLETED') {
+        // Mark as synced only if local data matches what we sent.
+        // asistenciasSincronizadas is set at HTTP-send time (guardarSnapshotEnviado),
+        // so if user changed data after sending, the snapshot won't match → keep pending.
+        if (_snapshotMatchesCurrent(registro)) {
           Logger.info('Reconciliación: marcando como sincronizada $key');
           await _asistenciaService.marcarComoSincronizada(registro.id);
         } else {
           Logger.info(
-            'Reconciliación: $key tiene cambios locales, mantener como pendiente',
+            'Reconciliación: $key tiene cambios locales posteriores al envío, mantener como pendiente',
           );
         }
+      } else if (status == 'IN_PROGRESS' || status == 'PENDING') {
+        // The server is still processing this record (professor left mid-upload).
+        Logger.info('Reconciliación: $key está sincronizando en el servidor');
+        newSyncingOnServer.add(key);
+      }
+    }
+
+    if (mounted) {
+      setState(() => _syncingOnServer = newSyncingOnServer);
+      if (newSyncingOnServer.isNotEmpty && !_isUploading && !_isPolling) {
+        // Populate the stepper so the UI isn't empty when re-entering mid-sync
+        _stepsNotifier.value = [
+          _SyncStepData(
+            label: 'Conectando al servidor',
+            status: _StepStatus.completed,
+          ),
+          _SyncStepData(label: 'Conectado', status: _StepStatus.completed),
+          _SyncStepData(
+            label: 'Subiendo asistencia',
+            status: _StepStatus.inProgress,
+            subtitle:
+                '${newSyncingOnServer.length} registro${newSyncingOnServer.length == 1 ? '' : 's'} procesando...',
+          ),
+          _SyncStepData(label: '¡Terminado!', status: _StepStatus.pending),
+        ];
+        // Start polling so the UI clears once jobs finish
+        _pollUntilSyncingClears(pendientes);
       }
     }
   }
 
-  /// Returns true if the current attendance data matches the last synced snapshot
-  /// (meaning no local changes were made after the sync).
-  bool _attendanceMatchesSyncedSnapshot(AsistenciaRegistro registro) {
-    final synced = registro.asistenciasSincronizadas;
-    if (synced == null)
-      return false; // No snapshot = never synced or old record, don't auto-reconcile
+  /// Polls the server every 4 seconds while _syncingOnServer is non-empty.
+  /// Stops when all jobs finish or the widget is disposed.
+  Future<void> _pollUntilSyncingClears(
+    List<AsistenciaRegistro> pendientes,
+  ) async {
+    if (_isPolling) return;
+    _isPolling = true;
+    try {
+      while (!_disposed && _syncingOnServer.isNotEmpty && !_isUploading) {
+        await Future.delayed(const Duration(seconds: 4));
+        if (_disposed || _isUploading) break;
+        await _reconciliarConServidor(pendientes);
+      }
+
+      // Once clear: reload fresh data so synced records move off the pending list
+      if (!_disposed && mounted && _syncingOnServer.isEmpty) {
+        await _cargarAsistencias();
+      }
+    } finally {
+      _isPolling = false;
+    }
+  }
+
+  /// Returns true if the current attendance data matches what we last sent
+  /// (saved by guardarSnapshotEnviado at HTTP-send time).
+  /// If no snapshot exists (never sent), returns true so that a COMPLETED
+  /// status from the server is trusted (e.g. first-time sync or legacy data).
+  bool _snapshotMatchesCurrent(AsistenciaRegistro registro) {
+    final snapshot = registro.asistenciasSincronizadas;
+    if (snapshot == null) return true;
     final current = registro.asistenciasAlumnos;
-    if (current.length != synced.length) return false;
+    if (current.length != snapshot.length) return false;
     for (final entry in current.entries) {
-      if (synced[entry.key] != entry.value) return false;
+      if (snapshot[entry.key] != entry.value) return false;
     }
     return true;
   }
@@ -214,66 +287,196 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       return;
     }
 
+    final token = _authStorage.getToken();
+    final profesor = _authStorage.getProfesor();
+    final grupos = _authStorage.getGrupos() ?? [];
+    final storedPassword = _authStorage.getEncryptedPassword();
+
+    if (token == null || profesor == null || storedPassword == null || storedPassword.isEmpty) {
+      return;
+    }
+
     setState(() => _isUploading = true);
     HapticFeedback.mediumImpact();
+
+    final pendientesSnapshot = List<AsistenciaRegistro>.from(_pendientes);
+    final total = pendientesSnapshot.length;
+    final encryptedPassword = _apiService.ensureEncryptedPassword(storedPassword);
 
     // Initialize 4 fixed steps
     _stepsNotifier.value = [
       _SyncStepData(
-        label: 'Conectando al servidor',
+        label: 'Preparando registros',
         status: _StepStatus.inProgress,
       ),
-      _SyncStepData(label: 'Conectado', status: _StepStatus.pending),
-      _SyncStepData(label: 'Subiendo asistencia', status: _StepStatus.pending),
+      _SyncStepData(
+        label: 'Enviando al servidor',
+        status: _StepStatus.pending,
+      ),
+      _SyncStepData(
+        label: 'Procesando en servidor',
+        status: _StepStatus.pending,
+      ),
       _SyncStepData(label: '¡Terminado!', status: _StepStatus.pending),
     ];
 
-    final grupos = _authStorage.getGrupos() ?? [];
-    int successCount = 0;
-    final total = _pendientes.length;
+    // ── Phase 1: Fire ALL HTTP uploads ─────────────────────────────
+    // Each POST /attendance returns 201 immediately and queues a job.
+    _updateStep(0, _StepStatus.completed);
+    _updateStep(1, _StepStatus.inProgress);
 
-    for (int i = 0; i < _pendientes.length; i++) {
-      final reg = _pendientes[i];
+    int sentCount = 0;
+    int emptyCount = 0;
+    final sentRecords = <String, AsistenciaRegistro>{}; // key → registro
+
+    for (final reg in pendientesSnapshot) {
+      if (_disposed) break;
       final grupo = _resolveGrupo(grupos, reg.grupoId);
-      final className = reg.nombreClase ?? grupo?.name ?? reg.grupoId;
+      if (grupo == null) continue;
 
-      // Update step 2 label with current class
-      final classLabel = total > 1
-          ? 'Subiendo: $className (${i + 1}/$total)'
-          : 'Subiendo: $className';
-      final step2Status = i == 0 ? _StepStatus.pending : _StepStatus.inProgress;
-      _updateStep(2, step2Status, label: classLabel, subtitle: '');
+      final registroActualizado = await _migrarRegistroSiNecesario(reg, grupo);
+      final attendances = _buildAttendances(registroActualizado, grupo);
 
-      final success = await _subirRegistro(reg);
-      if (success) {
-        _updateStep(2, _StepStatus.completed);
-        successCount++;
-      } else {
-        _updateStep(2, _StepStatus.failed);
+      if (attendances.isEmpty) {
+        await _asistenciaService.marcarComoSincronizada(registroActualizado.id);
+        emptyCount++;
+        continue;
+      }
+
+      final dateStr =
+          '${registroActualizado.fecha.year}-${registroActualizado.fecha.month.toString().padLeft(2, '0')}-${registroActualizado.fecha.day.toString().padLeft(2, '0')}';
+      final key = '${grupo.id}_$dateStr';
+
+      final result = await _apiService.uploadAttendance(
+        token: token,
+        groupId: grupo.id,
+        date: registroActualizado.fecha,
+        attendances: attendances,
+        encryptedPassword: encryptedPassword,
+      );
+
+      result.fold(
+        (error) => Logger.error('Error al enviar $key: $error'),
+        (_) {
+          sentCount++;
+          sentRecords[key] = registroActualizado;
+          _updateStep(1, _StepStatus.inProgress,
+            subtitle: '$sentCount de $total enviado${sentCount == 1 ? '' : 's'}');
+        },
+      );
+
+      // Save snapshot of what we sent so reconciliation can detect
+      // whether the user changed data after this upload.
+      if (sentRecords.containsKey(key)) {
+        await _asistenciaService.guardarSnapshotEnviado(registroActualizado.id);
       }
     }
 
-    // Final step states
-    if (successCount == total) {
+    _updateStep(1, _StepStatus.completed,
+      subtitle: '$sentCount enviado${sentCount == 1 ? '' : 's'}'
+          '${emptyCount > 0 ? ', $emptyCount sin cambios' : ''}');
+
+    if (sentRecords.isEmpty) {
+      // Nothing was sent — everything was empty or failed to send
+      _updateStep(2, _StepStatus.completed);
       _updateStep(3, _StepStatus.completed);
       HapticFeedback.heavyImpact();
       await Future.delayed(const Duration(seconds: 2));
-    } else if (successCount > 0) {
-      _updateStep(
-        3,
-        _StepStatus.failed,
-        subtitle:
-            '$successCount de $total subidos. Los fallidos se pueden reintentar.',
+      await _cargarAsistencias();
+      if (mounted) setState(() => _isUploading = false);
+      return;
+    }
+
+    // ── Phase 2: Monitor completion via check-synced polling ───────
+    _updateStep(2, _StepStatus.inProgress,
+      subtitle: '0 de ${sentRecords.length} procesados...');
+
+    // Connect SSE for live progress display (optional, enriches subtitles)
+    String lastSseMessage = '';
+    await _sseSubscription?.cancel();
+    _sseSubscription = _sseService.connect(profesor.id, token).listen(
+      (event) {
+        if (event.type == SyncEventType.progress && event.message.isNotEmpty) {
+          lastSseMessage = event.message;
+        }
+      },
+      onError: (_) {},
+      onDone: () {},
+    );
+
+    final completedKeys = <String>{};
+    final failedKeys = <String>{};
+    final deadline = DateTime.now().add(const Duration(minutes: 10));
+
+    while (completedKeys.length + failedKeys.length < sentRecords.length &&
+        DateTime.now().isBefore(deadline) &&
+        !_disposed) {
+      await Future.delayed(const Duration(seconds: 3));
+      if (_disposed) break;
+
+      final remainingRecords = sentRecords.entries
+          .where((e) => !completedKeys.contains(e.key) && !failedKeys.contains(e.key))
+          .map((e) {
+            final reg = e.value;
+            final dateStr =
+                '${reg.fecha.year}-${reg.fecha.month.toString().padLeft(2, '0')}-${reg.fecha.day.toString().padLeft(2, '0')}';
+            return {'groupId': reg.grupoId, 'date': dateStr};
+          })
+          .toList();
+
+      if (remainingRecords.isEmpty) break;
+
+      final statusMap = await _apiService.checkSyncedRecordsStatus(
+        token: token,
+        records: remainingRecords,
       );
+
+      for (final entry in statusMap.entries) {
+        if (entry.value == 'COMPLETED') {
+          completedKeys.add(entry.key);
+          final reg = sentRecords[entry.key];
+          if (reg != null) {
+            await _asistenciaService.marcarComoSincronizada(reg.id);
+          }
+        } else if (entry.value == 'FAILED') {
+          failedKeys.add(entry.key);
+        }
+      }
+
+      final done = completedKeys.length;
+      final failed = failedKeys.length;
+      String subtitle;
+      if (failed > 0) {
+        subtitle = '$done completado${done == 1 ? '' : 's'}, $failed fallido${failed == 1 ? '' : 's'} de ${sentRecords.length}';
+      } else {
+        subtitle = '$done de ${sentRecords.length} completado${done == 1 ? '' : 's'}';
+      }
+      if (lastSseMessage.isNotEmpty && done + failed < sentRecords.length) {
+        subtitle += '\n$lastSseMessage';
+      }
+      _updateStep(2, _StepStatus.inProgress, subtitle: subtitle);
+    }
+
+    _sseService.disconnect();
+
+    // ── Phase 3: Final status ──────────────────────────────────────
+    final allComplete = completedKeys.length == sentRecords.length;
+
+    if (allComplete) {
+      _updateStep(2, _StepStatus.completed);
+      _updateStep(3, _StepStatus.completed);
+      HapticFeedback.heavyImpact();
+      await Future.delayed(const Duration(seconds: 2));
+    } else if (completedKeys.isNotEmpty) {
+      _updateStep(2, failedKeys.isNotEmpty ? _StepStatus.failed : _StepStatus.completed);
+      _updateStep(3, _StepStatus.failed,
+        subtitle: '${completedKeys.length} de ${sentRecords.length} subidos. Los fallidos se pueden reintentar.');
       HapticFeedback.heavyImpact();
       await Future.delayed(const Duration(seconds: 3));
     } else {
       _updateStep(2, _StepStatus.failed);
-      _updateStep(
-        3,
-        _StepStatus.failed,
-        subtitle: 'Error al subir asistencias. Intenta de nuevo.',
-      );
+      _updateStep(3, _StepStatus.failed,
+        subtitle: 'Error al subir asistencias. Intenta de nuevo.');
       HapticFeedback.heavyImpact();
       await Future.delayed(const Duration(seconds: 3));
     }
@@ -290,6 +493,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     String? subtitle,
     String? label,
   }) {
+    if (_disposed) return;
     final steps = List<_SyncStepData>.from(_stepsNotifier.value);
     steps[index] = steps[index].copyWith(
       status: status,
@@ -372,7 +576,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'La sincronización continúa en la nube.\nPuedes cerrar la app.',
+                      'La sincronización corre en la nube. Si ya enviaste, los registros se actualizarán al abrir esta pantalla cuando tengas internet.',
                       style: TextStyle(
                         color: Colors.blue.shade400,
                         fontSize: 13,
@@ -505,67 +709,6 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     );
   }
 
-  Future<bool> _subirRegistro(AsistenciaRegistro registro) async {
-    final token = _authStorage.getToken();
-    final profesor = _authStorage.getProfesor();
-    final grupos = _authStorage.getGrupos();
-
-    if (token == null || profesor == null || grupos == null) {
-      return false;
-    }
-
-    final grupo = _resolveGrupo(grupos, registro.grupoId);
-    if (grupo == null) {
-      return false;
-    }
-
-    final registroActualizado = await _migrarRegistroSiNecesario(
-      registro,
-      grupo,
-    );
-
-    final attendances = _buildAttendances(registroActualizado, grupo);
-    if (attendances.isEmpty) {
-      // No changes vs last synced state — just mark as synced locally
-      await _asistenciaService.marcarComoSincronizada(registroActualizado.id);
-      return true;
-    }
-
-    final storedPassword = _authStorage.getEncryptedPassword();
-    if (storedPassword == null || storedPassword.isEmpty) {
-      return false;
-    }
-
-    final encryptedPassword = _apiService.ensureEncryptedPassword(
-      storedPassword,
-    );
-
-    final result = await _apiService.uploadAttendance(
-      token: token,
-      groupId: grupo.id,
-      date: registroActualizado.fecha,
-      attendances: attendances,
-      encryptedPassword: encryptedPassword,
-    );
-
-    return await result.fold(
-      (error) async {
-        Logger.error('Error al subir: $error');
-        return false;
-      },
-      (_) async {
-        final syncSuccess = await _waitForSyncCompletion(profesor.id, token);
-        if (syncSuccess) {
-          await _asistenciaService.marcarComoSincronizada(
-            registroActualizado.id,
-          );
-          return true;
-        }
-        return false;
-      },
-    );
-  }
-
   Grupo? _resolveGrupo(List<Grupo> grupos, String grupoId) {
     final direct = grupos.firstWhere(
       (g) => g.id == grupoId,
@@ -674,72 +817,6 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         grupoMap: grupoMap,
       ),
     );
-  }
-
-  Future<bool> _waitForSyncCompletion(String professorId, String token) async {
-    final completer = Completer<bool>();
-
-    await _sseSubscription?.cancel();
-    _sseSubscription = _sseService
-        .connect(professorId, token)
-        .listen(
-          (event) {
-            if (event.type == SyncEventType.connected) {
-              // SSE handshake done → step 0 complete
-              if (_stepsNotifier.value[0].status != _StepStatus.completed) {
-                _updateStep(0, _StepStatus.completed);
-              }
-              if (_stepsNotifier.value[1].status != _StepStatus.completed) {
-                _updateStep(
-                  1,
-                  _StepStatus.inProgress,
-                  subtitle: 'Esperando al servidor...',
-                );
-              }
-            } else if (event.type == SyncEventType.progress) {
-              if (event.status == 'IN_PROGRESS') {
-                // Worker picked up the job
-                if (_stepsNotifier.value[1].status != _StepStatus.completed) {
-                  _updateStep(1, _StepStatus.completed);
-                }
-                _updateStep(2, _StepStatus.inProgress, subtitle: event.message);
-              } else if (event.message.isNotEmpty) {
-                // PENDING state with a message
-                if (_stepsNotifier.value[1].status != _StepStatus.completed) {
-                  _updateStep(
-                    1,
-                    _StepStatus.inProgress,
-                    subtitle: event.message,
-                  );
-                }
-              }
-            }
-
-            if (event.isCompleted) {
-              _updateStep(
-                2,
-                _StepStatus.completed,
-                subtitle: 'Asistencia subida correctamente',
-              );
-              if (!completer.isCompleted) completer.complete(true);
-            }
-            if (event.isFailed) {
-              _updateStep(2, _StepStatus.failed, subtitle: event.message);
-              if (!completer.isCompleted) completer.complete(false);
-            }
-          },
-          onError: (_) {
-            if (!completer.isCompleted) completer.complete(false);
-          },
-        );
-
-    final result = await completer.future.timeout(
-      const Duration(minutes: 5),
-      onTimeout: () => false,
-    );
-
-    _sseService.disconnect();
-    return result;
   }
 
   @override
@@ -851,7 +928,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         ),
         const SizedBox(height: 40),
         Expanded(
-          child: _isUploading
+          child: _isUploading || _syncingOnServer.isNotEmpty
               ? _buildUploadingState()
               : _pendientes.isEmpty
               ? _buildAllSyncedState()
@@ -901,6 +978,44 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   Widget _buildPendingState() {
     return Column(
       children: [
+        // Banner: records being synced server-side (professor left mid-upload)
+        if (_syncingOnServer.isNotEmpty) ...
+          [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              margin: const EdgeInsets.only(bottom: 14),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.blue.withOpacity(0.2),
+                ),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.blue.shade400,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '${_syncingOnServer.length} registro${_syncingOnServer.length == 1 ? '' : 's'} sincronizando en el servidor. Se actualizará al terminar.',
+                      style: TextStyle(
+                        color: Colors.blue.shade300,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         GestureDetector(
           onTap: () {
             HapticFeedback.lightImpact();
@@ -994,60 +1109,75 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
           ),
         ),
         const SizedBox(height: 24),
-        // Botón Subir Asistencias — estilo card con ícono teal
-        GestureDetector(
-          onTap: _isUploading ? null : _subirAsistencias,
-          child: Container(
-            width: double.infinity,
-            margin: const EdgeInsets.only(bottom: 40),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1C1C1E),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.06),
-                width: 0.5,
-              ),
-            ),
-            child: Row(
-              children: [
-                // Ícono teal
-                Container(
-                  width: 44,
-                  height: 44,
+        // Botón Subir Asistencias — bloqueado si ya hay algo subiendo o procesando en servidor
+        Builder(
+          builder: (context) {
+            final blocked = _isUploading || _syncingOnServer.isNotEmpty;
+            return GestureDetector(
+              onTap: blocked ? null : _subirAsistencias,
+              child: Opacity(
+                opacity: blocked ? 0.4 : 1.0,
+                child: Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 40),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 16,
+                  ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1E3A38),
-                    borderRadius: BorderRadius.circular(12),
+                    color: const Color(0xFF1C1C1E),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.06),
+                      width: 0.5,
+                    ),
                   ),
-                  child: _isUploading
-                      ? const Center(
-                          child: SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              color: Color(0xFF4DB8A8),
-                              strokeWidth: 2.5,
-                            ),
-                          ),
-                        )
-                      : const Icon(
-                          Icons.cloud_upload_rounded,
-                          color: Color(0xFF4DB8A8),
-                          size: 24,
+                  child: Row(
+                    children: [
+                      // Ícono teal
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E3A38),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                ),
-                const SizedBox(width: 16),
-                Text(
-                  'Subir Asistencias',
-                  style: TextStyle(
-                    color: _isUploading ? Colors.grey.shade600 : Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w500,
+                        child: blocked
+                            ? const Center(
+                                child: SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    color: Color(0xFF4DB8A8),
+                                    strokeWidth: 2.5,
+                                  ),
+                                ),
+                              )
+                            : const Icon(
+                                Icons.cloud_upload_rounded,
+                                color: Color(0xFF4DB8A8),
+                                size: 24,
+                              ),
+                      ),
+                      const SizedBox(width: 16),
+                      Text(
+                        _syncingOnServer.isNotEmpty
+                            ? 'Sincronizando...'
+                            : 'Subir Asistencias',
+                        style: TextStyle(
+                          color: blocked
+                              ? Colors.grey.shade600
+                              : Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ],
     );

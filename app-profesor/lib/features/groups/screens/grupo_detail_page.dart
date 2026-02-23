@@ -8,7 +8,7 @@ import '../../../shared/models/grupo.dart';
 import '../../../shared/models/alumno.dart';
 import '../../../shared/models/asistencia_registro.dart';
 import '../../../services/asistencia_local_service.dart';
-import '../../../services/bluetooth_attendance_service.dart';
+
 import '../../../services/auth_storage_service.dart';
 
 class GrupoDetailPage extends StatefulWidget {
@@ -50,12 +50,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
   // Servicio de almacenamiento local
   final AsistenciaLocalService _asistenciaService = AsistenciaLocalService();
-
-  // Servicio de Bluetooth
-  final BluetoothAttendanceService _btService = BluetoothAttendanceService();
-
-  // Estados de sincronización: 'synced', 'pending', 'syncing'
-  String _syncStatus = 'synced';
 
   // Timer para actualizar la hora
   Timer? _timer;
@@ -439,118 +433,93 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                 ),
               ], // Cierre de slivers
             ), // Cierre CustomScrollView
-            // Botones flotantes izquierda (X y fecha)
+            // Botón flotante izquierda (X)
             Positioned(
               top: MediaQuery.of(context).padding.top + 8,
               left: 12,
-              child: Row(
-                children: [
-                  // Botón X
+              child: // Botón X
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(22),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                      child: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF2C2C2E).withOpacity(0.72),
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.1),
-                            width: 0.5,
-                          ),
-                        ),
-                        child: IconButton(
-                          padding: EdgeInsets.zero,
-                          icon: const Icon(
-                            Icons.close,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                          onPressed: () {
-                            HapticFeedback.lightImpact();
-                            if (Navigator.of(context).canPop()) {
-                              Navigator.of(context).pop();
-                            }
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Botón de fecha/hora
-                  GestureDetector(
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      _showDateTimePicker();
-                    },
-                    child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2C2C2E).withOpacity(0.72),
                       borderRadius: BorderRadius.circular(22),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                        child: Container(
-                          height: 44,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF2C2C2E).withOpacity(0.72),
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.1),
-                              width: 0.5,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                _getFormattedDateTime(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              const Icon(
-                                Icons.edit,
-                                size: 16,
-                                color: Colors.white,
-                              ),
-                            ],
-                          ),
-                        ),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.1),
+                        width: 0.5,
                       ),
                     ),
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(
+                        Icons.close,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                      onPressed: () {
+                        HapticFeedback.lightImpact();
+                        if (Navigator.of(context).canPop()) {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                    ),
                   ),
-                ],
+                ),
               ),
             ),
-            // Botones flotantes derecha - animado según tab
+            // Botón flotante derecha (fecha)
             Positioned(
               top: MediaQuery.of(context).padding.top + 8,
               right: 12,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                switchInCurve: Curves.easeOut,
-                switchOutCurve: Curves.easeIn,
-                transitionBuilder: (Widget child, Animation<double> animation) {
-                  return FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0.3, 0),
-                        end: Offset.zero,
-                      ).animate(animation),
-                      child: child,
-                    ),
-                  );
+              child: GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  _showDateTimePicker();
                 },
-                child: _selectedTab == 1
-                    ? _buildBluetoothButton()
-                    : _buildSyncButton(),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2C2C2E).withOpacity(0.72),
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.1),
+                          width: 0.5,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _getFormattedDateTime(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          const Icon(
+                            Icons.edit,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
+
             // Botón flotante para volver arriba
             if (_showScrollToTopButton)
               Positioned(
@@ -1034,8 +1003,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         _asistencias.clear();
       });
     }
-
-    _actualizarEstadoSincronizacion();
   }
 
   // Guardar asistencia localmente
@@ -1151,18 +1118,12 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
     if (exito) {
       // Éxito: actualizar estado y mostrar confirmación
-      setState(() {
-        _syncStatus = 'synced';
-      });
 
       if (mounted) {
         _mostrarDialogoExito();
       }
     } else {
       // Error: mantener como pendiente y mostrar mensaje
-      setState(() {
-        _syncStatus = 'pending';
-      });
 
       if (mounted) {
         _mostrarDialogoErrorSincronizacion();
@@ -1338,14 +1299,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         );
       },
     );
-  }
-
-  // Actualizar estado de sincronización
-  void _actualizarEstadoSincronizacion() {
-    final hayPendientes = _asistenciaService.hayAsistenciasPendientes();
-    setState(() {
-      _syncStatus = hayPendientes ? 'pending' : 'synced';
-    });
   }
 
   // Verificar si la fecha seleccionada es hoy
@@ -1610,200 +1563,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     }
   }
 
-  Widget _buildSyncIcon() {
-    switch (_syncStatus) {
-      case 'synced':
-        // Nube rellena con el color más oscuro del gradiente y check blanco
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            Icon(
-              Icons.cloud,
-              color: widget.gradientColors[1], // Color más oscuro del gradiente
-              size: 32,
-            ),
-            Icon(
-              Icons.check_rounded,
-              color: Colors.white,
-              size: 18,
-              weight: 900,
-            ),
-          ],
-        );
-      case 'pending':
-        // Nube rellena con el color más oscuro del gradiente y flecha arriba blanca
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            Icon(
-              Icons.cloud,
-              color: widget.gradientColors[1], // Color más oscuro del gradiente
-              size: 32,
-            ),
-            Icon(
-              Icons.arrow_upward_rounded,
-              color: Colors.white,
-              size: 18,
-              weight: 900,
-            ),
-          ],
-        );
-      case 'syncing':
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            Icon(
-              Icons.cloud,
-              color: widget.gradientColors[1], // Color más oscuro del gradiente
-              size: 32,
-            ),
-            const SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-            ),
-          ],
-        );
-      default:
-        return const Icon(Icons.cloud_off, color: Colors.grey, size: 32);
-    }
-  }
-
-  /// Botón "En la nube" / "Pendientes" (tab Mi asistencia)
-  Widget _buildSyncButton() {
-    return GestureDetector(
-      key: const ValueKey('sync_button'),
-      onTap: () {
-        HapticFeedback.lightImpact();
-      },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2C2C2E).withOpacity(0.72),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.1),
-                width: 0.5,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildSyncIcon(),
-                const SizedBox(width: 6),
-                Text(
-                  _syncStatus == 'pending'
-                      ? 'Pendientes'
-                      : _syncStatus == 'synced'
-                      ? 'En la nube'
-                      : '',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Botón Bluetooth "Escanear" (tab Alumnos)
-  Widget _buildBluetoothButton() {
-    return GestureDetector(
-      key: const ValueKey('bt_button'),
-      onTap: () {
-        HapticFeedback.mediumImpact();
-        _showBluetoothScanSheet();
-      },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1A3A5C).withOpacity(0.85),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(
-                color: const Color(0xFF4A90E2).withOpacity(0.4),
-                width: 0.5,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.bluetooth_searching,
-                  color: const Color(0xFF4A90E2),
-                  size: 22,
-                ),
-                const SizedBox(width: 6),
-                const Text(
-                  'Escanear',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Show Bluetooth scan bottom sheet
-  void _showBluetoothScanSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _BluetoothScanSheet(
-        students: widget.grupo.students,
-        btService: _btService,
-        gradientColors: widget.gradientColors,
-        onApplyAttendance: (matchedStudents) {
-          setState(() {
-            for (final alumno in matchedStudents) {
-              _asistencias[_alumnoKey(alumno)] = true;
-            }
-          });
-          _guardarAsistencia();
-          Navigator.of(context).pop();
-          HapticFeedback.heavyImpact();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '✅ ${matchedStudents.length} alumnos marcados como presentes',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              backgroundColor: widget.gradientColors[0],
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   Widget _buildAlumnosContent() {
     return Column(
       children: [
@@ -1858,87 +1617,78 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: Column(
-              children: List.generate(
-                widget.grupo.students.length,
-                (index) => _buildStudentCard(
-                  widget.grupo.students[index],
-                  isLast: index == widget.grupo.students.length - 1,
-                ),
-              ),
-            ),
-          ),
-        ),
-        // Espacio adicional al final para mejor visualización del último alumno
-        const SizedBox(height: 100),
-      ],
-    );
-  }
-
-  Widget _buildPassListBTButton() {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          onTap: () {
-            HapticFeedback.mediumImpact();
-            // TODO: Navegar a pantalla de pasar lista con Bluetooth
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text('Función de pasar lista BT en desarrollo'),
-                backgroundColor: widget.gradientColors[0],
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          },
-          borderRadius: BorderRadius.circular(12),
-          splashColor: widget.gradientColors[0].withOpacity(0.2),
-          highlightColor: widget.gradientColors[0].withOpacity(0.1),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Texto del botón
-                const Text(
-                  'PASAR LISTA',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
+                if (_puedeMarcarAsistenciaAlumnos()) ...[
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () async {
+                        HapticFeedback.lightImpact();
+                        setState(() {
+                          for (final alumno in widget.grupo.students) {
+                            final key = _alumnoKey(alumno);
+                            _asistencias[key] = !(_asistencias[key] ?? false);
+                          }
+                        });
+                        await _guardarAsistencia();
+                      },
+                      splashColor: widget.gradientColors[0].withOpacity(0.15),
+                      highlightColor:
+                          widget.gradientColors[0].withOpacity(0.08),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Text(
+                              'Invertir',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.6),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                            const SizedBox(width: 32),
+                            // Mismo ancho que el AnimatedContainer del checkbox (8+28+8)
+                            SizedBox(
+                              width: 44,
+                              height: 44,
+                              child: Center(
+                                child: Icon(
+                                  Icons.check_box_rounded,
+                                  color: Colors.white.withOpacity(0.6),
+                                  size: 32,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                // Icono de Bluetooth en óvalo azul
-                Container(
-                  width: 22,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF4A90E2),
-                    borderRadius: BorderRadius.circular(14),
+                  Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: Colors.white.withOpacity(0.07),
                   ),
-                  child: const Icon(
-                    Icons.bluetooth,
-                    color: Colors.white,
-                    size: 16,
+                ],
+                ...List.generate(
+                  widget.grupo.students.length,
+                  (index) => _buildStudentCard(
+                    widget.grupo.students[index],
+                    isLast: index == widget.grupo.students.length - 1,
                   ),
                 ),
               ],
             ),
           ),
         ),
-      ),
+        // Espacio adicional al final para mejor visualización del último alumno
+        const SizedBox(height: 100),
+      ],
     );
   }
 
@@ -2021,7 +1771,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: (_asistencias[_alumnoKey(alumno)] ?? false)
-                                ? Icon(
+                                ? const Icon(
                                     Icons.check,
                                     color: Colors.white,
                                     size: 20,
@@ -2050,601 +1800,5 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     );
   }
 
-  void _showOptionsMenu(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1C1C1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[600],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
-            _buildMenuOption(
-              icon: Icons.insights_rounded,
-              title: 'Ver estadísticas',
-              subtitle: 'Asistencia y reportes del grupo',
-              onTap: () {
-                Navigator.pop(context);
-                // TODO: Navegar a estadísticas
-              },
-            ),
-            _buildMenuOption(
-              icon: Icons.share_rounded,
-              title: 'Compartir grupo',
-              subtitle: 'Enviar información del grupo',
-              onTap: () {
-                Navigator.pop(context);
-                // TODO: Compartir grupo
-              },
-            ),
-            _buildMenuOption(
-              icon: Icons.settings_rounded,
-              title: 'Configuración',
-              subtitle: 'Ajustes del grupo y notificaciones',
-              onTap: () {
-                Navigator.pop(context);
-                // TODO: Abrir configuración
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMenuOption({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
-          child: Row(
-            children: [
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: widget.gradientColors[0].withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: widget.gradientColors[0], size: 24),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(color: Colors.grey[400], fontSize: 13),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: Colors.grey[600],
-                size: 20,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   // Esta función _verificarAsistenciaProfesor fue eliminada porque no se usa
-}
-
-/// Bottom sheet widget for Bluetooth attendance scanning
-class _BluetoothScanSheet extends StatefulWidget {
-  final List<dynamic> students;
-  final BluetoothAttendanceService btService;
-  final List<Color> gradientColors;
-  final Function(List<dynamic> matchedStudents) onApplyAttendance;
-
-  const _BluetoothScanSheet({
-    required this.students,
-    required this.btService,
-    required this.gradientColors,
-    required this.onApplyAttendance,
-  });
-
-  @override
-  State<_BluetoothScanSheet> createState() => _BluetoothScanSheetState();
-}
-
-class _BluetoothScanSheetState extends State<_BluetoothScanSheet>
-    with SingleTickerProviderStateMixin {
-  bool _isScanning = false;
-  bool _scanComplete = false;
-  String? _error;
-  List<DiscoveredDevice> _devices = [];
-  List<BluetoothMatch> _matches = [];
-  int _scanCycle = 0;
-  late AnimationController _radarController;
-  StreamSubscription<List<DiscoveredDevice>>? _devicesSub;
-  StreamSubscription<List<BluetoothMatch>>? _matchesSub;
-  StreamSubscription<bool>? _scanningSub;
-  StreamSubscription<int>? _cycleSub;
-
-  @override
-  void initState() {
-    super.initState();
-    _radarController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    );
-    _startScan();
-  }
-
-  @override
-  void dispose() {
-    _radarController.dispose();
-    _devicesSub?.cancel();
-    _matchesSub?.cancel();
-    _scanningSub?.cancel();
-    _cycleSub?.cancel();
-    if (_isScanning) {
-      widget.btService.stopScan();
-    }
-    super.dispose();
-  }
-
-  Future<void> _startScan() async {
-    // Check permissions (waits for user to respond to dialog)
-    final hasPermission = await widget.btService.requestPermissions();
-    if (!hasPermission) {
-      if (mounted) {
-        setState(() {
-          _error = 'Se necesitan permisos de Bluetooth para escanear.';
-        });
-      }
-      return;
-    }
-
-    // Check BT state
-    final btReady = await widget.btService.isBluetoothReady();
-    if (!btReady) {
-      if (mounted) {
-        setState(() {
-          _error = 'Activa el Bluetooth de tu dispositivo para escanear.';
-        });
-      }
-      return;
-    }
-
-    setState(() {
-      _isScanning = true;
-      _scanComplete = false;
-      _error = null;
-      _devices = [];
-      _matches = [];
-      _scanCycle = 0;
-    });
-
-    _radarController.repeat();
-
-    // Subscribe to streams
-    _devicesSub = widget.btService.devicesStream.listen((devices) {
-      if (mounted) {
-        setState(() => _devices = devices);
-      }
-    });
-
-    _matchesSub = widget.btService.matchesStream.listen((matches) {
-      if (mounted) {
-        setState(() => _matches = matches);
-      }
-    });
-
-    _scanningSub = widget.btService.scanningStream.listen((scanning) {
-      if (mounted && !scanning && _isScanning) {
-        setState(() {
-          _isScanning = false;
-          _scanComplete = true;
-        });
-        _radarController.stop();
-      }
-    });
-
-    _cycleSub = widget.btService.scanCycleStream.listen((cycle) {
-      if (mounted) {
-        setState(() => _scanCycle = cycle);
-      }
-    });
-
-    // Start continuous BLE scan (runs until user presses stop)
-    widget.btService.startScan(students: widget.students.cast());
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.75,
-      ),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Handle bar
-          const SizedBox(height: 12),
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade600,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // Header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                Icon(Icons.bluetooth, color: const Color(0xFF4A90E2), size: 28),
-                const SizedBox(width: 12),
-                const Text(
-                  'Escaneo Bluetooth',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Text(
-              'Los alumnos deben tener su Bluetooth encendido y nombre configurado',
-              style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // Error state
-          if (_error != null) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.red.withOpacity(0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.error_outline, color: Colors.red),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _error!,
-                        style: TextStyle(
-                          color: Colors.red.shade300,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-          ],
-
-          // Scanning animation / results
-          if (_isScanning) ...[
-            // Radar animation
-            SizedBox(
-              height: 80,
-              child: Center(
-                child: AnimatedBuilder(
-                  animation: _radarController,
-                  builder: (context, child) {
-                    return Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        // Pulse ring 1
-                        Transform.scale(
-                          scale: 1.0 + _radarController.value * 1.5,
-                          child: Opacity(
-                            opacity: (1.0 - _radarController.value) * 0.4,
-                            child: Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: const Color(0xFF4A90E2),
-                                  width: 2,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        // Center icon
-                        Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: const Color(0xFF4A90E2).withOpacity(0.2),
-                          ),
-                          child: const Icon(
-                            Icons.bluetooth_searching,
-                            color: Color(0xFF4A90E2),
-                            size: 28,
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Buscando dispositivos...',
-              style: TextStyle(color: Colors.grey.shade300, fontSize: 14),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Ciclo $_scanCycle · ${_devices.length} dispositivos · ${_matches.length} coincidencias',
-              style: TextStyle(
-                color: widget.gradientColors[0],
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Stop button
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    widget.btService.stopScan();
-                  },
-                  icon: const Icon(Icons.stop_rounded, size: 20),
-                  label: const Text('Detener escaneo'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red.shade300,
-                    side: BorderSide(color: Colors.red.shade300),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-
-          // Results
-          if (_matches.isNotEmpty || _scanComplete) ...[
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  Icon(Icons.people, color: widget.gradientColors[0], size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${_matches.length} de ${widget.students.length} alumnos detectados',
-                    style: TextStyle(
-                      color: Colors.grey.shade300,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Matched students list
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: _matches.length,
-                itemBuilder: (context, index) {
-                  final match = _matches[index];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: widget.gradientColors[0].withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: widget.gradientColors[0].withOpacity(0.2),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.check_circle,
-                          color: widget.gradientColors[0],
-                          size: 22,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                match.alumno.name,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              Text(
-                                'BT: ${match.deviceName}',
-                                style: TextStyle(
-                                  color: Colors.grey.shade500,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        _buildMatchQuality(match.matchScore),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-
-          // No matches message when scan complete
-          if (_scanComplete && _matches.isEmpty && _error == null) ...[
-            const SizedBox(height: 20),
-            Icon(
-              Icons.bluetooth_disabled,
-              color: Colors.grey.shade600,
-              size: 48,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'No se encontraron coincidencias',
-              style: TextStyle(
-                color: Colors.grey.shade400,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: Text(
-                'Asegúrate que los alumnos tengan el Bluetooth encendido y su nombre configurado',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ],
-
-          const SizedBox(height: 16),
-
-          // Bottom buttons
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-            child: Row(
-              children: [
-                // Re-scan button
-                if (_scanComplete || _error != null)
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _startScan,
-                      icon: const Icon(Icons.refresh, size: 18),
-                      label: const Text('Re-escanear'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: BorderSide(color: Colors.grey.shade600),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                if (_matches.isNotEmpty) ...[
-                  const SizedBox(width: 12),
-                  // Apply attendance button
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        final matchedStudents = _matches
-                            .map((m) => m.alumno)
-                            .toList();
-                        widget.onApplyAttendance(matchedStudents);
-                      },
-                      icon: const Icon(Icons.check_circle_outline, size: 20),
-                      label: Text('Marcar ${_matches.length} presentes'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: widget.gradientColors[0],
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMatchQuality(double score) {
-    // Score ranges: > 0.8 = high, 0.6 to 0.8 = medium, < 0.6 = low
-    final bars = score > 0.8 ? 3 : (score > 0.6 ? 2 : 1);
-    final color = score > 0.8
-        ? Colors.green
-        : (score > 0.6 ? Colors.orange : Colors.yellow);
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(3, (index) {
-        return Container(
-          width: 4,
-          height: 8.0 + (index * 4),
-          margin: const EdgeInsets.symmetric(horizontal: 1),
-          decoration: BoxDecoration(
-            color: index < bars ? color : Colors.grey.shade700,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        );
-      }),
-    );
-  }
 }

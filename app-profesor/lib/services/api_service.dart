@@ -323,6 +323,38 @@ class ApiService {
     }
   }
 
+  /// Like [checkSyncedRecords] but also returns 'IN_PROGRESS' status.
+  /// Returns a map of key → status string ('COMPLETED','IN_PROGRESS','FAILED','PENDING','NOT_FOUND').
+  Future<Map<String, String>> checkSyncedRecordsStatus({
+    required String token,
+    required List<Map<String, String>> records,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/attendance/check-synced',
+        data: {'records': records},
+        options: Options(
+          headers: {'Authorization': 'Bearer $token'},
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ),
+      );
+
+      final result = <String, String>{};
+      if (response.statusCode == 200) {
+        final data = response.data['data'] as List<dynamic>? ?? [];
+        for (final item in data) {
+          final key = '${item['groupId']}_${item['date']}';
+          result[key] = (item['status'] as String?) ?? 'NOT_FOUND';
+        }
+      }
+      return result;
+    } catch (e) {
+      Logger.error('Error checking synced records status', e);
+      return {};
+    }
+  }
+
   /// Maneja errores de Dio y devuelve mensajes amigables
   String _handleDioError(DioException e) {
     switch (e.type) {
