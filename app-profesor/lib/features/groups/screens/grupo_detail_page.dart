@@ -438,7 +438,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
               top: MediaQuery.of(context).padding.top + 8,
               left: 12,
               child: // Botón X
-                  ClipRRect(
+              ClipRRect(
                 borderRadius: BorderRadius.circular(22),
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
@@ -507,11 +507,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                             ),
                           ),
                           const SizedBox(width: 6),
-                          const Icon(
-                            Icons.edit,
-                            size: 16,
-                            color: Colors.white,
-                          ),
+                          const Icon(Icons.edit, size: 16, color: Colors.white),
                         ],
                       ),
                     ),
@@ -1458,7 +1454,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
     final now = DateTime.now();
     final ventanaInicio = inicioClase.subtract(const Duration(minutes: 10));
-    final ventanaFin = inicioClase.add(const Duration(minutes: 10));
+    final ventanaFin = inicioClase.add(const Duration(minutes: 30));
 
     return now.isAfter(ventanaInicio) && now.isBefore(ventanaFin);
   }
@@ -1468,8 +1464,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     if (finClase == null) return true; // Si no se puede parsear, permitir
 
     final now = DateTime.now();
-    final ventanaInicio = finClase.subtract(const Duration(minutes: 10));
-    final ventanaFin = finClase.add(const Duration(minutes: 10));
+    final ventanaInicio = finClase.subtract(const Duration(minutes: 30));
+    final ventanaFin = finClase.add(const Duration(minutes: 30));
 
     return now.isAfter(ventanaInicio) && now.isBefore(ventanaFin);
   }
@@ -1479,7 +1475,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     if (inicioClase == null) return '';
 
     final ventanaInicio = inicioClase.subtract(const Duration(minutes: 10));
-    final ventanaFin = inicioClase.add(const Duration(minutes: 10));
+    final ventanaFin = inicioClase.add(const Duration(minutes: 30));
 
     final horaInicio = _formatTime(ventanaInicio);
     final horaFin = _formatTime(ventanaFin);
@@ -1491,8 +1487,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     final finClase = _parseHorarioFin();
     if (finClase == null) return '';
 
-    final ventanaInicio = finClase.subtract(const Duration(minutes: 10));
-    final ventanaFin = finClase.add(const Duration(minutes: 10));
+    final ventanaInicio = finClase.subtract(const Duration(minutes: 30));
+    final ventanaFin = finClase.add(const Duration(minutes: 30));
 
     final horaInicio = _formatTime(ventanaInicio);
     final horaFin = _formatTime(ventanaFin);
@@ -1633,8 +1629,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                         await _guardarAsistencia();
                       },
                       splashColor: widget.gradientColors[0].withOpacity(0.15),
-                      highlightColor:
-                          widget.gradientColors[0].withOpacity(0.08),
+                      highlightColor: widget.gradientColors[0].withOpacity(
+                        0.08,
+                      ),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
