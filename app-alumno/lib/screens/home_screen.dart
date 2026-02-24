@@ -11,11 +11,13 @@ import 'history_screen.dart';
 class HomeScreen extends StatefulWidget {
   final LocalStorageService storage;
   final SyncService syncService;
+  final BleScannerService bleService;
 
   const HomeScreen({
     super.key,
     required this.storage,
     required this.syncService,
+    required this.bleService,
   });
 
   @override
@@ -24,7 +26,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
-  final BleScannerService _bleService = BleScannerService();
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
@@ -36,8 +37,9 @@ class _HomeScreenState extends State<HomeScreen>
 
   StreamSubscription<String>? _bleSub;
   StreamSubscription<String>? _syncSub;
+  StreamSubscription<Map<String, dynamic>>? _bgDetectionSub;
 
-  // Auto-scan: prevent duplicate scans within cooldown
+  // Auto-scan cooldown
   DateTime? _lastDetection;
   static const _cooldown = Duration(minutes: 5);
 
@@ -54,7 +56,7 @@ class _HomeScreenState extends State<HomeScreen>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    _bleSub = _bleService.statusStream.listen((status) {
+    _bleSub = widget.bleService.statusStream.listen((status) {
       if (mounted) setState(() => _statusText = status);
     });
 
@@ -62,23 +64,68 @@ class _HomeScreenState extends State<HomeScreen>
       if (mounted) setState(() => _syncStatus = status);
     });
 
+    // Listen for native iOS background beacon detections
+    _bgDetectionSub = widget.bleService.backgroundDetectionStream.listen((
+      data,
+    ) {
+      _handleBackgroundDetection(data);
+    });
+
     _updateCounts();
 
-    // Auto-scan on launch (simulates background wake)
+    // Auto-scan on launch
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) _autoScan();
     });
   }
 
-  /// Called when app returns to foreground — triggers auto-scan
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _updateCounts();
       _autoScan();
     }
   }
 
-  /// Auto-scan with cooldown to prevent duplicate registrations
+  /// Handle beacon detected by native iOS (background or killed state)
+  Future<void> _handleBackgroundDetection(Map<String, dynamic> data) async {
+    if (_lastDetection != null &&
+        DateTime.now().difference(_lastDetection!) < _cooldown) {
+      return; // Still in cooldown
+    }
+
+    _lastDetection = DateTime.now();
+    HapticFeedback.heavyImpact();
+
+    final record = AttendanceRecord(
+      id: '${widget.storage.matricula}_${DateTime.now().millisecondsSinceEpoch}',
+      studentName: widget.storage.matricula,
+      matricula: widget.storage.matricula,
+      beaconId: data['name'] ?? BleScannerService.beaconName,
+      detectedAt: DateTime.now(),
+      deviceInfo: _getDeviceInfo(),
+    );
+    await widget.storage.saveRecord(record);
+    _updateCounts();
+
+    widget.syncService.syncPendingRecords();
+
+    if (mounted) {
+      setState(() {
+        _scanState = _ScanState.detected;
+        _statusText = '¡Asistencia registrada (auto)!';
+      });
+
+      await Future.delayed(const Duration(seconds: 3));
+      if (mounted) {
+        setState(() {
+          _scanState = _ScanState.idle;
+          _statusText = 'Toca para escanear de nuevo';
+        });
+      }
+    }
+  }
+
   void _autoScan() {
     if (_lastDetection != null &&
         DateTime.now().difference(_lastDetection!) < _cooldown) {
@@ -108,7 +155,7 @@ class _HomeScreenState extends State<HomeScreen>
     });
     _pulseController.repeat(reverse: true);
 
-    final result = await _bleService.scanForBeacon();
+    final result = await widget.bleService.scanForBeacon();
 
     _pulseController.stop();
     _pulseController.reset();
@@ -124,11 +171,9 @@ class _HomeScreenState extends State<HomeScreen>
           _statusText = '¡Asistencia registrada!';
         });
 
-        // Save locally
         final record = AttendanceRecord(
           id: '${widget.storage.matricula}_${DateTime.now().millisecondsSinceEpoch}',
-          studentName:
-              widget.storage.matricula, // Using matricula as identifier
+          studentName: widget.storage.matricula,
           matricula: widget.storage.matricula,
           beaconId: BleScannerService.beaconName,
           detectedAt: DateTime.now(),
@@ -137,10 +182,8 @@ class _HomeScreenState extends State<HomeScreen>
         await widget.storage.saveRecord(record);
         _updateCounts();
 
-        // Auto-sync
         widget.syncService.syncPendingRecords();
 
-        // Reset after a moment
         await Future.delayed(const Duration(seconds: 3));
         if (mounted) {
           setState(() {
@@ -199,9 +242,9 @@ class _HomeScreenState extends State<HomeScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
-    _bleService.dispose();
     _bleSub?.cancel();
     _syncSub?.cancel();
+    _bgDetectionSub?.cancel();
     super.dispose();
   }
 
