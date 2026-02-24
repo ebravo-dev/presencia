@@ -40,6 +40,12 @@ class AsistenciaRegistro extends HiveObject {
   @HiveField(11)
   final Map<String, bool>? asistenciasSincronizadas; // Snapshot of attendance at last sync
 
+  @HiveField(12)
+  final bool entradaVerificada; // true = beacon detected, false = manual with motivo
+
+  @HiveField(13)
+  final String? motivoEntrada; // Reason when beacon was not detected
+
   AsistenciaRegistro({
     required this.id,
     required this.grupoId,
@@ -53,6 +59,8 @@ class AsistenciaRegistro extends HiveObject {
     this.fechaActualizacion,
     this.nombreClase,
     this.asistenciasSincronizadas,
+    this.entradaVerificada = true,
+    this.motivoEntrada,
   });
 
   AsistenciaRegistro copyWith({
@@ -68,6 +76,8 @@ class AsistenciaRegistro extends HiveObject {
     DateTime? fechaActualizacion,
     String? nombreClase,
     Map<String, bool>? asistenciasSincronizadas,
+    bool? entradaVerificada,
+    String? motivoEntrada,
   }) {
     return AsistenciaRegistro(
       id: id ?? this.id,
@@ -81,7 +91,10 @@ class AsistenciaRegistro extends HiveObject {
       fechaCreacion: fechaCreacion ?? this.fechaCreacion,
       fechaActualizacion: fechaActualizacion ?? this.fechaActualizacion,
       nombreClase: nombreClase ?? this.nombreClase,
-      asistenciasSincronizadas: asistenciasSincronizadas ?? this.asistenciasSincronizadas,
+      asistenciasSincronizadas:
+          asistenciasSincronizadas ?? this.asistenciasSincronizadas,
+      entradaVerificada: entradaVerificada ?? this.entradaVerificada,
+      motivoEntrada: motivoEntrada ?? this.motivoEntrada,
     );
   }
 }

@@ -8,6 +8,7 @@ import '../../../shared/models/grupo.dart';
 import '../../../shared/models/alumno.dart';
 import '../../../shared/models/asistencia_registro.dart';
 import '../../../services/asistencia_local_service.dart';
+import '../../../services/ble_beacon_verification_service.dart';
 
 import '../../../services/auth_storage_service.dart';
 
@@ -48,8 +49,16 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   DateTime? _salidaProfesor;
   DateTime _selectedDateTime = DateTime.now();
 
+  // Estado de verificación BLE
+  bool _entradaVerificada = true;
+  String? _motivoEntrada;
+
   // Servicio de almacenamiento local
   final AsistenciaLocalService _asistenciaService = AsistenciaLocalService();
+
+  // Servicio de verificación BLE beacon
+  final BleBeaconVerificationService _bleBeaconService =
+      BleBeaconVerificationService();
 
   // Timer para actualizar la hora
   Timer? _timer;
@@ -157,6 +166,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     _buttonAnimationController.dispose();
     _studentsAnimationController.dispose();
     _scrollController.dispose();
+    _bleBeaconService.dispose();
     super.dispose();
   }
 
@@ -690,10 +700,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                   ? () {
                       HapticFeedback.mediumImpact();
                       if (_puedeMarcarEntrada()) {
-                        setState(() {
-                          _entradaProfesor = DateTime.now();
-                        });
-                        _guardarAsistencia();
+                        _verificarBeaconYMarcarEntrada();
                       } else {
                         _mostrarMensajeHorario(_getMensajeVentanaEntrada());
                       }
@@ -934,6 +941,34 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     );
   }
 
+  // ── Verificación BLE Beacon para Marcar Entrada ───────────────
+
+  /// Inicia la verificación BLE y muestra el modal de escaneo.
+  /// Si detecta el beacon, marca la entrada verificada.
+  /// Si no, permite marcar con motivo (entrada parcial).
+  Future<void> _verificarBeaconYMarcarEntrada() async {
+    final resultado = await showDialog<_BleDialogResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => _BleBeaconScanDialog(
+        bleService: _bleBeaconService,
+        gradientColors: widget.gradientColors,
+      ),
+    );
+
+    if (!mounted || resultado == null) return;
+
+    if (resultado.marcarEntrada) {
+      HapticFeedback.heavyImpact();
+      setState(() {
+        _entradaProfesor = DateTime.now();
+        _entradaVerificada = resultado.verificada;
+        _motivoEntrada = resultado.motivo;
+      });
+      _guardarAsistencia();
+    }
+  }
+
   String _formatTime(DateTime dateTime) {
     final hour = dateTime.hour.toString().padLeft(2, '0');
     final minute = dateTime.minute.toString().padLeft(2, '0');
@@ -1025,6 +1060,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       fechaActualizacion: DateTime.now(),
       nombreClase: widget.grupo.subject,
       asistenciasSincronizadas: existente?.asistenciasSincronizadas,
+      entradaVerificada: _entradaVerificada,
+      motivoEntrada: _motivoEntrada,
     );
 
     await _asistenciaService.guardarAsistencia(registro);
@@ -1449,25 +1486,23 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   }
 
   bool _puedeMarcarEntrada() {
-    final inicioClase = _parseHorarioInicio();
-    if (inicioClase == null) return true; // Si no se puede parsear, permitir
-
-    final now = DateTime.now();
-    final ventanaInicio = inicioClase.subtract(const Duration(minutes: 10));
-    final ventanaFin = inicioClase.add(const Duration(minutes: 30));
-
-    return now.isAfter(ventanaInicio) && now.isBefore(ventanaFin);
+    return true; // TODO: Restaurar restricción de horario después de testing BLE
+    // final inicioClase = _parseHorarioInicio();
+    // if (inicioClase == null) return true;
+    // final now = DateTime.now();
+    // final ventanaInicio = inicioClase.subtract(const Duration(minutes: 10));
+    // final ventanaFin = inicioClase.add(const Duration(minutes: 30));
+    // return now.isAfter(ventanaInicio) && now.isBefore(ventanaFin);
   }
 
   bool _puedeMarcarSalida() {
-    final finClase = _parseHorarioFin();
-    if (finClase == null) return true; // Si no se puede parsear, permitir
-
-    final now = DateTime.now();
-    final ventanaInicio = finClase.subtract(const Duration(minutes: 30));
-    final ventanaFin = finClase.add(const Duration(minutes: 30));
-
-    return now.isAfter(ventanaInicio) && now.isBefore(ventanaFin);
+    return true; // TODO: Restaurar restricción de horario después de testing BLE
+    // final finClase = _parseHorarioFin();
+    // if (finClase == null) return true;
+    // final now = DateTime.now();
+    // final ventanaInicio = finClase.subtract(const Duration(minutes: 30));
+    // final ventanaFin = finClase.add(const Duration(minutes: 30));
+    // return now.isAfter(ventanaInicio) && now.isBefore(ventanaFin);
   }
 
   String _getMensajeVentanaEntrada() {
@@ -1799,3 +1834,490 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
   // Esta función _verificarAsistenciaProfesor fue eliminada porque no se usa
 }
+
+// ══════════════════════════════════════════════════════════════════
+// Resultado del diálogo BLE
+// ══════════════════════════════════════════════════════════════════
+
+class _BleDialogResult {
+  final bool marcarEntrada;
+  final bool verificada;
+  final String? motivo;
+
+  const _BleDialogResult({
+    required this.marcarEntrada,
+    required this.verificada,
+    this.motivo,
+  });
+
+  /// Beacon detectado — entrada verificada
+  factory _BleDialogResult.verified() =>
+      const _BleDialogResult(marcarEntrada: true, verificada: true);
+
+  /// Beacon no detectado — entrada parcial con motivo
+  factory _BleDialogResult.withMotivo(String motivo) =>
+      _BleDialogResult(marcarEntrada: true, verificada: false, motivo: motivo);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Motivos predefinidos
+// ══════════════════════════════════════════════════════════════════
+
+const List<String> _motivosPredefinidos = [
+  'Estoy en el salón pero no detecta el sensor',
+  'No estoy en el salón pero sí asistí',
+  'Estoy con mis alumnos en otro salón',
+];
+
+// ══════════════════════════════════════════════════════════════════
+// Widget: BLE Beacon Scan Dialog
+// ══════════════════════════════════════════════════════════════════
+
+class _BleBeaconScanDialog extends StatefulWidget {
+  final BleBeaconVerificationService bleService;
+  final List<Color> gradientColors;
+
+  const _BleBeaconScanDialog({
+    required this.bleService,
+    required this.gradientColors,
+  });
+
+  @override
+  State<_BleBeaconScanDialog> createState() => _BleBeaconScanDialogState();
+}
+
+class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
+
+  _ScanPhase _phase = _ScanPhase.scanning;
+  String _statusText = 'Buscando beacon del salón...';
+  String? _lastDeviceFound;
+  StreamSubscription<String>? _progressSub;
+
+  // Para la fase de motivo
+  final TextEditingController _otroMotivoController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+
+    _pulseAnimation = Tween<double>(begin: 0.85, end: 1.15).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+
+    _progressSub = widget.bleService.progressStream.listen((deviceName) {
+      if (mounted) {
+        setState(() => _lastDeviceFound = deviceName);
+      }
+    });
+
+    _startScan();
+  }
+
+  Future<void> _startScan() async {
+    setState(() {
+      _phase = _ScanPhase.scanning;
+      _statusText = 'Buscando beacon del salón...';
+      _lastDeviceFound = null;
+    });
+
+    final result = await widget.bleService.verifyBeaconPresence();
+    if (!mounted) return;
+
+    switch (result) {
+      case BeaconVerificationResult.detected:
+        setState(() {
+          _phase = _ScanPhase.success;
+          _statusText = '¡Beacon detectado!';
+        });
+        _pulseController.stop();
+        HapticFeedback.heavyImpact();
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (mounted) {
+          Navigator.of(context).pop(_BleDialogResult.verified());
+        }
+        break;
+
+      case BeaconVerificationResult.timeout:
+        setState(() {
+          _phase = _ScanPhase.failed;
+          _statusText = 'No se detectó el beacon';
+        });
+        _pulseController.stop();
+        HapticFeedback.mediumImpact();
+        break;
+
+      case BeaconVerificationResult.bluetoothUnavailable:
+        setState(() {
+          _phase = _ScanPhase.failed;
+          _statusText = 'Bluetooth no disponible';
+        });
+        _pulseController.stop();
+        break;
+
+      case BeaconVerificationResult.error:
+        setState(() {
+          _phase = _ScanPhase.failed;
+          _statusText = 'Error durante el escaneo';
+        });
+        _pulseController.stop();
+        break;
+    }
+  }
+
+  void _seleccionarMotivo(String motivo) {
+    Navigator.of(context).pop(_BleDialogResult.withMotivo(motivo));
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _progressSub?.cancel();
+    _otroMotivoController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: const Color(0xFF2C2C2E),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(28.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildIcon(),
+              const SizedBox(height: 24),
+              Text(
+                _statusText,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildContent(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Ícono central ──
+  Widget _buildIcon() {
+    switch (_phase) {
+      case _ScanPhase.scanning:
+        return ScaleTransition(
+          scale: _pulseAnimation,
+          child: Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: widget.gradientColors[0].withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.bluetooth_searching_rounded,
+              color: widget.gradientColors[0],
+              size: 44,
+            ),
+          ),
+        );
+      case _ScanPhase.success:
+        return Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            color: Colors.green.withOpacity(0.2),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.check_circle_rounded,
+            color: Colors.green,
+            size: 50,
+          ),
+        );
+      case _ScanPhase.failed:
+        return Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            color: Colors.orange.withOpacity(0.2),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.bluetooth_disabled_rounded,
+            color: Colors.orange,
+            size: 44,
+          ),
+        );
+      case _ScanPhase.motivo:
+        return Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            color: widget.gradientColors[0].withOpacity(0.15),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.edit_note_rounded,
+            color: widget.gradientColors[0],
+            size: 44,
+          ),
+        );
+    }
+  }
+
+  // ── Contenido por fase ──
+  Widget _buildContent() {
+    switch (_phase) {
+      case _ScanPhase.scanning:
+        return _buildScanningContent();
+      case _ScanPhase.success:
+        return const Text(
+          'Presencia confirmada ✓',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.green, fontSize: 14),
+        );
+      case _ScanPhase.failed:
+        return _buildFailedContent();
+      case _ScanPhase.motivo:
+        return _buildMotivoContent();
+    }
+  }
+
+  Widget _buildScanningContent() {
+    return Column(
+      children: [
+        const Text(
+          'Verificando tu ubicación en el salón...',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+        if (_lastDeviceFound != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Último: $_lastDeviceFound',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.4),
+              fontSize: 12,
+            ),
+          ),
+        ],
+        const SizedBox(height: 16),
+        SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.5,
+            valueColor: AlwaysStoppedAnimation<Color>(widget.gradientColors[0]),
+          ),
+        ),
+        const SizedBox(height: 20),
+        TextButton(
+          onPressed: () {
+            widget.bleService.cancelScan();
+            Navigator.of(context).pop();
+          },
+          child: Text(
+            'Cancelar',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.6),
+              fontSize: 16,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFailedContent() {
+    return Column(
+      children: [
+        const Text(
+          'No pudimos verificar tu ubicación.\nPuedes reintentar o indicar un motivo.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+        const SizedBox(height: 20),
+        // Reintentar
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () {
+              _pulseController.repeat(reverse: true);
+              _startScan();
+            },
+            icon: const Icon(Icons.refresh_rounded, size: 20),
+            label: const Text(
+              'Reintentar',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: widget.gradientColors[0],
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        // Marcar con motivo
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () {
+              setState(() {
+                _phase = _ScanPhase.motivo;
+                _statusText = 'Indica el motivo';
+              });
+            },
+            icon: const Icon(Icons.edit_note_rounded, size: 20),
+            label: const Text(
+              'Marcar con motivo',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white70,
+              side: BorderSide(color: Colors.white.withOpacity(0.2)),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(
+            'Cancelar',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.4),
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMotivoContent() {
+    return Column(
+      children: [
+        const Text(
+          'Selecciona el motivo por el cual\nno se detectó el sensor:',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+        const SizedBox(height: 16),
+        // Motivos predefinidos
+        ..._motivosPredefinidos.map(
+          (motivo) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () => _seleccionarMotivo(motivo),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: BorderSide(color: Colors.white.withOpacity(0.15)),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 14,
+                    horizontal: 16,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  backgroundColor: const Color(0xFF3A3A3C),
+                ),
+                child: Text(
+                  motivo,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        // Campo "Otro"
+        const SizedBox(height: 4),
+        Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF3A3A3C),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withOpacity(0.15)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _otroMotivoController,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Otro motivo...',
+                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.4)),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: () {
+                  final texto = _otroMotivoController.text.trim();
+                  if (texto.isNotEmpty) {
+                    _seleccionarMotivo(texto);
+                  }
+                },
+                icon: Icon(
+                  Icons.send_rounded,
+                  color: widget.gradientColors[0],
+                  size: 22,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextButton(
+          onPressed: () {
+            setState(() {
+              _phase = _ScanPhase.failed;
+              _statusText = 'No se detectó el beacon';
+            });
+          },
+          child: Text(
+            'Volver',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.4),
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+enum _ScanPhase { scanning, success, failed, motivo }
