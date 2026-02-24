@@ -124,3 +124,14 @@ enum SyncStatus {
   FAILED
 }
 
+model StudentBleAttendance {
+  id          String   @id @default(cuid())
+  studentName String   @map("student_name")
+  matricula   String
+  beaconId    String   @map("beacon_id")
+  detectedAt  DateTime @map("detected_at")
+  deviceInfo  String?  @map("device_info")
+  syncedAt    DateTime @default(now()) @map("synced_at")
+
+  @@map("student_ble_attendances")
+}

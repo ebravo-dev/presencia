@@ -1,0 +1,251 @@
+import { FastifyInstance } from 'fastify';
+import { prisma } from '../../core/database/prisma.js';
+import {
+    studentBleAttendanceSchema,
+    studentBleAttendanceBatchSchema,
+    StudentBleAttendanceInput,
+} from './student-attendance.schemas.js';
+
+export async function studentAttendanceRoutes(fastify: FastifyInstance) {
+    // ── POST /api/student-attendance ─────────────────────────────
+    // Single record from student device
+    fastify.post('/api/student-attendance', async (request, reply) => {
+        const parsed = studentBleAttendanceSchema.safeParse(request.body);
+        if (!parsed.success) {
+            return reply.code(400).send({
+                statusCode: 400,
+                error: 'Validation Error',
+                message: parsed.error.errors.map(e => e.message).join(', '),
+            });
+        }
+
+        const data = parsed.data;
+        const record = await prisma.studentBleAttendance.create({
+            data: {
+                studentName: data.studentName,
+                matricula: data.matricula,
+                beaconId: data.beaconId,
+                detectedAt: new Date(data.detectedAt),
+                deviceInfo: data.deviceInfo,
+            },
+        });
+
+        return reply.code(201).send({
+            statusCode: 201,
+            message: 'Attendance recorded',
+            data: record,
+        });
+    });
+
+    // ── POST /api/student-attendance/batch ───────────────────────
+    // Multiple records (offline sync)
+    fastify.post('/api/student-attendance/batch', async (request, reply) => {
+        const parsed = studentBleAttendanceBatchSchema.safeParse(request.body);
+        if (!parsed.success) {
+            return reply.code(400).send({
+                statusCode: 400,
+                error: 'Validation Error',
+                message: parsed.error.errors.map(e => e.message).join(', '),
+            });
+        }
+
+        const { records } = parsed.data;
+        const created = await prisma.studentBleAttendance.createMany({
+            data: records.map((r: StudentBleAttendanceInput) => ({
+                studentName: r.studentName,
+                matricula: r.matricula,
+                beaconId: r.beaconId,
+                detectedAt: new Date(r.detectedAt),
+                deviceInfo: r.deviceInfo,
+            })),
+        });
+
+        return reply.code(201).send({
+            statusCode: 201,
+            message: `${created.count} attendance records saved`,
+            count: created.count,
+        });
+    });
+
+    // ── GET /api/student-attendance ──────────────────────────────
+    // JSON list of all records
+    fastify.get('/api/student-attendance', async (request, reply) => {
+        const { date, matricula } = request.query as {
+            date?: string;
+            matricula?: string;
+        };
+
+        const where: any = {};
+        if (date) {
+            const start = new Date(date);
+            const end = new Date(date);
+            end.setDate(end.getDate() + 1);
+            where.detectedAt = { gte: start, lt: end };
+        }
+        if (matricula) {
+            where.matricula = matricula;
+        }
+
+        const records = await prisma.studentBleAttendance.findMany({
+            where,
+            orderBy: { detectedAt: 'desc' },
+        });
+
+        return reply.send({
+            statusCode: 200,
+            count: records.length,
+            data: records,
+        });
+    });
+
+    // ── GET /api/student-attendance/view ─────────────────────────
+    // HTML visualization page
+    fastify.get('/api/student-attendance/view', async (request, reply) => {
+        const records = await prisma.studentBleAttendance.findMany({
+            orderBy: { detectedAt: 'desc' },
+            take: 200,
+        });
+
+        const rows = records
+            .map(
+                (r) => `
+            <tr>
+                <td>${r.studentName}</td>
+                <td><code>${r.matricula}</code></td>
+                <td>${r.beaconId}</td>
+                <td>${new Date(r.detectedAt).toLocaleString('es-MX', { timeZone: 'America/Monterrey' })}</td>
+                <td>${r.deviceInfo || '—'}</td>
+                <td>${new Date(r.syncedAt).toLocaleString('es-MX', { timeZone: 'America/Monterrey' })}</td>
+            </tr>`
+            )
+            .join('\n');
+
+        const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asistencia BLE Alumnos</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            padding: 24px;
+        }
+        h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #ff6b9d, #c44dff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle {
+            color: #888;
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+        .stats {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: #1c1c1e;
+            border-radius: 12px;
+            padding: 16px 24px;
+            border: 1px solid #2c2c2e;
+        }
+        .stat-card .number {
+            font-size: 32px;
+            font-weight: 700;
+            color: #ff6b9d;
+        }
+        .stat-card .label {
+            font-size: 12px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #1c1c1e;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        th {
+            background: #2c2c2e;
+            padding: 14px 16px;
+            text-align: left;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            font-weight: 600;
+        }
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #2c2c2e;
+            font-size: 14px;
+        }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #2c2c2e44; }
+        code {
+            background: #2c2c2e;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #c44dff;
+        }
+        .empty {
+            text-align: center;
+            padding: 48px;
+            color: #666;
+        }
+        @media (max-width: 768px) {
+            body { padding: 12px; }
+            .stats { flex-direction: column; }
+            table { font-size: 12px; }
+            th, td { padding: 8px 10px; }
+        }
+    </style>
+</head>
+<body>
+    <h1>📡 Asistencia BLE — Alumnos</h1>
+    <p class="subtitle">Registros de detección del beacon ESP32-C3_BLE</p>
+    
+    <div class="stats">
+        <div class="stat-card">
+            <div class="number">${records.length}</div>
+            <div class="label">Registros totales</div>
+        </div>
+        <div class="stat-card">
+            <div class="number">${new Set(records.map(r => r.matricula)).size}</div>
+            <div class="label">Alumnos únicos</div>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Alumno</th>
+                <th>Matrícula</th>
+                <th>Beacon</th>
+                <th>Detectado</th>
+                <th>Dispositivo</th>
+                <th>Synced</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${rows || '<tr><td colspan="6" class="empty">No hay registros aún</td></tr>'}
+        </tbody>
+    </table>
+</body>
+</html>`;
+
+        return reply.type('text/html').send(html);
+    });
+}
