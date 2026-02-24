@@ -7,7 +7,7 @@ import 'local_storage_service.dart';
 /// Sync service that sends pending records to the backend when online
 class SyncService {
   // TODO: Change to production URL when deploying
-  static const String _baseUrl = 'https://110694.xyz';
+  static const String _baseUrl = 'https://apipresencia.110694.xyz';
 
   final LocalStorageService _storage;
   final Dio _dio;
