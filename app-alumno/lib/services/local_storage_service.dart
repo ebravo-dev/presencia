@@ -17,14 +17,11 @@ class LocalStorageService {
 
   // ── Profile ──────────────────────────────────────────────────
 
-  bool get isProfileSet =>
-      _profile.get('studentName') != null && _profile.get('matricula') != null;
+  bool get isProfileSet => _profile.get('matricula') != null;
 
-  String get studentName => _profile.get('studentName', defaultValue: '');
   String get matricula => _profile.get('matricula', defaultValue: '');
 
-  Future<void> saveProfile(String name, String matricula) async {
-    await _profile.put('studentName', name);
+  Future<void> saveProfile(String matricula) async {
     await _profile.put('matricula', matricula);
   }
 

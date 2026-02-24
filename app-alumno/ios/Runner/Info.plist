@@ -49,5 +49,9 @@
 	<string>Esta app necesita Bluetooth para detectar el beacon del salón y registrar asistencia automáticamente.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Esta app necesita Bluetooth para detectar el beacon del salón y registrar asistencia automáticamente.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+	</array>
 </dict>
 </plist>

@@ -8,10 +8,8 @@ import 'screens/home_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Lock to portrait
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  // Dark status bar
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarBrightness: Brightness.dark,
@@ -19,11 +17,9 @@ void main() async {
     ),
   );
 
-  // Initialize local storage
   final storage = LocalStorageService();
   await storage.init();
 
-  // Initialize sync service
   final syncService = SyncService(storage);
   syncService.startListening();
 
@@ -48,25 +44,12 @@ class PresenciaAlumnoApp extends StatelessWidget {
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF0A0A0A),
-        fontFamily: 'SF Pro Display',
       ),
       home: storage.isProfileSet
           ? HomeScreen(storage: storage, syncService: syncService)
           : SetupScreen(
-              onComplete: (name, matricula) async {
-                await storage.saveProfile(name, matricula);
-                // Navigate to home, replacing setup
-                if (context.mounted) {
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(
-                      builder: (_) => HomeScreen(
-                        storage: storage,
-                        syncService: syncService,
-                      ),
-                    ),
-                    (route) => false,
-                  );
-                }
+              onComplete: (matricula) async {
+                await storage.saveProfile(matricula);
               },
             ),
     );

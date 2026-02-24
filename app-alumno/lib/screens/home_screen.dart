@@ -23,13 +23,13 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final BleScannerService _bleService = BleScannerService();
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
   _ScanState _scanState = _ScanState.idle;
-  String _statusText = 'Toca para buscar el beacon';
+  String _statusText = 'Iniciando...';
   String _syncStatus = '';
   int _totalRecords = 0;
   int _unsyncedCount = 0;
@@ -37,9 +37,14 @@ class _HomeScreenState extends State<HomeScreen>
   StreamSubscription<String>? _bleSub;
   StreamSubscription<String>? _syncSub;
 
+  // Auto-scan: prevent duplicate scans within cooldown
+  DateTime? _lastDetection;
+  static const _cooldown = Duration(minutes: 5);
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     _pulseController = AnimationController(
       vsync: this,
@@ -59,8 +64,31 @@ class _HomeScreenState extends State<HomeScreen>
 
     _updateCounts();
 
-    // Try to sync on start
-    widget.syncService.syncPendingRecords();
+    // Auto-scan on launch (simulates background wake)
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) _autoScan();
+    });
+  }
+
+  /// Called when app returns to foreground — triggers auto-scan
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _autoScan();
+    }
+  }
+
+  /// Auto-scan with cooldown to prevent duplicate registrations
+  void _autoScan() {
+    if (_lastDetection != null &&
+        DateTime.now().difference(_lastDetection!) < _cooldown) {
+      setState(() {
+        _statusText = 'Asistencia ya registrada recientemente';
+        _scanState = _ScanState.idle;
+      });
+      return;
+    }
+    _startScan();
   }
 
   void _updateCounts() {
@@ -76,7 +104,7 @@ class _HomeScreenState extends State<HomeScreen>
     HapticFeedback.mediumImpact();
     setState(() {
       _scanState = _ScanState.scanning;
-      _statusText = 'Buscando beacon...';
+      _statusText = 'Buscando beacon del salón...';
     });
     _pulseController.repeat(reverse: true);
 
@@ -90,15 +118,17 @@ class _HomeScreenState extends State<HomeScreen>
     switch (result) {
       case BeaconScanResult.detected:
         HapticFeedback.heavyImpact();
+        _lastDetection = DateTime.now();
         setState(() {
           _scanState = _ScanState.detected;
           _statusText = '¡Asistencia registrada!';
         });
 
-        // Save record locally
+        // Save locally
         final record = AttendanceRecord(
           id: '${widget.storage.matricula}_${DateTime.now().millisecondsSinceEpoch}',
-          studentName: widget.storage.studentName,
+          studentName:
+              widget.storage.matricula, // Using matricula as identifier
           matricula: widget.storage.matricula,
           beaconId: BleScannerService.beaconName,
           detectedAt: DateTime.now(),
@@ -107,7 +137,7 @@ class _HomeScreenState extends State<HomeScreen>
         await widget.storage.saveRecord(record);
         _updateCounts();
 
-        // Try to sync
+        // Auto-sync
         widget.syncService.syncPendingRecords();
 
         // Reset after a moment
@@ -115,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen>
         if (mounted) {
           setState(() {
             _scanState = _ScanState.idle;
-            _statusText = 'Toca para buscar el beacon';
+            _statusText = 'Toca para escanear de nuevo';
           });
         }
         break;
@@ -167,6 +197,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
     _bleService.dispose();
     _bleSub?.cancel();
@@ -189,9 +220,9 @@ class _HomeScreenState extends State<HomeScreen>
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Hola, ${widget.storage.studentName.split(' ').first}',
-                        style: const TextStyle(
+                      const Text(
+                        'Presencia',
+                        style: TextStyle(
                           color: Colors.white,
                           fontSize: 24,
                           fontWeight: FontWeight.w700,
@@ -209,14 +240,15 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                   const Spacer(),
                   IconButton(
-                    onPressed: () {
-                      Navigator.push(
+                    onPressed: () async {
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) =>
                               HistoryScreen(storage: widget.storage),
                         ),
                       );
+                      _updateCounts();
                     },
                     icon: const Icon(
                       Icons.history_rounded,

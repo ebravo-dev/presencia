@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class SetupScreen extends StatefulWidget {
-  final Future<void> Function(String name, String matricula) onComplete;
+  final Future<void> Function(String matricula) onComplete;
 
   const SetupScreen({super.key, required this.onComplete});
 
@@ -11,31 +11,28 @@ class SetupScreen extends StatefulWidget {
 }
 
 class _SetupScreenState extends State<SetupScreen> {
-  final _nameController = TextEditingController();
   final _matriculaController = TextEditingController();
   bool _loading = false;
 
   @override
   void dispose() {
-    _nameController.dispose();
     _matriculaController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
-    final name = _nameController.text.trim();
     final matricula = _matriculaController.text.trim();
 
-    if (name.isEmpty || matricula.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Completa todos los campos')),
-      );
+    if (matricula.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Ingresa tu matrícula')));
       return;
     }
 
     setState(() => _loading = true);
     HapticFeedback.mediumImpact();
-    await widget.onComplete(name, matricula);
+    await widget.onComplete(matricula);
   }
 
   @override
@@ -84,19 +81,31 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
               ),
               const SizedBox(height: 40),
-              // Name
-              _buildField(
-                controller: _nameController,
-                hint: 'Tu nombre completo',
-                icon: Icons.person_rounded,
-              ),
-              const SizedBox(height: 16),
               // Matricula
-              _buildField(
-                controller: _matriculaController,
-                hint: 'Matrícula (ej. A2130587)',
-                icon: Icons.badge_rounded,
-                capitalization: TextCapitalization.characters,
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1C1C1E),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFF2C2C2E)),
+                ),
+                child: TextField(
+                  controller: _matriculaController,
+                  textCapitalization: TextCapitalization.characters,
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(
+                      Icons.badge_rounded,
+                      color: Colors.white38,
+                    ),
+                    hintText: 'Tu matrícula (ej. A2130587)',
+                    hintStyle: TextStyle(color: Colors.white30),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 18,
+                    ),
+                  ),
+                ),
               ),
               const SizedBox(height: 32),
               // Button
@@ -133,36 +142,6 @@ class _SetupScreenState extends State<SetupScreen> {
               ),
               const Spacer(),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildField({
-    required TextEditingController controller,
-    required String hint,
-    required IconData icon,
-    TextCapitalization capitalization = TextCapitalization.words,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF2C2C2E)),
-      ),
-      child: TextField(
-        controller: controller,
-        textCapitalization: capitalization,
-        style: const TextStyle(color: Colors.white, fontSize: 16),
-        decoration: InputDecoration(
-          prefixIcon: Icon(icon, color: Colors.white38),
-          hintText: hint,
-          hintStyle: const TextStyle(color: Colors.white30),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 18,
           ),
         ),
       ),
