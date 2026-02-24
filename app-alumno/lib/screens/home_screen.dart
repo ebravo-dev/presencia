@@ -73,6 +73,9 @@ class _HomeScreenState extends State<HomeScreen>
 
     _updateCounts();
 
+    // Import any detections that happened while Flutter was suspended
+    _importPendingNativeDetections();
+
     // Auto-scan on launch
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) _autoScan();
@@ -82,8 +85,55 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      // Import detections that happened in background
+      _importPendingNativeDetections();
       _updateCounts();
       _autoScan();
+    }
+  }
+
+  /// Import detections saved by native iOS while Flutter was suspended
+  Future<void> _importPendingNativeDetections() async {
+    final pending = await widget.bleService.getPendingNativeDetections();
+    if (pending.isEmpty) return;
+
+    debugPrint(
+      '[Home] 📥 Importing ${pending.length} native background detections',
+    );
+
+    for (final detection in pending) {
+      final timestamp =
+          detection['timestamp'] as String? ?? DateTime.now().toIso8601String();
+      final record = AttendanceRecord(
+        id: '${widget.storage.matricula}_bg_${DateTime.now().millisecondsSinceEpoch}',
+        studentName: widget.storage.matricula,
+        matricula: widget.storage.matricula,
+        beaconId: detection['name'] as String? ?? BleScannerService.beaconName,
+        detectedAt: DateTime.tryParse(timestamp) ?? DateTime.now(),
+        deviceInfo: 'iOS (background)',
+      );
+      await widget.storage.saveRecord(record);
+    }
+
+    await widget.bleService.clearPendingDetections();
+    _updateCounts();
+
+    // Sync the imported records
+    widget.syncService.syncPendingRecords();
+
+    if (mounted) {
+      setState(() {
+        _statusText =
+            '${pending.length} asistencia(s) registrada(s) en background';
+        _scanState = _ScanState.detected;
+      });
+      await Future.delayed(const Duration(seconds: 3));
+      if (mounted) {
+        setState(() {
+          _scanState = _ScanState.idle;
+          _statusText = 'Toca para escanear de nuevo';
+        });
+      }
     }
   }
 

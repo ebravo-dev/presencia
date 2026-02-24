@@ -1,4 +1,5 @@
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/attendance_record.dart';
 
 /// Offline-first local storage using Hive
@@ -23,6 +24,9 @@ class LocalStorageService {
 
   Future<void> saveProfile(String matricula) async {
     await _profile.put('matricula', matricula);
+    // Also sync to UserDefaults so native iOS can read it
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('student_matricula', matricula);
   }
 
   // ── Attendance records ───────────────────────────────────────
