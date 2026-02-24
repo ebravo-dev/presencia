@@ -27,6 +27,11 @@ void main() async {
   // Initialize BLE service early so native background scan starts
   final bleService = BleScannerService();
 
+  // Sync matrícula to native (UserDefaults) so iOS can use it in background
+  if (storage.isProfileSet) {
+    bleService.setMatricula(storage.matricula);
+  }
+
   runApp(
     PresenciaAlumnoApp(
       storage: storage,
@@ -97,6 +102,7 @@ class _AppRouterState extends State<_AppRouter> {
       return SetupScreen(
         onComplete: (matricula) async {
           await widget.storage.saveProfile(matricula);
+          widget.bleService.setMatricula(matricula);
           setState(() => _profileSet = true);
         },
       );

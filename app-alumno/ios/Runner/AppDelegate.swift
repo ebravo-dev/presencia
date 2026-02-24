@@ -11,9 +11,14 @@ import CoreBluetooth
     static let backendURL = "https://apipresencia.110694.xyz/api/student-attendance"
     
     var centralManager: CBCentralManager?
+    private var flutterChannel: FlutterMethodChannel?
     
     // Cooldown: don't register same detection within 5 minutes
     private let cooldownSeconds: TimeInterval = 300
+    
+    // Track if a foreground scan was requested
+    private var isForegroundScanActive = false
+    private var foregroundScanTimer: Timer?
     
     override func application(
         _ application: UIApplication,
@@ -25,6 +30,7 @@ import CoreBluetooth
             NSLog("[BLE] 🔵 App relaunched by CoreBluetooth: %@", keys.description)
         }
         
+        // ONE central manager for everything (foreground + background)
         centralManager = CBCentralManager(
             delegate: self,
             queue: nil,
@@ -36,24 +42,39 @@ import CoreBluetooth
         
         // Flutter method channel
         if let controller = window?.rootViewController as? FlutterViewController {
-            let channel = FlutterMethodChannel(
+            flutterChannel = FlutterMethodChannel(
                 name: "com.presencia.alumno/ble_background",
                 binaryMessenger: controller.binaryMessenger
             )
             
-            channel.setMethodCallHandler { [weak self] (call, result) in
+            flutterChannel?.setMethodCallHandler { [weak self] (call, result) in
                 switch call.method {
                 case "startBackgroundScan":
-                    self?.startBackgroundScan()
+                    self?.startContinuousScan()
+                    result(true)
+                case "startForegroundScan":
+                    // Foreground scan with timeout — Flutter wants a result
+                    let timeout = (call.arguments as? [String: Any])?["timeout"] as? Double ?? 8.0
+                    self?.startForegroundScan(timeout: timeout)
+                    result(true)
+                case "stopScan":
+                    self?.stopForegroundScan()
                     result(true)
                 case "isScanning":
                     result(self?.centralManager?.isScanning ?? false)
+                case "getBluetoothState":
+                    result(self?.centralManager?.state == .poweredOn ? "on" : "off")
                 case "getPendingDetections":
-                    // Return detections saved natively while Flutter was suspended
                     let detections = self?.getPendingDetections() ?? []
                     result(detections)
                 case "clearPendingDetections":
                     self?.clearPendingDetections()
+                    result(true)
+                case "setMatricula":
+                    if let matricula = call.arguments as? String {
+                        UserDefaults.standard.set(matricula, forKey: "student_matricula")
+                        NSLog("[BLE] 📝 Matrícula set: %@", matricula)
+                    }
                     result(true)
                 default:
                     result(FlutterMethodNotImplemented)
@@ -64,14 +85,17 @@ import CoreBluetooth
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
     
-    private func startBackgroundScan() {
+    // MARK: - Scanning
+    
+    /// Start continuous background scan (runs until app is killed)
+    private func startContinuousScan() {
         guard let cm = centralManager, cm.state == .poweredOn else {
             NSLog("[BLE] ⚠️ Bluetooth not ready")
             return
         }
         
         if !cm.isScanning {
-            NSLog("[BLE] 🔍 Starting BLE scan")
+            NSLog("[BLE] 🔍 Starting continuous BLE scan (foreground + background)")
             cm.scanForPeripherals(
                 withServices: [AppDelegate.beaconServiceUUID],
                 options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
@@ -79,16 +103,47 @@ import CoreBluetooth
         }
     }
     
-    // MARK: - Native Detection Handling (works even when Flutter is suspended)
+    /// Foreground scan with timeout — notifies Flutter of result
+    private func startForegroundScan(timeout: Double) {
+        isForegroundScanActive = true
+        
+        // Ensure scanning is active
+        startContinuousScan()
+        
+        // Set timeout
+        foregroundScanTimer?.invalidate()
+        foregroundScanTimer = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { [weak self] _ in
+            guard let self = self, self.isForegroundScanActive else { return }
+            self.isForegroundScanActive = false
+            NSLog("[BLE] ⏰ Foreground scan timed out")
+            self.flutterChannel?.invokeMethod("onScanResult", arguments: ["result": "timeout"])
+        }
+    }
+    
+    private func stopForegroundScan() {
+        isForegroundScanActive = false
+        foregroundScanTimer?.invalidate()
+        foregroundScanTimer = nil
+        // NOTE: We do NOT stop the CBCentralManager scan — it continues for background detection
+    }
+    
+    // MARK: - Detection Handling
     
     private func handleBeaconDetected(name: String, deviceId: String, rssi: Int) {
         let now = Date()
         
         // Cooldown check
-        let lastKey = "lastDetection_\(getMatricula())"
+        let lastKey = "lastDetection"
         if let lastDetection = UserDefaults.standard.object(forKey: lastKey) as? Date {
             if now.timeIntervalSince(lastDetection) < cooldownSeconds {
-                NSLog("[BLE] ⏳ Cooldown active, skipping")
+                NSLog("[BLE] ⏳ Cooldown active, skipping (last: %.0f sec ago)", now.timeIntervalSince(lastDetection))
+                
+                // Still notify foreground scan to show "already registered"
+                if isForegroundScanActive {
+                    isForegroundScanActive = false
+                    foregroundScanTimer?.invalidate()
+                    flutterChannel?.invokeMethod("onScanResult", arguments: ["result": "cooldown"])
+                }
                 return
             }
         }
@@ -96,38 +151,54 @@ import CoreBluetooth
         // Save timestamp for cooldown
         UserDefaults.standard.set(now, forKey: lastKey)
         
-        let matricula = getMatricula()
+        let matricula = UserDefaults.standard.string(forKey: "student_matricula") ?? "unknown"
         let timestamp = ISO8601DateFormatter().string(from: now)
         
-        NSLog("[BLE] ✅ BEACON DETECTED — saving natively. Matrícula: %@", matricula)
+        NSLog("[BLE] ✅ BEACON DETECTED! Matrícula: %@, RSSI: %d", matricula, rssi)
         
         // 1. Save to UserDefaults (Flutter will pick these up when it resumes)
         savePendingDetection(name: name, deviceId: deviceId, rssi: rssi, timestamp: timestamp)
         
-        // 2. POST to backend directly from native (background URLSession)
+        // 2. POST to backend directly
         postToBackend(matricula: matricula, beaconId: name, timestamp: timestamp)
         
-        // 3. Try to notify Flutter (may work if Flutter engine is alive)
-        notifyFlutter(name: name, deviceId: deviceId, rssi: rssi, timestamp: timestamp)
+        // 3. Notify Flutter if foreground scan is active
+        if isForegroundScanActive {
+            isForegroundScanActive = false
+            foregroundScanTimer?.invalidate()
+            DispatchQueue.main.async { [weak self] in
+                self?.flutterChannel?.invokeMethod("onScanResult", arguments: [
+                    "result": "detected",
+                    "name": name,
+                    "deviceId": deviceId,
+                    "rssi": rssi,
+                    "timestamp": timestamp
+                ] as [String: Any])
+            }
+        }
+        
+        // 4. Also notify background detection stream
+        DispatchQueue.main.async { [weak self] in
+            self?.flutterChannel?.invokeMethod("onBeaconDetected", arguments: [
+                "name": name,
+                "deviceId": deviceId,
+                "rssi": rssi,
+                "timestamp": timestamp
+            ] as [String: Any])
+        }
     }
     
     // MARK: - UserDefaults Persistence
     
-    private func getMatricula() -> String {
-        // Read from Hive's SharedPreferences-like storage
-        // Hive stores student_profile box — we read the matricula from UserDefaults
-        // that we'll sync from Flutter
-        return UserDefaults.standard.string(forKey: "student_matricula") ?? "unknown"
-    }
-    
     private func savePendingDetection(name: String, deviceId: String, rssi: Int, timestamp: String) {
         var pending = UserDefaults.standard.array(forKey: "pending_detections") as? [[String: Any]] ?? []
+        let matricula = UserDefaults.standard.string(forKey: "student_matricula") ?? "unknown"
         pending.append([
             "name": name,
             "deviceId": deviceId,
             "rssi": rssi,
             "timestamp": timestamp,
-            "matricula": getMatricula()
+            "matricula": matricula
         ])
         UserDefaults.standard.set(pending, forKey: "pending_detections")
         NSLog("[BLE] 💾 Saved to UserDefaults (%d pending)", pending.count)
@@ -139,10 +210,9 @@ import CoreBluetooth
     
     private func clearPendingDetections() {
         UserDefaults.standard.removeObject(forKey: "pending_detections")
-        NSLog("[BLE] 🧹 Cleared pending detections")
     }
     
-    // MARK: - Native HTTP POST (works in background)
+    // MARK: - Native HTTP POST
     
     private func postToBackend(matricula: String, beaconId: String, timestamp: String) {
         guard let url = URL(string: AppDelegate.backendURL) else { return }
@@ -162,40 +232,17 @@ import CoreBluetooth
         
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         
-        // Use background URLSession so it completes even if app gets suspended again
-        let config = URLSessionConfiguration.background(withIdentifier: "com.presencia.alumno.sync.\(UUID().uuidString)")
-        config.isDiscretionary = false
-        config.sessionSendsLaunchEvents = true
-        let session = URLSession(configuration: config)
-        
-        let task = session.dataTask(with: request) { data, response, error in
+        // Use shared session for immediate dispatch
+        URLSession.shared.dataTask(with: request) { data, response, error in
             if let httpResponse = response as? HTTPURLResponse {
                 NSLog("[BLE] 📤 Backend POST: HTTP %d", httpResponse.statusCode)
             }
             if let error = error {
                 NSLog("[BLE] ❌ Backend POST failed: %@", error.localizedDescription)
             }
-        }
-        task.resume()
-        NSLog("[BLE] 📤 Sending POST to backend...")
-    }
-    
-    // MARK: - Flutter Notification (best-effort)
-    
-    private func notifyFlutter(name: String, deviceId: String, rssi: Int, timestamp: String) {
-        DispatchQueue.main.async { [weak self] in
-            guard let controller = self?.window?.rootViewController as? FlutterViewController else { return }
-            let channel = FlutterMethodChannel(
-                name: "com.presencia.alumno/ble_background",
-                binaryMessenger: controller.binaryMessenger
-            )
-            channel.invokeMethod("onBeaconDetected", arguments: [
-                "name": name,
-                "deviceId": deviceId,
-                "rssi": rssi,
-                "timestamp": timestamp
-            ] as [String : Any])
-        }
+        }.resume()
+        
+        NSLog("[BLE] 📤 Sending to backend...")
     }
 }
 
@@ -203,16 +250,29 @@ import CoreBluetooth
 extension AppDelegate: CBCentralManagerDelegate {
     
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        let stateStr: String
         switch central.state {
         case .poweredOn:
-            NSLog("[BLE] ✅ Bluetooth powered on — starting scan")
-            startBackgroundScan()
+            stateStr = "poweredOn"
+            NSLog("[BLE] ✅ Bluetooth ON — starting continuous scan")
+            startContinuousScan()
         case .poweredOff:
-            NSLog("[BLE] ❌ Bluetooth powered off")
+            stateStr = "poweredOff"
+            NSLog("[BLE] ❌ Bluetooth OFF")
         case .unauthorized:
+            stateStr = "unauthorized"
             NSLog("[BLE] ⚠️ Bluetooth unauthorized")
+        case .unsupported:
+            stateStr = "unsupported"
+            NSLog("[BLE] ❌ Bluetooth unsupported")
         default:
+            stateStr = "unknown"
             NSLog("[BLE] ℹ️ Bluetooth state: %d", central.state.rawValue)
+        }
+        
+        // Notify Flutter of state change
+        DispatchQueue.main.async { [weak self] in
+            self?.flutterChannel?.invokeMethod("onBluetoothStateChanged", arguments: stateStr)
         }
     }
     
@@ -220,12 +280,18 @@ extension AppDelegate: CBCentralManagerDelegate {
                          advertisementData: [String: Any], rssi RSSI: NSNumber) {
         let name = peripheral.name ?? advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? ""
         
+        if !name.isEmpty {
+            NSLog("[BLE] 📡 Found: %@ (RSSI: %d)", name, RSSI.intValue)
+        }
+        
         if name.lowercased() == AppDelegate.beaconName.lowercased() {
             handleBeaconDetected(name: name, deviceId: peripheral.identifier.uuidString, rssi: RSSI.intValue)
         }
     }
     
     func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
-        NSLog("[BLE] 🔄 CoreBluetooth state restored — app relaunched")
+        NSLog("[BLE] 🔄 CoreBluetooth state restored — app relaunched from killed")
+        // State restoration: we just need the delegate set (already done by init)
+        // When centralManagerDidUpdateState fires with .poweredOn, we'll start scanning again
     }
 }

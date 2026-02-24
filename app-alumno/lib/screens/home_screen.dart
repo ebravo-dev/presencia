@@ -277,6 +277,13 @@ class _HomeScreenState extends State<HomeScreen>
           });
         }
         break;
+
+      case BeaconScanResult.cooldown:
+        setState(() {
+          _scanState = _ScanState.idle;
+          _statusText = 'Asistencia ya registrada recientemente';
+        });
+        break;
     }
   }
 
