@@ -19,6 +19,7 @@ import CoreBluetooth
     // Track if a foreground scan was requested
     private var isForegroundScanActive = false
     private var foregroundScanTimer: Timer?
+    private var scanRestartTimer: Timer?
     
     override func application(
         _ application: UIApplication,
@@ -88,18 +89,34 @@ import CoreBluetooth
     // MARK: - Scanning
     
     /// Start continuous background scan (runs until app is killed)
+    /// Restarts scan every 30s to clear CoreBluetooth's duplicate cache
     private func startContinuousScan() {
         guard let cm = centralManager, cm.state == .poweredOn else {
             NSLog("[BLE] ⚠️ Bluetooth not ready")
             return
         }
         
-        if !cm.isScanning {
-            NSLog("[BLE] 🔍 Starting continuous BLE scan (foreground + background)")
-            cm.scanForPeripherals(
-                withServices: [AppDelegate.beaconServiceUUID],
-                options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
-            )
+        // Stop existing scan to reset duplicate filter
+        if cm.isScanning {
+            cm.stopScan()
+        }
+        
+        NSLog("[BLE] 🔍 Starting BLE scan (foreground + background)")
+        cm.scanForPeripherals(
+            withServices: [AppDelegate.beaconServiceUUID],
+            options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
+        )
+        
+        // Schedule periodic restart to clear duplicate cache
+        scheduleScanRestart()
+    }
+    
+    private func scheduleScanRestart() {
+        scanRestartTimer?.invalidate()
+        scanRestartTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: false) { [weak self] _ in
+            guard let self = self, self.centralManager?.isScanning == true else { return }
+            NSLog("[BLE] 🔄 Restarting scan to reset duplicate filter")
+            self.startContinuousScan()
         }
     }
     
@@ -107,7 +124,7 @@ import CoreBluetooth
     private func startForegroundScan(timeout: Double) {
         isForegroundScanActive = true
         
-        // Ensure scanning is active
+        // Force restart scan to clear duplicate cache (ensures re-detection)
         startContinuousScan()
         
         // Set timeout
@@ -280,12 +297,22 @@ extension AppDelegate: CBCentralManagerDelegate {
                          advertisementData: [String: Any], rssi RSSI: NSNumber) {
         let name = peripheral.name ?? advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? ""
         
+        // We already filter by service UUID in scanForPeripherals.
+        // In background, name may be empty but service UUID still matches.
+        let hasServiceUuid = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID])?
+            .contains(AppDelegate.beaconServiceUUID) ?? false
+        let nameMatches = !name.isEmpty && name.lowercased() == AppDelegate.beaconName.lowercased()
+        
         if !name.isEmpty {
-            NSLog("[BLE] 📡 Found: %@ (RSSI: %d)", name, RSSI.intValue)
+            NSLog("[BLE] 📡 Found: %@ (RSSI: %d, svcUUID: %@)", name, RSSI.intValue, hasServiceUuid ? "yes" : "no")
         }
         
-        if name.lowercased() == AppDelegate.beaconName.lowercased() {
-            handleBeaconDetected(name: name, deviceId: peripheral.identifier.uuidString, rssi: RSSI.intValue)
+        if hasServiceUuid || nameMatches {
+            handleBeaconDetected(
+                name: name.isEmpty ? AppDelegate.beaconName : name,
+                deviceId: peripheral.identifier.uuidString,
+                rssi: RSSI.intValue
+            )
         }
     }
     
