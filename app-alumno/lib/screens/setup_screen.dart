@@ -74,7 +74,7 @@ class _SetupScreenState extends State<SetupScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Registra tu asistencia automáticamente al detectar el beacon del salón.',
+                'Tu dispositivo emitirá tu matrícula por Bluetooth para que el profesor registre tu asistencia.',
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.5),
                   fontSize: 16,

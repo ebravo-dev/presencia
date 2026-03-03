@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'services/local_storage_service.dart';
-import 'services/sync_service.dart';
-import 'services/ble_scanner_service.dart';
+import 'services/ble_advertiser_service.dart';
 import 'screens/setup_screen.dart';
 import 'screens/home_screen.dart';
 
@@ -21,21 +20,18 @@ void main() async {
   final storage = LocalStorageService();
   await storage.init();
 
-  final syncService = SyncService(storage);
-  syncService.startListening();
+  final bleService = BleAdvertiserService();
 
-  // Initialize BLE service early so native background scan starts
-  final bleService = BleScannerService();
-
-  // Sync matrícula to native (UserDefaults) so iOS can use it in background
+  // Sync matrícula to native so GATT server can serve it
   if (storage.isProfileSet) {
     bleService.setMatricula(storage.matricula);
+    // Auto-start advertising if profile is set
+    bleService.startAdvertising();
   }
 
   runApp(
     PresenciaAlumnoApp(
       storage: storage,
-      syncService: syncService,
       bleService: bleService,
     ),
   );
@@ -43,13 +39,11 @@ void main() async {
 
 class PresenciaAlumnoApp extends StatelessWidget {
   final LocalStorageService storage;
-  final SyncService syncService;
-  final BleScannerService bleService;
+  final BleAdvertiserService bleService;
 
   const PresenciaAlumnoApp({
     super.key,
     required this.storage,
-    required this.syncService,
     required this.bleService,
   });
 
@@ -64,7 +58,6 @@ class PresenciaAlumnoApp extends StatelessWidget {
       ),
       home: _AppRouter(
         storage: storage,
-        syncService: syncService,
         bleService: bleService,
       ),
     );
@@ -74,12 +67,10 @@ class PresenciaAlumnoApp extends StatelessWidget {
 /// Handles routing between setup and home, including navigation after setup
 class _AppRouter extends StatefulWidget {
   final LocalStorageService storage;
-  final SyncService syncService;
-  final BleScannerService bleService;
+  final BleAdvertiserService bleService;
 
   const _AppRouter({
     required this.storage,
-    required this.syncService,
     required this.bleService,
   });
 
@@ -103,6 +94,7 @@ class _AppRouterState extends State<_AppRouter> {
         onComplete: (matricula) async {
           await widget.storage.saveProfile(matricula);
           widget.bleService.setMatricula(matricula);
+          widget.bleService.startAdvertising();
           setState(() => _profileSet = true);
         },
       );
@@ -110,7 +102,6 @@ class _AppRouterState extends State<_AppRouter> {
 
     return HomeScreen(
       storage: widget.storage,
-      syncService: widget.syncService,
       bleService: widget.bleService,
     );
   }

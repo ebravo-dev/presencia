@@ -1,22 +1,15 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import '../models/attendance_record.dart';
-import '../services/ble_scanner_service.dart';
+import '../services/ble_advertiser_service.dart';
 import '../services/local_storage_service.dart';
-import '../services/sync_service.dart';
-import 'history_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final LocalStorageService storage;
-  final SyncService syncService;
-  final BleScannerService bleService;
+  final BleAdvertiserService bleService;
 
   const HomeScreen({
     super.key,
     required this.storage,
-    required this.syncService,
     required this.bleService,
   });
 
@@ -24,289 +17,85 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
-
-  _ScanState _scanState = _ScanState.idle;
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  AdvertiserState _advState = AdvertiserState.idle;
   String _statusText = 'Iniciando...';
-  String _syncStatus = '';
-  int _totalRecords = 0;
-  int _unsyncedCount = 0;
+  String? _lastConfirmation;
 
-  StreamSubscription<String>? _bleSub;
-  StreamSubscription<String>? _syncSub;
-  StreamSubscription<Map<String, dynamic>>? _bgDetectionSub;
-
-  // Auto-scan cooldown
-  DateTime? _lastDetection;
-  static const _cooldown = Duration(minutes: 5);
+  StreamSubscription<AdvertiserState>? _stateSub;
+  StreamSubscription<String>? _confirmSub;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    );
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-
-    _bleSub = widget.bleService.statusStream.listen((status) {
-      if (mounted) setState(() => _statusText = status);
+    _stateSub = widget.bleService.stateStream.listen((state) {
+      if (mounted) {
+        setState(() {
+          _advState = state;
+          _statusText = _textForState(state);
+        });
+      }
     });
 
-    _syncSub = widget.syncService.syncStatusStream.listen((status) {
-      if (mounted) setState(() => _syncStatus = status);
+    _confirmSub = widget.bleService.confirmationStream.listen((message) {
+      if (mounted) {
+        setState(() {
+          _lastConfirmation = message;
+          _statusText = '¡Asistencia confirmada!';
+        });
+        // Reset after a few seconds
+        Future.delayed(const Duration(seconds: 5), () {
+          if (mounted && _lastConfirmation == message) {
+            setState(() {
+              _lastConfirmation = null;
+              _statusText = _textForState(_advState);
+            });
+          }
+        });
+      }
     });
 
-    // Listen for native iOS background beacon detections
-    _bgDetectionSub = widget.bleService.backgroundDetectionStream.listen((
-      data,
-    ) {
-      _handleBackgroundDetection(data);
-    });
-
-    _updateCounts();
-
-    // Import any detections that happened while Flutter was suspended
-    _importPendingNativeDetections();
-
-    // Auto-scan on launch
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) _autoScan();
-    });
+    // Set initial state
+    _advState = widget.bleService.currentState;
+    _statusText = _textForState(_advState);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Import detections that happened in background
-      _importPendingNativeDetections();
-      _updateCounts();
-      _autoScan();
+      // Re-start advertising if needed
+      widget.bleService.startAdvertising();
     }
   }
 
-  /// Import detections saved by native iOS while Flutter was suspended
-  Future<void> _importPendingNativeDetections() async {
-    final pending = await widget.bleService.getPendingNativeDetections();
-    if (pending.isEmpty) return;
-
-    debugPrint(
-      '[Home] 📥 Importing ${pending.length} native background detections',
-    );
-
-    for (final detection in pending) {
-      final timestamp =
-          detection['timestamp'] as String? ?? DateTime.now().toIso8601String();
-      final record = AttendanceRecord(
-        id: '${widget.storage.matricula}_bg_${DateTime.now().millisecondsSinceEpoch}',
-        studentName: widget.storage.matricula,
-        matricula: widget.storage.matricula,
-        beaconId: detection['name'] as String? ?? BleScannerService.beaconName,
-        detectedAt: DateTime.tryParse(timestamp) ?? DateTime.now(),
-        deviceInfo: 'iOS (background)',
-      );
-      await widget.storage.saveRecord(record);
+  String _textForState(AdvertiserState state) {
+    switch (state) {
+      case AdvertiserState.advertising:
+        return 'Emitiendo tu matrícula por BLE';
+      case AdvertiserState.bluetoothOff:
+        return 'Activa el Bluetooth';
+      case AdvertiserState.error:
+        return 'Error — revisa el Bluetooth';
+      case AdvertiserState.idle:
+        return 'Toca para iniciar emisión';
     }
-
-    await widget.bleService.clearPendingDetections();
-    _updateCounts();
-
-    // Sync the imported records
-    widget.syncService.syncPendingRecords();
-
-    if (mounted) {
-      setState(() {
-        _statusText =
-            '${pending.length} asistencia(s) registrada(s) en background';
-        _scanState = _ScanState.detected;
-      });
-      await Future.delayed(const Duration(seconds: 3));
-      if (mounted) {
-        setState(() {
-          _scanState = _ScanState.idle;
-          _statusText = 'Toca para escanear de nuevo';
-        });
-      }
-    }
-  }
-
-  /// Handle beacon detected by native iOS (background or killed state)
-  Future<void> _handleBackgroundDetection(Map<String, dynamic> data) async {
-    if (_lastDetection != null &&
-        DateTime.now().difference(_lastDetection!) < _cooldown) {
-      return; // Still in cooldown
-    }
-
-    _lastDetection = DateTime.now();
-    HapticFeedback.heavyImpact();
-
-    final record = AttendanceRecord(
-      id: '${widget.storage.matricula}_${DateTime.now().millisecondsSinceEpoch}',
-      studentName: widget.storage.matricula,
-      matricula: widget.storage.matricula,
-      beaconId: data['name'] ?? BleScannerService.beaconName,
-      detectedAt: DateTime.now(),
-      deviceInfo: _getDeviceInfo(),
-    );
-    await widget.storage.saveRecord(record);
-    _updateCounts();
-
-    widget.syncService.syncPendingRecords();
-
-    if (mounted) {
-      setState(() {
-        _scanState = _ScanState.detected;
-        _statusText = '¡Asistencia registrada (auto)!';
-      });
-
-      await Future.delayed(const Duration(seconds: 3));
-      if (mounted) {
-        setState(() {
-          _scanState = _ScanState.idle;
-          _statusText = 'Toca para escanear de nuevo';
-        });
-      }
-    }
-  }
-
-  void _autoScan() {
-    if (_lastDetection != null &&
-        DateTime.now().difference(_lastDetection!) < _cooldown) {
-      setState(() {
-        _statusText = 'Asistencia ya registrada recientemente';
-        _scanState = _ScanState.idle;
-      });
-      return;
-    }
-    _startScan();
-  }
-
-  void _updateCounts() {
-    setState(() {
-      _totalRecords = widget.storage.totalRecords;
-      _unsyncedCount = widget.storage.unsyncedCount;
-    });
-  }
-
-  Future<void> _startScan() async {
-    if (_scanState == _ScanState.scanning) return;
-
-    HapticFeedback.mediumImpact();
-    setState(() {
-      _scanState = _ScanState.scanning;
-      _statusText = 'Buscando beacon del salón...';
-    });
-    _pulseController.repeat(reverse: true);
-
-    final result = await widget.bleService.scanForBeacon();
-
-    _pulseController.stop();
-    _pulseController.reset();
-
-    if (!mounted) return;
-
-    switch (result) {
-      case BeaconScanResult.detected:
-        HapticFeedback.heavyImpact();
-        _lastDetection = DateTime.now();
-        setState(() {
-          _scanState = _ScanState.detected;
-          _statusText = '¡Asistencia registrada!';
-        });
-
-        final record = AttendanceRecord(
-          id: '${widget.storage.matricula}_${DateTime.now().millisecondsSinceEpoch}',
-          studentName: widget.storage.matricula,
-          matricula: widget.storage.matricula,
-          beaconId: BleScannerService.beaconName,
-          detectedAt: DateTime.now(),
-          deviceInfo: _getDeviceInfo(),
-        );
-        await widget.storage.saveRecord(record);
-        _updateCounts();
-
-        widget.syncService.syncPendingRecords();
-
-        await Future.delayed(const Duration(seconds: 3));
-        if (mounted) {
-          setState(() {
-            _scanState = _ScanState.idle;
-            _statusText = 'Toca para escanear de nuevo';
-          });
-        }
-        break;
-
-      case BeaconScanResult.timeout:
-        setState(() {
-          _scanState = _ScanState.failed;
-          _statusText = 'Beacon no encontrado';
-        });
-        await Future.delayed(const Duration(seconds: 2));
-        if (mounted) {
-          setState(() {
-            _scanState = _ScanState.idle;
-            _statusText = 'Toca para intentar de nuevo';
-          });
-        }
-        break;
-
-      case BeaconScanResult.bluetoothUnavailable:
-        setState(() {
-          _scanState = _ScanState.failed;
-          _statusText = 'Activa el Bluetooth';
-        });
-        break;
-
-      case BeaconScanResult.error:
-        setState(() {
-          _scanState = _ScanState.failed;
-          _statusText = 'Error — intenta de nuevo';
-        });
-        await Future.delayed(const Duration(seconds: 2));
-        if (mounted) {
-          setState(() {
-            _scanState = _ScanState.idle;
-            _statusText = 'Toca para intentar de nuevo';
-          });
-        }
-        break;
-
-      case BeaconScanResult.cooldown:
-        setState(() {
-          _scanState = _ScanState.idle;
-          _statusText = 'Asistencia ya registrada recientemente';
-        });
-        break;
-    }
-  }
-
-  String _getDeviceInfo() {
-    try {
-      if (Platform.isIOS) return 'iOS';
-      if (Platform.isAndroid) return 'Android';
-    } catch (_) {}
-    return 'Unknown';
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _pulseController.dispose();
-    _bleSub?.cancel();
-    _syncSub?.cancel();
-    _bgDetectionSub?.cancel();
+    _stateSub?.cancel();
+    _confirmSub?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final isAdvertising = _advState == AdvertiserState.advertising;
+    final isConfirmed = _lastConfirmation != null;
+
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
@@ -339,53 +128,44 @@ class _HomeScreenState extends State<HomeScreen>
                     ],
                   ),
                   const Spacer(),
-                  IconButton(
-                    onPressed: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              HistoryScreen(storage: widget.storage),
-                        ),
-                      );
-                      _updateCounts();
-                    },
-                    icon: const Icon(
-                      Icons.history_rounded,
-                      color: Colors.white54,
-                      size: 28,
-                    ),
-                  ),
                 ],
               ),
             ),
 
             const Spacer(),
 
-            // ── Central scan button ──
+            // ── Central status indicator ──
             GestureDetector(
-              onTap: _scanState == _ScanState.scanning ? null : _startScan,
-              child: ScaleTransition(
-                scale: _pulseAnimation,
-                child: Container(
-                  width: 200,
-                  height: 200,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: _getGradientColors(),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _getGradientColors()[0].withOpacity(0.3),
-                        blurRadius: 40,
-                        spreadRadius: 5,
-                      ),
-                    ],
+              onTap: () {
+                if (!isAdvertising) {
+                  widget.bleService.startAdvertising();
+                }
+              },
+              child: Container(
+                width: 200,
+                height: 200,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: _getGradientColors(isAdvertising, isConfirmed),
                   ),
-                  child: Icon(_getIcon(), color: Colors.white, size: 72),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _getGradientColors(
+                        isAdvertising,
+                        isConfirmed,
+                      )[0].withOpacity(0.3),
+                      blurRadius: 40,
+                      spreadRadius: 5,
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  _getIcon(isAdvertising, isConfirmed),
+                  color: Colors.white,
+                  size: 72,
                 ),
               ),
             ),
@@ -401,21 +181,22 @@ class _HomeScreenState extends State<HomeScreen>
                 fontWeight: FontWeight.w600,
               ),
             ),
-            if (_scanState == _ScanState.scanning) ...[
+
+            if (isAdvertising && !isConfirmed) ...[
               const SizedBox(height: 16),
-              SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: _getGradientColors()[0],
+              Text(
+                'El profesor detectará tu dispositivo automáticamente',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.3),
+                  fontSize: 13,
                 ),
               ),
             ],
 
             const Spacer(),
 
-            // ── Stats bar ──
+            // ── Info bar ──
             Container(
               margin: const EdgeInsets.all(24),
               padding: const EdgeInsets.all(20),
@@ -426,102 +207,69 @@ class _HomeScreenState extends State<HomeScreen>
               ),
               child: Row(
                 children: [
-                  _buildStat(
-                    '$_totalRecords',
-                    'Registros',
-                    Icons.check_circle_outline_rounded,
+                  Icon(
+                    isAdvertising
+                        ? Icons.bluetooth_connected_rounded
+                        : Icons.bluetooth_disabled_rounded,
+                    color: isAdvertising
+                        ? const Color(0xFF4DFF88)
+                        : Colors.white38,
+                    size: 24,
                   ),
-                  Container(
-                    width: 1,
-                    height: 40,
-                    color: const Color(0xFF2C2C2E),
-                  ),
-                  _buildStat(
-                    _unsyncedCount == 0 ? '✓' : '$_unsyncedCount',
-                    _unsyncedCount == 0 ? 'Sincronizado' : 'Pendientes',
-                    _unsyncedCount == 0
-                        ? Icons.cloud_done_rounded
-                        : Icons.cloud_upload_rounded,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isAdvertising ? 'BLE Activo' : 'BLE Inactivo',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          isAdvertising
+                              ? 'Tu matrícula está visible para el profesor'
+                              : 'Necesitas Bluetooth encendido',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.4),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-
-            // ── Sync status ──
-            if (_syncStatus.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Text(
-                  _syncStatus,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.3),
-                    fontSize: 12,
-                  ),
-                ),
-              ),
           ],
         ),
       ),
     );
   }
 
-  List<Color> _getGradientColors() {
-    switch (_scanState) {
-      case _ScanState.idle:
-        return [const Color(0xFFFF6B9D), const Color(0xFFC44DFF)];
-      case _ScanState.scanning:
-        return [const Color(0xFF6B9DFF), const Color(0xFF4DC4FF)];
-      case _ScanState.detected:
-        return [const Color(0xFF4DFF88), const Color(0xFF00C853)];
-      case _ScanState.failed:
-        return [const Color(0xFFFF9D6B), const Color(0xFFFF6B6B)];
+  List<Color> _getGradientColors(bool isAdvertising, bool isConfirmed) {
+    if (isConfirmed) {
+      return [const Color(0xFF4DFF88), const Color(0xFF00C853)];
     }
+    if (isAdvertising) {
+      return [const Color(0xFF6B9DFF), const Color(0xFF4DC4FF)];
+    }
+    if (_advState == AdvertiserState.bluetoothOff ||
+        _advState == AdvertiserState.error) {
+      return [const Color(0xFFFF9D6B), const Color(0xFFFF6B6B)];
+    }
+    return [const Color(0xFFFF6B9D), const Color(0xFFC44DFF)];
   }
 
-  IconData _getIcon() {
-    switch (_scanState) {
-      case _ScanState.idle:
-        return Icons.bluetooth_searching_rounded;
-      case _ScanState.scanning:
-        return Icons.bluetooth_searching_rounded;
-      case _ScanState.detected:
-        return Icons.check_rounded;
-      case _ScanState.failed:
-        return Icons.bluetooth_disabled_rounded;
+  IconData _getIcon(bool isAdvertising, bool isConfirmed) {
+    if (isConfirmed) return Icons.check_rounded;
+    if (isAdvertising) return Icons.bluetooth_rounded;
+    if (_advState == AdvertiserState.bluetoothOff) {
+      return Icons.bluetooth_disabled_rounded;
     }
-  }
-
-  Widget _buildStat(String value, String label, IconData icon) {
-    return Expanded(
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: Colors.white38, size: 20),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              Text(
-                label,
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.4),
-                  fontSize: 11,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+    return Icons.bluetooth_rounded;
   }
 }
-
-enum _ScanState { idle, scanning, detected, failed }

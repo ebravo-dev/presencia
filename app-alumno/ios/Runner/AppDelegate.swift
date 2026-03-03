@@ -5,21 +5,19 @@ import CoreBluetooth
 @main
 @objc class AppDelegate: FlutterAppDelegate {
     
-    static let restoreIdentifier = "com.presencia.alumno.ble"
-    static let beaconServiceUUID = CBUUID(string: "12345678-1234-1234-1234-123456789abc")
-    static let beaconName = "ESP32-C3_BLE"
-    static let backendURL = "https://apipresencia.110694.xyz/api/student-attendance"
+    // MARK: - BLE UUIDs (shared with professor app)
+    static let serviceUUID = CBUUID(string: "12345678-1234-1234-1234-123456789abc")
+    static let matriculaCharUUID = CBUUID(string: "12345678-1234-1234-1234-000000000001") // READ
+    static let confirmCharUUID = CBUUID(string: "12345678-1234-1234-1234-000000000002")   // WRITE
     
-    var centralManager: CBCentralManager?
+    private var peripheralManager: CBPeripheralManager?
     private var flutterChannel: FlutterMethodChannel?
     
-    // Cooldown: don't register same detection within 5 minutes
-    private let cooldownSeconds: TimeInterval = 300
+    private var matriculaChar: CBMutableCharacteristic?
+    private var confirmChar: CBMutableCharacteristic?
     
-    // Track if a foreground scan was requested
-    private var isForegroundScanActive = false
-    private var foregroundScanTimer: Timer?
-    private var scanRestartTimer: Timer?
+    private var isAdvertising = false
+    private var isServiceAdded = false
     
     override func application(
         _ application: UIApplication,
@@ -27,53 +25,39 @@ import CoreBluetooth
     ) -> Bool {
         GeneratedPluginRegistrant.register(with: self)
         
-        if let keys = launchOptions?[.bluetoothCentrals] as? [String] {
-            NSLog("[BLE] 🔵 App relaunched by CoreBluetooth: %@", keys.description)
-        }
-        
-        // ONE central manager for everything (foreground + background)
-        centralManager = CBCentralManager(
+        // Initialize CBPeripheralManager for GATT server + advertising
+        peripheralManager = CBPeripheralManager(
             delegate: self,
             queue: nil,
             options: [
-                CBCentralManagerOptionRestoreIdentifierKey: AppDelegate.restoreIdentifier,
-                CBCentralManagerOptionShowPowerAlertKey: true
+                CBPeripheralManagerOptionRestoreIdentifierKey: "com.presencia.alumno.peripheral"
             ]
         )
         
         // Flutter method channel
         if let controller = window?.rootViewController as? FlutterViewController {
             flutterChannel = FlutterMethodChannel(
-                name: "com.presencia.alumno/ble_background",
+                name: "com.presencia.alumno/ble_advertiser",
                 binaryMessenger: controller.binaryMessenger
             )
             
             flutterChannel?.setMethodCallHandler { [weak self] (call, result) in
                 switch call.method {
-                case "startBackgroundScan":
-                    self?.startContinuousScan()
+                case "startAdvertising":
+                    self?.startAdvertising()
                     result(true)
-                case "startForegroundScan":
-                    // Foreground scan with timeout — Flutter wants a result
-                    let timeout = (call.arguments as? [String: Any])?["timeout"] as? Double ?? 8.0
-                    self?.startForegroundScan(timeout: timeout)
+                case "stopAdvertising":
+                    self?.stopAdvertising()
                     result(true)
-                case "stopScan":
-                    self?.stopForegroundScan()
-                    result(true)
-                case "isScanning":
-                    result(self?.centralManager?.isScanning ?? false)
+                case "isAdvertising":
+                    result(self?.isAdvertising ?? false)
                 case "getBluetoothState":
-                    result(self?.centralManager?.state == .poweredOn ? "on" : "off")
-                case "getPendingDetections":
-                    let detections = self?.getPendingDetections() ?? []
-                    result(detections)
-                case "clearPendingDetections":
-                    self?.clearPendingDetections()
-                    result(true)
+                    let state = self?.peripheralManager?.state ?? .unknown
+                    result(state == .poweredOn ? "on" : "off")
                 case "setMatricula":
                     if let matricula = call.arguments as? String {
                         UserDefaults.standard.set(matricula, forKey: "student_matricula")
+                        self?.updateMatriculaCharacteristic()
                         NSLog("[BLE] 📝 Matrícula set: %@", matricula)
                     }
                     result(true)
@@ -86,195 +70,89 @@ import CoreBluetooth
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
     
-    // MARK: - Scanning
+    // MARK: - GATT Service Setup
     
-    /// Start continuous background scan (runs until app is killed)
-    /// Restarts scan every 30s to clear CoreBluetooth's duplicate cache
-    private func startContinuousScan() {
-        guard let cm = centralManager, cm.state == .poweredOn else {
-            NSLog("[BLE] ⚠️ Bluetooth not ready")
+    private func setupGATTService() {
+        guard !isServiceAdded else { return }
+        
+        let matricula = UserDefaults.standard.string(forKey: "student_matricula") ?? ""
+        
+        // Matrícula characteristic — READ (professor reads this)
+        matriculaChar = CBMutableCharacteristic(
+            type: AppDelegate.matriculaCharUUID,
+            properties: [.read],
+            value: nil, // nil = dynamic value via delegate callback
+            permissions: [.readable]
+        )
+        
+        // Confirmation characteristic — WRITE (professor writes confirmation)
+        confirmChar = CBMutableCharacteristic(
+            type: AppDelegate.confirmCharUUID,
+            properties: [.write, .writeWithoutResponse],
+            value: nil,
+            permissions: [.writeable]
+        )
+        
+        let service = CBMutableService(type: AppDelegate.serviceUUID, primary: true)
+        service.characteristics = [matriculaChar!, confirmChar!]
+        
+        peripheralManager?.add(service)
+        NSLog("[BLE] 📋 Adding GATT service (matrícula: %@)", matricula)
+    }
+    
+    private func updateMatriculaCharacteristic() {
+        // Value is served dynamically in didReceiveRead, no update needed on the characteristic itself.
+        // If we had subscribers we'd notify here, but READ-only doesn't need it.
+        NSLog("[BLE] 📝 Matrícula updated for GATT reads")
+    }
+    
+    // MARK: - Advertising
+    
+    private func startAdvertising() {
+        guard let pm = peripheralManager, pm.state == .poweredOn else {
+            NSLog("[BLE] ⚠️ Bluetooth not ready for advertising")
             return
         }
         
-        // Stop existing scan to reset duplicate filter
-        if cm.isScanning {
-            cm.stopScan()
+        if isAdvertising {
+            NSLog("[BLE] ℹ️ Already advertising")
+            return
         }
         
-        NSLog("[BLE] 🔍 Starting BLE scan (foreground + background)")
-        cm.scanForPeripherals(
-            withServices: [AppDelegate.beaconServiceUUID],
-            options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
-        )
-        
-        // Schedule periodic restart to clear duplicate cache
-        scheduleScanRestart()
-    }
-    
-    private func scheduleScanRestart() {
-        scanRestartTimer?.invalidate()
-        scanRestartTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: false) { [weak self] _ in
-            guard let self = self, self.centralManager?.isScanning == true else { return }
-            NSLog("[BLE] 🔄 Restarting scan to reset duplicate filter")
-            self.startContinuousScan()
-        }
-    }
-    
-    /// Foreground scan with timeout — notifies Flutter of result
-    private func startForegroundScan(timeout: Double) {
-        isForegroundScanActive = true
-        
-        // Force restart scan to clear duplicate cache (ensures re-detection)
-        startContinuousScan()
-        
-        // Set timeout
-        foregroundScanTimer?.invalidate()
-        foregroundScanTimer = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { [weak self] _ in
-            guard let self = self, self.isForegroundScanActive else { return }
-            self.isForegroundScanActive = false
-            NSLog("[BLE] ⏰ Foreground scan timed out")
-            self.flutterChannel?.invokeMethod("onScanResult", arguments: ["result": "timeout"])
-        }
-    }
-    
-    private func stopForegroundScan() {
-        isForegroundScanActive = false
-        foregroundScanTimer?.invalidate()
-        foregroundScanTimer = nil
-        // NOTE: We do NOT stop the CBCentralManager scan — it continues for background detection
-    }
-    
-    // MARK: - Detection Handling
-    
-    private func handleBeaconDetected(name: String, deviceId: String, rssi: Int) {
-        let now = Date()
-        
-        // Cooldown check
-        let lastKey = "lastDetection"
-        if let lastDetection = UserDefaults.standard.object(forKey: lastKey) as? Date {
-            if now.timeIntervalSince(lastDetection) < cooldownSeconds {
-                NSLog("[BLE] ⏳ Cooldown active, skipping (last: %.0f sec ago)", now.timeIntervalSince(lastDetection))
-                
-                // Still notify foreground scan to show "already registered"
-                if isForegroundScanActive {
-                    isForegroundScanActive = false
-                    foregroundScanTimer?.invalidate()
-                    flutterChannel?.invokeMethod("onScanResult", arguments: ["result": "cooldown"])
-                }
-                return
-            }
-        }
-        
-        // Save timestamp for cooldown
-        UserDefaults.standard.set(now, forKey: lastKey)
-        
-        let matricula = UserDefaults.standard.string(forKey: "student_matricula") ?? "unknown"
-        let timestamp = ISO8601DateFormatter().string(from: now)
-        
-        NSLog("[BLE] ✅ BEACON DETECTED! Matrícula: %@, RSSI: %d", matricula, rssi)
-        
-        // 1. Save to UserDefaults (Flutter will pick these up when it resumes)
-        savePendingDetection(name: name, deviceId: deviceId, rssi: rssi, timestamp: timestamp)
-        
-        // 2. POST to backend directly
-        postToBackend(matricula: matricula, beaconId: name, timestamp: timestamp)
-        
-        // 3. Notify Flutter if foreground scan is active
-        if isForegroundScanActive {
-            isForegroundScanActive = false
-            foregroundScanTimer?.invalidate()
-            DispatchQueue.main.async { [weak self] in
-                self?.flutterChannel?.invokeMethod("onScanResult", arguments: [
-                    "result": "detected",
-                    "name": name,
-                    "deviceId": deviceId,
-                    "rssi": rssi,
-                    "timestamp": timestamp
-                ] as [String: Any])
-            }
-        }
-        
-        // 4. Also notify background detection stream
-        DispatchQueue.main.async { [weak self] in
-            self?.flutterChannel?.invokeMethod("onBeaconDetected", arguments: [
-                "name": name,
-                "deviceId": deviceId,
-                "rssi": rssi,
-                "timestamp": timestamp
-            ] as [String: Any])
-        }
-    }
-    
-    // MARK: - UserDefaults Persistence
-    
-    private func savePendingDetection(name: String, deviceId: String, rssi: Int, timestamp: String) {
-        var pending = UserDefaults.standard.array(forKey: "pending_detections") as? [[String: Any]] ?? []
-        let matricula = UserDefaults.standard.string(forKey: "student_matricula") ?? "unknown"
-        pending.append([
-            "name": name,
-            "deviceId": deviceId,
-            "rssi": rssi,
-            "timestamp": timestamp,
-            "matricula": matricula
+        // Advertise the service UUID so the professor app can discover us
+        pm.startAdvertising([
+            CBAdvertisementDataServiceUUIDsKey: [AppDelegate.serviceUUID],
+            CBAdvertisementDataLocalNameKey: "PRES"
         ])
-        UserDefaults.standard.set(pending, forKey: "pending_detections")
-        NSLog("[BLE] 💾 Saved to UserDefaults (%d pending)", pending.count)
+        
+        NSLog("[BLE] 📡 Started BLE advertising")
     }
     
-    private func getPendingDetections() -> [[String: Any]] {
-        return UserDefaults.standard.array(forKey: "pending_detections") as? [[String: Any]] ?? []
-    }
-    
-    private func clearPendingDetections() {
-        UserDefaults.standard.removeObject(forKey: "pending_detections")
-    }
-    
-    // MARK: - Native HTTP POST
-    
-    private func postToBackend(matricula: String, beaconId: String, timestamp: String) {
-        guard let url = URL(string: AppDelegate.backendURL) else { return }
+    private func stopAdvertising() {
+        peripheralManager?.stopAdvertising()
+        isAdvertising = false
+        NSLog("[BLE] 🛑 Stopped advertising")
         
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 10
-        
-        let body: [String: Any] = [
-            "studentName": matricula,
-            "matricula": matricula,
-            "beaconId": beaconId,
-            "detectedAt": timestamp,
-            "deviceInfo": "iOS (background)"
-        ]
-        
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        
-        // Use shared session for immediate dispatch
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let httpResponse = response as? HTTPURLResponse {
-                NSLog("[BLE] 📤 Backend POST: HTTP %d", httpResponse.statusCode)
-            }
-            if let error = error {
-                NSLog("[BLE] ❌ Backend POST failed: %@", error.localizedDescription)
-            }
-        }.resume()
-        
-        NSLog("[BLE] 📤 Sending to backend...")
+        DispatchQueue.main.async { [weak self] in
+            self?.flutterChannel?.invokeMethod("onAdvertisingStateChanged", arguments: false)
+        }
     }
 }
 
-// MARK: - CBCentralManagerDelegate
-extension AppDelegate: CBCentralManagerDelegate {
+// MARK: - CBPeripheralManagerDelegate
+extension AppDelegate: CBPeripheralManagerDelegate {
     
-    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+    func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
         let stateStr: String
-        switch central.state {
+        switch peripheral.state {
         case .poweredOn:
             stateStr = "poweredOn"
-            NSLog("[BLE] ✅ Bluetooth ON — starting continuous scan")
-            startContinuousScan()
+            NSLog("[BLE] ✅ Bluetooth ON — setting up GATT + advertising")
+            setupGATTService()
         case .poweredOff:
             stateStr = "poweredOff"
+            isAdvertising = false
+            isServiceAdded = false
             NSLog("[BLE] ❌ Bluetooth OFF")
         case .unauthorized:
             stateStr = "unauthorized"
@@ -284,41 +162,83 @@ extension AppDelegate: CBCentralManagerDelegate {
             NSLog("[BLE] ❌ Bluetooth unsupported")
         default:
             stateStr = "unknown"
-            NSLog("[BLE] ℹ️ Bluetooth state: %d", central.state.rawValue)
+            NSLog("[BLE] ℹ️ Bluetooth state: %d", peripheral.state.rawValue)
         }
         
-        // Notify Flutter of state change
         DispatchQueue.main.async { [weak self] in
             self?.flutterChannel?.invokeMethod("onBluetoothStateChanged", arguments: stateStr)
         }
     }
     
-    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
-                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
-        let name = peripheral.name ?? advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? ""
-        
-        // We already filter by service UUID in scanForPeripherals.
-        // In background, name may be empty but service UUID still matches.
-        let hasServiceUuid = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID])?
-            .contains(AppDelegate.beaconServiceUUID) ?? false
-        let nameMatches = !name.isEmpty && name.lowercased() == AppDelegate.beaconName.lowercased()
-        
-        if !name.isEmpty {
-            NSLog("[BLE] 📡 Found: %@ (RSSI: %d, svcUUID: %@)", name, RSSI.intValue, hasServiceUuid ? "yes" : "no")
+    func peripheralManager(_ peripheral: CBPeripheralManager, didAdd service: CBService, error: Error?) {
+        if let error = error {
+            NSLog("[BLE] ❌ Failed to add GATT service: %@", error.localizedDescription)
+            return
+        }
+        isServiceAdded = true
+        NSLog("[BLE] ✅ GATT service added — starting advertising")
+        startAdvertising()
+    }
+    
+    func peripheralManagerDidStartAdvertising(_ peripheral: CBPeripheralManager, error: Error?) {
+        if let error = error {
+            NSLog("[BLE] ❌ Failed to start advertising: %@", error.localizedDescription)
+            isAdvertising = false
+        } else {
+            isAdvertising = true
+            NSLog("[BLE] ✅ Advertising started successfully")
         }
         
-        if hasServiceUuid || nameMatches {
-            handleBeaconDetected(
-                name: name.isEmpty ? AppDelegate.beaconName : name,
-                deviceId: peripheral.identifier.uuidString,
-                rssi: RSSI.intValue
-            )
+        DispatchQueue.main.async { [weak self] in
+            self?.flutterChannel?.invokeMethod("onAdvertisingStateChanged", arguments: self?.isAdvertising ?? false)
         }
     }
     
-    func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
-        NSLog("[BLE] 🔄 CoreBluetooth state restored — app relaunched from killed")
-        // State restoration: we just need the delegate set (already done by init)
-        // When centralManagerDidUpdateState fires with .poweredOn, we'll start scanning again
+    // Professor reads matrícula
+    func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
+        if request.characteristic.uuid == AppDelegate.matriculaCharUUID {
+            let matricula = UserDefaults.standard.string(forKey: "student_matricula") ?? ""
+            guard let data = matricula.data(using: .utf8) else {
+                peripheral.respond(to: request, withResult: .unlikelyError)
+                return
+            }
+            
+            if request.offset > data.count {
+                peripheral.respond(to: request, withResult: .invalidOffset)
+                return
+            }
+            
+            request.value = data.subdata(in: request.offset..<data.count)
+            peripheral.respond(to: request, withResult: .success)
+            NSLog("[BLE] 📖 Matrícula read by professor: %@", matricula)
+        } else {
+            peripheral.respond(to: request, withResult: .attributeNotFound)
+        }
+    }
+    
+    // Professor writes attendance confirmation
+    func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
+        for request in requests {
+            if request.characteristic.uuid == AppDelegate.confirmCharUUID {
+                if let data = request.value, let message = String(data: data, encoding: .utf8) {
+                    NSLog("[BLE] ✅ Confirmation received from professor: %@", message)
+                    
+                    DispatchQueue.main.async { [weak self] in
+                        self?.flutterChannel?.invokeMethod("onAttendanceConfirmed", arguments: message)
+                    }
+                }
+            }
+        }
+        
+        // Respond to the first request (required for write-with-response)
+        if let first = requests.first {
+            peripheral.respond(to: first, withResult: .success)
+        }
+    }
+    
+    // State restoration for background peripheral
+    func peripheralManager(_ peripheral: CBPeripheralManager, willRestoreState dict: [String: Any]) {
+        NSLog("[BLE] 🔄 Peripheral state restored — re-setting up GATT")
+        // After restore, peripheralManagerDidUpdateState will fire and we'll re-add the service
     }
 }
