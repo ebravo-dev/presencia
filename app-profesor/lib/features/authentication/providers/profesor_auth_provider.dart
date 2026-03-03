@@ -232,42 +232,83 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     try {
       Logger.info('Verificando sesión almacenada');
 
-      if (_authStorage.hasActiveSession()) {
-        final token = _authStorage.getToken();
-        final profesor = _authStorage.getProfesor();
-
-        if (token != null && profesor != null) {
-          Logger.info(
-            'Sesión válida encontrada para: ${profesor.nombreCompleto}',
-          );
-
-          state = state.copyWith(
-            status: ProfesorAuthStatus.authenticated,
-            profesor: profesor,
-            token: token,
-          );
-
-          // Cargar grupos del profesor
-          await _loadGrupos();
-        } else {
-          Logger.info('Sesión inválida o expirada');
-          await _authStorage.clearSession();
-          // Establecer estado explícitamente como no autenticado
-          state = const ProfesorAuthState(
-            status: ProfesorAuthStatus.unauthenticated,
-          );
-        }
-      } else {
+      if (!_authStorage.hasActiveSession()) {
         Logger.info('No hay sesión almacenada');
-        // Establecer estado explícitamente como no autenticado
         state = const ProfesorAuthState(
           status: ProfesorAuthStatus.unauthenticated,
         );
+        return;
       }
+
+      final token = _authStorage.getToken();
+      final profesor = _authStorage.getProfesor();
+
+      if (token == null || profesor == null) {
+        Logger.info('Datos de sesión incompletos');
+        await _authStorage.clearSession();
+        state = const ProfesorAuthState(
+          status: ProfesorAuthStatus.unauthenticated,
+        );
+        return;
+      }
+
+      // Verificar si el token sigue siendo válido
+      if (_authStorage.isTokenValid()) {
+        Logger.info(
+          'Token válido — restaurando sesión de: ${profesor.nombreCompleto}',
+        );
+        state = state.copyWith(
+          status: ProfesorAuthStatus.authenticated,
+          profesor: profesor,
+          token: token,
+        );
+        await _loadGrupos();
+        return;
+      }
+
+      // Token expirado — intentar re-autenticación silenciosa
+      Logger.info(
+        'Token expirado al iniciar app — intentando re-autenticación silenciosa',
+      );
+      final encryptedPassword = _authStorage.getEncryptedPassword();
+
+      if (encryptedPassword != null && encryptedPassword.isNotEmpty) {
+        final result = await _apiService.loginProfesorWithEncryptedPassword(
+          email: profesor.institutionalEmail,
+          encryptedPassword: encryptedPassword,
+        );
+
+        final success = result.fold(
+          (error) {
+            Logger.error('Re-autenticación silenciosa fallida: $error');
+            return false;
+          },
+          (loginResponse) async {
+            Logger.info('Re-autenticación exitosa — sesión renovada');
+            await _authStorage.saveToken(loginResponse.token);
+            state = state.copyWith(
+              status: ProfesorAuthStatus.authenticated,
+              profesor: loginResponse.profesor,
+              token: loginResponse.token,
+            );
+            await _loadGrupos();
+            return true;
+          },
+        );
+
+        if (success == true) return;
+      }
+
+      // Sin credenciales o re-autenticación fallida →
+      // Mantener datos locales pero pedir login manual
+      // NOTA: NO borramos la sesión completa para preservar asistencias locales.
+      Logger.info('No se pudo re-autenticar — solicitando login manual');
+      // Solo limpiamos el token expirado, el resto permanece
+      state = const ProfesorAuthState(
+        status: ProfesorAuthStatus.unauthenticated,
+      );
     } catch (e, stackTrace) {
       Logger.error('Error verificando sesión almacenada', e, stackTrace);
-      await _authStorage.clearSession();
-      // Establecer estado explícitamente como no autenticado en caso de error
       state = const ProfesorAuthState(
         status: ProfesorAuthStatus.unauthenticated,
       );

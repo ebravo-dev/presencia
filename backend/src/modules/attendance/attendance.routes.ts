@@ -57,13 +57,15 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
         async (request, reply) => {
             try {
                 const validated = registerAttendanceSchema.parse(request.body);
-                const { groupId, date, attendances, encryptedPassword, forceUpload } = validated;
+                const { code, groupLetter, period, date, attendances, encryptedPassword, forceUpload } = validated;
                 const professorId = (request as AuthenticatedRequest).professorId!;
 
-                // Verify professor owns this group
+                // Resolve group by stable identifiers — no CUID needed from client
                 const group = await prisma.group.findFirst({
                     where: {
-                        id: groupId,
+                        code,
+                        groupLetter,
+                        period,
                         professorId,
                     },
                 });
@@ -72,9 +74,11 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                     return reply.code(404).send({
                         statusCode: 404,
                         error: 'Not Found',
-                        message: 'Grupo no encontrado',
+                        message: `Grupo no encontrado (code: ${code}, group: ${groupLetter}, period: ${period})`,
                     });
                 }
+
+                const groupId = group.id;
 
                 // Create or update attendance record
                 const attendanceRecord = await prisma.attendanceRecord.upsert({

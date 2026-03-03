@@ -257,7 +257,10 @@ class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
       return false;
     }
 
-    final registroActualizado = await _migrarRegistroSiNecesario(registro, grupo);
+    final registroActualizado = await _migrarRegistroSiNecesario(
+      registro,
+      grupo,
+    );
 
     final attendances = _buildAttendances(registroActualizado, grupo);
     if (attendances.isEmpty) {
@@ -280,11 +283,15 @@ class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
       return false;
     }
 
-    final encryptedPassword = _apiService.ensureEncryptedPassword(storedPassword);
+    final encryptedPassword = _apiService.ensureEncryptedPassword(
+      storedPassword,
+    );
 
     final result = await _apiService.uploadAttendance(
       token: token,
-      groupId: grupo.id,
+      code: grupo.code ?? grupo.id,
+      groupLetter: grupo.groupLetter ?? grupo.grupoLetra,
+      period: grupo.period ?? '',
       date: registroActualizado.fecha,
       attendances: attendances,
       encryptedPassword: encryptedPassword,
@@ -304,10 +311,7 @@ class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
         return false;
       },
       (_) async {
-        final syncSuccess = await _waitForSyncCompletion(
-          profesor.id,
-          token,
-        );
+        final syncSuccess = await _waitForSyncCompletion(profesor.id, token);
         if (syncSuccess) {
           await _asistenciaService.marcarComoSincronizada(
             registroActualizado.id,
@@ -401,16 +405,11 @@ class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
       }
     }
 
-    final synced = registro.asistenciasSincronizadas;
     final attendances = <Map<String, dynamic>>[];
     registro.asistenciasAlumnos.forEach((key, present) {
       final studentId = studentIdMap[key];
       if (studentId == null) {
         return;
-      }
-      // If we have a synced snapshot, only include students whose state changed
-      if (synced != null && synced[key] == present) {
-        return; // No change for this student, skip
       }
       attendances.add({
         'studentId': studentId,
@@ -425,26 +424,28 @@ class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
     final completer = Completer<bool>();
 
     await _sseSubscription?.cancel();
-    _sseSubscription = _sseService.connect(professorId, token).listen(
-      (event) {
-        if (event.isCompleted) {
-          if (!completer.isCompleted) {
-            completer.complete(true);
-          }
-        }
+    _sseSubscription = _sseService
+        .connect(professorId, token)
+        .listen(
+          (event) {
+            if (event.isCompleted) {
+              if (!completer.isCompleted) {
+                completer.complete(true);
+              }
+            }
 
-        if (event.isFailed) {
-          if (!completer.isCompleted) {
-            completer.complete(false);
-          }
-        }
-      },
-      onError: (_) {
-        if (!completer.isCompleted) {
-          completer.complete(false);
-        }
-      },
-    );
+            if (event.isFailed) {
+              if (!completer.isCompleted) {
+                completer.complete(false);
+              }
+            }
+          },
+          onError: (_) {
+            if (!completer.isCompleted) {
+              completer.complete(false);
+            }
+          },
+        );
 
     final result = await completer.future.timeout(
       const Duration(minutes: 5),

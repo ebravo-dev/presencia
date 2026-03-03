@@ -8,6 +8,8 @@ part 'grupo.g.dart';
 class Grupo extends Equatable {
   final String id;
   final String? code;
+  final String? groupLetter; // e.g. "M" — stable server field
+  final String? period; // e.g. "2025-1" — stable server field
   final String group;
   final String classroom;
   final String name; // Subject name from API
@@ -20,6 +22,8 @@ class Grupo extends Equatable {
   const Grupo({
     required this.id,
     this.code,
+    this.groupLetter,
+    this.period,
     required this.group,
     required this.classroom,
     required this.name,
@@ -37,6 +41,8 @@ class Grupo extends Equatable {
   List<Object?> get props => [
     id,
     code,
+    groupLetter,
+    period,
     group,
     classroom,
     name,
@@ -53,9 +59,9 @@ class Grupo extends Equatable {
   String get infoCompleta => '$name - Grupo $group';
   String get aula => classroom;
 
-  /// Extrae solo la letra del grupo (ej: "RC.06061.2873.5-5-M" -> "M")
-  /// Si no hay letra al final, retorna el código completo
-  String get groupLetter {
+  /// Extrae solo la letra del grupo del string `group` (ej: "RC.06061.2873.5-5-M" -> "M")
+  /// Usar `groupLetter` (campo del servidor) cuando esté disponible.
+  String get grupoLetra {
     final match = RegExp(r'-([A-Z])$').firstMatch(group);
     return match?.group(1) ?? group;
   }

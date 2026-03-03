@@ -119,6 +119,8 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
                 select: {
                     id: true,
                     code: true,
+                    groupLetter: true,
+                    period: true,
                     name: true,
                     level: true,
                     classroom: true,
@@ -147,6 +149,8 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
                 return {
                     id: group.id,
                     code: group.code,
+                    groupLetter: group.groupLetter,
+                    period: group.period,
                     group: groupCode, // For Flutter compatibility
                     name: group.name,
                     level: group.level,
@@ -156,7 +160,7 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
                         id: student.id,
                         matricula: student.matricula,
                         name: student.name,
-                        number: index + 1, // For Flutter's Alumno model
+                        number: index + 1,
                     })),
                     studentsCount: group._count.students,
                 };

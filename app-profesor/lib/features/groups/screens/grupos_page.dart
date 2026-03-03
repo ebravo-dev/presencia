@@ -480,12 +480,14 @@ class _GruposPageState extends ConsumerState<GruposPage>
                           GestureDetector(
                             onTap: () {
                               HapticFeedback.lightImpact();
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      const UploadManagementPage(),
-                                ),
-                              ).then((_) => _checkPendingUploads());
+                              Navigator.of(context)
+                                  .push(
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const UploadManagementPage(),
+                                    ),
+                                  )
+                                  .then((_) => _checkPendingUploads());
                             },
                             child: Container(
                               width: 44,
@@ -544,11 +546,14 @@ class _GruposPageState extends ConsumerState<GruposPage>
                       setState(() {
                         _showPendingBanner = false;
                       });
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const UploadManagementPage(),
-                        ),
-                      ).then((_) => _checkPendingUploads());
+                      Navigator.of(context)
+                          .push(
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const UploadManagementPage(),
+                            ),
+                          )
+                          .then((_) => _checkPendingUploads());
                     },
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(16),
@@ -1063,7 +1068,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    grupo.groupLetter,
+                                    grupo.grupoLetra,
                                     style: TextStyle(
                                       color: accentColor,
                                       fontSize: 16,

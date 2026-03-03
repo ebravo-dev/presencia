@@ -29,15 +29,18 @@ class AsistenciaRegistroAdapter extends TypeAdapter<AsistenciaRegistro> {
       fechaActualizacion: fields[9] as DateTime?,
       nombreClase: fields[10] as String?,
       asistenciasSincronizadas: (fields[11] as Map?)?.cast<String, bool>(),
-      entradaVerificada: fields[12] as bool? ?? true,
+      entradaVerificada: fields[12] as bool,
       motivoEntrada: fields[13] as String?,
+      grupoCode: fields[14] as String?,
+      grupoGroupLetter: fields[15] as String?,
+      grupoPeriod: fields[16] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, AsistenciaRegistro obj) {
     writer
-      ..writeByte(14)
+      ..writeByte(17)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -65,7 +68,13 @@ class AsistenciaRegistroAdapter extends TypeAdapter<AsistenciaRegistro> {
       ..writeByte(12)
       ..write(obj.entradaVerificada)
       ..writeByte(13)
-      ..write(obj.motivoEntrada);
+      ..write(obj.motivoEntrada)
+      ..writeByte(14)
+      ..write(obj.grupoCode)
+      ..writeByte(15)
+      ..write(obj.grupoGroupLetter)
+      ..writeByte(16)
+      ..write(obj.grupoPeriod);
   }
 
   @override

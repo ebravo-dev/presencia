@@ -364,7 +364,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                                             ),
                                             const SizedBox(height: 2),
                                             Text(
-                                              widget.grupo.groupLetter,
+                                              widget.grupo.grupoLetra,
                                               style: TextStyle(
                                                 color: widget.accentColor,
                                                 fontSize: 16,

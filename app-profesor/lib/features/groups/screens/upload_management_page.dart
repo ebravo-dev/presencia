@@ -84,6 +84,51 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     }
   }
 
+  /// Retorna un token JWT válido.
+  /// Si el token almacenado está expirado, intenta re-autenticar silenciosamente
+  /// usando las credenciales guardadas. Devuelve null si no es posible renovarlo.
+  Future<String?> _getValidToken() async {
+    final token = _authStorage.getToken();
+
+    // Token válido → úsalo directamente
+    if (token != null && _authStorage.isTokenValid()) {
+      return token;
+    }
+
+    Logger.info(
+      'Token expirado o ausente — intentando re-autenticación silenciosa',
+    );
+
+    final profesor = _authStorage.getProfesor();
+    final encryptedPassword = _authStorage.getEncryptedPassword();
+
+    if (profesor == null ||
+        encryptedPassword == null ||
+        encryptedPassword.isEmpty) {
+      Logger.error('No hay credenciales guardadas para re-autenticar');
+      return null;
+    }
+
+    // Usar la contraseña encriptada guardada para hacer login de nuevo
+    // (usamos el método que no vuelve a encriptar para evitar doble-encriptación)
+    final result = await _apiService.loginProfesorWithEncryptedPassword(
+      email: profesor.institutionalEmail,
+      encryptedPassword: encryptedPassword,
+    );
+
+    return result.fold(
+      (error) {
+        Logger.error('Re-autenticación silenciosa fallida: $error');
+        return null;
+      },
+      (loginResponse) async {
+        Logger.info('Re-autenticación exitosa — token renovado');
+        await _authStorage.saveToken(loginResponse.token);
+        return loginResponse.token;
+      },
+    );
+  }
+
   /// Reconcilia con el servidor sin bloquear la UI.
   /// Si algo cambió, actualiza el estado silenciosamente.
   void _reconciliarEnBackground(List<AsistenciaRegistro> pendientes) {
@@ -123,7 +168,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   Future<void> _reconciliarConServidor(
     List<AsistenciaRegistro> pendientes,
   ) async {
-    final token = _authStorage.getToken();
+    final token = await _getValidToken();
     if (token == null) return;
 
     final records = pendientes.map((r) {
@@ -287,12 +332,30 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       return;
     }
 
-    final token = _authStorage.getToken();
+    final token = await _getValidToken();
     final profesor = _authStorage.getProfesor();
     final grupos = _authStorage.getGrupos() ?? [];
     final storedPassword = _authStorage.getEncryptedPassword();
 
-    if (token == null || profesor == null || storedPassword == null || storedPassword.isEmpty) {
+    if (token == null ||
+        profesor == null ||
+        storedPassword == null ||
+        storedPassword.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Tu sesión ha expirado. Por favor inicia sesión de nuevo para subir asistencias.',
+            ),
+            backgroundColor: Colors.red.shade800,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 5),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
       return;
     }
 
@@ -301,7 +364,9 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
 
     final pendientesSnapshot = List<AsistenciaRegistro>.from(_pendientes);
     final total = pendientesSnapshot.length;
-    final encryptedPassword = _apiService.ensureEncryptedPassword(storedPassword);
+    final encryptedPassword = _apiService.ensureEncryptedPassword(
+      storedPassword,
+    );
 
     // Initialize 4 fixed steps
     _stepsNotifier.value = [
@@ -309,10 +374,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         label: 'Preparando registros',
         status: _StepStatus.inProgress,
       ),
-      _SyncStepData(
-        label: 'Enviando al servidor',
-        status: _StepStatus.pending,
-      ),
+      _SyncStepData(label: 'Enviando al servidor', status: _StepStatus.pending),
       _SyncStepData(
         label: 'Procesando en servidor',
         status: _StepStatus.pending,
@@ -332,13 +394,23 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     for (final reg in pendientesSnapshot) {
       if (_disposed) break;
       final grupo = _resolveGrupo(grupos, reg.grupoId);
-      if (grupo == null) continue;
+      if (grupo == null) {
+        Logger.error(
+          'Grupo no encontrado para registro ${reg.id} (grupoId: ${reg.grupoId})',
+        );
+        continue;
+      }
 
       final registroActualizado = await _migrarRegistroSiNecesario(reg, grupo);
       final attendances = _buildAttendances(registroActualizado, grupo);
+      Logger.info(
+        'Registro ${registroActualizado.id}: ${attendances.length} alumnos a enviar de ${registroActualizado.asistenciasAlumnos.length} locales',
+      );
 
       if (attendances.isEmpty) {
-        await _asistenciaService.marcarComoSincronizada(registroActualizado.id);
+        Logger.error(
+          'Sin alumnos mapeados para registro ${registroActualizado.id}, omitiendo',
+        );
         emptyCount++;
         continue;
       }
@@ -349,21 +421,23 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
 
       final result = await _apiService.uploadAttendance(
         token: token,
-        groupId: grupo.id,
+        code: grupo.code ?? grupo.id,
+        groupLetter: grupo.groupLetter ?? grupo.grupoLetra,
+        period: grupo.period ?? '',
         date: registroActualizado.fecha,
         attendances: attendances,
         encryptedPassword: encryptedPassword,
       );
 
-      result.fold(
-        (error) => Logger.error('Error al enviar $key: $error'),
-        (_) {
-          sentCount++;
-          sentRecords[key] = registroActualizado;
-          _updateStep(1, _StepStatus.inProgress,
-            subtitle: '$sentCount de $total enviado${sentCount == 1 ? '' : 's'}');
-        },
-      );
+      result.fold((error) => Logger.error('Error al enviar $key: $error'), (_) {
+        sentCount++;
+        sentRecords[key] = registroActualizado;
+        _updateStep(
+          1,
+          _StepStatus.inProgress,
+          subtitle: '$sentCount de $total enviado${sentCount == 1 ? '' : 's'}',
+        );
+      });
 
       // Save snapshot of what we sent so reconciliation can detect
       // whether the user changed data after this upload.
@@ -372,9 +446,13 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       }
     }
 
-    _updateStep(1, _StepStatus.completed,
-      subtitle: '$sentCount enviado${sentCount == 1 ? '' : 's'}'
-          '${emptyCount > 0 ? ', $emptyCount sin cambios' : ''}');
+    _updateStep(
+      1,
+      _StepStatus.completed,
+      subtitle:
+          '$sentCount enviado${sentCount == 1 ? '' : 's'}'
+          '${emptyCount > 0 ? ', $emptyCount sin cambios' : ''}',
+    );
 
     if (sentRecords.isEmpty) {
       // Nothing was sent — everything was empty or failed to send
@@ -388,21 +466,27 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     }
 
     // ── Phase 2: Monitor completion via check-synced polling ───────
-    _updateStep(2, _StepStatus.inProgress,
-      subtitle: '0 de ${sentRecords.length} procesados...');
+    _updateStep(
+      2,
+      _StepStatus.inProgress,
+      subtitle: '0 de ${sentRecords.length} procesados...',
+    );
 
     // Connect SSE for live progress display (optional, enriches subtitles)
     String lastSseMessage = '';
     await _sseSubscription?.cancel();
-    _sseSubscription = _sseService.connect(profesor.id, token).listen(
-      (event) {
-        if (event.type == SyncEventType.progress && event.message.isNotEmpty) {
-          lastSseMessage = event.message;
-        }
-      },
-      onError: (_) {},
-      onDone: () {},
-    );
+    _sseSubscription = _sseService
+        .connect(profesor.id, token)
+        .listen(
+          (event) {
+            if (event.type == SyncEventType.progress &&
+                event.message.isNotEmpty) {
+              lastSseMessage = event.message;
+            }
+          },
+          onError: (_) {},
+          onDone: () {},
+        );
 
     final completedKeys = <String>{};
     final failedKeys = <String>{};
@@ -415,7 +499,10 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       if (_disposed) break;
 
       final remainingRecords = sentRecords.entries
-          .where((e) => !completedKeys.contains(e.key) && !failedKeys.contains(e.key))
+          .where(
+            (e) =>
+                !completedKeys.contains(e.key) && !failedKeys.contains(e.key),
+          )
           .map((e) {
             final reg = e.value;
             final dateStr =
@@ -430,6 +517,8 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         token: token,
         records: remainingRecords,
       );
+
+      Logger.info('Poll check-synced: $statusMap');
 
       for (final entry in statusMap.entries) {
         if (entry.value == 'COMPLETED') {
@@ -447,9 +536,11 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       final failed = failedKeys.length;
       String subtitle;
       if (failed > 0) {
-        subtitle = '$done completado${done == 1 ? '' : 's'}, $failed fallido${failed == 1 ? '' : 's'} de ${sentRecords.length}';
+        subtitle =
+            '$done completado${done == 1 ? '' : 's'}, $failed fallido${failed == 1 ? '' : 's'} de ${sentRecords.length}';
       } else {
-        subtitle = '$done de ${sentRecords.length} completado${done == 1 ? '' : 's'}';
+        subtitle =
+            '$done de ${sentRecords.length} completado${done == 1 ? '' : 's'}';
       }
       if (lastSseMessage.isNotEmpty && done + failed < sentRecords.length) {
         subtitle += '\n$lastSseMessage';
@@ -468,15 +559,25 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       HapticFeedback.heavyImpact();
       await Future.delayed(const Duration(seconds: 2));
     } else if (completedKeys.isNotEmpty) {
-      _updateStep(2, failedKeys.isNotEmpty ? _StepStatus.failed : _StepStatus.completed);
-      _updateStep(3, _StepStatus.failed,
-        subtitle: '${completedKeys.length} de ${sentRecords.length} subidos. Los fallidos se pueden reintentar.');
+      _updateStep(
+        2,
+        failedKeys.isNotEmpty ? _StepStatus.failed : _StepStatus.completed,
+      );
+      _updateStep(
+        3,
+        _StepStatus.failed,
+        subtitle:
+            '${completedKeys.length} de ${sentRecords.length} subidos. Los fallidos se pueden reintentar.',
+      );
       HapticFeedback.heavyImpact();
       await Future.delayed(const Duration(seconds: 3));
     } else {
       _updateStep(2, _StepStatus.failed);
-      _updateStep(3, _StepStatus.failed,
-        subtitle: 'Error al subir asistencias. Intenta de nuevo.');
+      _updateStep(
+        3,
+        _StepStatus.failed,
+        subtitle: 'Error al subir asistencias. Intenta de nuevo.',
+      );
       HapticFeedback.heavyImpact();
       await Future.delayed(const Duration(seconds: 3));
     }
@@ -765,16 +866,11 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       }
     }
 
-    final synced = registro.asistenciasSincronizadas;
     final attendances = <Map<String, dynamic>>[];
     registro.asistenciasAlumnos.forEach((key, present) {
       final studentId = studentIdMap[key];
       if (studentId == null) {
         return;
-      }
-      // If we have a synced snapshot, only include students whose state changed
-      if (synced != null && synced[key] == present) {
-        return; // No change for this student, skip
       }
       attendances.add({
         'studentId': studentId,
@@ -979,43 +1075,37 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     return Column(
       children: [
         // Banner: records being synced server-side (professor left mid-upload)
-        if (_syncingOnServer.isNotEmpty) ...
-          [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              margin: const EdgeInsets.only(bottom: 14),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Colors.blue.withOpacity(0.2),
-                ),
-              ),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.blue.shade400,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '${_syncingOnServer.length} registro${_syncingOnServer.length == 1 ? '' : 's'} sincronizando en el servidor. Se actualizará al terminar.',
-                      style: TextStyle(
-                        color: Colors.blue.shade300,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+        if (_syncingOnServer.isNotEmpty) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            margin: const EdgeInsets.only(bottom: 14),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.withOpacity(0.2)),
             ),
-          ],
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.blue.shade400,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '${_syncingOnServer.length} registro${_syncingOnServer.length == 1 ? '' : 's'} sincronizando en el servidor. Se actualizará al terminar.',
+                    style: TextStyle(color: Colors.blue.shade300, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         GestureDetector(
           onTap: () {
             HapticFeedback.lightImpact();
@@ -1165,9 +1255,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                             ? 'Sincronizando...'
                             : 'Subir Asistencias',
                         style: TextStyle(
-                          color: blocked
-                              ? Colors.grey.shade600
-                              : Colors.white,
+                          color: blocked ? Colors.grey.shade600 : Colors.white,
                           fontSize: 17,
                           fontWeight: FontWeight.w500,
                         ),
@@ -1630,7 +1718,7 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
     final grupo = widget.grupoMap[registro.grupoId];
     if (grupo != null) {
       final className = registro.nombreClase ?? grupo.name;
-      final meta = 'Grupo ${grupo.groupLetter} · ${grupo.classroom}';
+      final meta = 'Grupo ${grupo.grupoLetra} · ${grupo.classroom}';
       return (className, meta);
     }
     final fallback = registro.nombreClase ?? registro.grupoId;

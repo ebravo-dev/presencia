@@ -46,6 +46,17 @@ class AsistenciaRegistro extends HiveObject {
   @HiveField(13)
   final String? motivoEntrada; // Reason when beacon was not detected
 
+  // ─── Stable server identifiers (no CUIDs) ─────────────────────────────────
+  // These come from the portal/scraper and never change on DB resets.
+  @HiveField(14)
+  final String? grupoCode; // e.g. "RC.06061.2873.5"
+
+  @HiveField(15)
+  final String? grupoGroupLetter; // e.g. "M"
+
+  @HiveField(16)
+  final String? grupoPeriod; // e.g. "2025-1"
+
   AsistenciaRegistro({
     required this.id,
     required this.grupoId,
@@ -61,6 +72,9 @@ class AsistenciaRegistro extends HiveObject {
     this.asistenciasSincronizadas,
     this.entradaVerificada = true,
     this.motivoEntrada,
+    this.grupoCode,
+    this.grupoGroupLetter,
+    this.grupoPeriod,
   });
 
   AsistenciaRegistro copyWith({
@@ -78,6 +92,9 @@ class AsistenciaRegistro extends HiveObject {
     Map<String, bool>? asistenciasSincronizadas,
     bool? entradaVerificada,
     String? motivoEntrada,
+    String? grupoCode,
+    String? grupoGroupLetter,
+    String? grupoPeriod,
   }) {
     return AsistenciaRegistro(
       id: id ?? this.id,
@@ -95,6 +112,9 @@ class AsistenciaRegistro extends HiveObject {
           asistenciasSincronizadas ?? this.asistenciasSincronizadas,
       entradaVerificada: entradaVerificada ?? this.entradaVerificada,
       motivoEntrada: motivoEntrada ?? this.motivoEntrada,
+      grupoCode: grupoCode ?? this.grupoCode,
+      grupoGroupLetter: grupoGroupLetter ?? this.grupoGroupLetter,
+      grupoPeriod: grupoPeriod ?? this.grupoPeriod,
     );
   }
 }

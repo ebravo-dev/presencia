@@ -108,6 +108,58 @@ class ApiService {
     }
   }
 
+  /// Re-autentica un profesor usando email y una contraseña YA encriptada con RSA.
+  /// Usa este método cuando tengas la contraseña encriptada guardada en storage
+  /// para evitar doble-encriptación.
+  /// Endpoint: POST /professors/login
+  Future<Either<String, LoginResponse>> loginProfesorWithEncryptedPassword({
+    required String email,
+    required String encryptedPassword,
+  }) async {
+    try {
+      Logger.info('Re-autenticando (contraseña ya encriptada) para: $email');
+
+      final response = await _dio.post(
+        '/professors/login',
+        data: {
+          'institutionalEmail': email,
+          'encryptedPassword': encryptedPassword,
+        },
+      );
+
+      Logger.info('Response status: ${response.statusCode}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        try {
+          final loginResponse = LoginResponse.fromJson(response.data);
+          Logger.info(
+            'Re-autenticación exitosa para: ${loginResponse.profesor.nombreCompleto}',
+          );
+          return Right(loginResponse);
+        } catch (parseError, stackTrace) {
+          Logger.error(
+            'Error al parsear respuesta de re-autenticación',
+            parseError,
+            stackTrace,
+          );
+          return Left('Error al procesar respuesta del servidor');
+        }
+      } else {
+        final errorMessage =
+            response.data['message'] ?? 'Error en re-autenticación';
+        Logger.error('Error en re-autenticación: $errorMessage');
+        return Left(errorMessage);
+      }
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error('Error de conexión en re-autenticación: $errorMessage', e);
+      return Left(errorMessage);
+    } catch (e, stackTrace) {
+      Logger.error('Error inesperado en re-autenticación', e, stackTrace);
+      return Left('Error inesperado: ${e.toString()}');
+    }
+  }
+
   /// Obtiene las clases asignadas al profesor autenticado
   /// Endpoint: GET /professors/classes
   /// Requiere JWT token en el header Authorization
@@ -248,10 +300,14 @@ class ApiService {
   }
 
   /// Subir asistencia al servidor
+  /// Usa identificadores estables (code, groupLetter, period) en lugar el CUID
+  /// para que las subidas funcionen aunque la BD del servidor se reinicie.
   /// Endpoint: POST /attendance
   Future<Either<String, Map<String, dynamic>>> uploadAttendance({
     required String token,
-    required String groupId,
+    required String code,
+    required String groupLetter,
+    required String period,
     required DateTime date,
     required List<Map<String, dynamic>> attendances,
     required String encryptedPassword,
@@ -264,7 +320,9 @@ class ApiService {
       final response = await _dio.post(
         '/attendance',
         data: {
-          'groupId': groupId,
+          'code': code,
+          'groupLetter': groupLetter,
+          'period': period,
           'date': formattedDate,
           'encryptedPassword': encryptedPassword,
           'forceUpload': forceUpload,

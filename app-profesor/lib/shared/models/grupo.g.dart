@@ -9,6 +9,8 @@ part of 'grupo.dart';
 Grupo _$GrupoFromJson(Map<String, dynamic> json) => Grupo(
       id: json['id'] as String,
       code: json['code'] as String?,
+      groupLetter: json['groupLetter'] as String?,
+      period: json['period'] as String?,
       group: json['group'] as String,
       classroom: json['classroom'] as String,
       name: json['name'] as String,
@@ -25,6 +27,8 @@ Grupo _$GrupoFromJson(Map<String, dynamic> json) => Grupo(
 Map<String, dynamic> _$GrupoToJson(Grupo instance) => <String, dynamic>{
       'id': instance.id,
       'code': instance.code,
+      'groupLetter': instance.groupLetter,
+      'period': instance.period,
       'group': instance.group,
       'classroom': instance.classroom,
       'name': instance.name,
