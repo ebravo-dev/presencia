@@ -4,6 +4,7 @@ import { env } from '../config/env.js';
 export interface JWTPayload {
     professorId: string;
     email: string;
+    sessionId: string;
 }
 
 export class JWTService {

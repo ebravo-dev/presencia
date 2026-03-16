@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment files
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Debug files
+debug-screenshots/
+playwright-report/
+test-results/
+
+# Test files
+src/test-*.ts
+coverage/
+
+# Keys (injected via env vars)
+*.pem
+
+# Docs
+README.md

@@ -43,6 +43,44 @@ export interface AttendanceUploadStudent {
  */
 export class ScraperService {
     private browser: Browser | null = null;
+    private readonly isDebugMode: boolean;
+
+    constructor() {
+        this.isDebugMode = env.NODE_ENV !== 'production';
+    }
+
+    /**
+     * Save a debug screenshot only in non-production environments
+     */
+    private async debugScreenshot(page: Page, path: string): Promise<void> {
+        if (!this.isDebugMode) return;
+        try {
+            await page.screenshot({ path });
+        } catch {
+            console.log(`⚠️ Could not save debug screenshot: ${path}`);
+        }
+    }
+
+    /**
+     * Save a debug file only in non-production environments
+     */
+    private async debugSaveFile(content: string, path: string): Promise<void> {
+        if (!this.isDebugMode) return;
+        try {
+            await this.debugSaveFile(path, content);
+        } catch {
+            console.log(`⚠️ Could not save debug file: ${path}`);
+        }
+    }
+
+    /**
+     * Ensure debug directory exists (only in debug mode)
+     */
+    private async ensureDebugDir(dir: string): Promise<void> {
+        if (!this.isDebugMode) return;
+        const fs = await import('fs');
+        await fs.promises.mkdir(dir, { recursive: true });
+    }
 
     /**
      * Initialize the browser instance
@@ -238,13 +276,7 @@ export class ScraperService {
         // Still on login page - login failed
         const loginForm = await page.$(UAT_SELECTORS.LOGIN.SUBMIT_BUTTON);
         if (loginForm) {
-            // Take screenshot for debugging
-            try {
-                await page.screenshot({ path: '/tmp/login-failed.png' });
-                console.log('📸 Screenshot saved to /tmp/login-failed.png');
-            } catch (e) {
-                console.log('⚠️ Could not save screenshot');
-            }
+            await this.debugScreenshot(page, '/tmp/login-failed.png');
 
             // Check for credential error messages on the page
             // DevExpress shows validation messages in .dx-invalid-message elements
@@ -286,8 +318,7 @@ export class ScraperService {
      */
     private async navigateToHorarios(page: Page): Promise<void> {
         const debugDir = './debug-screenshots';
-        const fs = await import('fs');
-        await fs.promises.mkdir(debugDir, { recursive: true });
+        await this.ensureDebugDir(debugDir);
 
         console.log('📍 Current URL:', page.url());
 
@@ -298,20 +329,18 @@ export class ScraperService {
             console.log('✅ Menu items loaded');
         } catch {
             // Save debug info if menu doesn't load
-            await page.screenshot({ path: `${debugDir}/no-menu.png` });
+            await this.debugScreenshot(page, `${debugDir}/no-menu.png`);
             const html = await page.content();
-            await fs.promises.writeFile(`${debugDir}/no-menu.html`, html);
+            await this.debugSaveFile(html, `${debugDir}/no-menu.html`);
             console.log('⚠️ Menu items not found, saved debug files');
             throw new Error('Menu did not load after login');
         }
 
-        // Take screenshot of menu loaded state
-        await page.screenshot({ path: `${debugDir}/menu-loaded.png` });
-        console.log(`📸 Screenshot saved to ${debugDir}/menu-loaded.png`);
+        await this.debugScreenshot(page, `${debugDir}/menu-loaded.png`);
 
-        // Save HTML for debugging - useful to understand menu structure
-        const html = await page.content();
-        await fs.promises.writeFile(`${debugDir}/menu-loaded.html`, html);
+        // Save debug HTML for menu state
+        const menuHtml = await page.content();
+        await this.debugSaveFile(menuHtml, `${debugDir}/menu-loaded.html`);
 
         // Log all menu items found for debugging
         const menuItems = await page.$$eval('#treeViewMenuPrincipal .dx-treeview-item', items =>
@@ -381,8 +410,7 @@ export class ScraperService {
             }
         }
 
-        // Take screenshot after expanding tree
-        await page.screenshot({ path: `${debugDir}/menu-expanded.png` });
+        await this.debugScreenshot(page, `${debugDir}/menu-expanded.png`);
 
         // STEP 2: Click on "Profesor" to expand its submenu
         console.log('🔍 Looking for Profesor menu item to expand...');
@@ -398,11 +426,10 @@ export class ScraperService {
             );
             console.log('📋 Menu items after expanding Profesor:', profesorExpandedItems);
 
-            // Take screenshot after expanding Profesor
-            await page.screenshot({ path: `${debugDir}/profesor-expanded.png` });
+            await this.debugScreenshot(page, `${debugDir}/profesor-expanded.png`);
         } else {
             console.log('⚠️ Profesor not found in menu - trying to continue anyway');
-            await page.screenshot({ path: `${debugDir}/profesor-not-found.png` });
+            await this.debugScreenshot(page, `${debugDir}/profesor-not-found.png`);
         }
 
         // STEP 3: Look for "Consultas Profesor" or "Consultas" and click it
@@ -422,8 +449,7 @@ export class ScraperService {
             await consultasItem.click();
             await page.waitForTimeout(3000);
 
-            // After clicking, take a screenshot
-            await page.screenshot({ path: `${debugDir}/consultas-expanded.png` });
+            await this.debugScreenshot(page, `${debugDir}/consultas-expanded.png`);
         } else {
             console.log('⚠️ Consultas not found in menu');
         }
@@ -438,9 +464,7 @@ export class ScraperService {
             await page.waitForTimeout(3000);
         }
 
-        // Take screenshot after navigation
-        await page.screenshot({ path: `${debugDir}/consultas-page.png` });
-        console.log(`📸 Screenshot saved to ${debugDir}/consultas-page.png`);
+        await this.debugScreenshot(page, `${debugDir}/consultas-page.png`);
         console.log('📍 Final URL:', page.url());
 
         // Now fill the filter form to load horarios data
@@ -449,7 +473,7 @@ export class ScraperService {
 
         // Save final HTML for debugging
         const finalHtml = await page.content();
-        await fs.promises.writeFile(`${debugDir}/horarios-page.html`, finalHtml);
+        await this.debugSaveFile(finalHtml, `${debugDir}/horarios-page.html`);
     }
 
     /**
@@ -484,9 +508,7 @@ export class ScraperService {
         await this.selectDevExpressDropdown(page, '#ucCicloEscolar', 'PRIMAVERA');
         await page.waitForTimeout(3000); // Wait for horarios table to load
 
-        // Take screenshot after filling all filters
-        await page.screenshot({ path: `${debugDir}/filters-filled.png` });
-        console.log(`📸 Screenshot saved to ${debugDir}/filters-filled.png`);
+        await this.debugScreenshot(page, `${debugDir}/filters-filled.png`);
 
         // Wait a bit more for the table data to fully load
         await page.waitForTimeout(2000);
@@ -568,12 +590,9 @@ export class ScraperService {
         }
 
         if (!foundSelector) {
-            // Save debug info before failing
-            await page.screenshot({ path: '/tmp/no-table-error.png' });
+            await this.debugScreenshot(page, '/tmp/no-table-error.png');
             const html = await page.content();
-            const fs = await import('fs');
-            await fs.promises.writeFile('/tmp/no-table-error.html', html);
-            console.log('📸 Debug files saved to /tmp/');
+            await this.debugSaveFile('/tmp/no-table-error.html', html);
             throw new Error('No table or data grid found on page');
         }
 
@@ -712,7 +731,7 @@ export class ScraperService {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             console.error('❌ Student scraping failed:', errorMessage);
-            await page.screenshot({ path: `${debugDir}/students-error.png` });
+            await this.debugScreenshot(page, `${debugDir}/students-error.png`);
             return { success: false, students: [], error: errorMessage };
         } finally {
             await context.close();
@@ -794,7 +813,7 @@ export class ScraperService {
                     console.log(`   ❌ Failed: ${errorMsg}`);
 
                     // Take screenshot of the error state
-                    await page.screenshot({ path: `${debugDir}/error-group-${i + 1}.png` });
+                    await this.debugScreenshot(page, `${debugDir}/error-group-${i + 1}.png`);
                 }
             }
 
@@ -804,7 +823,7 @@ export class ScraperService {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             console.error('❌ Session scraping failed:', errorMessage);
-            await page.screenshot({ path: `${debugDir}/session-error.png` });
+            await this.debugScreenshot(page, `${debugDir}/session-error.png`);
             return { success: false, studentsByGroup, errors: [errorMessage, ...errors] };
         } finally {
             await context.close();
@@ -886,7 +905,7 @@ export class ScraperService {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             console.error('❌ Attendance submission failed:', errorMessage);
-            await page.screenshot({ path: `${debugDir}/attendance-upload-error.png` });
+            await this.debugScreenshot(page, `${debugDir}/attendance-upload-error.png`);
             throw error;
         } finally {
             await context.close();
@@ -901,8 +920,7 @@ export class ScraperService {
         groupCode: string,
         debugDir: string
     ): Promise<ScrapedStudent[]> {
-        const fs = await import('fs');
-        await fs.promises.mkdir(debugDir, { recursive: true });
+        await this.ensureDebugDir(debugDir);
 
         const debugKey = groupCode.replace(/[^A-Za-z0-9_.-]/g, '_');
 
@@ -945,12 +963,11 @@ export class ScraperService {
             console.log(`   ✅ Asistencia table loaded`);
         } catch {
             console.log(`   ⚠️ Asistencia table did not load`);
-            await page.screenshot({ path: `${debugDir}/no-asistencia-${debugKey}.png` });
+            await this.debugScreenshot(page, `${debugDir}/no-asistencia-${debugKey}.png`);
             return [];
         }
 
-        // Take screenshot for debugging
-        await page.screenshot({ path: `${debugDir}/students-${debugKey}.png` });
+        await this.debugScreenshot(page, `${debugDir}/students-${debugKey}.png`);
 
         // Extract students
         const students = await this.extractStudents(page);
@@ -995,8 +1012,7 @@ export class ScraperService {
         groupCode: string,
         debugDir: string
     ): Promise<boolean> {
-        const fs = await import('fs');
-        await fs.promises.mkdir(debugDir, { recursive: true });
+        await this.ensureDebugDir(debugDir);
 
         // Ensure the Grupos accordion section is expanded
         await this.expandAccordionSection(page, 'Grupos');
@@ -1040,7 +1056,7 @@ export class ScraperService {
 
         if (!groupClicked) {
             console.log(`   ❌ Group ${searchPattern} not found in table`);
-            await page.screenshot({ path: `${debugDir}/group-not-found.png` });
+            await this.debugScreenshot(page, `${debugDir}/group-not-found.png`);
         }
 
         return groupClicked;
@@ -1153,7 +1169,7 @@ export class ScraperService {
             }
         }
 
-        await page.screenshot({ path: `${debugDir}/week-not-found.png` });
+        await this.debugScreenshot(page, `${debugDir}/week-not-found.png`);
         throw new Error(`No week contains date ${date}`);
     }
 
@@ -1239,7 +1255,7 @@ export class ScraperService {
         }
 
         // Take screenshot for debugging
-        await page.screenshot({ path: './debug-screenshots/column-not-found.png' });
+        await this.debugScreenshot(page, './debug-screenshots/column-not-found.png');
         throw new Error(`Attendance column not found for date ${date} (headers: ${allHeaders.map(h => `r${h.rowIdx}[${h.cellIdx}]="${h.text}"`).join(', ')})`);
     }
 
@@ -1322,7 +1338,7 @@ export class ScraperService {
         console.log(`   📡 Save response: ${JSON.stringify(responseBody)}`);
 
         if (!responseBody.exito) {
-            await page.screenshot({ path: `${debugDir}/attendance-save-error.png` });
+            await this.debugScreenshot(page, `${debugDir}/attendance-save-error.png`);
             throw new Error(`Portal save failed: ${responseBody.mensaje || 'Unknown error'}`);
         }
 
@@ -1334,8 +1350,7 @@ export class ScraperService {
      */
     private async navigateToControlAsistencia(page: Page): Promise<void> {
         const debugDir = './debug-screenshots';
-        const fs = await import('fs');
-        await fs.promises.mkdir(debugDir, { recursive: true });
+        await this.ensureDebugDir(debugDir);
 
         // Navigate directly to Control de Asistencia URL instead of using menu
         console.log('🔗 Navigating directly to Control de Asistencia URL...');
@@ -1359,7 +1374,7 @@ export class ScraperService {
         // Small extra wait for DevExpress JS to finish initializing
         await page.waitForTimeout(1000);
 
-        await page.screenshot({ path: `${debugDir}/control-asistencia-page.png` });
+        await this.debugScreenshot(page, `${debugDir}/control-asistencia-page.png`);
         console.log('📍 Current URL:', page.url());
 
         // Verify we're on the correct page
@@ -1372,8 +1387,7 @@ export class ScraperService {
      * The page has: Dependencia académica, Ciclo escolar, and a Groups table
      */
     private async fillAsistenciaFilters(page: Page, groupCode: string, debugDir: string): Promise<void> {
-        const fs = await import('fs');
-        await fs.promises.mkdir(debugDir, { recursive: true });
+        await this.ensureDebugDir(debugDir);
 
         // Wait for page to fully load (ciclo ya seleccionado por defecto)
         await page.waitForTimeout(3000);
@@ -1386,7 +1400,7 @@ export class ScraperService {
             await page.waitForSelector('#grdGrupos .dx-datagrid-rowsview .dx-data-row', { timeout: 10000 });
         } catch {
             console.log('⚠️ Grupos table not found or empty');
-            await page.screenshot({ path: `${debugDir}/no-grupos-table.png` });
+            await this.debugScreenshot(page, `${debugDir}/no-grupos-table.png`);
         }
 
         // Try to find and click the row that contains our group code
@@ -1416,7 +1430,7 @@ export class ScraperService {
             await page.waitForTimeout(2000);
         }
 
-        await page.screenshot({ path: `${debugDir}/asistencia-group-selected.png` });
+        await this.debugScreenshot(page, `${debugDir}/asistencia-group-selected.png`);
 
         // Step 3: Wait for Semanas table to populate and click first week
         console.log('3️⃣ Looking for Semanas table...');
@@ -1426,7 +1440,7 @@ export class ScraperService {
             console.log('   ✅ Semanas table has data');
         } catch {
             console.log('   ⚠️ Semanas table not found or empty');
-            await page.screenshot({ path: `${debugDir}/no-semanas-table.png` });
+            await this.debugScreenshot(page, `${debugDir}/no-semanas-table.png`);
             return;
         }
 
@@ -1440,7 +1454,7 @@ export class ScraperService {
             await page.waitForTimeout(3000);
         }
 
-        await page.screenshot({ path: `${debugDir}/asistencia-week-selected.png` });
+        await this.debugScreenshot(page, `${debugDir}/asistencia-week-selected.png`);
 
         // Step 4: Wait for Asistencia table to load
         console.log('4️⃣ Waiting for Asistencia table to load...');
@@ -1459,11 +1473,11 @@ export class ScraperService {
             }
         }
 
-        await page.screenshot({ path: `${debugDir}/asistencia-final.png` });
+        await this.debugScreenshot(page, `${debugDir}/asistencia-final.png`);
 
         // Save HTML for debugging
         const html = await page.content();
-        await fs.promises.writeFile(`${debugDir}/asistencia-page.html`, html);
+        await this.debugSaveFile(html, `${debugDir}/asistencia-page.html`);
     }
 
     /**
@@ -1479,12 +1493,11 @@ export class ScraperService {
             console.log('📊 Found attendance grid with data');
         } catch {
             console.log('⚠️ No student data in grdAsistencias, trying alternative selectors...');
-            await page.screenshot({ path: `${debugDir}/no-student-grid.png` });
+            await this.debugScreenshot(page, `${debugDir}/no-student-grid.png`);
 
             // Save HTML for debugging
-            const fs = await import('fs');
             const html = await page.content();
-            await fs.promises.writeFile(`${debugDir}/no-student-grid.html`, html);
+            await this.debugSaveFile(html, `${debugDir}/no-student-grid.html`);
         }
 
         // Extract students from the attendance table
@@ -1525,7 +1538,7 @@ export class ScraperService {
             return result;
         });
 
-        await page.screenshot({ path: `${debugDir}/students-extracted.png` });
+        await this.debugScreenshot(page, `${debugDir}/students-extracted.png`);
         console.log(`📊 Extracted ${students.length} students`);
 
         return students;

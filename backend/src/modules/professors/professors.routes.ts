@@ -1,13 +1,13 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../../core/database/prisma.js';
-import { jwtService } from '../../core/security/index.js';
+import { jwtService, sessionService } from '../../core/security/index.js';
 
 interface AuthenticatedRequest extends FastifyRequest {
     professorId?: string;
 }
 
 /**
- * Auth middleware to verify JWT token
+ * Auth middleware to verify JWT token and validate session
  */
 async function authMiddleware(
     request: AuthenticatedRequest,
@@ -26,6 +26,18 @@ async function authMiddleware(
 
         const token = authHeader.substring(7);
         const payload = jwtService.verify(token);
+
+        // Validate single session
+        if (payload.sessionId) {
+            const isValid = await sessionService.validateSession(payload.professorId, payload.sessionId);
+            if (!isValid) {
+                return reply.code(401).send({
+                    statusCode: 401,
+                    error: 'Unauthorized',
+                    message: 'Sesión invalidada. Se inició sesión en otro dispositivo.',
+                });
+            }
+        }
 
         request.professorId = payload.professorId;
     } catch (error) {

@@ -1,5 +1,5 @@
 import { prisma } from '../../core/database/prisma.js';
-import { rsaService, jwtService } from '../../core/security/index.js';
+import { rsaService, jwtService, sessionService } from '../../core/security/index.js';
 import { addScrapingJob } from '../../core/queue/queue.config.js';
 import type { LoginRequest, AuthResponse } from './auth.schemas.js';
 
@@ -59,10 +59,12 @@ export class AuthService {
         });
         const hasNoGroups = groupCount === 0;
 
-        // Generate JWT token
+        // Generate session and JWT token
+        const sessionId = await sessionService.createSession(prof.id);
         const token = jwtService.sign({
             professorId: prof.id,
             email: prof.institutionalEmail,
+            sessionId,
         });
 
         // Always queue scraping to validate credentials against UAT portal

@@ -257,10 +257,7 @@ class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
       return false;
     }
 
-    final registroActualizado = await _migrarRegistroSiNecesario(
-      registro,
-      grupo,
-    );
+    final registroActualizado = await _migrarRegistroSiNecesario(registro, grupo);
 
     final attendances = _buildAttendances(registroActualizado, grupo);
     if (attendances.isEmpty) {
@@ -283,14 +280,12 @@ class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
       return false;
     }
 
-    final encryptedPassword = _apiService.ensureEncryptedPassword(
-      storedPassword,
-    );
+    final encryptedPassword = _apiService.ensureEncryptedPassword(storedPassword);
 
     final result = await _apiService.uploadAttendance(
       token: token,
-      code: grupo.code ?? grupo.id,
-      groupLetter: grupo.groupLetter ?? grupo.grupoLetra,
+      code: grupo.code ?? '',
+      groupLetter: grupo.groupLetter ?? '',
       period: grupo.period ?? '',
       date: registroActualizado.fecha,
       attendances: attendances,
@@ -311,7 +306,10 @@ class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
         return false;
       },
       (_) async {
-        final syncSuccess = await _waitForSyncCompletion(profesor.id, token);
+        final syncSuccess = await _waitForSyncCompletion(
+          profesor.id,
+          token,
+        );
         if (syncSuccess) {
           await _asistenciaService.marcarComoSincronizada(
             registroActualizado.id,
@@ -424,28 +422,26 @@ class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
     final completer = Completer<bool>();
 
     await _sseSubscription?.cancel();
-    _sseSubscription = _sseService
-        .connect(professorId, token)
-        .listen(
-          (event) {
-            if (event.isCompleted) {
-              if (!completer.isCompleted) {
-                completer.complete(true);
-              }
-            }
+    _sseSubscription = _sseService.connect(professorId, token).listen(
+      (event) {
+        if (event.isCompleted) {
+          if (!completer.isCompleted) {
+            completer.complete(true);
+          }
+        }
 
-            if (event.isFailed) {
-              if (!completer.isCompleted) {
-                completer.complete(false);
-              }
-            }
-          },
-          onError: (_) {
-            if (!completer.isCompleted) {
-              completer.complete(false);
-            }
-          },
-        );
+        if (event.isFailed) {
+          if (!completer.isCompleted) {
+            completer.complete(false);
+          }
+        }
+      },
+      onError: (_) {
+        if (!completer.isCompleted) {
+          completer.complete(false);
+        }
+      },
+    );
 
     final result = await completer.future.timeout(
       const Duration(minutes: 5),

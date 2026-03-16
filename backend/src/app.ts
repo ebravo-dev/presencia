@@ -51,6 +51,20 @@ async function registerPlugins(): Promise<void> {
     fastify.decorate('authenticate', async (request: any, reply: any) => {
         try {
             await request.jwtVerify();
+
+            // Validate single session via Redis
+            const { professorId, sessionId } = request.user;
+            if (sessionId) {
+                const { sessionService } = await import('./core/security/index.js');
+                const isValid = await sessionService.validateSession(professorId, sessionId);
+                if (!isValid) {
+                    return reply.code(401).send({
+                        statusCode: 401,
+                        error: 'Unauthorized',
+                        message: 'Sesión invalidada. Se inició sesión en otro dispositivo.',
+                    });
+                }
+            }
         } catch (err) {
             reply.send(err);
         }
