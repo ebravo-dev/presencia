@@ -22,6 +22,10 @@ FROM node:20-slim AS production
 
 WORKDIR /app
 
+# Set a shared Playwright browsers path that works for BOTH root (build) and nodejs (runtime)
+# Without this, browsers install to /root/.cache/ but the app looks in /home/nodejs/.cache/
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
 # Install minimal system dependencies needed by Playwright's Chromium + wget for healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
@@ -39,7 +43,7 @@ COPY --from=builder /app/start.sh ./start.sh
 RUN npm ci --omit=dev
 
 # Let Playwright install its own compatible Chromium + all OS dependencies
-# This ensures version compatibility (Playwright 1.57 needs a specific Chromium revision)
+# Browsers will be installed to /ms-playwright (shared path via env var above)
 RUN npx playwright install chromium --with-deps
 
 # Generate Prisma client for production target
@@ -49,7 +53,8 @@ RUN npx prisma generate
 RUN groupadd -g 1001 nodejs && \
     useradd -u 1001 -g nodejs nodejs && \
     chmod +x ./start.sh && \
-    chown -R nodejs:nodejs /app
+    chown -R nodejs:nodejs /app && \
+    chown -R nodejs:nodejs /ms-playwright
 
 USER nodejs
 
