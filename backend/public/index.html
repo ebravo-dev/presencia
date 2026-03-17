@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presencia — Gestión de Beacons</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Gestión de Beacons</h1>
+    <p>Asigna un beacon BLE a cada salón</p>
+  </header>
+
+  <main>
+    <section id="form-section">
+      <h2 id="form-title">Agregar Beacon</h2>
+      <form id="beacon-form" autocomplete="off">
+        <input type="hidden" id="beacon-id">
+        <div class="form-row">
+          <div class="field">
+            <label for="beacon-uuid">UUID del Beacon</label>
+            <input type="text" id="beacon-uuid" placeholder="ej: 12345678-1234-1234-1234-123456789abc" required>
+          </div>
+          <div class="field">
+            <label for="beacon-classroom">Salón</label>
+            <input type="text" id="beacon-classroom" placeholder="ej: 304" required>
+          </div>
+          <div class="field field-actions">
+            <button type="submit" id="btn-submit">Agregar</button>
+            <button type="button" id="btn-cancel" class="btn-secondary" hidden>Cancelar</button>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <section id="table-section">
+      <table>
+        <thead>
+          <tr>
+            <th>UUID</th>
+            <th>Salón</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="beacons-body">
+          <tr><td colspan="3" class="empty">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

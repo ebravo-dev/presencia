@@ -180,7 +180,8 @@ class ApiService {
   /// Obtiene las clases asignadas al profesor autenticado
   /// Endpoint: GET /professors/classes
   /// Requiere JWT token en el header Authorization
-  Future<Either<String, List<Grupo>>> getGruposProfesor(String token) async {
+  /// Retorna tupla (grupos, beacons) donde beacons es la lista cruda del server
+  Future<Either<String, ({List<Grupo> grupos, List<Map<String, dynamic>> beacons})>> getGruposProfesor(String token) async {
     try {
       Logger.info('Obteniendo clases del profesor autenticado');
 
@@ -193,8 +194,13 @@ class ApiService {
         final List<dynamic> clasesJson = response.data['data'] ?? [];
         final grupos = clasesJson.map((json) => Grupo.fromJson(json)).toList();
 
-        Logger.info('Clases obtenidas exitosamente: ${grupos.length} clases');
-        return Right(grupos);
+        final List<dynamic> beaconsJson = response.data['beacons'] ?? [];
+        final beacons = beaconsJson
+            .map((b) => Map<String, dynamic>.from(b as Map))
+            .toList();
+
+        Logger.info('Clases obtenidas: ${grupos.length}, Beacons: ${beacons.length}');
+        return Right((grupos: grupos, beacons: beacons));
       } else {
         final errorMessage =
             response.data['message'] ?? 'Error al obtener clases';

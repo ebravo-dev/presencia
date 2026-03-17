@@ -19,24 +19,19 @@ enum BeaconVerificationResult {
 }
 
 /// Servicio para verificar la presencia del profesor en el salón
-/// mediante la detección del beacon ESP32-C3_BLE por BLE.
+/// mediante la detección de un beacon BLE por su service UUID.
 ///
 /// Flujo:
 /// 1. Verifica que Bluetooth esté encendido
-/// 2. Inicia escaneo BLE
-/// 3. Filtra por nombre "ESP32-C3_BLE" o device ID conocido
-/// 4. Retorna [BeaconVerificationResult.detected] si lo encuentra,
+/// 2. Inicia escaneo BLE filtrando por el service UUID del beacon
+/// 3. Retorna [BeaconVerificationResult.detected] si lo encuentra,
 ///    o [BeaconVerificationResult.timeout] si se agota el tiempo.
 class BleBeaconVerificationService {
-  // ── Configuración del beacon ESP32 ──────────────────────────────
-  static const String _beaconName = 'ESP32-C3_BLE';
-  static const String _beaconDeviceId = '327210EB-609B-A588-6399-92594A3A9F39';
-  static const String _serviceUuid = '12345678-1234-1234-1234-123456789abc';
-
   // ── Estado interno ──────────────────────────────────────────────
   Completer<BeaconVerificationResult>? _completer;
   Timer? _timeoutTimer;
   bool _isScanning = false;
+  String? _targetUuid;
 
   /// Stream para notificar progreso durante el escaneo.
   /// Emite el nombre de cada dispositivo encontrado (para debug UI).
@@ -48,10 +43,11 @@ class BleBeaconVerificationService {
 
   /// Verifica que el beacon del salón está cerca.
   ///
-  /// Retorna [BeaconVerificationResult.detected] si se encuentra el
-  /// ESP32-C3_BLE dentro del [timeout], o el resultado de error
-  /// correspondiente en caso contrario.
+  /// [beaconUuid] — service UUID del beacon asignado al salón.
+  /// Retorna [BeaconVerificationResult.detected] si se encuentra
+  /// dentro del [timeout], o el resultado de error correspondiente.
   Future<BeaconVerificationResult> verifyBeaconPresence({
+    required String beaconUuid,
     Duration timeout = const Duration(seconds: 5),
   }) async {
     if (_isScanning) {
@@ -73,6 +69,7 @@ class BleBeaconVerificationService {
 
     // 2. Preparar escaneo
     _isScanning = true;
+    _targetUuid = beaconUuid;
     _completer = Completer<BeaconVerificationResult>();
 
     // 3. Registrar callback de escaneo
@@ -93,10 +90,10 @@ class BleBeaconVerificationService {
         '[BLE-Beacon] Iniciando escaneo BLE '
         '(timeout: ${timeout.inSeconds}s)',
       );
-      Logger.info('[BLE-Beacon] Buscando: $_beaconName / $_beaconDeviceId');
+      Logger.info('[BLE-Beacon] Buscando service UUID: $beaconUuid');
 
       await UniversalBle.startScan(
-        scanFilter: ScanFilter(withServices: [_serviceUuid]),
+        scanFilter: ScanFilter(withServices: [beaconUuid]),
       );
     } catch (e) {
       Logger.error('[BLE-Beacon] Error iniciando escaneo', e);
@@ -107,6 +104,8 @@ class BleBeaconVerificationService {
   }
 
   /// Callback invocado por cada dispositivo BLE encontrado.
+  /// Dado que el scan ya filtra por el service UUID del beacon,
+  /// cualquier dispositivo encontrado es el beacon buscado.
   void _onScanResult(BleDevice device) {
     final name = device.name ?? 'Sin nombre';
     final id = device.deviceId;
@@ -114,17 +113,13 @@ class BleBeaconVerificationService {
     debugPrint('[BLE-Beacon] Dispositivo: $name ($id)');
     _progressController.add(name);
 
-    // Matchear por nombre O device ID (case-insensitive)
-    final nameMatch = name.toLowerCase() == _beaconName.toLowerCase();
-    final idMatch = id.toLowerCase() == _beaconDeviceId.toLowerCase();
-
-    if (nameMatch || idMatch) {
-      Logger.info(
-        '[BLE-Beacon] ✅ ¡BEACON DETECTADO! '
-        'Nombre: $name, ID: $id',
-      );
-      _finishScan(BeaconVerificationResult.detected);
-    }
+    // El scan filter ya garantiza que sólo llegan dispositivos
+    // que anuncian el service UUID buscado
+    Logger.info(
+      '[BLE-Beacon] ✅ ¡BEACON DETECTADO! '
+      'Nombre: $name, ID: $id, UUID: $_targetUuid',
+    );
+    _finishScan(BeaconVerificationResult.detected);
   }
 
   /// Finaliza el escaneo y emite el resultado.

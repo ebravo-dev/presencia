@@ -11,6 +11,9 @@ import { groupsRoutes } from './modules/groups/index.js';
 import { attendanceRoutes, initializeAttendanceUploadWorker } from './modules/attendance/index.js';
 import { syncRoutes } from './modules/sync/index.js';
 import { studentAttendanceRoutes } from './modules/student-attendance/index.js';
+import { beaconsRoutes } from './modules/beacons/index.js';
+import fastifyStatic from '@fastify/static';
+import path from 'path';
 
 // Create Fastify instance
 const fastify = Fastify({
@@ -93,6 +96,13 @@ async function registerRoutes(): Promise<void> {
     await fastify.register(attendanceRoutes);
     await fastify.register(syncRoutes);
     await fastify.register(studentAttendanceRoutes);
+    await fastify.register(beaconsRoutes);
+
+    // Serve admin panel static files
+    await fastify.register(fastifyStatic, {
+        root: path.join(process.cwd(), 'public'),
+        prefix: '/admin/',
+    });
 
     // 404 handler
     fastify.setNotFoundHandler((request, reply) => {

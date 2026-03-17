@@ -16,6 +16,7 @@ class AuthStorageService {
   static const String _gruposKey = 'grupos_data';
   static const String _syncInProgressKey = 'sync_in_progress';
   static const String _encryptedPasswordKey = 'encrypted_password';
+  static const String _beaconsKey = 'beacons_data';
 
   Box? _box;
 
@@ -151,6 +152,7 @@ class AuthStorageService {
       await _box?.delete(_gruposKey);
       await _box?.delete(_syncInProgressKey);
       await _box?.delete(_encryptedPasswordKey);
+      await _box?.delete(_beaconsKey);
       Logger.info('Sesión eliminada correctamente');
     } catch (e, stackTrace) {
       Logger.error('Error al limpiar sesión', e, stackTrace);
@@ -257,6 +259,49 @@ class AuthStorageService {
     try {
       return _box?.get('last_email') as String?;
     } catch (e) {
+      return null;
+    }
+  }
+
+  /// Guardar lista de beacons (uuid + classroom)
+  Future<void> saveBeacons(List<Map<String, dynamic>> beacons) async {
+    try {
+      final beaconsJson = jsonEncode(beacons);
+      await _box?.put(_beaconsKey, beaconsJson);
+      Logger.info('${beacons.length} beacons guardados correctamente');
+    } catch (e, stackTrace) {
+      Logger.error('Error al guardar beacons', e, stackTrace);
+    }
+  }
+
+  /// Obtener lista de beacons
+  List<Map<String, dynamic>>? getBeacons() {
+    try {
+      final beaconsJson = _box?.get(_beaconsKey) as String?;
+      if (beaconsJson != null) {
+        final List<dynamic> jsonList = jsonDecode(beaconsJson);
+        return jsonList.cast<Map<String, dynamic>>();
+      }
+      return null;
+    } catch (e, stackTrace) {
+      Logger.error('Error al obtener beacons', e, stackTrace);
+      return null;
+    }
+  }
+
+  /// Obtener el UUID del beacon para un salón específico
+  String? getBeaconUuidForClassroom(String classroom) {
+    try {
+      final beacons = getBeacons();
+      if (beacons == null) return null;
+      for (final beacon in beacons) {
+        if (beacon['classroom'] == classroom) {
+          return beacon['uuid'] as String?;
+        }
+      }
+      return null;
+    } catch (e, stackTrace) {
+      Logger.error('Error al buscar beacon para salón $classroom', e, stackTrace);
       return null;
     }
   }

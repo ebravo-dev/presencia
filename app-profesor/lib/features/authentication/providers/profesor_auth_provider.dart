@@ -169,12 +169,14 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
             state = state.copyWith(grupos: cachedGrupos);
           }
         },
-        (grupos) async {
-          Logger.info('✅ ${grupos.length} clases descargadas del servidor');
-          state = state.copyWith(grupos: grupos);
+        (data) async {
+          Logger.info('✅ ${data.grupos.length} clases descargadas del servidor');
+          state = state.copyWith(grupos: data.grupos);
           // Guardar en cache para futuras sesiones
-          await _authStorage.saveGrupos(grupos);
-          Logger.info('💾 Clases guardadas en cache local');
+          await _authStorage.saveGrupos(data.grupos);
+          // Guardar beacons
+          await _authStorage.saveBeacons(data.beacons);
+          Logger.info('💾 Clases y beacons guardados en cache local');
         },
       );
     } catch (e, stackTrace) {

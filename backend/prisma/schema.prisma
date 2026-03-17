@@ -135,3 +135,13 @@ model StudentBleAttendance {
 
   @@map("student_ble_attendances")
 }
+
+model Beacon {
+  id        String   @id @default(cuid())
+  uuid      String   @unique
+  classroom String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("beacons")
+}

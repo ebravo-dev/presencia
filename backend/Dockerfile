@@ -38,6 +38,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/start.sh ./start.sh
+COPY --from=builder /app/public ./public
 
 # Install ONLY production dependencies
 RUN npm ci --omit=dev

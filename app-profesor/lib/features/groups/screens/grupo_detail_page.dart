@@ -947,11 +947,31 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   /// Si detecta el beacon, marca la entrada verificada.
   /// Si no, permite marcar con motivo (entrada parcial).
   Future<void> _verificarBeaconYMarcarEntrada() async {
+    // Buscar el UUID del beacon asignado al salón de este grupo
+    final beaconUuid = AuthStorageService()
+        .getBeaconUuidForClassroom(widget.grupo.classroom);
+
+    if (beaconUuid == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'No hay beacon asignado al salón "${widget.grupo.classroom}". '
+            'Contacta al administrador.',
+          ),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
     final resultado = await showDialog<_BleDialogResult>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => _BleBeaconScanDialog(
         bleService: _bleBeaconService,
+        beaconUuid: beaconUuid,
         gradientColors: widget.gradientColors,
       ),
     );
@@ -1875,10 +1895,12 @@ const List<String> _motivosPredefinidos = [
 
 class _BleBeaconScanDialog extends StatefulWidget {
   final BleBeaconVerificationService bleService;
+  final String beaconUuid;
   final List<Color> gradientColors;
 
   const _BleBeaconScanDialog({
     required this.bleService,
+    required this.beaconUuid,
     required this.gradientColors,
   });
 
@@ -1928,7 +1950,9 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
       _lastDeviceFound = null;
     });
 
-    final result = await widget.bleService.verifyBeaconPresence();
+    final result = await widget.bleService.verifyBeaconPresence(
+      beaconUuid: widget.beaconUuid,
+    );
     if (!mounted) return;
 
     switch (result) {

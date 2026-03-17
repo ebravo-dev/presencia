@@ -178,7 +178,13 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
                 };
             });
 
-            return reply.send({ data: formattedGroups, syncInProgress: false });
+            // Fetch all beacons for classroom matching
+            const beacons = await prisma.beacon.findMany({
+                select: { id: true, uuid: true, classroom: true },
+                orderBy: { classroom: 'asc' },
+            });
+
+            return reply.send({ data: formattedGroups, beacons, syncInProgress: false });
         }
     );
 
