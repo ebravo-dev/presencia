@@ -160,9 +160,10 @@ async function start(): Promise<void> {
         // Initialize scraping worker (optional - may fail in some Docker environments)
         try {
             await initializeScrapingWorker();
+            console.log('✅ Scraping worker initialized successfully');
         } catch (scraperError) {
-            console.warn('⚠️ Scraping worker failed to initialize:', scraperError instanceof Error ? scraperError.message : scraperError);
-            console.warn('⚠️ Server will continue without scraping capabilities');
+            console.error('❌ CRITICAL: Scraping worker FAILED to initialize:', scraperError instanceof Error ? scraperError.message : scraperError);
+            console.error('❌ LOGIN WILL NOT WORK — professors cannot sync classes.');
         }
 
         // Initialize attendance upload worker (optional)

@@ -12,6 +12,7 @@ import 'core/constants/api_constants.dart';
 import 'core/utils/utils.dart';
 import 'core/theme/uat_theme.dart';
 import 'features/authentication/presentation/pages/login_page.dart';
+import 'features/authentication/presentation/pages/relogin_page.dart';
 import 'features/groups/screens/grupos_page.dart';
 import 'features/groups/screens/sync_status_screen.dart';
 import 'features/authentication/providers/profesor_auth_provider.dart';
@@ -63,7 +64,9 @@ class AuthStateNotifier extends ChangeNotifier {
   AuthStateNotifier(this._ref) {
     _ref.listen<ProfesorAuthState>(profesorAuthProvider, (previous, next) {
       final newAuthState = next.isAuthenticated;
-      if (_lastAuthState != newAuthState) {
+      final sessionExpired = next.isSessionExpired;
+      // Notificar al router en cambios de autenticación o expiración
+      if (_lastAuthState != newAuthState || sessionExpired) {
         _lastAuthState = newAuthState;
         notifyListeners();
       }
@@ -81,31 +84,39 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: authNotifier,
     initialLocation: '/login',
     redirect: (context, state) {
-      final isAuthenticated = authNotifier.isAuthenticated;
+      final authState = ref.read(profesorAuthProvider);
+      final isAuthenticated = authState.isAuthenticated;
+      final isSessionExpired = authState.isSessionExpired;
       final isLoggingIn = state.matchedLocation == '/login';
+      final isRelogging = state.matchedLocation == '/relogin';
       final isOnSyncStatus = state.matchedLocation == '/sync-status';
       final isSyncInProgress = authStorage.isSyncInProgress();
+
+      // Sesión expirada — ir a re-login ligero (conserva datos locales)
+      if (isSessionExpired && !isRelogging) {
+        return '/relogin';
+      }
 
       // Si está autenticado y hay sync en progreso, ir a sync-status
       if (isAuthenticated && isSyncInProgress && !isOnSyncStatus) {
         return '/sync-status';
       }
 
-      // Si está autenticado y está en login, ir a grupos
-      if (isAuthenticated && isLoggingIn) {
+      // Si está autenticado y está en login o relogin, ir a grupos
+      if (isAuthenticated && (isLoggingIn || isRelogging)) {
         return '/grupos';
       }
 
       // Si no está autenticado y no está en login, ir a login
-      if (!isAuthenticated && !isLoggingIn) {
+      if (!isAuthenticated && !isSessionExpired && !isLoggingIn) {
         return '/login';
       }
 
-      // No redirect needed
       return null;
     },
     routes: [
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
+      GoRoute(path: '/relogin', builder: (context, state) => const ReloginPage()),
       GoRoute(path: '/grupos', builder: (context, state) => const GruposPage()),
       GoRoute(
         path: '/sync-status',
@@ -118,8 +129,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/',
         redirect: (context, state) {
-          final isAuthenticated = authNotifier.isAuthenticated;
-          return isAuthenticated ? '/grupos' : '/login';
+          final authState = ref.read(profesorAuthProvider);
+          if (authState.isAuthenticated) return '/grupos';
+          if (authState.isSessionExpired) return '/relogin';
+          return '/login';
         },
       ),
     ],

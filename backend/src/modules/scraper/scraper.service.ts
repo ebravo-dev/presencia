@@ -88,11 +88,12 @@ export class ScraperService {
     async init(): Promise<void> {
         if (this.browser) return;
 
-        console.log(`🌐 Initializing browser with Playwright's bundled Chromium`);
+        const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined;
+        console.log(`🌐 Initializing browser${executablePath ? ` with system Chromium: ${executablePath}` : ' with Playwright bundled Chromium'}`);
 
         this.browser = await chromium.launch({
             headless: true,
-            // No executablePath - use Playwright's bundled Chromium
+            executablePath,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',

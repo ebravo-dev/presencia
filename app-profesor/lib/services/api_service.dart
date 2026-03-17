@@ -11,7 +11,11 @@ class ApiService {
   late final Dio _dio;
   late final EncryptionService _encryptionService;
 
-  ApiService() {
+  /// Callback que se dispara cuando el servidor retorna 401.
+  /// Úsalo para marcar la sesión como expirada en el provider.
+  void Function()? onSessionExpired;
+
+  ApiService({this.onSessionExpired}) {
     _encryptionService = EncryptionService();
     _dio = Dio(
       BaseOptions(
@@ -25,7 +29,20 @@ class ApiService {
       ),
     );
 
-    // Agregar interceptors para logging
+    // Interceptor de 401 — sesión expirada
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onError: (DioException error, ErrorInterceptorHandler handler) {
+          if (error.response?.statusCode == 401) {
+            Logger.info('🔐 Interceptor: 401 detectado — marcando sesión expirada');
+            onSessionExpired?.call();
+          }
+          handler.next(error);
+        },
+      ),
+    );
+
+    // Interceptor de logging
     _dio.interceptors.add(
       LogInterceptor(
         requestBody: true,

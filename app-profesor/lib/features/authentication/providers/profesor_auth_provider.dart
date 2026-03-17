@@ -12,6 +12,7 @@ enum ProfesorAuthStatus {
   loading,
   authenticated,
   unauthenticated,
+  sessionExpired, // token caducó — datos locales intactos, sólo se pide re-login
   error,
 }
 
@@ -51,6 +52,7 @@ class ProfesorAuthState {
       status == ProfesorAuthStatus.authenticated && profesor != null;
   bool get isLoading => status == ProfesorAuthStatus.loading;
   bool get hasError => status == ProfesorAuthStatus.error;
+  bool get isSessionExpired => status == ProfesorAuthStatus.sessionExpired;
 }
 
 /// Provider del servicio de API
@@ -227,7 +229,8 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     );
   }
 
-  /// Verificar si existe una sesión almacenada y restaurarla
+  /// Verificar si existe una sesión almacenada y restaurarla.
+  /// Valida la expiración del JWT antes de restaurar como "autenticado".
   Future<void> checkStoredSession() async {
     try {
       Logger.info('Verificando sesión almacenada');
@@ -236,41 +239,50 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
         final token = _authStorage.getToken();
         final profesor = _authStorage.getProfesor();
 
-        if (token != null && profesor != null) {
+        if (token != null && token.isNotEmpty && profesor != null) {
+          // Validar si el JWT no ha expirado localmente
+          final tokenValido = _authStorage.isTokenValid();
+
+          if (!tokenValido) {
+            // Token expirado — conservar datos locales, pedir re-auth
+            Logger.info(
+              '⚠️ Token expirado para ${profesor.nombreCompleto} — solicitando re-login',
+            );
+            // Guardar solo el profesor (sin token) para mostrar en relogin
+            state = ProfesorAuthState(
+              status: ProfesorAuthStatus.sessionExpired,
+              profesor: profesor,
+              token: null,
+              errorMessage: 'Tu sesión expiró. Ingresa tu contraseña para continuar.',
+            );
+            // Intentar relogin automático con contraseña guardada
+            await relogin();
+            return;
+          }
+
           Logger.info(
             'Sesión válida encontrada para: ${profesor.nombreCompleto}',
           );
-
           state = state.copyWith(
             status: ProfesorAuthStatus.authenticated,
             profesor: profesor,
             token: token,
           );
-
           // Cargar grupos del profesor
           await _loadGrupos();
         } else {
-          Logger.info('Sesión inválida o expirada');
+          Logger.info('Sesión inválida — limpiando');
           await _authStorage.clearSession();
-          // Establecer estado explícitamente como no autenticado
-          state = const ProfesorAuthState(
-            status: ProfesorAuthStatus.unauthenticated,
-          );
+          state = const ProfesorAuthState(status: ProfesorAuthStatus.unauthenticated);
         }
       } else {
         Logger.info('No hay sesión almacenada');
-        // Establecer estado explícitamente como no autenticado
-        state = const ProfesorAuthState(
-          status: ProfesorAuthStatus.unauthenticated,
-        );
+        state = const ProfesorAuthState(status: ProfesorAuthStatus.unauthenticated);
       }
     } catch (e, stackTrace) {
       Logger.error('Error verificando sesión almacenada', e, stackTrace);
       await _authStorage.clearSession();
-      // Establecer estado explícitamente como no autenticado en caso de error
-      state = const ProfesorAuthState(
-        status: ProfesorAuthStatus.unauthenticated,
-      );
+      state = const ProfesorAuthState(status: ProfesorAuthStatus.unauthenticated);
     }
   }
 
@@ -279,6 +291,93 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     Logger.info('Cerrando sesión del profesor');
     await _authStorage.clearSession();
     state = const ProfesorAuthState(status: ProfesorAuthStatus.unauthenticated);
+  }
+
+  /// Marcar sesión como expirada (llamado por el interceptor 401 de Dio).
+  /// Conserva datos locales (profesor, grupos) para mostrar info al usuario,
+  /// sólo invalida el token.
+  void markSessionExpired() {
+    if (state.status == ProfesorAuthStatus.sessionExpired) return; // ya marcado
+    Logger.info('⚠️ Sesión expirada — solicitando re-autenticación');
+    // Borrar token del storage pero conservar el resto
+    _authStorage.saveToken('');
+    state = state.copyWith(
+      status: ProfesorAuthStatus.sessionExpired,
+      token: null,
+      errorMessage: 'Tu sesión expiró. Vuelve a ingresar tu contraseña.',
+    );
+  }
+
+  /// Re-autenticación ligera: usa email guardado + contraseña encriptada almacenada,
+  /// o acepta una contraseña en texto plano nueva.
+  Future<void> relogin({String? plainPassword}) async {
+    final profesor = state.profesor ?? _authStorage.getProfesor();
+    if (profesor == null) {
+      // No hay datos de profesor — logout completo
+      await logout();
+      return;
+    }
+
+    state = state.copyWith(
+      status: ProfesorAuthStatus.loading,
+      errorMessage: null,
+      profesor: profesor,
+    );
+
+    Either<String, LoginResponse> result;
+
+    if (plainPassword != null && plainPassword.isNotEmpty) {
+      // Login con contraseña nueva en texto plano
+      result = await _apiService.loginProfesor(
+        email: profesor.institutionalEmail,
+        password: plainPassword,
+      );
+    } else {
+      // Intentar con la contraseña encriptada guardada
+      final encryptedPwd = _authStorage.getEncryptedPassword();
+      if (encryptedPwd == null || encryptedPwd.isEmpty) {
+        // No hay contraseña guardada — pedir al usuario
+        state = state.copyWith(
+          status: ProfesorAuthStatus.sessionExpired,
+          errorMessage: 'Ingresa tu contraseña para continuar.',
+        );
+        return;
+      }
+      result = await _apiService.loginProfesorWithEncryptedPassword(
+        email: profesor.institutionalEmail,
+        encryptedPassword: encryptedPwd,
+      );
+    }
+
+    result.fold(
+      (error) {
+        Logger.error('Error en re-login: $error');
+        state = state.copyWith(
+          status: ProfesorAuthStatus.sessionExpired,
+          errorMessage: error,
+        );
+      },
+      (loginResponse) async {
+        Logger.info('Re-login exitoso para: ${loginResponse.profesor.nombreCompleto}');
+        await _authStorage.saveSession(
+          token: loginResponse.token,
+          profesor: loginResponse.profesor,
+        );
+        // Actualizar contraseña encriptada si se usó plainPassword
+        if (plainPassword != null && plainPassword.isNotEmpty) {
+          final enc = _apiService.encryptPassword(plainPassword);
+          await _authStorage.saveEncryptedPassword(enc);
+        }
+        state = state.copyWith(
+          status: ProfesorAuthStatus.authenticated,
+          profesor: loginResponse.profesor,
+          token: loginResponse.token,
+          errorMessage: null,
+        );
+        // Recargar grupos si no hay cache
+        await _loadGrupos();
+      },
+    );
   }
 
   /// Limpiar error
@@ -299,7 +398,11 @@ final profesorAuthProvider =
     StateNotifierProvider<ProfesorAuthNotifier, ProfesorAuthState>((ref) {
       final apiService = ref.watch(apiServiceProvider);
       final authStorage = ref.watch(authStorageServiceProvider);
-      return ProfesorAuthNotifier(apiService, authStorage);
+      final notifier = ProfesorAuthNotifier(apiService, authStorage);
+      // Registrar callback de 401 en ApiService sin dependencia circular.
+      // markSessionExpired() tiene su propio guard interno.
+      apiService.onSessionExpired = notifier.markSessionExpired;
+      return notifier;
     });
 
 /// Provider para verificar si el profesor está autenticado

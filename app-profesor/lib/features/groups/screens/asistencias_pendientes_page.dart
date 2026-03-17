@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
 import '../../../shared/models/asistencia_registro.dart';
 import '../../../shared/models/grupo.dart';
@@ -7,11 +8,12 @@ import '../../../services/asistencia_local_service.dart';
 import '../../../services/api_service.dart';
 import '../../../services/auth_storage_service.dart';
 import '../../../services/sse_service.dart';
+import '../../authentication/providers/profesor_auth_provider.dart';
 
-class AsistenciasPendientesPage extends StatefulWidget {
-  final String claseActual; // Nombre completo de la materia
-  final String grupoActualId; // ID del grupo para mostrar en las tarjetas
-  final List<Grupo>? todosLosGrupos; // Para poder actualizar nombres de clases
+class AsistenciasPendientesPage extends ConsumerStatefulWidget {
+  final String claseActual;
+  final String grupoActualId;
+  final List<Grupo>? todosLosGrupos;
 
   const AsistenciasPendientesPage({
     super.key,
@@ -21,14 +23,16 @@ class AsistenciasPendientesPage extends StatefulWidget {
   });
 
   @override
-  State<AsistenciasPendientesPage> createState() =>
+  ConsumerState<AsistenciasPendientesPage> createState() =>
       _AsistenciasPendientesPageState();
 }
 
-class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
+class _AsistenciasPendientesPageState
+    extends ConsumerState<AsistenciasPendientesPage> {
   final AsistenciaLocalService _asistenciaService = AsistenciaLocalService();
-  final ApiService _apiService = ApiService();
-  final AuthStorageService _authStorage = AuthStorageService();
+  // ApiService se obtiene del provider para que el callback 401 esté activo
+  ApiService get _apiService => ref.read(apiServiceProvider);
+  AuthStorageService get _authStorage => AuthStorageService();
   final SSEService _sseService = SSEService();
   StreamSubscription<SyncEvent>? _sseSubscription;
   List<AsistenciaRegistro> _asistenciasPendientes = [];
@@ -261,9 +265,20 @@ class _AsistenciasPendientesPageState extends State<AsistenciasPendientesPage> {
 
     final attendances = _buildAttendances(registroActualizado, grupo);
     if (attendances.isEmpty) {
-      // No changes vs last synced state — just mark as synced locally
-      await _asistenciaService.marcarComoSincronizada(registroActualizado.id);
-      return true;
+      // No hay alumnos mapeados — probablemente IDs no coinciden.
+      // NO marcar como sincronizada: no se subio nada realmente.
+      if (showSnackbars && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No se encontraron alumnos para subir. Verifica los datos del grupo.',
+            ),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return false;
     }
 
     final storedPassword = _authStorage.getEncryptedPassword();

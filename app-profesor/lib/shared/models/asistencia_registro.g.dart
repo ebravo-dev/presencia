@@ -1,4 +1,4 @@
-// GENERATED CODE - DO NOT MODIFY BY HAND
+// GENERATED CODE - Modified manually to add null-safe fallbacks for old Hive records
 
 part of 'asistencia_registro.dart';
 
@@ -24,12 +24,12 @@ class AsistenciaRegistroAdapter extends TypeAdapter<AsistenciaRegistro> {
       horaEntrada: fields[4] as DateTime?,
       horaSalida: fields[5] as DateTime?,
       asistenciasAlumnos: (fields[6] as Map).cast<String, bool>(),
-      sincronizado: fields[7] as bool,
+      sincronizado: fields[7] as bool? ?? false,
       fechaCreacion: fields[8] as DateTime,
       fechaActualizacion: fields[9] as DateTime?,
       nombreClase: fields[10] as String?,
       asistenciasSincronizadas: (fields[11] as Map?)?.cast<String, bool>(),
-      entradaVerificada: fields[12] as bool,
+      entradaVerificada: fields[12] as bool? ?? true,
       motivoEntrada: fields[13] as String?,
       grupoCode: fields[14] as String?,
       grupoGroupLetter: fields[15] as String?,
