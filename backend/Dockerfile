@@ -22,20 +22,12 @@ FROM node:20-slim AS production
 
 WORKDIR /app
 
-# Install system Chromium and dependencies
+# Install minimal system dependencies needed by Playwright's Chromium + wget for healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
-    libnss3 \
-    libfreetype6 \
-    libharfbuzz0b \
+    wget \
     ca-certificates \
     fonts-freefont-ttf \
-    wget \
     && rm -rf /var/lib/apt/lists/*
-
-# Tell Playwright to use system Chromium (skip downloading its own)
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Copy built application
 COPY --from=builder /app/dist ./dist
@@ -45,6 +37,10 @@ COPY --from=builder /app/start.sh ./start.sh
 
 # Install ONLY production dependencies
 RUN npm ci --omit=dev
+
+# Let Playwright install its own compatible Chromium + all OS dependencies
+# This ensures version compatibility (Playwright 1.57 needs a specific Chromium revision)
+RUN npx playwright install chromium --with-deps
 
 # Generate Prisma client for production target
 RUN npx prisma generate
