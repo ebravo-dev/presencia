@@ -16,6 +16,14 @@ import { calculateCurrentPeriod } from '../auth/auth.service.js';
 async function processScrapingJob(
     job: Job<ScrapingJobData, ScrapingJobResult, string>
 ): Promise<ScrapingJobResult> {
+    // Skip stale jobs (safety net in case drain didn't catch them)
+    const jobAge = Date.now() - job.timestamp;
+    const MAX_JOB_AGE = 5 * 60 * 1000; // 5 minutes
+    if (jobAge > MAX_JOB_AGE) {
+        console.log(`⏭️ Skipping stale job ${job.id} (age: ${Math.round(jobAge / 1000)}s)`);
+        return { success: false, error: 'Job expired (server restart)' };
+    }
+
     const { professorId, email, password } = job.data;
     const currentPeriod = calculateCurrentPeriod();
 

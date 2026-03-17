@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import { env } from './core/config/env.js';
 import { connectDatabase, disconnectDatabase } from './core/database/prisma.js';
-import { closeQueue, getQueueStats } from './core/queue/queue.config.js';
+import { closeQueue, getQueueStats, drainStaleJobs } from './core/queue/queue.config.js';
 import { initializeScrapingWorker } from './modules/scraper/index.js';
 import { authRoutes } from './modules/auth/index.js';
 import { professorsRoutes } from './modules/professors/index.js';
@@ -156,6 +156,9 @@ async function start(): Promise<void> {
         // Register plugins and routes
         await registerPlugins();
         await registerRoutes();
+
+        // Drain stale jobs from Redis (prevents accumulated jobs after downtime)
+        await drainStaleJobs();
 
         // Initialize scraping worker (optional - may fail in some Docker environments)
         try {

@@ -67,20 +67,25 @@ export class AuthService {
             sessionId,
         });
 
-        // Always queue scraping to validate credentials against UAT portal
-        // This ensures the password is always checked, even for returning professors
-        // Update lastSyncPeriod
-        await prisma.professor.update({
-            where: { id: prof.id },
-            data: { lastSyncPeriod: currentPeriod },
-        });
+        // Only trigger scraping if professor has NO groups in current period
+        // (first login or new academic period). Returning professors
+        // use "Sincronizar Ciclo" button to refresh their classes.
+        const shouldSync = hasNoGroups;
 
-        // Queue scraping job to fetch groups from UAT (also validates credentials)
-        await addScrapingJob({
-            professorId: prof.id,
-            email: data.institutionalEmail,
-            password: decryptedPassword,
-        });
+        if (shouldSync) {
+            // Update lastSyncPeriod
+            await prisma.professor.update({
+                where: { id: prof.id },
+                data: { lastSyncPeriod: currentPeriod },
+            });
+
+            // Queue scraping job to fetch groups from UAT
+            await addScrapingJob({
+                professorId: prof.id,
+                email: data.institutionalEmail,
+                password: decryptedPassword,
+            });
+        }
 
         return {
             token,
@@ -89,9 +94,11 @@ export class AuthService {
                 institutionalEmail: prof.institutionalEmail,
                 name: prof.name,
             },
-            message: 'Login exitoso. Sincronizando grupos...',
+            message: shouldSync
+                ? 'Login exitoso. Sincronizando grupos...'
+                : 'Login exitoso.',
             currentPeriod,
-            needsSync: true,
+            needsSync: shouldSync,
         };
     }
 
@@ -115,6 +122,21 @@ export class AuthService {
         console.log(`🔄 forceSync called for professor ${professorId}`);
         const decryptedPassword = rsaService.decryptPassword(encryptedPassword);
         const currentPeriod = calculateCurrentPeriod();
+
+        // Block sync if there are pending attendance uploads
+        const pendingUploads = await prisma.attendanceRecord.count({
+            where: {
+                professorId,
+                portalSyncStatus: { in: ['PENDING', 'IN_PROGRESS'] },
+            },
+        });
+
+        if (pendingUploads > 0) {
+            return {
+                message: `No puedes sincronizar mientras hay ${pendingUploads} asistencia(s) pendiente(s) de subir al portal. Espera a que terminen.`,
+                currentPeriod,
+            };
+        }
 
         // Check if there's already a sync in progress
         const existingSync = await prisma.syncJob.findFirst({

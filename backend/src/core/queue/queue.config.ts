@@ -1,6 +1,7 @@
 import { Queue, Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
 import { env } from '../config/env.js';
+import { prisma } from '../database/prisma.js';
 
 // Queue names
 export const QUEUE_NAMES = {
@@ -170,6 +171,49 @@ export async function getQueueStats() {
             failed: attendanceFailed,
         },
     };
+}
+
+/**
+ * Drain stale jobs from Redis queues on startup.
+ * This prevents accumulated jobs (from downtime) from replaying
+ * and causing a 15-minute loop of repeated logins.
+ */
+export async function drainStaleJobs(): Promise<void> {
+    console.log('🧹 Draining stale jobs from queues...');
+
+    // Drain all waiting jobs in both queues
+    await scrapingQueue.drain();
+    console.log('   ✅ Drained stale scraping jobs');
+
+    await attendanceUploadQueue.drain();
+    console.log('   ✅ Drained stale attendance upload jobs');
+
+    // Mark any DB SyncJobs that are stuck in PENDING/IN_PROGRESS as FAILED
+    const updated = await prisma.syncJob.updateMany({
+        where: { status: { in: ['PENDING', 'IN_PROGRESS'] } },
+        data: {
+            status: 'FAILED',
+            error: 'Cancelado: el servidor se reinició',
+            completedAt: new Date(),
+        },
+    });
+    if (updated.count > 0) {
+        console.log(`   ✅ Marked ${updated.count} stuck SyncJob(s) as FAILED`);
+    }
+
+    // Also mark stuck attendance records as failed
+    const updatedAttendance = await prisma.attendanceRecord.updateMany({
+        where: { portalSyncStatus: { in: ['PENDING', 'IN_PROGRESS'] } },
+        data: {
+            portalSyncStatus: 'FAILED',
+            portalSyncError: 'Cancelado: el servidor se reinició',
+        },
+    });
+    if (updatedAttendance.count > 0) {
+        console.log(`   ✅ Marked ${updatedAttendance.count} stuck attendance upload(s) as FAILED`);
+    }
+
+    console.log('🧹 Queue cleanup complete');
 }
 
 /**
