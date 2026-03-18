@@ -8,6 +8,7 @@ COPY package*.json ./
 COPY prisma ./prisma
 
 # Install ALL dependencies (need devDeps for build)
+# v8 - fastify/static compatible with fastify 4
 RUN npm ci
 
 # Generate Prisma client
