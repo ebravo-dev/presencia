@@ -107,9 +107,10 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
           );
 
           // Save password for sync/retry and set sync flag
+          final encryptedPassword = _apiService.encryptPassword(password);
+          await _authStorage.saveEncryptedPassword(encryptedPassword);
+
           if (loginResponse.needsSync == true) {
-            final encryptedPassword = _apiService.encryptPassword(password);
-            await _authStorage.saveEncryptedPassword(encryptedPassword);
             await _authStorage.setSyncInProgress(true);
           }
 

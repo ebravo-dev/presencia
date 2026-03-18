@@ -1126,6 +1126,22 @@ class _GruposPageState extends ConsumerState<GruposPage>
   }
 
   void _showSyncDialog(BuildContext context) {
+    // Block sync if there are pending attendance uploads
+    final asistenciaService = AsistenciaLocalService();
+    if (asistenciaService.hayAsistenciasPendientes()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Sube las asistencias pendientes antes de sincronizar ciclo.',
+          ),
+          backgroundColor: Colors.orange.shade700,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
     bool isLoading = false;
 
     // Check if we have a stored password
