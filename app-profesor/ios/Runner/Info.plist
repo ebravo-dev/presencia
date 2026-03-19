@@ -49,5 +49,9 @@
 	<string>Se necesita Bluetooth para detectar alumnos cercanos y pasar lista automáticamente.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Se necesita Bluetooth para detectar alumnos cercanos y pasar lista automáticamente.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Se necesita ubicación para detectar beacons del salón de clases.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Se necesita ubicación para detectar beacons del salón de clases.</string>
 </dict>
 </plist>

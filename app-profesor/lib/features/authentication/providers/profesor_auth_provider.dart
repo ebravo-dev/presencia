@@ -120,8 +120,8 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
             token: loginResponse.token,
           );
 
-          // Cargar grupos del profesor (from local cache if available)
-          await _loadGrupos();
+          // Cargar grupos y configuración de aulas desde el servidor
+          await _loadGrupos(forceRefresh: true);
         },
       );
     } catch (e, stackTrace) {
@@ -177,7 +177,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
           await _authStorage.saveGrupos(data.grupos);
           // Guardar beacons
           await _authStorage.saveBeacons(data.beacons);
-          Logger.info('💾 Clases y beacons guardados en cache local');
+          Logger.info('💾 Clases y configuración de aulas guardados en cache local');
         },
       );
     } catch (e, stackTrace) {

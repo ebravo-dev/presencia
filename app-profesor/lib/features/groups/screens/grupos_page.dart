@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +12,7 @@ import '../../../../shared/models/grupo.dart';
 import '../../../../services/asistencia_local_service.dart';
 import '../../../../services/api_service.dart';
 import '../../../../services/auth_storage_service.dart';
+import '../../../../services/native_ble_channel.dart';
 import '../../authentication/providers/profesor_auth_provider.dart';
 import 'grupo_detail_page.dart';
 import 'upload_management_page.dart';
@@ -1541,6 +1543,117 @@ class _GruposPageState extends ConsumerState<GruposPage>
                   _showClearCacheDialog(context);
                 },
               ),
+              if (kDebugMode)
+                ListTile(
+                  leading: const Icon(Icons.bug_report, color: Colors.greenAccent),
+                  title: const Text(
+                    'Imprimir Salones',
+                    style: TextStyle(color: Colors.greenAccent),
+                  ),
+                  subtitle: Text(
+                    'Debug: ver configuración de aulas en consola',
+                    style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    final beacons = AuthStorageService().getBeacons();
+                    if (beacons == null || beacons.isEmpty) {
+                      debugPrint('⚠️ No hay configuración de aulas almacenada');
+                    } else {
+                      debugPrint('🏫 Configuración de aulas (${beacons.length}):');
+                      for (final b in beacons) {
+                        debugPrint('  Salón: ${b['classroom']} → UUID: ${b['uuid']}');
+                      }
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          beacons == null || beacons.isEmpty
+                              ? 'Sin configuración de aulas'
+                              : '${beacons.length} aulas impresas en consola',
+                        ),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+
+                    // Iniciar escaneo BLE después de 2 segundos
+                    if (beacons != null && beacons.isNotEmpty) {
+                      Future.delayed(const Duration(seconds: 2), () async {
+                        final ble = NativeBleChannel();
+                        debugPrint('══════════════════════════════════════════════');
+                        debugPrint('[BLE-TEST] UUIDs en DB:');
+                        for (final b in beacons) {
+                          debugPrint('[BLE-TEST]   ${b['classroom']} → ${b['uuid']}');
+                        }
+                        debugPrint('══════════════════════════════════════════════');
+
+                        // 1. Escaneo general 10s — todos los dispositivos BLE
+                        debugPrint('[BLE-TEST] Escaneo general 10s — TODOS los dispositivos');
+                        final devicesFound = <String, Map<String, dynamic>>{};
+                        final debugSub = ble.scanStream.listen((device) {
+                          if (!devicesFound.containsKey(device.deviceId)) {
+                            devicesFound[device.deviceId] = {
+                              'name': device.name,
+                              'rssi': device.rssi,
+                              'services': device.serviceUuids,
+                            };
+                            debugPrint('[BLE-TEST] #${devicesFound.length} '
+                                '"${device.name}" | ${device.deviceId} | RSSI: ${device.rssi}'
+                                '${device.serviceUuids.isNotEmpty ? " | Services: ${device.serviceUuids}" : ""}');
+                          }
+                        });
+                        await ble.startScan();
+                        await Future.delayed(const Duration(seconds: 10));
+                        await ble.stopScan();
+                        await debugSub.cancel();
+
+                        debugPrint('[BLE-TEST] Escaneo general: ${devicesFound.length} dispositivos');
+                        await Future.delayed(const Duration(milliseconds: 500));
+
+                        // 2. Búsqueda por UUID de cada beacon (iBeacon ranging + GATT)
+                        debugPrint('══════════════════════════════════════════════');
+                        debugPrint('[BLE-TEST] Ahora buscando por UUID cada beacon...');
+                        final results = <String, bool>{};
+                        for (final b in beacons) {
+                          final uuid = b['uuid'] as String?;
+                          final salon = b['classroom'] as String?;
+                          if (uuid == null || uuid.isEmpty) continue;
+
+                          debugPrint('──────────────────────────────────────────────');
+                          debugPrint('[BLE-TEST] Buscando UUID: $uuid (Salón: $salon)');
+
+                          bool found = false;
+                          final rangingSub = ble.scanStream.listen((device) {
+                            found = true;
+                            debugPrint('[BLE-TEST] ✅ DETECTADO: '
+                                '${device.name} | ${device.deviceId} | RSSI: ${device.rssi} '
+                                '| UUIDs: ${device.serviceUuids}');
+                          });
+                          final status = await ble.startScan(serviceUuids: [uuid]);
+                          debugPrint('[BLE-TEST] startScan → $status');
+                          await Future.delayed(const Duration(seconds: 5));
+                          await ble.stopScan();
+                          await rangingSub.cancel();
+                          results[salon ?? uuid] = found;
+                          if (!found) {
+                            debugPrint('[BLE-TEST] ❌ NO detectado: $salon ($uuid)');
+                          }
+                          await Future.delayed(const Duration(milliseconds: 500));
+                        }
+
+                        // 3. Resumen final
+                        debugPrint('══════════════════════════════════════════════');
+                        debugPrint('[BLE-TEST] RESUMEN DE DETECCIÓN POR UUID:');
+                        for (final entry in results.entries) {
+                          final icon = entry.value ? '✅' : '❌';
+                          debugPrint('[BLE-TEST]   $icon ${entry.key}');
+                        }
+                        debugPrint('[BLE-TEST] Dispositivos BLE cercanos: ${devicesFound.length}');
+                        debugPrint('══════════════════════════════════════════════');
+                      });
+                    }
+                  },
+                ),
               ListTile(
                 leading: const Icon(Icons.logout, color: Colors.red),
                 title: const Text(

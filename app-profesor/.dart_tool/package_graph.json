@@ -24,7 +24,6 @@
         "pointycastle",
         "riverpod_annotation",
         "table_calendar",
-        "universal_ble",
         "url_launcher"
       ],
       "devDependencies": [
@@ -269,16 +268,6 @@
       "name": "dartz",
       "version": "0.10.1",
       "dependencies": []
-    },
-    {
-      "name": "universal_ble",
-      "version": "1.1.0",
-      "dependencies": [
-        "bluez",
-        "flutter",
-        "flutter_web_bluetooth",
-        "plugin_platform_interface"
-      ]
     },
     {
       "name": "hive_flutter",
@@ -967,29 +956,6 @@
       "dependencies": []
     },
     {
-      "name": "bluez",
-      "version": "0.8.3",
-      "dependencies": [
-        "dbus"
-      ]
-    },
-    {
-      "name": "flutter_web_bluetooth",
-      "version": "1.1.0",
-      "dependencies": [
-        "logging",
-        "meta",
-        "web"
-      ]
-    },
-    {
-      "name": "plugin_platform_interface",
-      "version": "2.1.8",
-      "dependencies": [
-        "meta"
-      ]
-    },
-    {
       "name": "path_provider",
       "version": "2.1.5",
       "dependencies": [
@@ -1202,13 +1168,10 @@
       ]
     },
     {
-      "name": "dbus",
-      "version": "0.7.12",
+      "name": "plugin_platform_interface",
+      "version": "2.1.8",
       "dependencies": [
-        "args",
-        "ffi",
-        "meta",
-        "xml"
+        "meta"
       ]
     },
     {
@@ -1279,15 +1242,6 @@
       ]
     },
     {
-      "name": "xml",
-      "version": "6.6.1",
-      "dependencies": [
-        "collection",
-        "meta",
-        "petitparser"
-      ]
-    },
-    {
       "name": "ffi",
       "version": "2.1.4",
       "dependencies": []
@@ -1298,14 +1252,6 @@
       "dependencies": [
         "meta",
         "path"
-      ]
-    },
-    {
-      "name": "petitparser",
-      "version": "7.0.1",
-      "dependencies": [
-        "collection",
-        "meta"
       ]
     }
   ],

@@ -1950,9 +1950,11 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
       _lastDeviceFound = null;
     });
 
+    debugPrint('[BLE-Dialog] Iniciando verificación con UUID: ${widget.beaconUuid}');
     final result = await widget.bleService.verifyBeaconPresence(
       beaconUuid: widget.beaconUuid,
     );
+    debugPrint('[BLE-Dialog] Resultado: $result');
     if (!mounted) return;
 
     switch (result) {

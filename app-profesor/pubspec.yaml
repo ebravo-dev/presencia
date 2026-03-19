@@ -49,9 +49,6 @@ dependencies:
   hive: ^2.2.3
   hive_flutter: ^1.1.0
 
-  # Bluetooth (universal - iOS, macOS, Android, Windows, Linux, Web)
-  universal_ble: ^1.1.0
-
   # Utils
   dartz: ^0.10.1
   equatable: ^2.0.5

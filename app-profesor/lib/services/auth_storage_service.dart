@@ -268,7 +268,7 @@ class AuthStorageService {
     try {
       final beaconsJson = jsonEncode(beacons);
       await _box?.put(_beaconsKey, beaconsJson);
-      Logger.info('${beacons.length} beacons guardados correctamente');
+      Logger.info('${beacons.length} configuraciones de aulas guardadas');
     } catch (e, stackTrace) {
       Logger.error('Error al guardar beacons', e, stackTrace);
     }

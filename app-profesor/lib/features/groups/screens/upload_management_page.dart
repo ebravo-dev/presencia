@@ -1221,7 +1221,7 @@ class _CalendarModalState extends State<_CalendarModal> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.7,
+      height: MediaQuery.of(context).size.height * 0.75,
       decoration: const BoxDecoration(
         color: Color(0xFF1C1C1E),
         borderRadius: BorderRadius.only(
@@ -1229,7 +1229,9 @@ class _CalendarModalState extends State<_CalendarModal> {
           topRight: Radius.circular(20),
         ),
       ),
-      child: Column(
+      child: SafeArea(
+        top: false,
+        child: Column(
         children: [
           // Handle bar
           Container(
@@ -1264,6 +1266,8 @@ class _CalendarModalState extends State<_CalendarModal> {
                 firstDay: DateTime.now().subtract(const Duration(days: 365)),
                 lastDay: DateTime.now().add(const Duration(days: 30)),
                 focusedDay: _focusedDay,
+                rowHeight: 48,
+                daysOfWeekHeight: 24,
                 selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
                 onDaySelected: (selectedDay, focusedDay) {
                   setState(() {
@@ -1478,7 +1482,7 @@ class _CalendarModalState extends State<_CalendarModal> {
           ),
           // Close button
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
             child: SizedBox(
               width: double.infinity,
               height: 50,
@@ -1499,6 +1503,7 @@ class _CalendarModalState extends State<_CalendarModal> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

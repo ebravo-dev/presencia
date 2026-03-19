@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:universal_ble/universal_ble.dart';
+import 'native_ble_channel.dart';
 import '../shared/models/alumno.dart';
 
 /// Resultado del matching entre un dispositivo BT y un alumno
@@ -42,12 +42,6 @@ class DiscoveredDevice {
   @override
   int get hashCode => id.hashCode;
 }
-
-/// GAP Service UUID (Generic Access Profile)
-const String _gapServiceUuid = '1800';
-
-/// Device Name Characteristic UUID
-const String _deviceNameCharUuid = '2A00';
 
 /// Generic names that BLE reports instead of the real device name.
 /// These need to be resolved by connecting and reading GAP profile.
@@ -110,7 +104,8 @@ class BluetoothAttendanceService {
   bool _isScanning = false;
   bool _shouldKeepScanning = false;
   int _scanCycle = 0;
-  StreamSubscription<BleDevice>? _scanSubscription;
+  StreamSubscription<NativeBleDevice>? _scanSubscription;
+  final _ble = NativeBleChannel();
 
   // Public streams
   Stream<List<DiscoveredDevice>> get devicesStream => _devicesController.stream;
@@ -122,12 +117,13 @@ class BluetoothAttendanceService {
   List<DiscoveredDevice> get discoveredDevices =>
       _discoveredDevices.values.toList();
 
-  /// Request BLE permissions (auto-handled by universal_ble on iOS/macOS)
+  /// Request BLE permissions (auto-handled by native plugins)
   Future<bool> requestPermissions() async {
     try {
-      final state = await UniversalBle.getBluetoothAvailabilityState();
+      final available = await _ble.isBluetoothAvailable();
+      final state = await _ble.getBluetoothState();
       debugPrint('🔵 BT availability: $state');
-      return state == AvailabilityState.poweredOn;
+      return available;
     } catch (e) {
       debugPrint('🔵 Error requesting permissions: $e');
       return false;
@@ -137,9 +133,10 @@ class BluetoothAttendanceService {
   /// Check if Bluetooth is available and on
   Future<bool> isBluetoothReady() async {
     try {
-      final state = await UniversalBle.getBluetoothAvailabilityState();
+      final available = await _ble.isBluetoothAvailable();
+      final state = await _ble.getBluetoothState();
       debugPrint('🔵 BT availability: $state');
-      return state == AvailabilityState.poweredOn;
+      return available;
     } catch (e) {
       debugPrint('Error checking Bluetooth state: $e');
       return false;
@@ -175,10 +172,7 @@ class BluetoothAttendanceService {
       debugPrint('   👤 ${s.name}');
     }
 
-    // Step 1: Get system-paired devices
-    await _fetchSystemDevices();
-
-    // Step 2: BLE scanning cycles + name resolution
+    // Step 1: BLE scanning cycles + name resolution
     while (_shouldKeepScanning) {
       _scanCycle++;
       _scanCycleController.add(_scanCycle);
@@ -187,13 +181,13 @@ class BluetoothAttendanceService {
       try {
         // BLE scan phase
         _scanSubscription?.cancel();
-        _scanSubscription = UniversalBle.scanStream.listen((bleDevice) {
-          _processScanResult(bleDevice);
+        _scanSubscription = _ble.scanStream.listen((device) {
+          _processScanResult(device);
         });
 
-        await UniversalBle.startScan();
+        await _ble.startScan();
         await Future.delayed(cycleDuration);
-        await UniversalBle.stopScan();
+        await _ble.stopScan();
         _scanSubscription?.cancel();
         _scanSubscription = null;
 
@@ -205,11 +199,6 @@ class BluetoothAttendanceService {
 
         if (_shouldKeepScanning && toResolve.isNotEmpty) {
           await _resolveDeviceNames(toResolve);
-        }
-
-        // Re-fetch system devices (in case new connections appeared)
-        if (_shouldKeepScanning) {
-          await _fetchSystemDevices();
         }
 
         final named = _discoveredDevices.values.length;
@@ -233,46 +222,11 @@ class BluetoothAttendanceService {
     debugPrint('🔵 Escaneo terminado después de $_scanCycle ciclos.');
   }
 
-  /// Fetch system-paired/connected devices
-  Future<void> _fetchSystemDevices() async {
-    try {
-      final systemDevices = await UniversalBle.getSystemDevices(
-        withServices: [],
-      );
-      for (final device in systemDevices) {
-        final name = device.name ?? '';
-        if (name.isNotEmpty && !_isGenericName(name)) {
-          final isNew = !_discoveredDevices.containsKey(device.deviceId);
-          if (isNew) {
-            debugPrint('📱 Sistema: "$name" (${device.deviceId})');
-          }
-          _discoveredDevices[device.deviceId] = DiscoveredDevice(
-            name: name,
-            id: device.deviceId,
-            isSystemDevice: true,
-            discoveredAt: DateTime.now(),
-          );
-        } else if (name.isNotEmpty && _isGenericName(name)) {
-          // Generic system device — queue for name resolution too
-          if (!_failedResolutions.contains(device.deviceId)) {
-            _unresolvedGenericNames[device.deviceId] = name;
-            debugPrint(
-              '🔄 Sistema genérico: "$name" (${device.deviceId}) → intentará leer nombre real',
-            );
-          }
-        }
-      }
-      _emitResults();
-    } catch (e) {
-      debugPrint('⚠️ Error obteniendo dispositivos del sistema: $e');
-    }
-  }
-
   /// Process a BLE scan result — only log named devices or collect unnamed for resolution
-  void _processScanResult(BleDevice bleDevice) {
-    final name = bleDevice.name ?? '';
-    final deviceId = bleDevice.deviceId;
-    final rssi = bleDevice.rssi;
+  void _processScanResult(NativeBleDevice device) {
+    final name = device.name;
+    final deviceId = device.deviceId;
+    final rssi = device.rssi;
 
     if (name.isNotEmpty && !_isGenericName(name)) {
       // Device has a REAL name (not generic) — add it directly
@@ -321,70 +275,35 @@ class BluetoothAttendanceService {
       if (!_shouldKeepScanning) break;
 
       try {
-        // Connect to the device
-        await UniversalBle.connect(deviceId);
-
-        // Brief wait for connection to stabilize
-        await Future.delayed(const Duration(milliseconds: 500));
-
-        // Discover services to find GAP
-        final services = await UniversalBle.discoverServices(deviceId);
-
-        String resolvedName = '';
-
-        // Look for GAP service (0x1800)
-        for (final service in services) {
-          final serviceUuid = service.uuid.toLowerCase();
-          if (serviceUuid.contains(_gapServiceUuid.toLowerCase())) {
-            // Found GAP service — look for Device Name characteristic (0x2A00)
-            for (final char in service.characteristics) {
-              final charUuid = char.uuid.toLowerCase();
-              if (charUuid.contains(_deviceNameCharUuid.toLowerCase())) {
-                try {
-                  final value = await UniversalBle.readValue(
-                    deviceId,
-                    service.uuid,
-                    char.uuid,
-                  );
-                  if (value.isNotEmpty) {
-                    resolvedName = String.fromCharCodes(value);
-                    debugPrint(
-                      '✅ Nombre resuelto: "$resolvedName" ($deviceId)',
-                    );
-                  }
-                } catch (e) {
-                  debugPrint('⚠️ Error leyendo nombre $deviceId: $e');
-                }
-                break;
-              }
-            }
-            break;
-          }
-        }
-
-        // Disconnect
-        try {
-          await UniversalBle.disconnect(deviceId);
-        } catch (_) {}
+        final resolvedName = await _ble.connectAndReadName(deviceId);
 
         if (resolvedName.isNotEmpty) {
+          debugPrint('✅ Nombre resuelto: "$resolvedName" ($deviceId)');
           _discoveredDevices[deviceId] = DiscoveredDevice(
             name: resolvedName,
             id: deviceId,
             discoveredAt: DateTime.now(),
           );
           _unresolvedDeviceIds.remove(deviceId);
+          _unresolvedGenericNames.remove(deviceId);
           _emitResults();
         } else {
           _failedResolutions.add(deviceId);
           _unresolvedDeviceIds.remove(deviceId);
+          _unresolvedGenericNames.remove(deviceId);
         }
+
+        // Disconnect after reading
+        try {
+          await _ble.disconnect(deviceId);
+        } catch (_) {}
       } catch (e) {
         // Connection failed — mark as failed so we don't retry
         _failedResolutions.add(deviceId);
         _unresolvedDeviceIds.remove(deviceId);
+        _unresolvedGenericNames.remove(deviceId);
         try {
-          await UniversalBle.disconnect(deviceId);
+          await _ble.disconnect(deviceId);
         } catch (_) {}
       }
     }
@@ -410,7 +329,7 @@ class BluetoothAttendanceService {
     }
 
     try {
-      await UniversalBle.stopScan();
+      await _ble.stopScan();
     } catch (e) {
       debugPrint('Error stopping scan: $e');
     }
