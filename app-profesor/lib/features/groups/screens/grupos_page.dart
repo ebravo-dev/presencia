@@ -13,6 +13,7 @@ import '../../../../services/asistencia_local_service.dart';
 import '../../../../services/api_service.dart';
 import '../../../../services/auth_storage_service.dart';
 import '../../../../services/native_ble_channel.dart';
+import '../../../../core/permissions/permission_service.dart';
 import '../../authentication/providers/profesor_auth_provider.dart';
 import 'grupo_detail_page.dart';
 import 'upload_management_page.dart';
@@ -1580,6 +1581,15 @@ class _GruposPageState extends ConsumerState<GruposPage>
                     if (beacons != null && beacons.isNotEmpty) {
                       Future.delayed(const Duration(seconds: 2), () async {
                         final ble = NativeBleChannel();
+
+                        // Request runtime permissions before scanning
+                        final permGranted = await PermissionService.requestBluetoothPermissions();
+                        debugPrint('[BLE-TEST] Permisos BLE: ${permGranted ? "OK" : "DENEGADOS"}');
+                        if (!permGranted) {
+                          debugPrint('[BLE-TEST] No se puede escanear sin permisos');
+                          return;
+                        }
+
                         debugPrint('══════════════════════════════════════════════');
                         debugPrint('[BLE-TEST] UUIDs en DB:');
                         for (final b in beacons) {

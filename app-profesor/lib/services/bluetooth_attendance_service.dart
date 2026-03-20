@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'native_ble_channel.dart';
 import '../shared/models/alumno.dart';
+import '../core/permissions/permission_service.dart';
 
 /// Resultado del matching entre un dispositivo BT y un alumno
 class BluetoothMatch {
@@ -120,6 +121,14 @@ class BluetoothAttendanceService {
   /// Request BLE permissions (auto-handled by native plugins)
   Future<bool> requestPermissions() async {
     try {
+      // Request runtime permissions (BLUETOOTH_SCAN, BLUETOOTH_CONNECT, etc.)
+      final permissionsGranted =
+          await PermissionService.requestBluetoothPermissions();
+      if (!permissionsGranted) {
+        debugPrint('🔵 Bluetooth permissions denied');
+        return false;
+      }
+
       final available = await _ble.isBluetoothAvailable();
       final state = await _ble.getBluetoothState();
       debugPrint('🔵 BT availability: $state');

@@ -119,6 +119,7 @@ class NativeBlePlugin(private val context: Context) : MethodChannel.MethodCallHa
 
         // Si hay UUIDs, guardamos para filtrar por manufacturer data (iBeacon)
         targetBeaconUuids = serviceUuids
+        loggedDevices.clear()
 
         scanCallback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, scanResult: ScanResult) {
@@ -157,6 +158,9 @@ class NativeBlePlugin(private val context: Context) : MethodChannel.MethodCallHa
                             )
                             mainHandler.post { eventSink?.success(deviceData) }
                         }
+                    } else {
+                        // Debug: log manufacturer data for every device during filtered scan
+                        logManufacturerData(scanResult, deviceId, rssi)
                     }
                     // No emitir dispositivos que no son el beacon buscado
                     return
@@ -199,11 +203,48 @@ class NativeBlePlugin(private val context: Context) : MethodChannel.MethodCallHa
     }
 
     /// Parsea el UUID de un iBeacon desde manufacturer data de Apple (company ID 0x004C)
+    /// También intenta parsear desde raw bytes como fallback
     private fun parseIBeaconUuid(scanResult: ScanResult): String? {
         val record = scanResult.scanRecord ?: return null
-        // Apple company ID = 0x004C
-        val mfgData = record.getManufacturerSpecificData(0x004C) ?: return null
 
+        // Intento 1: Apple company ID = 0x004C via API
+        val mfgData = record.getManufacturerSpecificData(0x004C)
+        if (mfgData != null) {
+            val uuid = extractIBeaconUuidFromMfgData(mfgData)
+            if (uuid != null) return uuid
+        }
+
+        // Intento 2: Buscar en TODOS los manufacturer data entries (otros company IDs)
+        val allMfgData = record.manufacturerSpecificData
+        if (allMfgData != null) {
+            for (i in 0 until allMfgData.size()) {
+                val companyId = allMfgData.keyAt(i)
+                val data = allMfgData.valueAt(i)
+                if (data != null) {
+                    val uuid = extractIBeaconUuidFromMfgData(data)
+                    if (uuid != null) {
+                        Log.i(TAG, "iBeacon UUID found via company ID 0x${String.format("%04X", companyId)}")
+                        return uuid
+                    }
+                }
+            }
+        }
+
+        // Intento 3: Parsear raw scan record bytes buscando patrón iBeacon
+        val rawBytes = record.bytes
+        if (rawBytes != null) {
+            val uuid = parseIBeaconFromRawBytes(rawBytes)
+            if (uuid != null) {
+                Log.i(TAG, "iBeacon UUID found via raw bytes parsing")
+                return uuid
+            }
+        }
+
+        return null
+    }
+
+    /// Extrae UUID de iBeacon de manufacturer data (después del company ID)
+    private fun extractIBeaconUuidFromMfgData(mfgData: ByteArray): String? {
         // iBeacon format (after company ID):
         // Byte 0: type (0x02)
         // Byte 1: length (0x15 = 21)
@@ -221,6 +262,52 @@ class NativeBlePlugin(private val context: Context) : MethodChannel.MethodCallHa
             if (i == 5 || i == 7 || i == 9 || i == 11) sb.append("-")
         }
         return sb.toString()
+    }
+
+    /// Parsea raw advertisement bytes buscando el patrón iBeacon (4C 00 02 15 + 16 bytes UUID)
+    private fun parseIBeaconFromRawBytes(rawBytes: ByteArray): String? {
+        // Buscar secuencia: 4C 00 02 15 seguido de 16 bytes UUID
+        for (i in 0 until rawBytes.size - 22) {
+            if (rawBytes[i] == 0x4C.toByte() &&
+                rawBytes[i + 1] == 0x00.toByte() &&
+                rawBytes[i + 2] == 0x02.toByte() &&
+                rawBytes[i + 3] == 0x15.toByte()
+            ) {
+                val sb = StringBuilder()
+                for (j in (i + 4)..(i + 19)) {
+                    sb.append(String.format("%02x", rawBytes[j]))
+                    val offset = j - (i + 4)
+                    if (offset == 3 || offset == 5 || offset == 7 || offset == 9) sb.append("-")
+                }
+                return sb.toString()
+            }
+        }
+        return null
+    }
+
+    /// Debug: log manufacturer data for devices that weren't parsed as iBeacon
+    private val loggedDevices = mutableSetOf<String>()
+    private fun logManufacturerData(scanResult: ScanResult, deviceId: String, rssi: Int) {
+        if (loggedDevices.contains(deviceId)) return
+        loggedDevices.add(deviceId)
+
+        val record = scanResult.scanRecord ?: return
+        val allMfgData = record.manufacturerSpecificData
+        val rawBytes = record.bytes
+
+        val mfgInfo = StringBuilder()
+        if (allMfgData != null && allMfgData.size() > 0) {
+            for (i in 0 until allMfgData.size()) {
+                val companyId = allMfgData.keyAt(i)
+                val data = allMfgData.valueAt(i)
+                mfgInfo.append("  companyId=0x${String.format("%04X", companyId)} data=${data?.joinToString("") { String.format("%02X", it) } ?: "null"}\n")
+            }
+        } else {
+            mfgInfo.append("  (no manufacturer data)\n")
+        }
+
+        val rawHex = rawBytes?.joinToString("") { String.format("%02X", it) } ?: "null"
+        Log.d(TAG, "DEBUG scan $deviceId rssi=$rssi:\n${mfgInfo}  rawBytes=$rawHex")
     }
 
     private fun stopScan() {
