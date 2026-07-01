@@ -1,4 +1,4 @@
-/// Modelo para la respuesta del endpoint /professors/sync-status
+/// Modelo compatible para estado de sincronizacion del backend REST.
 class SyncStatusResponse {
   final String status;
   final int step;

@@ -3,9 +3,8 @@ class AppConstants {
   static const String appName = 'App Profesores Universidad';
   static const String appVersion = '1.0.0';
 
-  // API Configuration — todo el backend está en apipresencia.110694.xyz
-  // Prefer ApiConstants.baseUrl (supports env override). This constant is kept for legacy compat.
-  static const String baseUrl = 'https://apipresencia.110694.xyz';
+  // Prefer ApiConstants.baseUrl (supports env override).
+  static const String baseUrl = 'https://backendapirest.149828.xyz';
   static const int timeoutDuration = 30000; // 30 seconds
 
   // Database

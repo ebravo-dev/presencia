@@ -16,6 +16,33 @@ npm run dev
 
 Por defecto escucha en `http://localhost:3100`.
 
+## Despliegue en Dokploy
+
+Este servicio debe desplegarse como contenedor independiente del monorepo.
+En Dokploy configura:
+
+```txt
+Root Directory / Base Directory: backend-apirest
+Dockerfile: Dockerfile
+Puerto interno: 3100
+Dominio publico: https://backendapirest.149828.xyz
+```
+
+Variables recomendadas:
+
+```env
+NODE_ENV=production
+HOST=0.0.0.0
+PORT=3100
+UAT_BASE_URL=https://administracionescolar.uat.edu.mx
+UAT_HTTP_TIMEOUT_MS=30000
+UAT_SESSION_TTL_MINUTES=45
+```
+
+El archivo `.dockerignore` esta pensado para que el contexto sea solo
+`backend-apirest`; asi no se suben ni se construyen `app-profesor`,
+`app-alumno` ni el backend legacy.
+
 ## Flujo principal
 
 1. `POST /api/uat/sessions` con usuario y password.
@@ -31,6 +58,10 @@ POST https://administracionescolar.uat.edu.mx/Login/Accesar_Dominio
 GET  https://administracionescolar.uat.edu.mx/Login/Validar
 GET  https://administracionescolar.uat.edu.mx/Profesor/Consultas/BuscaHorarios
 GET  https://administracionescolar.uat.edu.mx/Profesor/Consultas/BuscaExamenes
+GET  https://administracionescolar.uat.edu.mx/Profesor/ControlAsistencia/BuscaGruposProfesor
+GET  https://administracionescolar.uat.edu.mx/Profesor/ControlAsistencia/BuscaSemanas
+GET  https://administracionescolar.uat.edu.mx/Profesor/ControlAsistencia/BuscaAsistenciaGrupo
+POST https://administracionescolar.uat.edu.mx/Profesor/ControlAsistencia/GuardaAsistencias
 ```
 
 ## Ejemplos curl

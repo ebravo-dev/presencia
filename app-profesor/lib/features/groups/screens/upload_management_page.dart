@@ -1,5 +1,4 @@
 import 'dart:ui';
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -9,7 +8,6 @@ import '../../../shared/models/asistencia_registro.dart';
 import '../../../core/utils/utils.dart';
 import '../../../services/api_service.dart';
 import '../../../services/auth_storage_service.dart';
-import '../../../services/sse_service.dart';
 import '../../../services/sync_service.dart';
 import '../../../shared/models/grupo.dart';
 
@@ -24,9 +22,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   final AsistenciaLocalService _asistenciaService = AsistenciaLocalService();
   final ApiService _apiService = ApiService();
   final AuthStorageService _authStorage = AuthStorageService();
-  final SSEService _sseService = SSEService();
   final SyncService _syncService = SyncService();
-  StreamSubscription<SyncEvent>? _sseSubscription;
   List<AsistenciaRegistro> _pendientes = [];
   List<AsistenciaRegistro> _sincronizadas = [];
   // Keys (grupoId_date) of records that are currently syncing on the server
@@ -52,8 +48,6 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   @override
   void dispose() {
     _disposed = true;
-    _sseSubscription?.cancel();
-    _sseService.disconnect();
     _stepsNotifier.dispose();
     super.dispose();
   }
@@ -288,11 +282,9 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     }
 
     final token = _authStorage.getToken();
-    final profesor = _authStorage.getProfesor();
     final grupos = _authStorage.getGrupos() ?? [];
-    final storedPassword = _authStorage.getEncryptedPassword();
 
-    if (token == null || profesor == null || storedPassword == null || storedPassword.isEmpty) {
+    if (token == null) {
       return;
     }
 
@@ -301,7 +293,6 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
 
     final pendientesSnapshot = List<AsistenciaRegistro>.from(_pendientes);
     final total = pendientesSnapshot.length;
-    final encryptedPassword = _apiService.ensureEncryptedPassword(storedPassword);
 
     // Initialize 4 fixed steps
     _stepsNotifier.value = [
@@ -309,10 +300,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         label: 'Preparando registros',
         status: _StepStatus.inProgress,
       ),
-      _SyncStepData(
-        label: 'Enviando al servidor',
-        status: _StepStatus.pending,
-      ),
+      _SyncStepData(label: 'Enviando al servidor', status: _StepStatus.pending),
       _SyncStepData(
         label: 'Procesando en servidor',
         status: _StepStatus.pending,
@@ -321,7 +309,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     ];
 
     // ── Phase 1: Fire ALL HTTP uploads ─────────────────────────────
-    // Each POST /attendance returns 201 immediately and queues a job.
+    // Each POST registers attendance through backend-apirest.
     _updateStep(0, _StepStatus.completed);
     _updateStep(1, _StepStatus.inProgress);
 
@@ -333,16 +321,22 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       if (_disposed) break;
       final grupo = _resolveGrupo(grupos, reg.grupoId);
       if (grupo == null) {
-        Logger.error('Grupo no encontrado para registro ${reg.id} (grupoId: ${reg.grupoId})');
+        Logger.error(
+          'Grupo no encontrado para registro ${reg.id} (grupoId: ${reg.grupoId})',
+        );
         continue;
       }
 
       final registroActualizado = await _migrarRegistroSiNecesario(reg, grupo);
       final attendances = _buildAttendances(registroActualizado, grupo);
-      Logger.info('Registro ${registroActualizado.id}: ${attendances.length} alumnos a enviar de ${registroActualizado.asistenciasAlumnos.length} locales');
+      Logger.info(
+        'Registro ${registroActualizado.id}: ${attendances.length} alumnos a enviar de ${registroActualizado.asistenciasAlumnos.length} locales',
+      );
 
       if (attendances.isEmpty) {
-        Logger.error('Sin alumnos mapeados para registro ${registroActualizado.id}, omitiendo');
+        Logger.error(
+          'Sin alumnos mapeados para registro ${registroActualizado.id}, omitiendo',
+        );
         emptyCount++;
         continue;
       }
@@ -353,23 +347,24 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
 
       final result = await _apiService.uploadAttendance(
         token: token,
+        groupId: grupo.id,
         code: grupo.code ?? '',
         groupLetter: grupo.groupLetter ?? '',
         period: grupo.period ?? '',
         date: registroActualizado.fecha,
         attendances: attendances,
-        encryptedPassword: encryptedPassword,
+        encryptedPassword: '',
       );
 
-      result.fold(
-        (error) => Logger.error('Error al enviar $key: $error'),
-        (_) {
-          sentCount++;
-          sentRecords[key] = registroActualizado;
-          _updateStep(1, _StepStatus.inProgress,
-            subtitle: '$sentCount de $total enviado${sentCount == 1 ? '' : 's'}');
-        },
-      );
+      result.fold((error) => Logger.error('Error al enviar $key: $error'), (_) {
+        sentCount++;
+        sentRecords[key] = registroActualizado;
+        _updateStep(
+          1,
+          _StepStatus.inProgress,
+          subtitle: '$sentCount de $total enviado${sentCount == 1 ? '' : 's'}',
+        );
+      });
 
       // Save snapshot of what we sent so reconciliation can detect
       // whether the user changed data after this upload.
@@ -378,9 +373,13 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       }
     }
 
-    _updateStep(1, _StepStatus.completed,
-      subtitle: '$sentCount enviado${sentCount == 1 ? '' : 's'}'
-          '${emptyCount > 0 ? ', $emptyCount sin cambios' : ''}');
+    _updateStep(
+      1,
+      _StepStatus.completed,
+      subtitle:
+          '$sentCount enviado${sentCount == 1 ? '' : 's'}'
+          '${emptyCount > 0 ? ', $emptyCount sin cambios' : ''}',
+    );
 
     if (sentRecords.isEmpty) {
       // Nothing was sent — everything was empty or failed to send
@@ -393,26 +392,22 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       return;
     }
 
-    // ── Phase 2: Monitor completion via check-synced polling ───────
-    _updateStep(2, _StepStatus.inProgress,
-      subtitle: '0 de ${sentRecords.length} procesados...');
-
-    // Connect SSE for live progress display (optional, enriches subtitles)
-    String lastSseMessage = '';
-    await _sseSubscription?.cancel();
-    _sseSubscription = _sseService.connect(profesor.id, token).listen(
-      (event) {
-        if (event.type == SyncEventType.progress && event.message.isNotEmpty) {
-          lastSseMessage = event.message;
-        }
-      },
-      onError: (_) {},
-      onDone: () {},
+    // Phase 2: REST response already confirms persistence in UAT.
+    _updateStep(
+      2,
+      _StepStatus.inProgress,
+      subtitle: '0 de ${sentRecords.length} procesados...',
     );
 
-    final completedKeys = <String>{};
+    String lastSseMessage = '';
+
+    final completedKeys = sentRecords.keys.toSet();
     final failedKeys = <String>{};
     final deadline = DateTime.now().add(const Duration(minutes: 10));
+
+    for (final registro in sentRecords.values) {
+      await _asistenciaService.marcarComoSincronizada(registro.id);
+    }
 
     while (completedKeys.length + failedKeys.length < sentRecords.length &&
         DateTime.now().isBefore(deadline) &&
@@ -421,7 +416,10 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       if (_disposed) break;
 
       final remainingRecords = sentRecords.entries
-          .where((e) => !completedKeys.contains(e.key) && !failedKeys.contains(e.key))
+          .where(
+            (e) =>
+                !completedKeys.contains(e.key) && !failedKeys.contains(e.key),
+          )
           .map((e) {
             final reg = e.value;
             final dateStr =
@@ -437,7 +435,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         records: remainingRecords,
       );
 
-      Logger.info('Poll check-synced: $statusMap');
+      Logger.info('REST sync status: $statusMap');
 
       for (final entry in statusMap.entries) {
         if (entry.value == 'COMPLETED') {
@@ -455,17 +453,17 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       final failed = failedKeys.length;
       String subtitle;
       if (failed > 0) {
-        subtitle = '$done completado${done == 1 ? '' : 's'}, $failed fallido${failed == 1 ? '' : 's'} de ${sentRecords.length}';
+        subtitle =
+            '$done completado${done == 1 ? '' : 's'}, $failed fallido${failed == 1 ? '' : 's'} de ${sentRecords.length}';
       } else {
-        subtitle = '$done de ${sentRecords.length} completado${done == 1 ? '' : 's'}';
+        subtitle =
+            '$done de ${sentRecords.length} completado${done == 1 ? '' : 's'}';
       }
       if (lastSseMessage.isNotEmpty && done + failed < sentRecords.length) {
         subtitle += '\n$lastSseMessage';
       }
       _updateStep(2, _StepStatus.inProgress, subtitle: subtitle);
     }
-
-    _sseService.disconnect();
 
     // ── Phase 3: Final status ──────────────────────────────────────
     final allComplete = completedKeys.length == sentRecords.length;
@@ -476,15 +474,25 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       HapticFeedback.heavyImpact();
       await Future.delayed(const Duration(seconds: 2));
     } else if (completedKeys.isNotEmpty) {
-      _updateStep(2, failedKeys.isNotEmpty ? _StepStatus.failed : _StepStatus.completed);
-      _updateStep(3, _StepStatus.failed,
-        subtitle: '${completedKeys.length} de ${sentRecords.length} subidos. Los fallidos se pueden reintentar.');
+      _updateStep(
+        2,
+        failedKeys.isNotEmpty ? _StepStatus.failed : _StepStatus.completed,
+      );
+      _updateStep(
+        3,
+        _StepStatus.failed,
+        subtitle:
+            '${completedKeys.length} de ${sentRecords.length} subidos. Los fallidos se pueden reintentar.',
+      );
       HapticFeedback.heavyImpact();
       await Future.delayed(const Duration(seconds: 3));
     } else {
       _updateStep(2, _StepStatus.failed);
-      _updateStep(3, _StepStatus.failed,
-        subtitle: 'Error al subir asistencias. Intenta de nuevo.');
+      _updateStep(
+        3,
+        _StepStatus.failed,
+        subtitle: 'Error al subir asistencias. Intenta de nuevo.',
+      );
       HapticFeedback.heavyImpact();
       await Future.delayed(const Duration(seconds: 3));
     }
@@ -765,11 +773,15 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     AsistenciaRegistro registro,
     Grupo grupo,
   ) {
-    final studentIdMap = <String, String>{};
+    final studentIdMap = <String, int>{};
     for (final student in grupo.students) {
-      if (student.id != null) {
-        studentIdMap[student.id!] = student.id!;
-        studentIdMap[student.number.toString()] = student.id!;
+      final idAlumno = int.tryParse(student.id ?? '');
+      if (idAlumno != null) {
+        studentIdMap[student.id!] = idAlumno;
+        studentIdMap[student.number.toString()] = idAlumno;
+        if (student.matricula != null) {
+          studentIdMap[student.matricula!] = idAlumno;
+        }
       }
     }
 
@@ -780,8 +792,10 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         return;
       }
       attendances.add({
-        'studentId': studentId,
-        'status': present ? 'PRESENT' : 'ABSENT',
+        'id_alumno': studentId,
+        'num_pase_lista': 1,
+        'num_dia': registro.fecha.weekday,
+        'sn_asistencia': present,
       });
     });
 
@@ -982,43 +996,37 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     return Column(
       children: [
         // Banner: records being synced server-side (professor left mid-upload)
-        if (_syncingOnServer.isNotEmpty) ...
-          [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              margin: const EdgeInsets.only(bottom: 14),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Colors.blue.withOpacity(0.2),
-                ),
-              ),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.blue.shade400,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '${_syncingOnServer.length} registro${_syncingOnServer.length == 1 ? '' : 's'} sincronizando en el servidor. Se actualizará al terminar.',
-                      style: TextStyle(
-                        color: Colors.blue.shade300,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+        if (_syncingOnServer.isNotEmpty) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            margin: const EdgeInsets.only(bottom: 14),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.withOpacity(0.2)),
             ),
-          ],
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.blue.shade400,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '${_syncingOnServer.length} registro${_syncingOnServer.length == 1 ? '' : 's'} sincronizando en el servidor. Se actualizará al terminar.',
+                    style: TextStyle(color: Colors.blue.shade300, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         GestureDetector(
           onTap: () {
             HapticFeedback.lightImpact();
@@ -1168,9 +1176,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                             ? 'Sincronizando...'
                             : 'Subir Asistencias',
                         style: TextStyle(
-                          color: blocked
-                              ? Colors.grey.shade600
-                              : Colors.white,
+                          color: blocked ? Colors.grey.shade600 : Colors.white,
                           fontSize: 17,
                           fontWeight: FontWeight.w500,
                         ),
@@ -1232,278 +1238,284 @@ class _CalendarModalState extends State<_CalendarModal> {
       child: SafeArea(
         top: false,
         child: Column(
-        children: [
-          // Handle bar
-          Container(
-            margin: const EdgeInsets.only(top: 12),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade600,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          // Title
-          const Padding(
-            padding: EdgeInsets.all(20),
-            child: Text(
-              'Calendario de Asistencias',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade600,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-          ),
-          // Legend
-          _buildLegend(),
-          const SizedBox(height: 16),
-          // Calendar
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: TableCalendar(
-                firstDay: DateTime.now().subtract(const Duration(days: 365)),
-                lastDay: DateTime.now().add(const Duration(days: 30)),
-                focusedDay: _focusedDay,
-                rowHeight: 48,
-                daysOfWeekHeight: 24,
-                selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-                onDaySelected: (selectedDay, focusedDay) {
-                  setState(() {
-                    _selectedDay = selectedDay;
-                    _focusedDay = focusedDay;
-                  });
-                  widget.onDaySelected(selectedDay, focusedDay);
-                  HapticFeedback.selectionClick();
-                },
-                onPageChanged: (focusedDay) {
-                  setState(() => _focusedDay = focusedDay);
-                },
-                locale: 'es_ES',
-                startingDayOfWeek: StartingDayOfWeek.monday,
-                headerStyle: HeaderStyle(
-                  formatButtonVisible: false,
-                  titleCentered: true,
-                  titleTextStyle: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  leftChevronIcon: const Icon(
-                    Icons.chevron_left,
-                    color: Colors.white,
-                    size: 28,
-                  ),
-                  rightChevronIcon: const Icon(
-                    Icons.chevron_right,
-                    color: Colors.white,
-                    size: 28,
-                  ),
-                ),
-                daysOfWeekStyle: DaysOfWeekStyle(
-                  weekdayStyle: TextStyle(
-                    color: Colors.grey.shade400,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  weekendStyle: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                calendarStyle: CalendarStyle(
-                  defaultTextStyle: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                  ),
-                  weekendTextStyle: TextStyle(
-                    color: Colors.grey.shade500,
-                    fontSize: 16,
-                  ),
-                  outsideTextStyle: TextStyle(
-                    color: Colors.grey.shade700,
-                    fontSize: 16,
-                  ),
-                  todayDecoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.3),
-                    shape: BoxShape.circle,
-                  ),
-                  todayTextStyle: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                  selectedDecoration: BoxDecoration(
-                    color: Colors.blue.shade600,
-                    shape: BoxShape.circle,
-                  ),
-                  selectedTextStyle: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                  cellMargin: const EdgeInsets.all(6),
-                ),
-                calendarBuilders: CalendarBuilders(
-                  defaultBuilder: (context, day, focusedDay) {
-                    final normalizedDay = DateTime(
-                      day.year,
-                      day.month,
-                      day.day,
-                    );
-                    final isPending = widget.pendingDates.contains(
-                      normalizedDay,
-                    );
-                    final isSynced = widget.syncedDates.contains(normalizedDay);
-
-                    if (isPending) {
-                      return _buildDayWithIndicator(day, Colors.orange);
-                    } else if (isSynced) {
-                      return _buildDayWithIndicator(day, Colors.green);
-                    }
-                    return null;
-                  },
-                  todayBuilder: (context, day, focusedDay) {
-                    final normalizedDay = DateTime(
-                      day.year,
-                      day.month,
-                      day.day,
-                    );
-                    final isPending = widget.pendingDates.contains(
-                      normalizedDay,
-                    );
-                    final isSynced = widget.syncedDates.contains(normalizedDay);
-
-                    Color? indicatorColor;
-                    if (isPending) {
-                      indicatorColor = Colors.orange;
-                    } else if (isSynced) {
-                      indicatorColor = Colors.green;
-                    }
-
-                    return Container(
-                      margin: const EdgeInsets.all(4),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: Colors.blue.withOpacity(0.3),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Center(
-                              child: Text(
-                                '${day.day}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ),
-                          ),
-                          if (indicatorColor != null)
-                            Positioned(
-                              bottom: 2,
-                              child: Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: indicatorColor,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    );
-                  },
-                  selectedBuilder: (context, day, focusedDay) {
-                    final normalizedDay = DateTime(
-                      day.year,
-                      day.month,
-                      day.day,
-                    );
-                    final isPending = widget.pendingDates.contains(
-                      normalizedDay,
-                    );
-                    final isSynced = widget.syncedDates.contains(normalizedDay);
-                    final indicatorColor = isPending
-                        ? Colors.orange
-                        : isSynced
-                        ? Colors.green
-                        : null;
-                    return Container(
-                      margin: const EdgeInsets.all(4),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade600,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Center(
-                              child: Text(
-                                '${day.day}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ),
-                          ),
-                          if (indicatorColor != null)
-                            Positioned(
-                              bottom: 2,
-                              child: Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: indicatorColor,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    );
-                  },
+            // Title
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: Text(
+                'Calendario de Asistencias',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),
-          ),
-          // Close button
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-            child: SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.grey.shade800,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+            // Legend
+            _buildLegend(),
+            const SizedBox(height: 16),
+            // Calendar
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: TableCalendar(
+                  firstDay: DateTime.now().subtract(const Duration(days: 365)),
+                  lastDay: DateTime.now().add(const Duration(days: 30)),
+                  focusedDay: _focusedDay,
+                  rowHeight: 48,
+                  daysOfWeekHeight: 24,
+                  selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+                  onDaySelected: (selectedDay, focusedDay) {
+                    setState(() {
+                      _selectedDay = selectedDay;
+                      _focusedDay = focusedDay;
+                    });
+                    widget.onDaySelected(selectedDay, focusedDay);
+                    HapticFeedback.selectionClick();
+                  },
+                  onPageChanged: (focusedDay) {
+                    setState(() => _focusedDay = focusedDay);
+                  },
+                  locale: 'es_ES',
+                  startingDayOfWeek: StartingDayOfWeek.monday,
+                  headerStyle: HeaderStyle(
+                    formatButtonVisible: false,
+                    titleCentered: true,
+                    titleTextStyle: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    leftChevronIcon: const Icon(
+                      Icons.chevron_left,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                    rightChevronIcon: const Icon(
+                      Icons.chevron_right,
+                      color: Colors.white,
+                      size: 28,
+                    ),
                   ),
-                ),
-                child: const Text(
-                  'Cerrar',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  daysOfWeekStyle: DaysOfWeekStyle(
+                    weekdayStyle: TextStyle(
+                      color: Colors.grey.shade400,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    weekendStyle: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  calendarStyle: CalendarStyle(
+                    defaultTextStyle: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                    ),
+                    weekendTextStyle: TextStyle(
+                      color: Colors.grey.shade500,
+                      fontSize: 16,
+                    ),
+                    outsideTextStyle: TextStyle(
+                      color: Colors.grey.shade700,
+                      fontSize: 16,
+                    ),
+                    todayDecoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.3),
+                      shape: BoxShape.circle,
+                    ),
+                    todayTextStyle: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                    selectedDecoration: BoxDecoration(
+                      color: Colors.blue.shade600,
+                      shape: BoxShape.circle,
+                    ),
+                    selectedTextStyle: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                    cellMargin: const EdgeInsets.all(6),
+                  ),
+                  calendarBuilders: CalendarBuilders(
+                    defaultBuilder: (context, day, focusedDay) {
+                      final normalizedDay = DateTime(
+                        day.year,
+                        day.month,
+                        day.day,
+                      );
+                      final isPending = widget.pendingDates.contains(
+                        normalizedDay,
+                      );
+                      final isSynced = widget.syncedDates.contains(
+                        normalizedDay,
+                      );
+
+                      if (isPending) {
+                        return _buildDayWithIndicator(day, Colors.orange);
+                      } else if (isSynced) {
+                        return _buildDayWithIndicator(day, Colors.green);
+                      }
+                      return null;
+                    },
+                    todayBuilder: (context, day, focusedDay) {
+                      final normalizedDay = DateTime(
+                        day.year,
+                        day.month,
+                        day.day,
+                      );
+                      final isPending = widget.pendingDates.contains(
+                        normalizedDay,
+                      );
+                      final isSynced = widget.syncedDates.contains(
+                        normalizedDay,
+                      );
+
+                      Color? indicatorColor;
+                      if (isPending) {
+                        indicatorColor = Colors.orange;
+                      } else if (isSynced) {
+                        indicatorColor = Colors.green;
+                      }
+
+                      return Container(
+                        margin: const EdgeInsets.all(4),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: Colors.blue.withOpacity(0.3),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '${day.day}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (indicatorColor != null)
+                              Positioned(
+                                bottom: 2,
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: indicatorColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                    selectedBuilder: (context, day, focusedDay) {
+                      final normalizedDay = DateTime(
+                        day.year,
+                        day.month,
+                        day.day,
+                      );
+                      final isPending = widget.pendingDates.contains(
+                        normalizedDay,
+                      );
+                      final isSynced = widget.syncedDates.contains(
+                        normalizedDay,
+                      );
+                      final indicatorColor = isPending
+                          ? Colors.orange
+                          : isSynced
+                          ? Colors.green
+                          : null;
+                      return Container(
+                        margin: const EdgeInsets.all(4),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade600,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '${day.day}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (indicatorColor != null)
+                              Positioned(
+                                bottom: 2,
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: indicatorColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
-      ),
+            // Close button
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+              child: SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey.shade800,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Cerrar',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
+export const UAT_PORTAL_BASE_URL = 'https://administracionescolar.uat.edu.mx';
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   HOST: z.string().default('0.0.0.0'),
@@ -8,7 +10,7 @@ const envSchema = z.object({
   UAT_BASE_URL: z
     .string()
     .url()
-    .default('https://administracionescolar.uat.edu.mx')
+    .default(UAT_PORTAL_BASE_URL)
     .transform((value) => value.replace(/\/+$/, '')),
   UAT_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   UAT_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(45),

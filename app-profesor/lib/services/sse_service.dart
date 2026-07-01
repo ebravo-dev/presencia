@@ -1,10 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../core/constants/api_constants.dart';
+
 import '../core/utils/utils.dart';
 
-/// Event types received from SSE stream
 enum SyncEventType {
   connected,
   progress,
@@ -15,7 +12,6 @@ enum SyncEventType {
   error,
 }
 
-/// Represents a sync progress event from SSE stream
 class SyncEvent {
   final SyncEventType type;
   final String? status;
@@ -23,7 +19,7 @@ class SyncEvent {
   final int totalSteps;
   final String message;
   final String? error;
-  final String? errorType; // 'credential' or 'portal'
+  final String? errorType;
   final int attemptsMade;
 
   SyncEvent({
@@ -39,30 +35,15 @@ class SyncEvent {
 
   factory SyncEvent.fromJson(Map<String, dynamic> json) {
     final typeStr = json['type'] as String? ?? 'progress';
-    SyncEventType type;
-
-    switch (typeStr) {
-      case 'connected':
-        type = SyncEventType.connected;
-        break;
-      case 'completed':
-        type = SyncEventType.completed;
-        break;
-      case 'failed':
-        type = SyncEventType.failed;
-        break;
-      case 'timeout':
-        type = SyncEventType.timeout;
-        break;
-      case 'no_job':
-        type = SyncEventType.noJob;
-        break;
-      case 'error':
-        type = SyncEventType.error;
-        break;
-      default:
-        type = SyncEventType.progress;
-    }
+    final type = switch (typeStr) {
+      'connected' => SyncEventType.connected,
+      'completed' => SyncEventType.completed,
+      'failed' => SyncEventType.failed,
+      'timeout' => SyncEventType.timeout,
+      'no_job' => SyncEventType.noJob,
+      'error' => SyncEventType.error,
+      _ => SyncEventType.progress,
+    };
 
     return SyncEvent(
       type: type,
@@ -90,102 +71,51 @@ class SyncEvent {
   }
 }
 
-/// Service for Server-Sent Events (SSE) connection to sync endpoint
+/// Compatibility shim for the old sync-status UI.
+///
+/// backend-apirest now performs UAT calls synchronously over REST, so there is
+/// no queue stream to subscribe to. This stream emits a completed event and
+/// lets the existing screen navigate/refresh without opening legacy endpoints.
 class SSEService {
-  http.Client? _client;
   StreamController<SyncEvent>? _controller;
   bool _isConnected = false;
 
-  /// Check if currently connected to SSE stream
   bool get isConnected => _isConnected;
 
-  /// Connect to SSE stream for sync progress updates
-  /// Returns a Stream of SyncEvent that emits progress updates
   Stream<SyncEvent> connect(String professorId, String token) {
-    _controller = StreamController<SyncEvent>.broadcast(
-      onCancel: () {
-        disconnect();
-      },
-    );
+    _controller = StreamController<SyncEvent>.broadcast(onCancel: disconnect);
+    _isConnected = true;
 
-    _startListening(professorId, token);
+    scheduleMicrotask(() {
+      Logger.info('Sync shim: REST backend has no SSE queue for $professorId');
+      _controller?.add(
+        SyncEvent(
+          type: SyncEventType.connected,
+          status: 'IN_PROGRESS',
+          step: 1,
+          totalSteps: 5,
+          message: 'Conectando con backend-apirest...',
+        ),
+      );
+      _controller?.add(
+        SyncEvent(
+          type: SyncEventType.completed,
+          status: 'COMPLETED',
+          step: 5,
+          totalSteps: 5,
+          message: 'Datos sincronizados desde backend-apirest',
+        ),
+      );
+      disconnect();
+    });
 
     return _controller!.stream;
   }
 
-  Future<void> _startListening(String professorId, String token) async {
-    _client = http.Client();
-    _isConnected = true;
-
-    try {
-      final url = '${ApiConstants.baseUrl}/sync/stream/$professorId';
-      Logger.info('SSE: Connecting to $url');
-
-      final request = http.Request('GET', Uri.parse(url));
-      request.headers['Authorization'] = 'Bearer $token';
-      request.headers['Accept'] = 'text/event-stream';
-      request.headers['Cache-Control'] = 'no-cache';
-
-      final response = await _client!.send(request);
-
-      if (response.statusCode != 200) {
-        Logger.error(
-          'SSE: Connection failed with status ${response.statusCode}',
-        );
-        _controller?.addError('Error de conexión: ${response.statusCode}');
-        _isConnected = false;
-        return;
-      }
-
-      Logger.info('SSE: Connected successfully');
-
-      // Listen to the stream
-      response.stream
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())
-          .listen(
-            (line) {
-              if (line.startsWith('data: ')) {
-                try {
-                  final jsonStr = line.substring(6); // Remove 'data: ' prefix
-                  final json = jsonDecode(jsonStr) as Map<String, dynamic>;
-                  final event = SyncEvent.fromJson(json);
-                  Logger.debug('SSE: Received event: $event');
-                  _controller?.add(event);
-
-                  // Don't auto-disconnect here — the caller manages disconnection.
-                  // Auto-disconnecting caused a race condition when uploading
-                  // multiple records: the delayed disconnect killed the next
-                  // record's SSE connection.
-                } catch (e) {
-                  Logger.error('SSE: Error parsing event: $e');
-                }
-              }
-            },
-            onError: (error) {
-              Logger.error('SSE: Stream error: $error');
-              _controller?.addError(error);
-              _isConnected = false;
-            },
-            onDone: () {
-              Logger.info('SSE: Stream closed');
-              _isConnected = false;
-            },
-            cancelOnError: false,
-          );
-    } catch (e) {
-      Logger.error('SSE: Connection error: $e');
-      _controller?.addError(e);
-      _isConnected = false;
-    }
-  }
-
-  /// Disconnect from SSE stream
   void disconnect() {
-    Logger.info('SSE: Disconnecting');
+    if (!_isConnected && _controller == null) return;
+    Logger.info('Sync shim: disconnect');
     _isConnected = false;
-    _client?.close();
-    _client = null;
     _controller?.close();
     _controller = null;
   }

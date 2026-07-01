@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'dart:async';
 import '../../../shared/models/asistencia_registro.dart';
 import '../../../shared/models/grupo.dart';
 import '../../../services/asistencia_local_service.dart';
 import '../../../services/api_service.dart';
 import '../../../services/auth_storage_service.dart';
-import '../../../services/sse_service.dart';
 import '../../authentication/providers/profesor_auth_provider.dart';
 
 class AsistenciasPendientesPage extends ConsumerStatefulWidget {
@@ -33,8 +31,6 @@ class _AsistenciasPendientesPageState
   // ApiService se obtiene del provider para que el callback 401 esté activo
   ApiService get _apiService => ref.read(apiServiceProvider);
   AuthStorageService get _authStorage => AuthStorageService();
-  final SSEService _sseService = SSEService();
-  StreamSubscription<SyncEvent>? _sseSubscription;
   List<AsistenciaRegistro> _asistenciasPendientes = [];
   bool _isLoading = true;
   bool _isSyncing = false;
@@ -71,8 +67,6 @@ class _AsistenciasPendientesPageState
 
   @override
   void dispose() {
-    _sseSubscription?.cancel();
-    _sseService.disconnect();
     super.dispose();
   }
 
@@ -261,7 +255,10 @@ class _AsistenciasPendientesPageState
       return false;
     }
 
-    final registroActualizado = await _migrarRegistroSiNecesario(registro, grupo);
+    final registroActualizado = await _migrarRegistroSiNecesario(
+      registro,
+      grupo,
+    );
 
     final attendances = _buildAttendances(registroActualizado, grupo);
     if (attendances.isEmpty) {
@@ -281,30 +278,15 @@ class _AsistenciasPendientesPageState
       return false;
     }
 
-    final storedPassword = _authStorage.getEncryptedPassword();
-    if (storedPassword == null || storedPassword.isEmpty) {
-      if (showSnackbars && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Falta la contraseña para subir asistencia.'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-      return false;
-    }
-
-    final encryptedPassword = _apiService.ensureEncryptedPassword(storedPassword);
-
     final result = await _apiService.uploadAttendance(
       token: token,
+      groupId: grupo.id,
       code: grupo.code ?? '',
       groupLetter: grupo.groupLetter ?? '',
       period: grupo.period ?? '',
       date: registroActualizado.fecha,
       attendances: attendances,
-      encryptedPassword: encryptedPassword,
+      encryptedPassword: '',
     );
 
     final uploadSuccess = await result.fold(
@@ -321,38 +303,19 @@ class _AsistenciasPendientesPageState
         return false;
       },
       (_) async {
-        final syncSuccess = await _waitForSyncCompletion(
-          profesor.id,
-          token,
-        );
-        if (syncSuccess) {
-          await _asistenciaService.marcarComoSincronizada(
-            registroActualizado.id,
-          );
-          if (showSnackbars && mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Asistencia del ${_formatearFecha(registroActualizado.fecha)} sincronizada',
-                ),
-                backgroundColor: Colors.green,
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          }
-          return true;
-        }
-
+        await _asistenciaService.marcarComoSincronizada(registroActualizado.id);
         if (showSnackbars && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('La subida no se completo. Intenta de nuevo.'),
-              backgroundColor: Colors.red,
+            SnackBar(
+              content: Text(
+                'Asistencia del ${_formatearFecha(registroActualizado.fecha)} sincronizada',
+              ),
+              backgroundColor: Colors.green,
               behavior: SnackBarBehavior.floating,
             ),
           );
         }
-        return false;
+        return true;
       },
     );
 
@@ -410,11 +373,15 @@ class _AsistenciasPendientesPageState
     AsistenciaRegistro registro,
     Grupo grupo,
   ) {
-    final studentIdMap = <String, String>{};
+    final studentIdMap = <String, int>{};
     for (final student in grupo.students) {
-      if (student.id != null) {
-        studentIdMap[student.id!] = student.id!;
-        studentIdMap[student.number.toString()] = student.id!;
+      final idAlumno = int.tryParse(student.id ?? '');
+      if (idAlumno != null) {
+        studentIdMap[student.id!] = idAlumno;
+        studentIdMap[student.number.toString()] = idAlumno;
+        if (student.matricula != null) {
+          studentIdMap[student.matricula!] = idAlumno;
+        }
       }
     }
 
@@ -425,46 +392,14 @@ class _AsistenciasPendientesPageState
         return;
       }
       attendances.add({
-        'studentId': studentId,
-        'status': present ? 'PRESENT' : 'ABSENT',
+        'id_alumno': studentId,
+        'num_pase_lista': 1,
+        'num_dia': registro.fecha.weekday,
+        'sn_asistencia': present,
       });
     });
 
     return attendances;
-  }
-
-  Future<bool> _waitForSyncCompletion(String professorId, String token) async {
-    final completer = Completer<bool>();
-
-    await _sseSubscription?.cancel();
-    _sseSubscription = _sseService.connect(professorId, token).listen(
-      (event) {
-        if (event.isCompleted) {
-          if (!completer.isCompleted) {
-            completer.complete(true);
-          }
-        }
-
-        if (event.isFailed) {
-          if (!completer.isCompleted) {
-            completer.complete(false);
-          }
-        }
-      },
-      onError: (_) {
-        if (!completer.isCompleted) {
-          completer.complete(false);
-        }
-      },
-    );
-
-    final result = await completer.future.timeout(
-      const Duration(minutes: 5),
-      onTimeout: () => false,
-    );
-
-    _sseService.disconnect();
-    return result;
   }
 
   String _formatearFecha(DateTime fecha) {

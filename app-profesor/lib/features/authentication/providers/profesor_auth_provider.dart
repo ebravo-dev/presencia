@@ -171,13 +171,17 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
           }
         },
         (data) async {
-          Logger.info('✅ ${data.grupos.length} clases descargadas del servidor');
+          Logger.info(
+            '✅ ${data.grupos.length} clases descargadas del servidor',
+          );
           state = state.copyWith(grupos: data.grupos);
           // Guardar en cache para futuras sesiones
           await _authStorage.saveGrupos(data.grupos);
           // Guardar beacons
           await _authStorage.saveBeacons(data.beacons);
-          Logger.info('💾 Clases y configuración de aulas guardados en cache local');
+          Logger.info(
+            '💾 Clases y configuración de aulas guardados en cache local',
+          );
         },
       );
     } catch (e, stackTrace) {
@@ -206,7 +210,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     await _authStorage.clearGrupos();
   }
 
-  /// Sincronizar ciclo (scraping forzado)
+  /// Sincronizar ciclo directamente contra backend-apirest
   Future<Either<String, String>> syncGroups(String password) async {
     if (!state.isAuthenticated ||
         state.profesor == null ||
@@ -224,12 +228,27 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     // Clear local groups before syncing to avoid showing stale data
     await clearGrupos();
 
-    // Usar ApiService para iniciar sync forzada
-    return _apiService.forceSync(
+    // Usar ApiService para sincronizar directamente contra backend-apirest
+    final result = await _apiService.forceSync(
       email: state.profesor!.institutionalEmail,
       encryptedPassword: encryptedPassword,
       token: state.token!,
     );
+
+    await result.fold(
+      (error) async {
+        await _authStorage.setSyncInProgress(false);
+      },
+      (message) async {
+        await _authStorage.setSyncInProgress(false);
+        final cachedGrupos = _authStorage.getGrupos();
+        if (cachedGrupos != null) {
+          state = state.copyWith(grupos: cachedGrupos);
+        }
+      },
+    );
+
+    return result;
   }
 
   /// Verificar si existe una sesión almacenada y restaurarla.
@@ -256,7 +275,8 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
               status: ProfesorAuthStatus.sessionExpired,
               profesor: profesor,
               token: null,
-              errorMessage: 'Tu sesión expiró. Ingresa tu contraseña para continuar.',
+              errorMessage:
+                  'Tu sesión expiró. Ingresa tu contraseña para continuar.',
             );
             // Intentar relogin automático con contraseña guardada
             await relogin();
@@ -276,16 +296,22 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
         } else {
           Logger.info('Sesión inválida — limpiando');
           await _authStorage.clearSession();
-          state = const ProfesorAuthState(status: ProfesorAuthStatus.unauthenticated);
+          state = const ProfesorAuthState(
+            status: ProfesorAuthStatus.unauthenticated,
+          );
         }
       } else {
         Logger.info('No hay sesión almacenada');
-        state = const ProfesorAuthState(status: ProfesorAuthStatus.unauthenticated);
+        state = const ProfesorAuthState(
+          status: ProfesorAuthStatus.unauthenticated,
+        );
       }
     } catch (e, stackTrace) {
       Logger.error('Error verificando sesión almacenada', e, stackTrace);
       await _authStorage.clearSession();
-      state = const ProfesorAuthState(status: ProfesorAuthStatus.unauthenticated);
+      state = const ProfesorAuthState(
+        status: ProfesorAuthStatus.unauthenticated,
+      );
     }
   }
 
@@ -361,7 +387,9 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
         );
       },
       (loginResponse) async {
-        Logger.info('Re-login exitoso para: ${loginResponse.profesor.nombreCompleto}');
+        Logger.info(
+          'Re-login exitoso para: ${loginResponse.profesor.nombreCompleto}',
+        );
         await _authStorage.saveSession(
           token: loginResponse.token,
           profesor: loginResponse.profesor,

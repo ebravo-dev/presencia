@@ -1,10 +1,11 @@
-import 'package:hive_flutter/hive_flutter.dart';
-import '../core/utils/utils.dart';
-import '../shared/models/profesor.dart';
-import '../shared/models/grupo.dart';
 import 'dart:convert';
 
-/// Servicio para almacenar y recuperar datos de autenticación
+import 'package:hive_flutter/hive_flutter.dart';
+
+import '../core/utils/utils.dart';
+import '../shared/models/grupo.dart';
+import '../shared/models/profesor.dart';
+
 class AuthStorageService {
   static final AuthStorageService _instance = AuthStorageService._internal();
   factory AuthStorageService() => _instance;
@@ -20,7 +21,6 @@ class AuthStorageService {
 
   Box? _box;
 
-  /// Inicializar el servicio
   Future<void> init() async {
     try {
       if (!Hive.isBoxOpen(_authBox)) {
@@ -34,22 +34,20 @@ class AuthStorageService {
     }
   }
 
-  /// Guardar token JWT
   Future<void> saveToken(String token) async {
     try {
       await _box?.put(_tokenKey, token);
-      Logger.info('Token JWT guardado correctamente');
+      Logger.info('Identificador de sesion guardado correctamente');
     } catch (e, stackTrace) {
       Logger.error('Error al guardar token', e, stackTrace);
     }
   }
 
-  /// Obtener token JWT
   String? getToken() {
     try {
       final token = _box?.get(_tokenKey) as String?;
       if (token != null) {
-        Logger.debug('Token JWT recuperado');
+        Logger.debug('Identificador de sesion recuperado');
       }
       return token;
     } catch (e, stackTrace) {
@@ -58,7 +56,6 @@ class AuthStorageService {
     }
   }
 
-  /// Guardar datos del profesor
   Future<void> saveProfesor(Profesor profesor) async {
     try {
       final profesorJson = jsonEncode(profesor.toJson());
@@ -69,12 +66,11 @@ class AuthStorageService {
     }
   }
 
-  /// Obtener datos del profesor
   Profesor? getProfesor() {
     try {
       final profesorJson = _box?.get(_profesorKey) as String?;
       if (profesorJson != null) {
-        final Map<String, dynamic> json = jsonDecode(profesorJson);
+        final json = jsonDecode(profesorJson) as Map<String, dynamic>;
         Logger.debug('Datos del profesor recuperados');
         return Profesor.fromJson(json);
       }
@@ -85,7 +81,6 @@ class AuthStorageService {
     }
   }
 
-  /// Guardar grupos del profesor
   Future<void> saveGrupos(List<Grupo> grupos) async {
     try {
       final gruposJson = jsonEncode(grupos.map((g) => g.toJson()).toList());
@@ -96,13 +91,14 @@ class AuthStorageService {
     }
   }
 
-  /// Obtener grupos del profesor
   List<Grupo>? getGrupos() {
     try {
       final gruposJson = _box?.get(_gruposKey) as String?;
       if (gruposJson != null) {
-        final List<dynamic> jsonList = jsonDecode(gruposJson);
-        final grupos = jsonList.map((json) => Grupo.fromJson(json)).toList();
+        final jsonList = jsonDecode(gruposJson) as List<dynamic>;
+        final grupos = jsonList
+            .map((json) => Grupo.fromJson(json as Map<String, dynamic>))
+            .toList();
         Logger.debug('${grupos.length} grupos recuperados del storage');
         return grupos;
       }
@@ -113,7 +109,6 @@ class AuthStorageService {
     }
   }
 
-  /// Limpiar grupos del storage (usado al iniciar nueva sincronización)
   Future<void> clearGrupos() async {
     try {
       await _box?.delete(_gruposKey);
@@ -123,7 +118,6 @@ class AuthStorageService {
     }
   }
 
-  /// Guardar sesión completa (token + profesor)
   Future<void> saveSession({
     required String token,
     required Profesor profesor,
@@ -134,17 +128,15 @@ class AuthStorageService {
     if (grupos != null) {
       await saveGrupos(grupos);
     }
-    Logger.info('Sesión guardada correctamente');
+    Logger.info('Sesion guardada correctamente');
   }
 
-  /// Verificar si hay una sesión activa
   bool hasActiveSession() {
     final token = getToken();
     final profesor = getProfesor();
-    return token != null && profesor != null;
+    return token != null && token.isNotEmpty && profesor != null;
   }
 
-  /// Limpiar toda la sesión (logout)
   Future<void> clearSession() async {
     try {
       await _box?.delete(_tokenKey);
@@ -153,29 +145,28 @@ class AuthStorageService {
       await _box?.delete(_syncInProgressKey);
       await _box?.delete(_encryptedPasswordKey);
       await _box?.delete(_beaconsKey);
-      Logger.info('Sesión eliminada correctamente');
+      Logger.info('Sesion eliminada correctamente');
     } catch (e, stackTrace) {
-      Logger.error('Error al limpiar sesión', e, stackTrace);
+      Logger.error('Error al limpiar sesion', e, stackTrace);
     }
   }
 
-  /// Verificar si el token es válido (básico)
   bool isTokenValid() {
     final token = getToken();
-    if (token == null) return false;
+    if (token == null || token.isEmpty) return false;
 
     try {
-      // Decodificar el JWT (básico, sin validar firma)
       final parts = token.split('.');
-      if (parts.length != 3) return false;
+      if (parts.length != 3) {
+        Logger.debug('Sesion backend-apirest detectada');
+        return true;
+      }
 
-      // Decodificar el payload
       final payload = parts[1];
       final normalizedPayload = base64Url.normalize(payload);
       final decodedPayload = utf8.decode(base64Url.decode(normalizedPayload));
-      final Map<String, dynamic> payloadMap = jsonDecode(decodedPayload);
+      final payloadMap = jsonDecode(decodedPayload) as Map<String, dynamic>;
 
-      // Verificar expiración
       if (payloadMap.containsKey('exp')) {
         final exp = payloadMap['exp'] as int;
         final expirationDate = DateTime.fromMillisecondsSinceEpoch(exp * 1000);
@@ -189,12 +180,11 @@ class AuthStorageService {
 
       return true;
     } catch (e) {
-      Logger.error('Error al validar token', e);
-      return false;
+      Logger.debug('Token no JWT; se validara contra backend en la red', e);
+      return true;
     }
   }
 
-  /// Set sync in progress flag
   Future<void> setSyncInProgress(bool value) async {
     try {
       await _box?.put(_syncInProgressKey, value);
@@ -204,7 +194,6 @@ class AuthStorageService {
     }
   }
 
-  /// Check if sync is in progress
   bool isSyncInProgress() {
     try {
       return _box?.get(_syncInProgressKey, defaultValue: false) as bool? ??
@@ -215,46 +204,41 @@ class AuthStorageService {
     }
   }
 
-  /// Guardar contraseña encriptada (RSA) para retry de sync
   Future<void> saveEncryptedPassword(String encryptedPassword) async {
     try {
       await _box?.put(_encryptedPasswordKey, encryptedPassword);
-      Logger.info('Contraseña encriptada guardada para retry');
+      Logger.info('Contrasena guardada para reintento de sesion');
     } catch (e, stackTrace) {
-      Logger.error('Error al guardar contraseña encriptada', e, stackTrace);
+      Logger.error('Error al guardar contrasena', e, stackTrace);
     }
   }
 
-  /// Obtener contraseña encriptada (RSA) para retry de sync
   String? getEncryptedPassword() {
     try {
       return _box?.get(_encryptedPasswordKey) as String?;
     } catch (e) {
-      Logger.error('Error al obtener contraseña encriptada', e);
+      Logger.error('Error al obtener contrasena guardada', e);
       return null;
     }
   }
 
-  /// Borrar contraseña encriptada
   Future<void> clearEncryptedPassword() async {
     try {
       await _box?.delete(_encryptedPasswordKey);
-      Logger.info('Contraseña encriptada eliminada');
+      Logger.info('Contrasena guardada eliminada');
     } catch (e, stackTrace) {
-      Logger.error('Error al eliminar contraseña encriptada', e, stackTrace);
+      Logger.error('Error al eliminar contrasena guardada', e, stackTrace);
     }
   }
 
-  /// Guardar último email usado (para pre-llenar login tras error)
   Future<void> saveLastEmail(String email) async {
     try {
       await _box?.put('last_email', email);
     } catch (e) {
-      Logger.error('Error al guardar último email', e);
+      Logger.error('Error al guardar ultimo email', e);
     }
   }
 
-  /// Obtener último email usado
   String? getLastEmail() {
     try {
       return _box?.get('last_email') as String?;
@@ -263,7 +247,6 @@ class AuthStorageService {
     }
   }
 
-  /// Guardar lista de beacons (uuid + classroom)
   Future<void> saveBeacons(List<Map<String, dynamic>> beacons) async {
     try {
       final beaconsJson = jsonEncode(beacons);
@@ -274,13 +257,12 @@ class AuthStorageService {
     }
   }
 
-  /// Obtener lista de beacons
   List<Map<String, dynamic>>? getBeacons() {
     try {
       final beaconsJson = _box?.get(_beaconsKey) as String?;
       if (beaconsJson != null) {
-        final List<dynamic> jsonList = jsonDecode(beaconsJson);
-        return jsonList.cast<Map<String, dynamic>>();
+        final jsonList = jsonDecode(beaconsJson) as List<dynamic>;
+        return jsonList.map((item) => Map<String, dynamic>.from(item)).toList();
       }
       return null;
     } catch (e, stackTrace) {
@@ -289,7 +271,6 @@ class AuthStorageService {
     }
   }
 
-  /// Obtener el UUID del beacon para un salón específico
   String? getBeaconUuidForClassroom(String classroom) {
     try {
       final beacons = getBeacons();
@@ -301,7 +282,11 @@ class AuthStorageService {
       }
       return null;
     } catch (e, stackTrace) {
-      Logger.error('Error al buscar beacon para salón $classroom', e, stackTrace);
+      Logger.error(
+        'Error al buscar beacon para salon $classroom',
+        e,
+        stackTrace,
+      );
       return null;
     }
   }
