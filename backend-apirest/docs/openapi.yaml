@@ -186,6 +186,119 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UatDataResponse"
+  /api/uat/profesor/control-asistencia/grupos:
+    get:
+      summary: Consulta grupos del profesor para un ciclo y DES
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+        - $ref: "#/components/parameters/IdDesControl"
+        - $ref: "#/components/parameters/IdCiclo"
+        - $ref: "#/components/parameters/IdPlantilla"
+      responses:
+        "200":
+          description: JSON devuelto por BuscaGruposProfesor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UatDataResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Error"
+  /api/uat/profesor/control-asistencia/semanas:
+    get:
+      summary: Consulta semanas disponibles para un grupo
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+        - $ref: "#/components/parameters/IdGrupo"
+      responses:
+        "200":
+          description: JSON devuelto por BuscaSemanas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UatDataResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Error"
+  /api/uat/profesor/control-asistencia/asistencia-grupo:
+    get:
+      summary: Consulta alumnos y asistencia capturada para una semana de grupo
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+        - $ref: "#/components/parameters/IdGrupo"
+        - name: fec_ini
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^\\d{2}/\\d{2}/\\d{4}$"
+          example: 19/01/2026
+        - name: fec_fin
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^\\d{2}/\\d{2}/\\d{4}$"
+          example: 25/01/2026
+      responses:
+        "200":
+          description: JSON devuelto por BuscaAsistenciaGrupo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UatObjectResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Error"
+  /api/uat/profesor/control-asistencia/asistencias:
+    post:
+      summary: Guarda asistencias en el portal UAT
+      description: >
+        Recibe un arreglo tipado de asistencias, lo serializa como JSON
+        comprimido y lo envia al endpoint UAT GuardaAsistencias como
+        application/x-www-form-urlencoded.
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrarAsistenciasRequest"
+      responses:
+        "200":
+          description: Respuesta cruda del portal UAT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardaAsistenciasResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Error"
+  /api/uat/asistencia/guardar:
+    post:
+      summary: Alias corto para guardar asistencias
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrarAsistenciasRequest"
+      responses:
+        "200":
+          description: Respuesta cruda del portal UAT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardaAsistenciasResponse"
 components:
   parameters:
     UatSessionHeader:
@@ -218,6 +331,38 @@ components:
         type: integer
         minimum: 1
       example: 12
+    IdDesControl:
+      name: Id_Des
+      in: query
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      example: 12
+    IdCiclo:
+      name: Id_Ciclo
+      in: query
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      example: 150
+    IdPlantilla:
+      name: Id_Plantilla
+      in: query
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      example: 308127
+    IdGrupo:
+      name: Id_Grupo
+      in: query
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      example: 947699
   responses:
     Error:
       description: Error de validacion, autenticacion o portal
@@ -314,6 +459,72 @@ components:
         fetchedAt:
           type: string
           format: date-time
+    UatObjectResponse:
+      type: object
+      required: [source, endpoint, query, data, fetchedAt]
+      properties:
+        source:
+          type: string
+          example: UAT
+        endpoint:
+          type: string
+          example: BuscaAsistenciaGrupo
+        query:
+          type: object
+          additionalProperties: true
+        data:
+          type: object
+          additionalProperties: true
+        fetchedAt:
+          type: string
+          format: date-time
+    AsistenciaAlumnoInput:
+      type: object
+      required: [id_alumno, num_pase_lista, num_dia, sn_asistencia]
+      properties:
+        id_alumno:
+          type: integer
+          minimum: 1
+          example: 371591
+        num_pase_lista:
+          type: integer
+          minimum: 0
+          example: 1
+        num_dia:
+          type: integer
+          minimum: 1
+          maximum: 7
+          example: 1
+        sn_asistencia:
+          type: boolean
+          example: true
+    RegistrarAsistenciasRequest:
+      type: object
+      required: [Id_Grupo, Fec_Ini, Asistencia]
+      properties:
+        Id_Grupo:
+          type: integer
+          minimum: 1
+          example: 947699
+        Fec_Ini:
+          type: string
+          pattern: "^\\d{2}/\\d{2}/\\d{4}$"
+          example: 19/01/2026
+        Asistencia:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/AsistenciaAlumnoInput"
+    GuardaAsistenciasResponse:
+      type: object
+      required: [exito, mensaje]
+      additionalProperties: true
+      properties:
+        exito:
+          type: boolean
+          example: true
+        mensaje:
+          type: string
     SnapshotRequest:
       allOf:
         - $ref: "#/components/schemas/Credentials"

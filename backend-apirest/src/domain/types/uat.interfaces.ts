@@ -99,6 +99,97 @@ export interface UatCicloEscolarItem extends JsonRecord {
   Sn_Activo?: boolean | string | number;
 }
 
+export interface UatProfesorGruposParams extends JsonRecord {
+  Id_Des: number;
+  Id_Ciclo: number;
+  Id_Plantilla: number;
+}
+
+export interface UatProfesorGrupoItem extends JsonRecord {
+  Id_Grupo: number;
+  Materia?: string;
+  Txt_Materia?: string;
+  Grupo?: string;
+  Txt_Letra?: string;
+  Ciclo?: string;
+  Id_Ciclo_Escolar?: number;
+  Id_DES?: number;
+}
+
+export interface UatSemanasGrupoParams extends JsonRecord {
+  Id_Grupo: number;
+}
+
+export interface UatSemanaItem extends JsonRecord {
+  Id_Grupo?: number;
+  Fec_Ini?: string;
+  Fec_Fin?: string;
+  fec_ini?: string;
+  fec_fin?: string;
+  Txt_Periodo?: string;
+  Semana?: string | number;
+}
+
+export interface UatAsistenciaGrupoParams extends JsonRecord {
+  Id_Grupo: number;
+  fec_ini: string;
+  fec_fin: string;
+}
+
+export interface UatAsistenciaAlumnoItem extends JsonRecord {
+  Num_Lista?: number;
+  Num_Matricula?: string | number;
+  Id_Alumno: number;
+  Txt_Alumno: string;
+  Num_Pl_Lunes?: number;
+  Txt_Pl_Lunes?: string | null;
+  Num_Pl_Martes?: number;
+  Txt_Pl_Martes?: string | null;
+  Num_Pl_Miercoles?: number;
+  Txt_Pl_Miercoles?: string | null;
+  Num_Pl_Jueves?: number;
+  Txt_Pl_Jueves?: string | null;
+  Num_Pl_Viernes?: number;
+  Txt_Pl_Viernes?: string | null;
+  Num_Pl_Sabado?: number;
+  Txt_Pl_Sabado?: string | null;
+  Num_Pl_Domingo?: number;
+  Txt_Pl_Domingo?: string | null;
+  Sn_Hor_Lunes?: boolean | string | number;
+  Sn_Hor_Martes?: boolean | string | number;
+  Sn_Hor_Miercoles?: boolean | string | number;
+  Sn_Hor_Jueves?: boolean | string | number;
+  Sn_Hor_Viernes?: boolean | string | number;
+  Sn_Hor_Sabado?: boolean | string | number;
+  Sn_Hor_Domingo?: boolean | string | number;
+}
+
+export interface UatAsistenciaGrupoResponse extends JsonRecord {
+  exito?: boolean;
+  mensaje?: string;
+  alumnos?: UatAsistenciaAlumnoItem[];
+  Alumnos?: UatAsistenciaAlumnoItem[];
+  data?: UatAsistenciaAlumnoItem[];
+}
+
+export interface UatAsistenciaAlumnoInput extends JsonRecord {
+  id_alumno: number;
+  num_pase_lista: number;
+  num_dia: number;
+  sn_asistencia: boolean;
+}
+
+export interface UatGuardaAsistenciasPayload extends JsonRecord {
+  Id_Grupo: number;
+  Fec_Ini: string;
+  Asistencia: string;
+}
+
+export interface UatGuardaAsistenciasResponse extends JsonRecord {
+  exito: boolean;
+  mensaje: string;
+}
+
 export interface UatCookieDiagnostics {
   cookieNames: string[];
   hasSessionCookie: boolean;
@@ -113,6 +204,10 @@ export interface UatPortalClientPort {
   getCampus(idNivelEducativo: number): Promise<UatCampusItem[]>;
   getDes(idNivelEducativo: number, idCu: number): Promise<UatDesItem[]>;
   getCiclosEscolares(): Promise<UatCicloEscolarItem[]>;
+  getGruposProfesor(params: UatProfesorGruposParams): Promise<UatProfesorGrupoItem[]>;
+  getSemanasGrupo(params: UatSemanasGrupoParams): Promise<UatSemanaItem[]>;
+  getAsistenciaGrupo(params: UatAsistenciaGrupoParams): Promise<UatAsistenciaGrupoResponse>;
+  guardaAsistencias(payload: UatGuardaAsistenciasPayload): Promise<UatGuardaAsistenciasResponse>;
   getCookieDiagnostics(): UatCookieDiagnostics;
 }
 
@@ -141,6 +236,14 @@ export interface UatDataResponse<TItem extends JsonRecord> {
   endpoint: string;
   query: JsonRecord;
   data: TItem[];
+  fetchedAt: string;
+}
+
+export interface UatObjectResponse<TData extends JsonRecord> {
+  source: 'UAT';
+  endpoint: string;
+  query: JsonRecord;
+  data: TData;
   fetchedAt: string;
 }
 

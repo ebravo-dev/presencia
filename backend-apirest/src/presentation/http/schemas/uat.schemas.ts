@@ -25,6 +25,38 @@ export const desQuerySchema = campusQuerySchema.extend({
   id_cu: z.coerce.number().int().positive(),
 });
 
+const fechaUatSchema = z.string().regex(/^\d{2}\/\d{2}\/\d{4}$/, {
+  message: 'El formato de fecha debe ser estrictamente DD/MM/YYYY',
+});
+
+export const gruposProfesorQuerySchema = z.object({
+  Id_Des: z.coerce.number().int().positive(),
+  Id_Ciclo: z.coerce.number().int().positive(),
+  Id_Plantilla: z.coerce.number().int().positive(),
+});
+
+export const semanasGrupoQuerySchema = z.object({
+  Id_Grupo: z.coerce.number().int().positive(),
+});
+
+export const asistenciaGrupoQuerySchema = semanasGrupoQuerySchema.extend({
+  fec_ini: fechaUatSchema,
+  fec_fin: fechaUatSchema,
+});
+
+export const asistenciaAlumnoInputSchema = z.object({
+  id_alumno: z.number().int().positive(),
+  num_pase_lista: z.number().int().nonnegative(),
+  num_dia: z.number().int().min(1).max(7),
+  sn_asistencia: z.boolean(),
+});
+
+export const registrarAsistenciasBodySchema = z.object({
+  Id_Grupo: z.number().int().positive(),
+  Fec_Ini: fechaUatSchema,
+  Asistencia: z.array(asistenciaAlumnoInputSchema).min(1),
+});
+
 export const sessionParamsSchema = z.object({
   sessionId: z.string().uuid(),
 });

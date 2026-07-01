@@ -86,6 +86,11 @@ GET    /api/uat/catalogos/niveles-educativos
 GET    /api/uat/catalogos/campus
 GET    /api/uat/catalogos/des
 GET    /api/uat/catalogos/ciclos-escolares
+GET    /api/uat/profesor/control-asistencia/grupos
+GET    /api/uat/profesor/control-asistencia/semanas
+GET    /api/uat/profesor/control-asistencia/asistencia-grupo
+POST   /api/uat/profesor/control-asistencia/asistencias
+POST   /api/uat/asistencia/guardar
 ```
 
 ## Arquitectura
@@ -101,6 +106,42 @@ src/presentation    Controladores, hooks Fastify, schemas Zod y rutas
 
 Las rutas protegidas usan el hook `authUatHook`, que lee `X-UAT-Session-Id`,
 valida la sesion mediante `UatService` e inyecta `request.uatSession`.
+
+## Flujo de asistencia
+
+Consultar grupos del profesor por ciclo:
+
+```bash
+curl "http://localhost:3100/api/uat/profesor/control-asistencia/grupos?Id_Des=12&Id_Ciclo=150&Id_Plantilla=308127" \
+  -H "X-UAT-Session-Id: SESSION_ID"
+```
+
+Consultar semanas de un grupo:
+
+```bash
+curl "http://localhost:3100/api/uat/profesor/control-asistencia/semanas?Id_Grupo=947699" \
+  -H "X-UAT-Session-Id: SESSION_ID"
+```
+
+Consultar alumnos/asistencia de una semana:
+
+```bash
+curl "http://localhost:3100/api/uat/profesor/control-asistencia/asistencia-grupo?Id_Grupo=947699&fec_ini=19%2F01%2F2026&fec_fin=25%2F01%2F2026" \
+  -H "X-UAT-Session-Id: SESSION_ID"
+```
+
+Guardar asistencias:
+
+```bash
+curl -X POST http://localhost:3100/api/uat/profesor/control-asistencia/asistencias \
+  -H "Content-Type: application/json" \
+  -H "X-UAT-Session-Id: SESSION_ID" \
+  -d "{\"Id_Grupo\":947699,\"Fec_Ini\":\"19/01/2026\",\"Asistencia\":[{\"id_alumno\":371591,\"num_pase_lista\":1,\"num_dia\":1,\"sn_asistencia\":true}]}"
+```
+
+El backend serializa `Asistencia` como JSON comprimido y lo envia al portal UAT
+en `application/x-www-form-urlencoded` contra
+`/Profesor/ControlAsistencia/GuardaAsistencias`.
 
 ## Script CLI opcional
 

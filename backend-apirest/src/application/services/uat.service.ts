@@ -10,11 +10,20 @@ import type {
   UatDataResponse,
   UatDesItem,
   UatExamenItem,
+  UatAsistenciaAlumnoInput,
+  UatAsistenciaGrupoParams,
+  UatAsistenciaGrupoResponse,
+  UatGuardaAsistenciasResponse,
   UatHorarioItem,
   UatLoginResponse,
   UatNivelEducativoItem,
+  UatObjectResponse,
+  UatProfesorGrupoItem,
+  UatProfesorGruposParams,
   UatProfesorConsultaParams,
   UatSafeLogin,
+  UatSemanaItem,
+  UatSemanasGrupoParams,
   UatSessionResponse,
   UatSnapshotResponse,
 } from '../../domain/types/uat.interfaces.js';
@@ -129,6 +138,51 @@ export class UatService {
     return this.toUatDataResponse('BuscarCicloEscolar', {}, ciclos);
   }
 
+  async getGruposProfesorPorSesion(
+    sessionId: string,
+    params: UatProfesorGruposParams,
+  ): Promise<UatDataResponse<UatProfesorGrupoItem>> {
+    const session = await this.getSessionOrThrow(sessionId);
+    const grupos = await session.client.getGruposProfesor(params);
+
+    return this.toUatDataResponse('BuscaGruposProfesor', params, grupos);
+  }
+
+  async getSemanasGrupoPorSesion(
+    sessionId: string,
+    params: UatSemanasGrupoParams,
+  ): Promise<UatDataResponse<UatSemanaItem>> {
+    const session = await this.getSessionOrThrow(sessionId);
+    const semanas = await session.client.getSemanasGrupo(params);
+
+    return this.toUatDataResponse('BuscaSemanas', params, semanas);
+  }
+
+  async getAsistenciaGrupoPorSesion(
+    sessionId: string,
+    params: UatAsistenciaGrupoParams,
+  ): Promise<UatObjectResponse<UatAsistenciaGrupoResponse>> {
+    const session = await this.getSessionOrThrow(sessionId);
+    const asistencia = await session.client.getAsistenciaGrupo(params);
+
+    return this.toUatObjectResponse('BuscaAsistenciaGrupo', params, asistencia);
+  }
+
+  async registrarAsistencias(
+    sessionId: string,
+    idGrupo: number,
+    fechaInicio: string,
+    asistencias: UatAsistenciaAlumnoInput[],
+  ): Promise<UatGuardaAsistenciasResponse> {
+    const session = await this.getSessionOrThrow(sessionId);
+
+    return session.client.guardaAsistencias({
+      Id_Grupo: idGrupo,
+      Fec_Ini: fechaInicio,
+      Asistencia: JSON.stringify(asistencias),
+    });
+  }
+
   async getStatelessSnapshot(
     credentials: UatCredentials,
     params: UatProfesorConsultaParams,
@@ -168,6 +222,20 @@ export class UatService {
     query: JsonRecord,
     data: TItem[],
   ): UatDataResponse<TItem> {
+    return {
+      source: 'UAT',
+      endpoint,
+      query,
+      data,
+      fetchedAt: new Date().toISOString(),
+    };
+  }
+
+  private toUatObjectResponse<TData extends JsonRecord>(
+    endpoint: string,
+    query: JsonRecord,
+    data: TData,
+  ): UatObjectResponse<TData> {
     return {
       source: 'UAT',
       endpoint,

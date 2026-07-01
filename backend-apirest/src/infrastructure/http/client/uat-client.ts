@@ -11,11 +11,19 @@ import type {
   UatCredentials,
   UatDesItem,
   UatExamenItem,
+  UatAsistenciaGrupoParams,
+  UatAsistenciaGrupoResponse,
+  UatGuardaAsistenciasPayload,
+  UatGuardaAsistenciasResponse,
   UatHorarioItem,
   UatLoginResponse,
   UatNivelEducativoItem,
   UatPortalClientPort,
+  UatProfesorGrupoItem,
+  UatProfesorGruposParams,
   UatProfesorConsultaParams,
+  UatSemanaItem,
+  UatSemanasGrupoParams,
 } from '../../../domain/types/uat.interfaces.js';
 
 type FormValue = string | number | boolean;
@@ -174,6 +182,51 @@ export class UatPortalClient implements UatPortalClientPort {
     );
   }
 
+  async getGruposProfesor(params: UatProfesorGruposParams): Promise<UatProfesorGrupoItem[]> {
+    return this.getJsonList<UatProfesorGrupoItem>(
+      '/Profesor/ControlAsistencia/BuscaGruposProfesor',
+      params,
+      'GET /Profesor/ControlAsistencia/BuscaGruposProfesor',
+      `${this.baseUrl}/Profesor/ControlAsistencia/Index`,
+    );
+  }
+
+  async getSemanasGrupo(params: UatSemanasGrupoParams): Promise<UatSemanaItem[]> {
+    return this.getJsonList<UatSemanaItem>(
+      '/Profesor/ControlAsistencia/BuscaSemanas',
+      params,
+      'GET /Profesor/ControlAsistencia/BuscaSemanas',
+      `${this.baseUrl}/Profesor/ControlAsistencia/Index`,
+    );
+  }
+
+  async getAsistenciaGrupo(params: UatAsistenciaGrupoParams): Promise<UatAsistenciaGrupoResponse> {
+    return this.getJsonObject<UatAsistenciaGrupoResponse>(
+      '/Profesor/ControlAsistencia/BuscaAsistenciaGrupo',
+      params,
+      'GET /Profesor/ControlAsistencia/BuscaAsistenciaGrupo',
+      `${this.baseUrl}/Profesor/ControlAsistencia/Index`,
+    );
+  }
+
+  async guardaAsistencias(payload: UatGuardaAsistenciasPayload): Promise<UatGuardaAsistenciasResponse> {
+    return this.requestJson<UatGuardaAsistenciasResponse>(
+      () =>
+        this.http.post('/Profesor/ControlAsistencia/GuardaAsistencias', this.toForm({
+          Id_Grupo: payload.Id_Grupo,
+          Fec_Ini: payload.Fec_Ini,
+          Asistencia: payload.Asistencia,
+        }), {
+          ...this.withJar(),
+          headers: {
+            ...this.ajaxHeaders(`${this.baseUrl}/Profesor/ControlAsistencia/Index`),
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          },
+        }),
+      'POST /Profesor/ControlAsistencia/GuardaAsistencias',
+    );
+  }
+
   getCookieDiagnostics() {
     return {
       cookieNames: this.cookieNames(),
@@ -184,15 +237,16 @@ export class UatPortalClient implements UatPortalClientPort {
 
   private async getJsonList<TItem extends JsonRecord>(
     path: string,
-    params: UatProfesorConsultaParams,
+    params: JsonRecord,
     context: string,
+    referer = `${this.baseUrl}/Profesor/Consultas/Index`,
   ): Promise<TItem[]> {
     const payload = await this.requestJson<JsonValue>(
       () =>
         this.http.get(path, {
           ...this.withJar(),
           params,
-          headers: this.ajaxHeaders(`${this.baseUrl}/Profesor/Consultas/Index`),
+          headers: this.ajaxHeaders(referer),
         }),
       context,
     );
@@ -204,13 +258,14 @@ export class UatPortalClient implements UatPortalClientPort {
     path: string,
     body: Record<string, FormValue>,
     context: string,
+    referer = `${this.baseUrl}/Profesor/Consultas/Index`,
   ): Promise<TItem[]> {
     const payload = await this.requestJson<JsonValue>(
       () =>
         this.http.post(path, this.toForm(body), {
           ...this.withJar(),
           headers: {
-            ...this.ajaxHeaders(`${this.baseUrl}/Profesor/Consultas/Index`),
+            ...this.ajaxHeaders(referer),
             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
           },
         }),
@@ -218,6 +273,31 @@ export class UatPortalClient implements UatPortalClientPort {
     );
 
     return this.toArray<TItem>(payload, context);
+  }
+
+  private async getJsonObject<TData extends JsonRecord>(
+    path: string,
+    params: JsonRecord,
+    context: string,
+    referer: string,
+  ): Promise<TData> {
+    const payload = await this.requestJson<JsonValue>(
+      () =>
+        this.http.get(path, {
+          ...this.withJar(),
+          params,
+          headers: this.ajaxHeaders(referer),
+        }),
+      context,
+    );
+
+    if (this.isJsonRecord(payload)) {
+      return payload as TData;
+    }
+
+    throw new UatPortalError(`${context} no devolvio un objeto JSON reconocible.`, {
+      payload,
+    });
   }
 
   private async requestJson<T>(request: () => Promise<AxiosResponse<unknown>>, context: string): Promise<T> {
