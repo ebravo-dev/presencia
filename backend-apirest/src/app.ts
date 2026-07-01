@@ -2,12 +2,18 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import { pathToFileURL } from 'node:url';
+import { UatService } from './application/services/uat.service.js';
 import { env } from './config/env.js';
 import { ApiError } from './errors/api-error.js';
-import { uatRoutes } from './routes/uat.routes.js';
-import { uatSessionStore } from './uat/uat-session-store.js';
+import { UatClientFactory } from './infrastructure/http/client/uat-client.factory.js';
+import { MemoryUatSessionStore } from './infrastructure/persistence/memory-session.store.js';
+import { uatRoutes } from './presentation/http/routes/uat.routes.js';
 
 export async function buildApp() {
+  const sessionRepository = new MemoryUatSessionStore();
+  const clientFactory = new UatClientFactory();
+  const uatService = new UatService(sessionRepository, clientFactory);
+
   const fastify = Fastify({
     logger: {
       level: env.NODE_ENV === 'development' ? 'debug' : 'info',
@@ -32,22 +38,6 @@ export async function buildApp() {
     contentSecurityPolicy: false,
   });
 
-  fastify.get('/health', async () => ({
-    status: 'ok',
-    service: 'backend-apirest',
-    activeUatSessions: uatSessionStore.size(),
-    timestamp: new Date().toISOString(),
-  }));
-
-  await fastify.register(uatRoutes);
-
-  fastify.setNotFoundHandler((request, reply) => {
-    reply.code(404).send({
-      error: 'NOT_FOUND',
-      message: `Ruta ${request.method} ${request.url} no encontrada.`,
-    });
-  });
-
   fastify.setErrorHandler((error, request, reply) => {
     const message = error instanceof Error ? error.message : 'Error desconocido.';
     request.log.error({ err: error }, message);
@@ -63,6 +53,24 @@ export async function buildApp() {
     return reply.code(500).send({
       error: 'INTERNAL_SERVER_ERROR',
       message: env.NODE_ENV === 'production' ? 'Error interno del servidor.' : message,
+    });
+  });
+
+  fastify.get('/health', async () => ({
+    status: 'ok',
+    service: 'backend-apirest',
+    activeUatSessions: await uatService.getActiveSessionCount(),
+    timestamp: new Date().toISOString(),
+  }));
+
+  await fastify.register(uatRoutes, {
+    uatService,
+  });
+
+  fastify.setNotFoundHandler((request, reply) => {
+    reply.code(404).send({
+      error: 'NOT_FOUND',
+      message: `Ruta ${request.method} ${request.url} no encontrada.`,
     });
   });
 

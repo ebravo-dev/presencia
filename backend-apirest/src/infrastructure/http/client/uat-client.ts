@@ -1,25 +1,38 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios';
 import { wrapper } from 'axios-cookiejar-support';
-import { CookieJar } from 'tough-cookie';
-import { env } from '../config/env.js';
-import { UatLoginError, UatPortalError, UatSessionExpiredError } from '../errors/api-error.js';
-import type { UatCredentials, UatLoginResponse, UatProfesorConsultaParams } from './uat.types.js';
+import type { CookieJar } from 'tough-cookie';
+import { env } from '../../../config/env.js';
+import { UatLoginError, UatPortalError, UatSessionExpiredError } from '../../../errors/api-error.js';
+import type {
+  JsonRecord,
+  JsonValue,
+  UatCampusItem,
+  UatCicloEscolarItem,
+  UatCredentials,
+  UatDesItem,
+  UatExamenItem,
+  UatHorarioItem,
+  UatLoginResponse,
+  UatNivelEducativoItem,
+  UatPortalClientPort,
+  UatProfesorConsultaParams,
+} from '../../../domain/types/uat.interfaces.js';
 
 type FormValue = string | number | boolean;
 type AxiosCookieJarConfig = AxiosRequestConfig & { jar: CookieJar };
 
-export class UatPortalClient {
+export class UatPortalClient implements UatPortalClientPort {
   private readonly baseUrl: string;
   private readonly jar: CookieJar;
   private readonly http: AxiosInstance;
 
-  constructor(options?: { baseUrl?: string; timeoutMs?: number; jar?: CookieJar }) {
-    this.baseUrl = (options?.baseUrl ?? env.UAT_BASE_URL).replace(/\/+$/, '');
-    this.jar = options?.jar ?? new CookieJar();
+  constructor(options: { baseUrl?: string; timeoutMs?: number; jar: CookieJar }) {
+    this.baseUrl = (options.baseUrl ?? env.UAT_BASE_URL).replace(/\/+$/, '');
+    this.jar = options.jar;
     this.http = wrapper(
       axios.create({
         baseURL: this.baseUrl,
-        timeout: options?.timeoutMs ?? env.UAT_HTTP_TIMEOUT_MS,
+        timeout: options.timeoutMs ?? env.UAT_HTTP_TIMEOUT_MS,
         withCredentials: true,
         maxRedirects: 5,
         headers: {
@@ -91,16 +104,24 @@ export class UatPortalClient {
     }
   }
 
-  async getHorarios(params: UatProfesorConsultaParams): Promise<unknown> {
-    return this.getJson('/Profesor/Consultas/BuscaHorarios', params, 'GET /Profesor/Consultas/BuscaHorarios');
+  async getHorarios(params: UatProfesorConsultaParams): Promise<UatHorarioItem[]> {
+    return this.getJsonList<UatHorarioItem>(
+      '/Profesor/Consultas/BuscaHorarios',
+      params,
+      'GET /Profesor/Consultas/BuscaHorarios',
+    );
   }
 
-  async getExamenes(params: UatProfesorConsultaParams): Promise<unknown> {
-    return this.getJson('/Profesor/Consultas/BuscaExamenes', params, 'GET /Profesor/Consultas/BuscaExamenes');
+  async getExamenes(params: UatProfesorConsultaParams): Promise<UatExamenItem[]> {
+    return this.getJsonList<UatExamenItem>(
+      '/Profesor/Consultas/BuscaExamenes',
+      params,
+      'GET /Profesor/Consultas/BuscaExamenes',
+    );
   }
 
-  async getNivelesEducativos(): Promise<unknown> {
-    return this.postFormJson(
+  async getNivelesEducativos(): Promise<UatNivelEducativoItem[]> {
+    return this.postFormList<UatNivelEducativoItem>(
       '/Genericos/BuscarNivelEducativo',
       {
         sn_solo_titulares: 'true',
@@ -111,8 +132,8 @@ export class UatPortalClient {
     );
   }
 
-  async getCampus(idNivelEducativo: number): Promise<unknown> {
-    return this.postFormJson(
+  async getCampus(idNivelEducativo: number): Promise<UatCampusItem[]> {
+    return this.postFormList<UatCampusItem>(
       '/Genericos/BuscarCampus',
       {
         sn_solo_titulares: 'true',
@@ -124,8 +145,8 @@ export class UatPortalClient {
     );
   }
 
-  async getDes(idNivelEducativo: number, idCu: number): Promise<unknown> {
-    return this.postFormJson(
+  async getDes(idNivelEducativo: number, idCu: number): Promise<UatDesItem[]> {
+    return this.postFormList<UatDesItem>(
       '/Genericos/BuscarDES',
       {
         sn_solo_titulares: 'true',
@@ -139,8 +160,8 @@ export class UatPortalClient {
     );
   }
 
-  async getCiclosEscolares(): Promise<unknown> {
-    return this.postFormJson(
+  async getCiclosEscolares(): Promise<UatCicloEscolarItem[]> {
+    return this.postFormList<UatCicloEscolarItem>(
       '/Genericos/BuscarCicloEscolar',
       {
         todos: 'false',
@@ -153,7 +174,7 @@ export class UatPortalClient {
     );
   }
 
-  getCookieDiagnostics(): { cookieNames: string[]; hasSessionCookie: boolean; hasAuthCookie: boolean } {
+  getCookieDiagnostics() {
     return {
       cookieNames: this.cookieNames(),
       hasSessionCookie: this.hasCookie('ASP.NET_SessionId'),
@@ -161,8 +182,12 @@ export class UatPortalClient {
     };
   }
 
-  private async getJson(path: string, params: UatProfesorConsultaParams, context: string): Promise<unknown> {
-    return this.requestJson(
+  private async getJsonList<TItem extends JsonRecord>(
+    path: string,
+    params: UatProfesorConsultaParams,
+    context: string,
+  ): Promise<TItem[]> {
+    const payload = await this.requestJson<JsonValue>(
       () =>
         this.http.get(path, {
           ...this.withJar(),
@@ -171,10 +196,16 @@ export class UatPortalClient {
         }),
       context,
     );
+
+    return this.toArray<TItem>(payload, context);
   }
 
-  private async postFormJson(path: string, body: Record<string, FormValue>, context: string): Promise<unknown> {
-    return this.requestJson(
+  private async postFormList<TItem extends JsonRecord>(
+    path: string,
+    body: Record<string, FormValue>,
+    context: string,
+  ): Promise<TItem[]> {
+    const payload = await this.requestJson<JsonValue>(
       () =>
         this.http.post(path, this.toForm(body), {
           ...this.withJar(),
@@ -185,6 +216,8 @@ export class UatPortalClient {
         }),
       context,
     );
+
+    return this.toArray<TItem>(payload, context);
   }
 
   private async requestJson<T>(request: () => Promise<AxiosResponse<unknown>>, context: string): Promise<T> {
@@ -244,6 +277,47 @@ export class UatPortalClient {
       status: response.status,
       contentType,
     });
+  }
+
+  private toArray<TItem extends JsonRecord>(payload: JsonValue, context: string): TItem[] {
+    if (Array.isArray(payload)) {
+      return payload as TItem[];
+    }
+
+    if (!this.isJsonRecord(payload)) {
+      throw new UatPortalError(`${context} devolvio una estructura JSON no soportada.`, {
+        payload,
+      });
+    }
+
+    const candidates = ['data', 'Data', 'datos', 'Datos', 'items', 'Items'];
+
+    for (const candidate of candidates) {
+      const value = payload[candidate];
+      if (Array.isArray(value)) {
+        return value as TItem[];
+      }
+    }
+
+    if (payload.exito === false) {
+      const message = typeof payload.mensaje === 'string' ? payload.mensaje : 'El portal no devolvio datos.';
+      if (message.toLowerCase().includes('no existe')) {
+        return [];
+      }
+
+      throw new UatPortalError(message, {
+        context,
+        payload,
+      });
+    }
+
+    throw new UatPortalError(`${context} no contiene un arreglo de datos reconocible.`, {
+      payload,
+    });
+  }
+
+  private isJsonRecord(value: JsonValue): value is JsonRecord {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
   private toForm(body: Record<string, FormValue>): URLSearchParams {

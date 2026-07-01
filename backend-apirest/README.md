@@ -88,6 +88,20 @@ GET    /api/uat/catalogos/des
 GET    /api/uat/catalogos/ciclos-escolares
 ```
 
+## Arquitectura
+
+El servicio quedo organizado por capas:
+
+```txt
+src/domain          Tipos UAT y contrato IUatSessionRepository
+src/infrastructure  Axios + CookieJar, factory y store en memoria
+src/application     UatService con casos de uso y snapshot
+src/presentation    Controladores, hooks Fastify, schemas Zod y rutas
+```
+
+Las rutas protegidas usan el hook `authUatHook`, que lee `X-UAT-Session-Id`,
+valida la sesion mediante `UatService` e inyecta `request.uatSession`.
+
 ## Script CLI opcional
 
 Para probar desde terminal sin levantar el servidor:

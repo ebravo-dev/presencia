@@ -1,9 +1,11 @@
+import type { JsonValue } from '../domain/types/uat.interfaces.js';
+
 export class ApiError extends Error {
   readonly statusCode: number;
   readonly code: string;
-  readonly details?: unknown;
+  readonly details?: JsonValue;
 
-  constructor(statusCode: number, code: string, message: string, details?: unknown) {
+  constructor(statusCode: number, code: string, message: string, details?: JsonValue) {
     super(message);
     this.name = 'ApiError';
     this.statusCode = statusCode;
@@ -13,14 +15,14 @@ export class ApiError extends Error {
 }
 
 export class UatLoginError extends ApiError {
-  constructor(message: string, details?: unknown) {
+  constructor(message: string, details?: JsonValue) {
     super(401, 'UAT_LOGIN_FAILED', message, details);
     this.name = 'UatLoginError';
   }
 }
 
 export class UatSessionExpiredError extends ApiError {
-  constructor(message = 'La sesion del portal UAT expiro o no esta autenticada.', details?: unknown) {
+  constructor(message = 'La sesion del portal UAT expiro o no esta autenticada.', details?: JsonValue) {
     super(401, 'UAT_SESSION_EXPIRED', message, details);
     this.name = 'UatSessionExpiredError';
   }
@@ -34,7 +36,7 @@ export class UatSessionNotFoundError extends ApiError {
 }
 
 export class UatPortalError extends ApiError {
-  constructor(message: string, details?: unknown) {
+  constructor(message: string, details?: JsonValue) {
     super(502, 'UAT_PORTAL_ERROR', message, details);
     this.name = 'UatPortalError';
   }

@@ -1,6 +1,6 @@
 import 'dotenv/config';
-import { UatPortalClient } from '../uat/uat-client.js';
-import type { UatProfesorConsultaParams } from '../uat/uat.types.js';
+import { UatClientFactory } from '../infrastructure/http/client/uat-client.factory.js';
+import type { UatProfesorConsultaParams } from '../domain/types/uat.interfaces.js';
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
@@ -35,7 +35,7 @@ async function main(): Promise<void> {
     Id_DES: numberEnv('UAT_ID_DES', 12),
   };
 
-  const client = new UatPortalClient();
+  const client = new UatClientFactory().create();
   const login = await client.authenticate({ username, password });
   const horarios = await client.getHorarios(query);
   const examenes = await client.getExamenes(query);
