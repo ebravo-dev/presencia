@@ -7,9 +7,12 @@ class UATTheme {
 
   /// Tema principal de la aplicación
   static ThemeData get lightTheme {
+    const palette = UATPalette.light;
+
     return ThemeData(
       useMaterial3: true,
-      scaffoldBackgroundColor: UATPalette.light.appBackground,
+      brightness: Brightness.light,
+      scaffoldBackgroundColor: palette.appBackground,
       extensions: const [UATPalette.light],
 
       // Esquema de colores basado en la paleta UAT
@@ -19,11 +22,11 @@ class UATTheme {
         secondary: UATColors.accent,
         onSecondary: UATColors.onAccent,
         tertiary: UATColors.secondary,
-        surface: UATColors.surface,
-        onSurface: UATColors.neutral,
+        surface: palette.surface,
+        onSurface: palette.textPrimary,
         error: UATColors.error,
-        outline: UATColors.neutral40,
-        outlineVariant: UATColors.neutral20,
+        outline: palette.border,
+        outlineVariant: palette.surfaceMuted,
       ),
 
       // AppBar theme con colores UAT
@@ -60,14 +63,14 @@ class UATTheme {
       // Input Decoration theme
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: UATColors.surface,
+        fillColor: palette.surface,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: UATColors.neutral20),
+          borderSide: BorderSide(color: palette.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
@@ -85,16 +88,32 @@ class UATTheme {
           horizontal: 16,
           vertical: 14,
         ),
-        labelStyle: TextStyle(color: UATColors.neutral80, fontSize: 14),
-        hintStyle: TextStyle(color: UATColors.neutral60, fontSize: 14),
+        labelStyle: TextStyle(color: palette.textSecondary, fontSize: 14),
+        hintStyle: TextStyle(color: palette.textTertiary, fontSize: 14),
       ),
 
       // Card theme
       cardTheme: CardThemeData(
-        color: UATColors.surface,
+        color: palette.surface,
         elevation: 8,
-        shadowColor: UATColors.neutral40.withOpacity(0.3),
+        shadowColor: palette.shadow,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      ),
+
+      dialogTheme: DialogThemeData(
+        backgroundColor: palette.surfaceElevated,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
+
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: palette.surfaceElevated,
+        modalBackgroundColor: palette.surfaceElevated,
+      ),
+
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: UATColors.primary,
+        selectionColor: UATColors.primary.withOpacity(0.24),
+        selectionHandleColor: UATColors.primary,
       ),
 
       // Text theme con tipografía institucional
@@ -132,64 +151,64 @@ class UATTheme {
         titleLarge: TextStyle(
           fontSize: 22,
           fontWeight: FontWeight.w500,
-          color: UATColors.neutral,
+          color: palette.textPrimary,
         ),
         titleMedium: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w500,
-          color: UATColors.neutral,
+          color: palette.textPrimary,
         ),
         titleSmall: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w500,
-          color: UATColors.neutral,
+          color: palette.textPrimary,
         ),
         bodyLarge: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w400,
-          color: UATColors.neutral80,
+          color: palette.textSecondary,
         ),
         bodyMedium: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w400,
-          color: UATColors.neutral80,
+          color: palette.textSecondary,
         ),
         bodySmall: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w400,
-          color: UATColors.neutral60,
+          color: palette.textTertiary,
         ),
         labelLarge: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w600,
-          color: UATColors.neutral,
+          color: palette.textPrimary,
         ),
         labelMedium: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: UATColors.neutral80,
+          color: palette.textSecondary,
         ),
         labelSmall: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
-          color: UATColors.neutral60,
+          color: palette.textTertiary,
         ),
       ),
 
       // Icon theme
-      iconTheme: IconThemeData(color: UATColors.neutral80, size: 24),
+      iconTheme: IconThemeData(color: palette.textSecondary, size: 24),
 
       // Divider theme
       dividerTheme: DividerThemeData(
-        color: UATColors.neutral20,
+        color: palette.border,
         thickness: 1,
         space: 1,
       ),
 
       // Chip theme
       chipTheme: ChipThemeData(
-        backgroundColor: UATColors.neutral20,
-        labelStyle: TextStyle(color: UATColors.neutral),
+        backgroundColor: palette.surfaceMuted,
+        labelStyle: TextStyle(color: palette.textPrimary),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
@@ -236,6 +255,15 @@ class UATTheme {
         backgroundColor: palette.surfaceElevated,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: palette.surfaceElevated,
+        modalBackgroundColor: palette.surfaceElevated,
+      ),
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: UATColors.primary,
+        selectionColor: UATColors.primary.withOpacity(0.28),
+        selectionHandleColor: UATColors.primary,
+      ),
       iconTheme: IconThemeData(color: palette.textSecondary, size: 24),
       dividerTheme: DividerThemeData(
         color: palette.border,
@@ -249,6 +277,22 @@ class UATTheme {
       ),
       inputDecorationTheme: base.inputDecorationTheme.copyWith(
         fillColor: palette.surface,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: palette.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: UATColors.primary, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: UATColors.error),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: UATColors.error, width: 2),
+        ),
         labelStyle: TextStyle(color: palette.textSecondary, fontSize: 14),
         hintStyle: TextStyle(color: palette.textTertiary, fontSize: 14),
       ),

@@ -1066,13 +1066,13 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 Icon(
                   Icons.arrow_upward_rounded,
                   size: 16,
-                  color: Colors.grey.shade600,
+                  color: context.uatPalette.textTertiary,
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'Próxima por atender',
                   style: TextStyle(
-                    color: Colors.grey.shade600,
+                    color: context.uatPalette.textTertiary,
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                     letterSpacing: 0.5,
@@ -1619,7 +1619,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.grey.shade300),
+                          borderSide: BorderSide(color: palette.border),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -1633,7 +1633,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                             obscureText
                                 ? Icons.visibility_outlined
                                 : Icons.visibility_off_outlined,
-                            color: Colors.grey,
+                            color: palette.iconMuted,
                           ),
                           onPressed: () {
                             setState(() => obscureText = !obscureText);

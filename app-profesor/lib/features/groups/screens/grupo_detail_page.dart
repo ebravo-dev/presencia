@@ -13,6 +13,7 @@ import '../../../services/ble_beacon_verification_service.dart';
 import '../../../core/theme/uat_colors.dart';
 
 import '../../../services/auth_storage_service.dart';
+import '../../../core/theme/uat_colors.dart';
 
 class GrupoDetailPage extends StatefulWidget {
   final Grupo grupo;
@@ -232,28 +233,13 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.uatPalette;
-    final isLightMode = context.isUatLightMode;
-
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: isLightMode
-            ? Brightness.dark
-            : Brightness.light,
-        statusBarBrightness: isLightMode ? Brightness.light : Brightness.dark,
-        systemNavigationBarColor: palette.appBackground,
-        systemNavigationBarIconBrightness: isLightMode
-            ? Brightness.dark
-            : Brightness.light,
-      ),
-      child: Scaffold(
-        backgroundColor: palette.appBackground,
-        body: NotificationListener<ScrollNotification>(
-          onNotification: (ScrollNotification notification) {
-            if (notification is ScrollUpdateNotification) {
-              // Verificar si estamos en el top
-              final isAtTop = notification.metrics.pixels <= 0;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: NotificationListener<ScrollNotification>(
+        onNotification: (ScrollNotification notification) {
+          if (notification is ScrollUpdateNotification) {
+            // Verificar si estamos en el top
+            final isAtTop = notification.metrics.pixels <= 0;
 
               if (isAtTop && notification.metrics.pixels < 0) {
                 // Hay overscroll negativo (estamos jalando hacia abajo desde el top)
@@ -685,67 +671,66 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                 ),
               ),
 
-              // Botón flotante para volver arriba
-              if (_showScrollToTopButton)
-                Positioned(
-                  bottom: 24,
-                  right: 16,
-                  child: TweenAnimationBuilder<double>(
-                    duration: const Duration(milliseconds: 200),
-                    tween: Tween<double>(begin: 0, end: 1),
-                    builder: (context, value, child) {
-                      return Transform.scale(
-                        scale: value,
-                        child: Opacity(opacity: value, child: child),
-                      );
-                    },
-                    child: GestureDetector(
-                      onTap: _scrollToTop,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(22),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                          child: Container(
-                            height: 44,
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            decoration: BoxDecoration(
-                              color: palette.controlBackground,
-                              borderRadius: BorderRadius.circular(22),
-                              border: Border.all(
-                                color: palette.controlBorder,
-                                width: 0.5,
+            // Botón flotante para volver arriba
+            if (_showScrollToTopButton)
+              Positioned(
+                bottom: 24,
+                right: 16,
+                child: TweenAnimationBuilder<double>(
+                  duration: const Duration(milliseconds: 200),
+                  tween: Tween<double>(begin: 0, end: 1),
+                  builder: (context, value, child) {
+                    return Transform.scale(
+                      scale: value,
+                      child: Opacity(opacity: value, child: child),
+                    );
+                  },
+                  child: GestureDetector(
+                    onTap: _scrollToTop,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(22),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                        child: Container(
+                          height: 44,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2C2C2E).withOpacity(0.72),
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.1),
+                              width: 0.5,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.arrow_upward_rounded,
+                                color: Colors.white,
+                                size: 20,
                               ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.arrow_upward_rounded,
-                                  color: palette.controlIcon,
-                                  size: 20,
+                              const SizedBox(width: 6),
+                              const Text(
+                                'Arriba',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
                                 ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'Arriba',
-                                  style: TextStyle(
-                                    color: palette.controlIcon,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ),
                   ),
                 ),
-            ], // Cierre Stack children
-          ), // Cierre Stack
-        ), // Cierre NotificationListener
-      ), // Cierre Scaffold
-    ); // Cierre AnnotatedRegion
+              ),
+          ], // Cierre Stack children
+        ), // Cierre Stack
+      ), // Cierre NotificationListener
+    ); // Cierre Scaffold
   }
 
   Widget _buildTabMenu() {
@@ -787,7 +772,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           Text(
             label,
             style: TextStyle(
-              color: isSelected ? palette.textPrimary : palette.textTertiary,
+              color: isSelected ? Colors.white : Colors.white.withOpacity(0.4),
               fontSize: 24,
               fontWeight: FontWeight.bold,
             ),
@@ -849,6 +834,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           decoration: BoxDecoration(
             color: palette.surface,
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: palette.border),
             boxShadow: [
               BoxShadow(
                 color: palette.shadow,
@@ -906,7 +892,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                               ? 'Marcar Entrada'
                               : 'Entrada: ${_getFormattedDate(_entradaProfesor!)} ${_formatTime(_entradaProfesor!)}',
                           style: TextStyle(
-                            color: palette.textPrimary,
+                            color: Colors.white.withOpacity(0.9),
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                           ),
@@ -932,6 +918,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           decoration: BoxDecoration(
             color: palette.surface,
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: palette.border),
             boxShadow: [
               BoxShadow(
                 color: palette.shadow,
@@ -999,8 +986,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                               : 'Salida: ${_getFormattedDate(_salidaProfesor!)} ${_formatTime(_salidaProfesor!)}',
                           style: TextStyle(
                             color: _entradaProfesor == null
-                                ? palette.textTertiary
-                                : palette.textPrimary,
+                                ? Colors.white.withOpacity(0.5)
+                                : Colors.white.withOpacity(0.9),
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                           ),
@@ -1026,6 +1013,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           decoration: BoxDecoration(
             color: palette.surface,
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: palette.border),
             boxShadow: [
               BoxShadow(
                 color: palette.shadow,
@@ -1076,8 +1064,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                           'Subir Asistencia',
                           style: TextStyle(
                             color: _puedeSubirAsistencia()
-                                ? palette.textPrimary
-                                : palette.textTertiary,
+                                ? Colors.white.withOpacity(0.9)
+                                : Colors.white.withOpacity(0.5),
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                           ),
@@ -1803,19 +1791,19 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       lastDate: now, // No permitir fechas futuras
       locale: const Locale('es', 'MX'),
       builder: (context, child) {
+        final palette = context.uatPalette;
+        final baseTheme = Theme.of(context);
+
         return Theme(
-          data: theme.copyWith(
-            colorScheme: theme.colorScheme.copyWith(
+          data: ThemeData.dark().copyWith(
+            colorScheme: ColorScheme.dark(
               primary: widget.accentColor,
               onPrimary: Colors.black, // Texto negro sobre el círculo de color
-              surface: palette.surfaceElevated,
-              onSurface: palette.textPrimary,
+              surface: const Color(0xFF1C1C1E),
+              onSurface: Colors.white,
             ),
             textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(
-                foregroundColor:
-                    widget.accentColor, // Color de los botones Cancel/OK
-              ),
+              style: TextButton.styleFrom(foregroundColor: widget.accentColor),
             ),
             dialogTheme: DialogThemeData(
               backgroundColor: palette.surfaceElevated,
@@ -1887,6 +1875,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           decoration: BoxDecoration(
             color: palette.surface,
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: palette.border),
             boxShadow: [
               BoxShadow(
                 color: palette.shadow,

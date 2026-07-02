@@ -11,6 +11,7 @@ import '../../../services/api_service.dart';
 import '../../../services/auth_storage_service.dart';
 import '../../../services/sync_service.dart';
 import '../../../shared/models/grupo.dart';
+import '../../../core/theme/uat_colors.dart';
 import 'grupo_detail_page.dart';
 
 class UploadManagementPage extends StatefulWidget {
@@ -522,6 +523,8 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   }
 
   Widget _buildUploadingState() {
+    final palette = context.uatPalette;
+
     return ValueListenableBuilder<List<_SyncStepData>>(
       valueListenable: _stepsNotifier,
       builder: (context, steps, _) {
@@ -544,6 +547,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
               decoration: BoxDecoration(
                 color: palette.surface,
                 borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: palette.border),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -627,7 +631,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     } else if (isFailed) {
       circleColor = Colors.red;
     } else {
-      circleColor = palette.textTertiary;
+      circleColor = palette.border;
     }
 
     return IntrinsicHeight(
@@ -848,108 +852,94 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   @override
   Widget build(BuildContext context) {
     final palette = context.uatPalette;
-    final isLightMode = context.isUatLightMode;
 
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: isLightMode
-            ? Brightness.dark
-            : Brightness.light,
-        statusBarBrightness: isLightMode ? Brightness.light : Brightness.dark,
-        systemNavigationBarColor: palette.appBackground,
-        systemNavigationBarIconBrightness: isLightMode
-            ? Brightness.dark
-            : Brightness.light,
-      ),
-      child: Scaffold(
-        backgroundColor: palette.appBackground,
-        body: Stack(
-          children: [
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _isLoading
-                    ? const Center(
-                        child: CircularProgressIndicator(
-                          color: UATColors.primary,
-                        ),
-                      )
-                    : _buildContent(),
-              ),
+    return Scaffold(
+      backgroundColor: palette.appBackground,
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: _isLoading
+                  ? Center(
+                      child: CircularProgressIndicator(
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    )
+                  : _buildContent(),
             ),
-            // Botón de cerrar
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 8,
-              left: 12,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(22),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: palette.controlBackground,
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(
-                        color: palette.controlBorder,
-                        width: 0.5,
-                      ),
+          ),
+          // Botón de cerrar
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            left: 12,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(22),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: palette.controlBackground,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: palette.controlBorder,
+                      width: 0.5,
                     ),
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      icon: Icon(
-                        Icons.close,
-                        color: palette.controlIcon,
-                        size: 24,
-                      ),
-                      onPressed: () {
-                        HapticFeedback.lightImpact();
-                        Navigator.of(context).pop();
-                      },
+                  ),
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: Icon(
+                      Icons.close,
+                      color: palette.controlIcon,
+                      size: 24,
                     ),
+                    onPressed: () {
+                      HapticFeedback.lightImpact();
+                      Navigator.of(context).pop();
+                    },
                   ),
                 ),
               ),
             ),
-            // Botón Ver calendario — glassmorphism, esquina superior derecha
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 8,
-              right: 12,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(22),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: palette.controlBackground,
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(
-                        color: palette.controlBorder,
-                        width: 0.5,
-                      ),
+          ),
+          // Botón Ver calendario — glassmorphism, esquina superior derecha
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            right: 12,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(22),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: palette.controlBackground,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: palette.controlBorder,
+                      width: 0.5,
                     ),
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      icon: Icon(
-                        Icons.calendar_month_rounded,
-                        color: palette.controlIcon,
-                        size: 20,
-                      ),
-                      onPressed: () {
-                        HapticFeedback.lightImpact();
-                        _showCalendarModal();
-                      },
+                  ),
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: Icon(
+                      Icons.calendar_month_rounded,
+                      color: palette.controlIcon,
+                      size: 20,
                     ),
+                    onPressed: () {
+                      HapticFeedback.lightImpact();
+                      _showCalendarModal();
+                    },
                   ),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1276,7 +1266,7 @@ class _CalendarModalState extends State<_CalendarModal> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: palette.textTertiary,
+                color: palette.border,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -1822,136 +1812,300 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
     HapticFeedback.selectionClick();
     final changed = _changedEntries(registro);
     final (className, grupoMeta) = _resolveGrupoMeta(registro);
-    final deleted = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (context) => _PendingRegistroDetailPage(
-          registro: registro,
-          className: className,
-          grupoMeta: grupoMeta,
-          formattedDate: _formatFecha(registro.fecha),
-          changedEntries: changed,
-          studentNames: widget.studentNames,
-          gradientColors: _getColoresParaGrupo(registro.grupoId),
-          hasSnapshot: registro.asistenciasSincronizadas != null,
-          onDelete: () => _deleteRegistro(registro),
-          onShowInClass: () =>
-              _navigateToGrupoDetail(registro, fromDetailPage: true),
-        ),
-      ),
-    );
 
-    if (!mounted) return;
-    if (deleted == true && _localPendientes.isEmpty) {
-      Navigator.of(context).pop();
-    }
-  }
-
-  Future<void> _deleteRegistro(AsistenciaRegistro registro) async {
-    await widget.onDelete(registro.id);
-    if (!mounted) return;
-
-    setState(() {
-      _localPendientes.removeWhere((item) => item.id == registro.id);
-    });
-  }
-
-  Widget _buildRegistroTile(AsistenciaRegistro registro) {
-    final palette = context.uatPalette;
-    final changed = _changedEntries(registro);
-    final total = changed.length;
-    final (className, grupoMeta) = _resolveGrupoMeta(registro);
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => _openRegistroDetail(registro),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: const BoxDecoration(
-                  color: Colors.orange,
-                  shape: BoxShape.circle,
+    return Column(
+      children: [
+        // Header row (tappable)
+        InkWell(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            setState(() {
+              if (isExpanded) {
+                _expandedIndices.remove(index);
+              } else {
+                _expandedIndices.add(index);
+              }
+            });
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                // Orange dot
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: const BoxDecoration(
+                    color: Colors.orange,
+                    shape: BoxShape.circle,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(width: 12),
+                // Date + group info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _formatFecha(registro.fecha),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        className,
+                        style: TextStyle(
+                          color: Colors.grey.shade400,
+                          fontSize: 13,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (grupoMeta != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          grupoMeta,
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 12,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Changed count chip
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    total == 1 ? '$total cambio' : '$total cambios',
+                    style: TextStyle(
+                      color: Colors.orange.shade400,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Expand arrow
+                AnimatedRotation(
+                  turns: isExpanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: Colors.grey.shade400,
+                    size: 24,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Expandable details
+        AnimatedCrossFade(
+          alignment: Alignment.topCenter,
+          firstChild: const SizedBox(width: double.infinity, height: 0),
+          secondChild: SizedBox(
+            width: double.infinity,
+            child: Column(
+              children: [
+                _buildStudentList(registro),
+                _buildActionButtons(registro, index),
+              ],
+            ),
+          ),
+          crossFadeState: isExpanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 200),
+        ),
+      ],
+    );
+  }
+
+  /// Botones de "Eliminar" y "Mostrar en pantalla" debajo de cada registro expandido
+  Widget _buildActionButtons(AsistenciaRegistro registro, int index) {
+    final grupoColors = _getColoresParaGrupo(registro.grupoId);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(38, 0, 16, 12),
+      child: Row(
+        children: [
+          // Botón Eliminar
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _showDeleteConfirmation(registro, index),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: Colors.red.withOpacity(0.25),
+                    width: 0.5,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    Icon(
+                      Icons.delete_outline_rounded,
+                      color: Colors.red.shade400,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 6),
                     Text(
-                      _formatFecha(registro.fecha),
+                      'Eliminar',
                       style: TextStyle(
-                        color: palette.textPrimary,
-                        fontSize: 16,
+                        color: Colors.red.shade400,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      className,
-                      style: TextStyle(
-                        color: palette.textSecondary,
-                        fontSize: 13,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (grupoMeta != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        grupoMeta,
-                        style: TextStyle(
-                          color: palette.textTertiary,
-                          fontSize: 12,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // Botón Mostrar en pantalla
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _navigateToGrupoDetail(registro),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  total == 1 ? '$total cambio' : '$total cambios',
-                  style: TextStyle(
-                    color: Colors.orange.shade400,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                  color: grupoColors[0].withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: grupoColors[0].withOpacity(0.25),
+                    width: 0.5,
                   ),
                 ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.open_in_new_rounded,
+                      color: grupoColors[0],
+                      size: 16,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Mostrar en pantalla',
+                      style: TextStyle(
+                        color: grupoColors[0],
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: palette.textSecondary,
-                size: 24,
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
+    );
+  }
+
+  /// Muestra un diálogo de confirmación antes de eliminar
+  void _showDeleteConfirmation(AsistenciaRegistro registro, int index) {
+    final (className, _) = _resolveGrupoMeta(registro);
+    HapticFeedback.mediumImpact();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final palette = dialogContext.uatPalette;
+
+        return AlertDialog(
+          backgroundColor: palette.surfaceElevated,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            '¿Eliminar registro?',
+            style: TextStyle(
+              color: palette.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Text(
+            'Se eliminará el registro de asistencia de "$className" del día ${_formatFecha(registro.fecha)}.\n\nEsta acción no se puede deshacer.',
+            style: TextStyle(color: palette.textSecondary, fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(
+                  color: palette.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                await widget.onDelete(registro.id);
+                if (mounted) {
+                  HapticFeedback.heavyImpact();
+                  setState(() {
+                    _localPendientes.removeAt(index);
+                    _expandedIndices.remove(index);
+                    // Recalcular índices expandidos que estén por encima del eliminado
+                    final adjusted = <int>{};
+                    for (final i in _expandedIndices) {
+                      if (i > index) {
+                        adjusted.add(i - 1);
+                      } else {
+                        adjusted.add(i);
+                      }
+                    }
+                    _expandedIndices
+                      ..clear()
+                      ..addAll(adjusted);
+                  });
+                  // Si ya no quedan registros, cerrar el modal
+                  if (_localPendientes.isEmpty) {
+                    Navigator.of(context).pop();
+                  }
+                }
+              },
+              child: Text(
+                'Eliminar',
+                style: TextStyle(
+                  color: Colors.red.shade400,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
   /// Navegar a la pantalla de detalle del grupo con la fecha específica
-  void _navigateToGrupoDetail(
-    AsistenciaRegistro registro, {
-    bool fromDetailPage = false,
-  }) {
+  void _navigateToGrupoDetail(AsistenciaRegistro registro) {
     final grupo = widget.grupoMap[registro.grupoId];
     if (grupo == null) return;
 
@@ -1960,17 +2114,11 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
     // Capturar el navigator antes de cerrar el modal (el context se invalida al hacer pop)
     final navigator = Navigator.of(context);
 
-    if (fromDetailPage && navigator.canPop()) {
-      navigator.pop();
-    }
+    // Cerrar el modal
+    navigator.pop();
 
-    if (navigator.canPop()) {
-      navigator.pop();
-    }
-
-    if (navigator.canPop()) {
-      navigator.pop();
-    }
+    // Cerrar la página de sincronización (UploadManagementPage)
+    navigator.pop();
 
     // Navegar a GrupoDetailPage con la fecha del registro y efecto neón
     navigator.push(
@@ -2000,393 +2148,69 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
       ),
     );
   }
-}
 
-class _PendingRegistroDetailPage extends StatelessWidget {
-  final AsistenciaRegistro registro;
-  final String className;
-  final String? grupoMeta;
-  final String formattedDate;
-  final Map<String, bool> changedEntries;
-  final Map<String, String> studentNames;
-  final List<Color> gradientColors;
-  final bool hasSnapshot;
-  final Future<void> Function() onDelete;
-  final VoidCallback onShowInClass;
+  Widget _buildStudentList(AsistenciaRegistro registro) {
+    // Only show students whose attendance changed vs last synced snapshot
+    final changed = _changedEntries(registro);
+    final hasSnapshot = registro.asistenciasSincronizadas != null;
 
-  const _PendingRegistroDetailPage({
-    required this.registro,
-    required this.className,
-    required this.grupoMeta,
-    required this.formattedDate,
-    required this.changedEntries,
-    required this.studentNames,
-    required this.gradientColors,
-    required this.hasSnapshot,
-    required this.onDelete,
-    required this.onShowInClass,
-  });
+    // Sort: present (new) first, then absent
+    final entries = changed.entries.toList()
+      ..sort((a, b) {
+        if (a.value != b.value) return a.value ? -1 : 1;
+        return _resolveStudentName(a.key).compareTo(_resolveStudentName(b.key));
+      });
 
-  String _resolveStudentName(String key) => studentNames[key] ?? key;
-
-  List<MapEntry<String, bool>> get _sortedEntries {
-    return changedEntries.entries.toList()..sort((a, b) {
-      if (a.value != b.value) return a.value ? -1 : 1;
-      return _resolveStudentName(a.key).compareTo(_resolveStudentName(b.key));
-    });
-  }
-
-  Future<void> _confirmDelete(BuildContext context) async {
-    HapticFeedback.mediumImpact();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        final palette = dialogContext.uatPalette;
-
-        return AlertDialog(
-          backgroundColor: palette.surfaceElevated,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Text(
-            '¿Eliminar registro?',
-            style: TextStyle(
-              color: palette.textPrimary,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          content: Text(
-            'Se eliminará el registro de asistencia de "$className" del día $formattedDate.\n\nEsta acción no se puede deshacer.',
-            style: TextStyle(color: palette.textSecondary, fontSize: 14),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: Text(
-                'Cancelar',
-                style: TextStyle(
-                  color: palette.textSecondary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: Text(
-                'Eliminar',
-                style: TextStyle(
-                  color: Colors.red.shade400,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) return;
-
-    HapticFeedback.heavyImpact();
-    await onDelete();
-    if (context.mounted) {
-      Navigator.of(context).pop(true);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.uatPalette;
-    final isLightMode = context.isUatLightMode;
-    final entries = _sortedEntries;
-
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: isLightMode
-            ? Brightness.dark
-            : Brightness.light,
-        statusBarBrightness: isLightMode ? Brightness.light : Brightness.dark,
-        systemNavigationBarColor: palette.appBackground,
-        systemNavigationBarIconBrightness: isLightMode
-            ? Brightness.dark
-            : Brightness.light,
+    return Container(
+      margin: const EdgeInsets.fromLTRB(38, 0, 16, 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2C2C2E),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Scaffold(
-        backgroundColor: palette.appBackground,
-        body: SafeArea(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 20, 8),
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(false),
-                      icon: Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        color: palette.textPrimary,
-                        size: 20,
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        'Registro pendiente',
-                        style: TextStyle(
-                          color: palette.textPrimary,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        color: palette.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: palette.border, width: 0.5),
-                        boxShadow: [
-                          BoxShadow(
-                            color: palette.shadow,
-                            blurRadius: 12,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  formattedDate,
-                                  style: TextStyle(
-                                    color: palette.textPrimary,
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  entries.length == 1
-                                      ? '1 cambio'
-                                      : '${entries.length} cambios',
-                                  style: TextStyle(
-                                    color: Colors.orange.shade400,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            className,
-                            style: TextStyle(
-                              color: palette.textSecondary,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          if (grupoMeta != null) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              grupoMeta!,
-                              style: TextStyle(
-                                color: palette.textTertiary,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      hasSnapshot
-                          ? 'Cambios desde la última subida'
-                          : 'Lista marcada',
-                      style: TextStyle(
-                        color: palette.textPrimary,
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: palette.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: palette.border, width: 0.5),
-                      ),
-                      child: entries.isEmpty
-                          ? Padding(
-                              padding: const EdgeInsets.all(18),
-                              child: Text(
-                                'Sin cambios pendientes',
-                                style: TextStyle(
-                                  color: palette.textSecondary,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            )
-                          : Column(
-                              children: [
-                                for (var i = 0; i < entries.length; i++) ...[
-                                  _StudentAttendanceChangeRow(
-                                    name: _resolveStudentName(entries[i].key),
-                                    present: entries[i].value,
-                                  ),
-                                  if (i != entries.length - 1)
-                                    Divider(
-                                      color: palette.border,
-                                      height: 1,
-                                      indent: 16,
-                                      endIndent: 16,
-                                    ),
-                                ],
-                              ],
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-                decoration: BoxDecoration(
-                  color: palette.surface,
-                  border: Border(top: BorderSide(color: palette.border)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _confirmDelete(context),
-                        icon: Icon(
-                          Icons.delete_outline_rounded,
-                          color: Colors.red.shade400,
-                          size: 18,
-                        ),
-                        label: Text(
-                          'Eliminar',
-                          style: TextStyle(
-                            color: Colors.red.shade400,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(color: Colors.red.withOpacity(0.25)),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          HapticFeedback.selectionClick();
-                          onShowInClass();
-                        },
-                        icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                        label: const Text(
-                          'Mostrar',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: gradientColors[0],
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StudentAttendanceChangeRow extends StatelessWidget {
-  final String name;
-  final bool present;
-
-  const _StudentAttendanceChangeRow({
-    required this.name,
-    required this.present,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.uatPalette;
-    final statusColor = present ? Colors.green.shade400 : Colors.red.shade400;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            present ? Icons.check_circle_rounded : Icons.cancel_rounded,
-            color: statusColor,
-            size: 20,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              name,
-              style: TextStyle(
-                color: palette.textPrimary,
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
+          if (hasSnapshot)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Cambios desde la última subida:',
+                style: TextStyle(
+                  color: Colors.grey.shade500,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-            decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(
-              present ? 'Presente' : 'Ausente',
-              style: TextStyle(
-                color: statusColor,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+          ...entries.map((entry) {
+            final name = _resolveStudentName(entry.key);
+            final present = entry.value;
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(
+                children: [
+                  Icon(
+                    present ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                    color: present
+                        ? Colors.green.shade400
+                        : Colors.red.shade400,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      name,
+                      style: TextStyle(
+                        color: present ? Colors.white : Colors.grey.shade500,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ),
+            );
+          }),
         ],
       ),
     );
