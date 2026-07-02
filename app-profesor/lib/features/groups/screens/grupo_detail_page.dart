@@ -8,9 +8,11 @@ import '../../../shared/models/grupo.dart';
 import '../../../shared/models/alumno.dart';
 import '../../../shared/models/asistencia_registro.dart';
 import '../../../services/asistencia_local_service.dart';
+import '../../../services/api_service.dart';
 import '../../../services/ble_beacon_verification_service.dart';
 
 import '../../../services/auth_storage_service.dart';
+import '../../../core/theme/uat_colors.dart';
 
 class GrupoDetailPage extends StatefulWidget {
   final Grupo grupo;
@@ -20,6 +22,15 @@ class GrupoDetailPage extends StatefulWidget {
   final String dias;
   final List<Grupo>? todosLosGrupos;
 
+  /// Fecha inicial para mostrar (si viene de "Mostrar en pantalla")
+  final DateTime? initialDate;
+
+  /// Si true, muestra un efecto neón parpadeante en el botón de fecha
+  final bool highlightDateSelector;
+
+  /// Color del efecto neón (normalmente el color del gradiente de la materia)
+  final Color? highlightColor;
+
   const GrupoDetailPage({
     super.key,
     required this.grupo,
@@ -28,6 +39,9 @@ class GrupoDetailPage extends StatefulWidget {
     required this.horario,
     required this.dias,
     this.todosLosGrupos,
+    this.initialDate,
+    this.highlightDateSelector = false,
+    this.highlightColor,
   });
 
   @override
@@ -49,12 +63,17 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   DateTime? _salidaProfesor;
   DateTime _selectedDateTime = DateTime.now();
 
+  // Controlador para el efecto neón parpadeante en el botón de fecha
+  AnimationController? _neonAnimationController;
+  Animation<double>? _neonAnimation;
+
   // Estado de verificación BLE
   bool _entradaVerificada = true;
   String? _motivoEntrada;
 
   // Servicio de almacenamiento local
   final AsistenciaLocalService _asistenciaService = AsistenciaLocalService();
+  final ApiService _apiService = ApiService();
 
   // Servicio de verificación BLE beacon
   final BleBeaconVerificationService _bleBeaconService =
@@ -81,8 +100,52 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       ),
     );
 
+    // Si se recibió una fecha inicial, usarla
+    if (widget.initialDate != null) {
+      _selectedDateTime = DateTime(
+        widget.initialDate!.year,
+        widget.initialDate!.month,
+        widget.initialDate!.day,
+        DateTime.now().hour,
+        DateTime.now().minute,
+      );
+    }
+
     // Cargar asistencia existente
     _cargarAsistencia();
+
+    // Efecto neón parpadeante si se solicitó
+    if (widget.highlightDateSelector) {
+      _neonAnimationController = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 600),
+      );
+      _neonAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(
+          parent: _neonAnimationController!,
+          curve: Curves.easeInOut,
+        ),
+      );
+      // Iniciar después de que termine la animación Hero
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted && _neonAnimationController != null) {
+          _neonAnimationController!.repeat(reverse: true);
+          // Auto-detener después de ~3.5 segundos
+          Future.delayed(const Duration(milliseconds: 3500), () {
+            if (mounted && _neonAnimationController != null) {
+              _neonAnimationController!.forward().then((_) {
+                if (mounted) {
+                  _neonAnimationController!.stop();
+                  _neonAnimationController!.dispose();
+                  _neonAnimationController = null;
+                  setState(() {});
+                }
+              });
+            }
+          });
+        }
+      });
+    }
 
     // Listener para detectar scroll y mostrar/ocultar botón flotante
     _scrollController.addListener(_scrollListener);
@@ -165,6 +228,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     _scrollController.removeListener(_scrollListener);
     _buttonAnimationController.dispose();
     _studentsAnimationController.dispose();
+    _neonAnimationController?.dispose();
     _scrollController.dispose();
     _bleBeaconService.dispose();
     super.dispose();
@@ -172,419 +236,518 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: NotificationListener<ScrollNotification>(
-        onNotification: (ScrollNotification notification) {
-          if (notification is ScrollUpdateNotification) {
-            // Verificar si estamos en el top
-            final isAtTop = notification.metrics.pixels <= 0;
+    final palette = context.uatPalette;
+    final isLightMode = context.isUatLightMode;
+    final overlayStyle = SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: isLightMode ? Brightness.dark : Brightness.light,
+      statusBarBrightness: isLightMode ? Brightness.light : Brightness.dark,
+      systemNavigationBarColor: palette.appBackground,
+      systemNavigationBarIconBrightness: isLightMode
+          ? Brightness.dark
+          : Brightness.light,
+    );
 
-            if (isAtTop && notification.metrics.pixels < 0) {
-              // Hay overscroll negativo (estamos jalando hacia abajo desde el top)
-              final distance = notification.metrics.pixels.abs();
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: overlayStyle,
+      child: Scaffold(
+        backgroundColor: palette.appBackground,
+        body: NotificationListener<ScrollNotification>(
+          onNotification: (ScrollNotification notification) {
+            if (notification is ScrollUpdateNotification) {
+              // Verificar si estamos en el top
+              final isAtTop = notification.metrics.pixels <= 0;
 
-              // Si supera el threshold, cerrar
-              if (distance > 100) {
-                HapticFeedback.mediumImpact();
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted && Navigator.of(context).canPop()) {
-                    Navigator.of(context).pop();
-                  }
-                });
-                return true; // Consumir la notificación
+              if (isAtTop && notification.metrics.pixels < 0) {
+                // Hay overscroll negativo (estamos jalando hacia abajo desde el top)
+                final distance = notification.metrics.pixels.abs();
+
+                // Si supera el threshold, cerrar
+                if (distance > 100) {
+                  HapticFeedback.mediumImpact();
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted && Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    }
+                  });
+                  return true; // Consumir la notificación
+                }
               }
             }
-          }
-          return false;
-        },
-        child: Stack(
-          children: [
-            CustomScrollView(
-              controller: _scrollController,
-              // AlwaysScrollableScrollPhysics asegura que siempre se pueda hacer scroll
-              // incluso cuando el contenido es pequeño, permitiendo el pull-to-dismiss
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
-              ),
-              slivers: [
-                SliverPadding(
-                  padding: EdgeInsets.only(
-                    top: MediaQuery.of(context).padding.top + 60,
-                  ),
+            return false;
+          },
+          child: Stack(
+            children: [
+              CustomScrollView(
+                controller: _scrollController,
+                // AlwaysScrollableScrollPhysics asegura que siempre se pueda hacer scroll
+                // incluso cuando el contenido es pequeño, permitiendo el pull-to-dismiss
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
                 ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12.0,
-                      vertical: 16.0,
+                slivers: [
+                  SliverPadding(
+                    padding: EdgeInsets.only(
+                      top: MediaQuery.of(context).padding.top + 60,
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Hero Card
-                        RepaintBoundary(
-                          child: Hero(
-                            tag:
-                                'grupo_${widget.grupo.group}_${widget.grupo.subject}',
-                            child: Material(
-                              color: Colors.transparent,
-                              child: Container(
-                                constraints: const BoxConstraints(
-                                  minHeight: 200,
-                                ),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: widget.gradientColors,
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12.0,
+                        vertical: 16.0,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Hero Card
+                          RepaintBoundary(
+                            child: Hero(
+                              tag:
+                                  'grupo_${widget.grupo.group}_${widget.grupo.subject}',
+                              child: Material(
+                                color: Colors.transparent,
+                                child: Container(
+                                  constraints: const BoxConstraints(
+                                    minHeight: 200,
                                   ),
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: widget.gradientColors[0]
-                                          .withOpacity(0.3),
-                                      blurRadius: 20,
-                                      offset: const Offset(0, 6),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: widget.gradientColors,
                                     ),
-                                  ],
-                                ),
-                                padding: const EdgeInsets.all(20),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    // Header con badge del grupo y hora
-                                    Stack(
-                                      clipBehavior: Clip.none,
-                                      children: [
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 12,
-                                                    vertical: 6,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: widget.accentColor
-                                                    .withOpacity(0.2),
-                                                borderRadius:
-                                                    BorderRadius.circular(8),
-                                                border: Border.all(
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: widget.gradientColors[0]
+                                            .withOpacity(0.3),
+                                        blurRadius: 20,
+                                        offset: const Offset(0, 6),
+                                      ),
+                                    ],
+                                  ),
+                                  padding: const EdgeInsets.all(20),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      // Header con badge del grupo y hora
+                                      Stack(
+                                        clipBehavior: Clip.none,
+                                        children: [
+                                          Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 6,
+                                                    ),
+                                                decoration: BoxDecoration(
                                                   color: widget.accentColor
-                                                      .withOpacity(0.3),
+                                                      .withOpacity(0.2),
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                  border: Border.all(
+                                                    color: widget.accentColor
+                                                        .withOpacity(0.3),
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  widget.grupo.aula,
+                                                  style: TextStyle(
+                                                    color: widget.accentColor,
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.bold,
+                                                    letterSpacing: 1.2,
+                                                  ),
                                                 ),
                                               ),
-                                              child: Text(
-                                                widget.grupo.aula,
+                                              Text(
+                                                widget.horario,
                                                 style: TextStyle(
-                                                  color: widget.accentColor,
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.bold,
-                                                  letterSpacing: 1.2,
+                                                  color: widget.accentColor
+                                                      .withOpacity(0.8),
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w600,
+                                                  letterSpacing: 0.5,
                                                 ),
                                               ),
-                                            ),
-                                            Text(
-                                              widget.horario,
+                                            ],
+                                          ),
+                                          // Días flotando abajo a la derecha
+                                          Positioned(
+                                            right: 0,
+                                            top: 22,
+                                            child: Text(
+                                              widget.dias,
                                               style: TextStyle(
                                                 color: widget.accentColor
-                                                    .withOpacity(0.8),
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w600,
+                                                    .withOpacity(0.6),
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w500,
                                                 letterSpacing: 0.5,
                                               ),
                                             ),
-                                          ],
-                                        ),
-                                        // Días flotando abajo a la derecha
-                                        Positioned(
-                                          right: 0,
-                                          top: 22,
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      // Nombre de la materia con altura mínima fija para consistencia
+                                      SizedBox(
+                                        height: 56, // Espacio para 2 líneas
+                                        child: Align(
+                                          alignment: Alignment.centerLeft,
                                           child: Text(
-                                            widget.dias,
+                                            widget.grupo.materia
+                                                .replaceAll(
+                                                  RegExp(r'\([^)]*\)\s*'),
+                                                  '',
+                                                )
+                                                .trim(),
                                             style: TextStyle(
-                                              color: widget.accentColor
-                                                  .withOpacity(0.6),
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w500,
+                                              color: widget.accentColor,
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.bold,
                                               letterSpacing: 0.5,
+                                              height: 1.2,
                                             ),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    // Nombre de la materia con altura mínima fija para consistencia
-                                    SizedBox(
-                                      height: 56, // Espacio para 2 líneas
-                                      child: Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: Text(
-                                          widget.grupo.materia
-                                              .replaceAll(
-                                                RegExp(r'\([^)]*\)\s*'),
-                                                '',
-                                              )
-                                              .trim(),
-                                          style: TextStyle(
-                                            color: widget.accentColor,
-                                            fontSize: 20,
-                                            fontWeight: FontWeight.bold,
-                                            letterSpacing: 0.5,
-                                            height: 1.2,
-                                          ),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    // Info adicional - posición fija
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              'GRUPO',
-                                              style: TextStyle(
-                                                color: widget.accentColor
-                                                    .withOpacity(0.7),
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w600,
-                                                letterSpacing: 1,
+                                      const SizedBox(height: 16),
+                                      // Info adicional - posición fija
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'GRUPO',
+                                                style: TextStyle(
+                                                  color: widget.accentColor
+                                                      .withOpacity(0.7),
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w600,
+                                                  letterSpacing: 1,
+                                                ),
                                               ),
-                                            ),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              widget.grupo.grupoLetra,
-                                              style: TextStyle(
-                                                color: widget.accentColor,
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.end,
-                                          children: [
-                                            Text(
-                                              'ESTUDIANTES',
-                                              style: TextStyle(
-                                                color: widget.accentColor
-                                                    .withOpacity(0.7),
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w600,
-                                                letterSpacing: 1,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 2),
-                                            Row(
-                                              children: [
-                                                Icon(
-                                                  Icons.people_rounded,
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                widget.grupo.grupoLetra,
+                                                style: TextStyle(
                                                   color: widget.accentColor,
-                                                  size: 18,
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w600,
                                                 ),
-                                                const SizedBox(width: 4),
-                                                Text(
-                                                  '${widget.grupo.totalAlumnos}',
-                                                  style: TextStyle(
+                                              ),
+                                            ],
+                                          ),
+                                          Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.end,
+                                            children: [
+                                              Text(
+                                                'ESTUDIANTES',
+                                                style: TextStyle(
+                                                  color: widget.accentColor
+                                                      .withOpacity(0.7),
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w600,
+                                                  letterSpacing: 1,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons.people_rounded,
                                                     color: widget.accentColor,
-                                                    fontSize: 16,
-                                                    fontWeight: FontWeight.w600,
+                                                    size: 18,
                                                   ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ],
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    '${widget.grupo.totalAlumnos}',
+                                                    style: TextStyle(
+                                                      color: widget.accentColor,
+                                                      fontSize: 16,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 32),
-                        // Tab menu y contenido con animación
-                        FadeTransition(
-                          opacity: _studentsOpacity,
-                          child: SlideTransition(
-                            position: _studentsSlide,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Tab Menu
-                                _buildTabMenu(),
-                                const SizedBox(height: 16),
-                                // Contenido basado en el tab seleccionado
-                                _selectedTab == 0
-                                    ? _buildMiAsistenciaContent()
-                                    : _buildAlumnosContent(),
-                              ],
+                          const SizedBox(height: 32),
+                          // Tab menu y contenido con animación
+                          FadeTransition(
+                            opacity: _studentsOpacity,
+                            child: SlideTransition(
+                              position: _studentsSlide,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Tab Menu
+                                  _buildTabMenu(),
+                                  const SizedBox(height: 16),
+                                  // Contenido basado en el tab seleccionado
+                                  _selectedTab == 0
+                                      ? _buildMiAsistenciaContent()
+                                      : _buildAlumnosContent(),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 24),
-                      ],
-                    ),
-                  ),
-                ),
-              ], // Cierre de slivers
-            ), // Cierre CustomScrollView
-            // Botón flotante izquierda (X)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 8,
-              left: 12,
-              child: // Botón X
-              ClipRRect(
-                borderRadius: BorderRadius.circular(22),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2C2C2E).withOpacity(0.72),
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.1),
-                        width: 0.5,
-                      ),
-                    ),
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      icon: const Icon(
-                        Icons.close,
-                        color: Colors.white,
-                        size: 24,
-                      ),
-                      onPressed: () {
-                        HapticFeedback.lightImpact();
-                        if (Navigator.of(context).canPop()) {
-                          Navigator.of(context).pop();
-                        }
-                      },
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            // Botón flotante derecha (fecha)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 8,
-              right: 12,
-              child: GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  _showDateTimePicker();
-                },
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(22),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2C2C2E).withOpacity(0.72),
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
-                          width: 0.5,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _getFormattedDateTime(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          const Icon(Icons.edit, size: 16, color: Colors.white),
+                          const SizedBox(height: 24),
                         ],
                       ),
                     ),
                   ),
+                ], // Cierre de slivers
+              ), // Cierre CustomScrollView
+              // Botón flotante izquierda (X)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 8,
+                left: 12,
+                child: // Botón X
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: palette.controlBackground,
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color: palette.controlBorder,
+                          width: 0.5,
+                        ),
+                      ),
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        icon: Icon(
+                          Icons.close,
+                          color: palette.controlIcon,
+                          size: 24,
+                        ),
+                        onPressed: () {
+                          HapticFeedback.lightImpact();
+                          if (Navigator.of(context).canPop()) {
+                            Navigator.of(context).pop();
+                          }
+                        },
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
-
-            // Botón flotante para volver arriba
-            if (_showScrollToTopButton)
+              // Botón flotante derecha (fecha)
               Positioned(
-                bottom: 24,
-                right: 16,
-                child: TweenAnimationBuilder<double>(
-                  duration: const Duration(milliseconds: 200),
-                  tween: Tween<double>(begin: 0, end: 1),
-                  builder: (context, value, child) {
-                    return Transform.scale(
-                      scale: value,
-                      child: Opacity(opacity: value, child: child),
-                    );
+                top: MediaQuery.of(context).padding.top + 8,
+                right: 12,
+                child: GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    _showDateTimePicker();
                   },
-                  child: GestureDetector(
-                    onTap: _scrollToTop,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(22),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                        child: Container(
-                          height: 44,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF2C2C2E).withOpacity(0.72),
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.1),
-                              width: 0.5,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.arrow_upward_rounded,
-                                color: Colors.white,
-                                size: 20,
+                  child:
+                      _neonAnimationController != null && _neonAnimation != null
+                      ? AnimatedBuilder(
+                          animation: _neonAnimation!,
+                          builder: (context, child) {
+                            final neonColor =
+                                widget.highlightColor ??
+                                widget.gradientColors[0];
+                            final glowIntensity = _neonAnimation!.value;
+                            return Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(22),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: neonColor.withOpacity(
+                                      0.7 * glowIntensity,
+                                    ),
+                                    blurRadius: 16 * glowIntensity,
+                                    spreadRadius: 2 * glowIntensity,
+                                  ),
+                                  BoxShadow(
+                                    color: neonColor.withOpacity(
+                                      0.4 * glowIntensity,
+                                    ),
+                                    blurRadius: 30 * glowIntensity,
+                                    spreadRadius: 4 * glowIntensity,
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 6),
-                              const Text(
-                                'Arriba',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(22),
+                                child: BackdropFilter(
+                                  filter: ImageFilter.blur(
+                                    sigmaX: 20,
+                                    sigmaY: 20,
+                                  ),
+                                  child: Container(
+                                    height: 44,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: palette.controlBackground,
+                                      borderRadius: BorderRadius.circular(22),
+                                      border: Border.all(
+                                        color: neonColor.withOpacity(
+                                          0.3 + 0.5 * glowIntensity,
+                                        ),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          _getFormattedDateTime(),
+                                          style: TextStyle(
+                                            color: palette.controlIcon,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Icon(
+                                          Icons.edit,
+                                          size: 16,
+                                          color: palette.controlIcon,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ],
+                            );
+                          },
+                        )
+                      : ClipRRect(
+                          borderRadius: BorderRadius.circular(22),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                            child: Container(
+                              height: 44,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
+                              decoration: BoxDecoration(
+                                color: palette.controlBackground,
+                                borderRadius: BorderRadius.circular(22),
+                                border: Border.all(
+                                  color: palette.controlBorder,
+                                  width: 0.5,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _getFormattedDateTime(),
+                                    style: TextStyle(
+                                      color: palette.controlIcon,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Icon(
+                                    Icons.edit,
+                                    size: 16,
+                                    color: palette.controlIcon,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                ),
+              ),
+
+              // Botón flotante para volver arriba
+              if (_showScrollToTopButton)
+                Positioned(
+                  bottom: 24,
+                  right: 16,
+                  child: TweenAnimationBuilder<double>(
+                    duration: const Duration(milliseconds: 200),
+                    tween: Tween<double>(begin: 0, end: 1),
+                    builder: (context, value, child) {
+                      return Transform.scale(
+                        scale: value,
+                        child: Opacity(opacity: value, child: child),
+                      );
+                    },
+                    child: GestureDetector(
+                      onTap: _scrollToTop,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(22),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                          child: Container(
+                            height: 44,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            decoration: BoxDecoration(
+                              color: palette.controlBackground,
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(
+                                color: palette.controlBorder,
+                                width: 0.5,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.arrow_upward_rounded,
+                                  color: palette.controlIcon,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Arriba',
+                                  style: TextStyle(
+                                    color: palette.controlIcon,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-          ], // Cierre Stack children
-        ), // Cierre Stack
-      ), // Cierre NotificationListener
+            ], // Cierre Stack children
+          ), // Cierre Stack
+        ), // Cierre NotificationListener
+      ),
     ); // Cierre Scaffold
   }
 
@@ -625,7 +788,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           Text(
             label,
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.white.withOpacity(0.4),
+              color: isSelected
+                  ? context.uatPalette.textPrimary
+                  : context.uatPalette.textTertiary,
               fontSize: 24,
               fontWeight: FontWeight.bold,
             ),
@@ -647,6 +812,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   }
 
   Widget _buildMiAsistenciaContent() {
+    final palette = context.uatPalette;
+
     return Column(
       children: [
         // Mensaje de advertencia si no es día de clase
@@ -683,11 +850,12 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         // Botón de Entrada
         Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF1C1C1E),
+            color: palette.surface,
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: palette.border),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
+                color: palette.shadow,
                 blurRadius: 10,
                 offset: const Offset(0, 5),
               ),
@@ -742,7 +910,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                               ? 'Marcar Entrada'
                               : 'Entrada: ${_getFormattedDate(_entradaProfesor!)} ${_formatTime(_entradaProfesor!)}',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.9),
+                            color: palette.textPrimary.withOpacity(0.9),
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                           ),
@@ -766,11 +934,12 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         // Botón de Salida
         Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF1C1C1E),
+            color: palette.surface,
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: palette.border),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
+                color: palette.shadow,
                 blurRadius: 10,
                 offset: const Offset(0, 5),
               ),
@@ -835,8 +1004,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                               : 'Salida: ${_getFormattedDate(_salidaProfesor!)} ${_formatTime(_salidaProfesor!)}',
                           style: TextStyle(
                             color: _entradaProfesor == null
-                                ? Colors.white.withOpacity(0.5)
-                                : Colors.white.withOpacity(0.9),
+                                ? palette.textTertiary
+                                : palette.textPrimary.withOpacity(0.9),
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                           ),
@@ -860,11 +1029,12 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         // Botón de Subir Asistencia
         Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF1C1C1E),
+            color: palette.surface,
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: palette.border),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
+                color: palette.shadow,
                 blurRadius: 10,
                 offset: const Offset(0, 5),
               ),
@@ -873,7 +1043,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: _entradaProfesor != null && _salidaProfesor != null
+              onTap: _puedeSubirAsistencia()
                   ? () {
                       HapticFeedback.mediumImpact();
                       _intentarSincronizarAsistencia();
@@ -883,9 +1053,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
               splashColor: widget.gradientColors[0].withOpacity(0.2),
               highlightColor: widget.gradientColors[0].withOpacity(0.1),
               child: Opacity(
-                opacity: _entradaProfesor != null && _salidaProfesor != null
-                    ? 1.0
-                    : 0.6,
+                opacity: _puedeSubirAsistencia() ? 1.0 : 0.6,
                 child: Padding(
                   padding: const EdgeInsets.all(20.0),
                   child: Row(
@@ -913,18 +1081,16 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                         child: Text(
                           'Subir Asistencia',
                           style: TextStyle(
-                            color:
-                                _entradaProfesor != null &&
-                                    _salidaProfesor != null
-                                ? Colors.white.withOpacity(0.9)
-                                : Colors.white.withOpacity(0.5),
+                            color: _puedeSubirAsistencia()
+                                ? palette.textPrimary.withOpacity(0.9)
+                                : palette.textTertiary,
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
                       // Icono de flecha
-                      if (_entradaProfesor != null && _salidaProfesor != null)
+                      if (_puedeSubirAsistencia())
                         Icon(
                           Icons.arrow_forward_rounded,
                           color: widget.gradientColors[0],
@@ -1060,9 +1226,41 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   }
 
   // Guardar asistencia localmente
+  String _registroAsistenciaId() {
+    return '${widget.grupo.id}_${_selectedDateTime.year}-${_selectedDateTime.month}-${_selectedDateTime.day}';
+  }
+
+  List<Map<String, dynamic>> _buildAttendancesForUpload() {
+    final studentIdMap = <String, int>{};
+    for (final student in widget.grupo.students) {
+      final idAlumno = int.tryParse(student.id ?? '');
+      if (idAlumno != null) {
+        studentIdMap[student.id!] = idAlumno;
+        studentIdMap[student.number.toString()] = idAlumno;
+        if (student.matricula != null) {
+          studentIdMap[student.matricula!] = idAlumno;
+        }
+      }
+    }
+
+    final attendances = <Map<String, dynamic>>[];
+    _asistencias.forEach((key, present) {
+      final studentId = studentIdMap[key];
+      if (studentId == null) return;
+
+      attendances.add({
+        'id_alumno': studentId,
+        'num_pase_lista': 1,
+        'num_dia': _selectedDateTime.weekday,
+        'sn_asistencia': present,
+      });
+    });
+
+    return attendances;
+  }
+
   Future<void> _guardarAsistencia() async {
-    final registroId =
-        '${widget.grupo.id}_${_selectedDateTime.year}-${_selectedDateTime.month}-${_selectedDateTime.day}';
+    final registroId = _registroAsistenciaId();
 
     final profesorId = _authStorage.getProfesor()?.id ?? 'unknown_professor';
 
@@ -1098,12 +1296,27 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     // Mostrar diálogo de progreso
     if (!mounted) return;
 
+    await _guardarAsistencia();
+    if (!mounted) return;
+
+    final token = _authStorage.getToken();
+    final attendances = _buildAttendancesForUpload();
+
+    if (token == null || token.isEmpty || attendances.isEmpty) {
+      if (mounted) {
+        _mostrarDialogoErrorSincronizacion();
+      }
+      return;
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
+        final palette = context.uatPalette;
+
         return Dialog(
-          backgroundColor: const Color(0xFF2C2C2E),
+          backgroundColor: palette.surfaceElevated,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
@@ -1141,19 +1354,19 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text(
+                Text(
                   'Subiendo asistencia',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: palette.textPrimary,
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'Estamos guardando la asistencia\nen la nube...',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                  style: TextStyle(color: palette.textSecondary, fontSize: 14),
                 ),
               ],
             ),
@@ -1162,32 +1375,37 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       },
     );
 
-    // Simular intento de sincronización
-    // TODO: Implementar llamada real al API
-    await Future.delayed(const Duration(seconds: 2));
+    final result = await _apiService.uploadAttendance(
+      token: token,
+      groupId: widget.grupo.id,
+      code: widget.grupo.code ?? '',
+      groupLetter: widget.grupo.groupLetter ?? widget.grupo.grupoLetra,
+      period: widget.grupo.period ?? '',
+      date: _selectedDateTime,
+      attendances: attendances,
+      encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
+    );
 
     // Cerrar diálogo
     if (mounted) {
       Navigator.of(context).pop();
     }
 
-    // Simular éxito/fallo aleatorio para pruebas
-    // TODO: Reemplazar con lógica real de sincronización
-    final exito = DateTime.now().second % 2 == 0; // Simulación temporal
-
-    if (exito) {
-      // Éxito: actualizar estado y mostrar confirmación
-
-      if (mounted) {
-        _mostrarDialogoExito();
-      }
-    } else {
-      // Error: mantener como pendiente y mostrar mensaje
-
-      if (mounted) {
-        _mostrarDialogoErrorSincronizacion();
-      }
-    }
+    await result.fold(
+      (_) async {
+        if (mounted) {
+          _mostrarDialogoErrorSincronizacion();
+        }
+      },
+      (_) async {
+        await _asistenciaService.marcarComoSincronizada(
+          _registroAsistenciaId(),
+        );
+        if (mounted) {
+          _mostrarDialogoExito();
+        }
+      },
+    );
   }
 
   // Mostrar diálogo de éxito
@@ -1196,8 +1414,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       context: context,
       barrierDismissible: true,
       builder: (BuildContext context) {
+        final palette = context.uatPalette;
+
         return Dialog(
-          backgroundColor: const Color(0xFF2C2C2E),
+          backgroundColor: palette.surfaceElevated,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
@@ -1221,19 +1441,19 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text(
+                Text(
                   '¡Asistencia guardada!',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: palette.textPrimary,
                     fontSize: 20,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   'La asistencia del profesor y los alumnos\nha sido subida exitosamente a la nube.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                  style: TextStyle(color: palette.textSecondary, fontSize: 14),
                 ),
                 const SizedBox(height: 24),
                 SizedBox(
@@ -1271,8 +1491,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       context: context,
       barrierDismissible: true,
       builder: (BuildContext context) {
+        final palette = context.uatPalette;
+
         return Dialog(
-          backgroundColor: const Color(0xFF2C2C2E),
+          backgroundColor: palette.surfaceElevated,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
@@ -1292,19 +1514,19 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                   child: Icon(Icons.cloud_off, color: Colors.orange, size: 50),
                 ),
                 const SizedBox(height: 20),
-                const Text(
+                Text(
                   'No se pudo subir',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: palette.textPrimary,
                     fontSize: 20,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   'La asistencia fue guardada localmente\npero no se pudo subir a la nube.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                  style: TextStyle(color: palette.textSecondary, fontSize: 14),
                 ),
                 const SizedBox(height: 8),
                 Container(
@@ -1390,6 +1612,15 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   // Para alumnos: permite marcar en cualquier fecha si es día de clase
   bool _puedeMarcarAsistenciaAlumnos() {
     return _esDiaDeClase();
+  }
+
+  bool _puedeSubirAsistencia() {
+    final tieneAsistenciaProfesor =
+        _entradaProfesor != null && _salidaProfesor != null;
+    final tieneAsistenciaAlumnos =
+        _puedeMarcarAsistenciaAlumnos() && _asistencias.isNotEmpty;
+
+    return tieneAsistenciaProfesor || tieneAsistenciaAlumnos;
   }
 
   String _getFormattedDate(DateTime dateTime) {
@@ -1581,22 +1812,22 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       lastDate: now, // No permitir fechas futuras
       locale: const Locale('es', 'MX'),
       builder: (context, child) {
+        final palette = context.uatPalette;
+        final baseTheme = Theme.of(context);
+
         return Theme(
-          data: ThemeData.dark().copyWith(
-            colorScheme: ColorScheme.dark(
+          data: baseTheme.copyWith(
+            colorScheme: baseTheme.colorScheme.copyWith(
               primary: widget.accentColor,
-              onPrimary: Colors.black, // Texto negro sobre el círculo de color
-              surface: const Color(0xFF1C1C1E),
-              onSurface: Colors.white,
+              onPrimary: context.isUatLightMode ? Colors.white : Colors.black,
+              surface: palette.surfaceElevated,
+              onSurface: palette.textPrimary,
             ),
             textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(
-                foregroundColor:
-                    widget.accentColor, // Color de los botones Cancel/OK
-              ),
+              style: TextButton.styleFrom(foregroundColor: widget.accentColor),
             ),
             dialogTheme: DialogThemeData(
-              backgroundColor: const Color(0xFF1C1C1E),
+              backgroundColor: palette.surfaceElevated,
             ),
           ),
           child: child!,
@@ -1621,6 +1852,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   }
 
   Widget _buildAlumnosContent() {
+    final palette = context.uatPalette;
+
     return Column(
       children: [
         // Mensaje de advertencia si no es día de clase
@@ -1661,11 +1894,12 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         // Lista de alumnos
         Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF1C1C1E),
+            color: palette.surface,
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: palette.border),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
+                color: palette.shadow,
                 blurRadius: 10,
                 offset: const Offset(0, 5),
               ),
@@ -1704,7 +1938,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                             Text(
                               'Invertir',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.6),
+                                color: palette.textSecondary,
                                 fontSize: 14,
                                 fontWeight: FontWeight.w400,
                               ),
@@ -1717,7 +1951,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                               child: Center(
                                 child: Icon(
                                   Icons.check_box_rounded,
-                                  color: Colors.white.withOpacity(0.6),
+                                  color: palette.textSecondary,
                                   size: 32,
                                 ),
                               ),
@@ -1727,11 +1961,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                       ),
                     ),
                   ),
-                  Divider(
-                    height: 1,
-                    thickness: 1,
-                    color: Colors.white.withOpacity(0.07),
-                  ),
+                  Divider(height: 1, thickness: 1, color: palette.border),
                 ],
                 ...List.generate(
                   widget.grupo.students.length,
@@ -1752,9 +1982,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
   Widget _buildStudentCard(dynamic alumno, {bool isLast = false}) {
     final puedeMarcar = _puedeMarcarAsistenciaAlumnos();
+    final palette = context.uatPalette;
 
     return Container(
-      color: const Color(0xFF1C1C1E),
+      color: palette.surface,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -1791,8 +2022,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                       Expanded(
                         child: Text(
                           alumno.name,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: palette.textPrimary,
                             fontSize: 16,
                             fontWeight: FontWeight.w500,
                           ),
@@ -1823,7 +2054,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                                 color:
                                     (_asistencias[_alumnoKey(alumno)] ?? false)
                                     ? widget.gradientColors[0]
-                                    : Colors.grey.shade600,
+                                    : palette.border,
                                 width: 2.5,
                               ),
                               borderRadius: BorderRadius.circular(6),
@@ -1846,10 +2077,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
               if (!isLast)
                 Padding(
                   padding: const EdgeInsets.only(left: 16, right: 16),
-                  child: Container(
-                    height: 0.5,
-                    color: Colors.white.withOpacity(0.1),
-                  ),
+                  child: Container(height: 0.5, color: palette.border),
                 ),
             ],
           ),
@@ -2020,8 +2248,10 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.uatPalette;
+
     return Dialog(
-      backgroundColor: const Color(0xFF2C2C2E),
+      backgroundColor: palette.surfaceElevated,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: SingleChildScrollView(
         child: Padding(
@@ -2034,8 +2264,8 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
               Text(
                 _statusText,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: palette.textPrimary,
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
                 ),
@@ -2133,22 +2363,21 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
   }
 
   Widget _buildScanningContent() {
+    final palette = context.uatPalette;
+
     return Column(
       children: [
-        const Text(
+        Text(
           'Verificando tu ubicación en el salón...',
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.white70, fontSize: 14),
+          style: TextStyle(color: palette.textSecondary, fontSize: 14),
         ),
         if (_lastDeviceFound != null) ...[
           const SizedBox(height: 8),
           Text(
             'Último: $_lastDeviceFound',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.4),
-              fontSize: 12,
-            ),
+            style: TextStyle(color: palette.textTertiary, fontSize: 12),
           ),
         ],
         const SizedBox(height: 16),
@@ -2168,10 +2397,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
           },
           child: Text(
             'Cancelar',
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.6),
-              fontSize: 16,
-            ),
+            style: TextStyle(color: palette.textSecondary, fontSize: 16),
           ),
         ),
       ],
@@ -2179,12 +2405,14 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
   }
 
   Widget _buildFailedContent() {
+    final palette = context.uatPalette;
+
     return Column(
       children: [
-        const Text(
+        Text(
           'No pudimos verificar tu ubicación.\nPuedes reintentar o indicar un motivo.',
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.white70, fontSize: 14),
+          style: TextStyle(color: palette.textSecondary, fontSize: 14),
         ),
         const SizedBox(height: 20),
         // Reintentar
@@ -2227,8 +2455,8 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
             ),
             style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.white70,
-              side: BorderSide(color: Colors.white.withOpacity(0.2)),
+              foregroundColor: palette.textSecondary,
+              side: BorderSide(color: palette.border),
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -2241,10 +2469,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
           onPressed: () => Navigator.of(context).pop(),
           child: Text(
             'Cancelar',
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.4),
-              fontSize: 14,
-            ),
+            style: TextStyle(color: palette.textTertiary, fontSize: 14),
           ),
         ),
       ],
@@ -2252,12 +2477,14 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
   }
 
   Widget _buildMotivoContent() {
+    final palette = context.uatPalette;
+
     return Column(
       children: [
-        const Text(
+        Text(
           'Selecciona el motivo por el cual\nno se detectó el sensor:',
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.white70, fontSize: 14),
+          style: TextStyle(color: palette.textSecondary, fontSize: 14),
         ),
         const SizedBox(height: 16),
         // Motivos predefinidos
@@ -2269,8 +2496,8 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
               child: OutlinedButton(
                 onPressed: () => _seleccionarMotivo(motivo),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: BorderSide(color: Colors.white.withOpacity(0.15)),
+                  foregroundColor: palette.textPrimary,
+                  side: BorderSide(color: palette.border),
                   padding: const EdgeInsets.symmetric(
                     vertical: 14,
                     horizontal: 16,
@@ -2278,7 +2505,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  backgroundColor: const Color(0xFF3A3A3C),
+                  backgroundColor: palette.surfaceMuted,
                 ),
                 child: Text(
                   motivo,
@@ -2296,19 +2523,19 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
         const SizedBox(height: 4),
         Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF3A3A3C),
+            color: palette.surfaceMuted,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.15)),
+            border: Border.all(color: palette.border),
           ),
           child: Row(
             children: [
               Expanded(
                 child: TextField(
                   controller: _otroMotivoController,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  style: TextStyle(color: palette.textPrimary, fontSize: 14),
                   decoration: InputDecoration(
                     hintText: 'Otro motivo...',
-                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.4)),
+                    hintStyle: TextStyle(color: palette.textTertiary),
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -2343,10 +2570,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
           },
           child: Text(
             'Volver',
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.4),
-              fontSize: 14,
-            ),
+            style: TextStyle(color: palette.textTertiary, fontSize: 14),
           ),
         ),
       ],

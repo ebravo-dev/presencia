@@ -66,7 +66,156 @@ class UATColors {
   );
 }
 
-/// Extensión para facilitar el uso de colores UAT
+/// Tokens semánticos de color para adaptar la UI entre modo claro y oscuro.
+@immutable
+class UATPalette extends ThemeExtension<UATPalette> {
+  final Color appBackground;
+  final Color surface;
+  final Color surfaceElevated;
+  final Color surfaceMuted;
+  final Color textPrimary;
+  final Color textSecondary;
+  final Color textTertiary;
+  final Color iconMuted;
+  final Color border;
+  final Color controlBackground;
+  final Color controlBorder;
+  final Color controlIcon;
+  final Color shadow;
+  final Color skeletonBase;
+  final Color skeletonHighlight;
+
+  const UATPalette({
+    required this.appBackground,
+    required this.surface,
+    required this.surfaceElevated,
+    required this.surfaceMuted,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.textTertiary,
+    required this.iconMuted,
+    required this.border,
+    required this.controlBackground,
+    required this.controlBorder,
+    required this.controlIcon,
+    required this.shadow,
+    required this.skeletonBase,
+    required this.skeletonHighlight,
+  });
+
+  static const UATPalette dark = UATPalette(
+    appBackground: Color(0xFF000000),
+    surface: Color(0xFF1C1C1E),
+    surfaceElevated: Color(0xFF242426),
+    surfaceMuted: Color(0xFF2C2C2E),
+    textPrimary: Color(0xFFFFFFFF),
+    textSecondary: Color(0xFFB8B8BE),
+    textTertiary: Color(0xFF74747A),
+    iconMuted: Color(0xFF8E8E93),
+    border: Color(0x1FFFFFFF),
+    controlBackground: Color(0xB82C2C2E),
+    controlBorder: Color(0x1AFFFFFF),
+    controlIcon: Color(0xFFFFFFFF),
+    shadow: Color(0x8A000000),
+    skeletonBase: Color(0xFF15151A),
+    skeletonHighlight: Color(0xFFFFFFFF),
+  );
+
+  static const UATPalette light = UATPalette(
+    appBackground: Color(0xFFF4F1EC),
+    surface: Color(0xFFFBF8F3),
+    surfaceElevated: Color(0xFFF0ECE6),
+    surfaceMuted: Color(0xFFE8E2DA),
+    textPrimary: Color(0xFF171512),
+    textSecondary: Color(0xFF5F5B54),
+    textTertiary: Color(0xFF8D887F),
+    iconMuted: Color(0xFF7D776F),
+    border: Color(0x262D2924),
+    controlBackground: Color(0xEAFBF8F3),
+    controlBorder: Color(0x332D2924),
+    controlIcon: Color(0xFF221F1B),
+    shadow: Color(0x24000000),
+    skeletonBase: Color(0xFFE1DAD0),
+    skeletonHighlight: Color(0xFFFFFFFF),
+  );
+
+  @override
+  UATPalette copyWith({
+    Color? appBackground,
+    Color? surface,
+    Color? surfaceElevated,
+    Color? surfaceMuted,
+    Color? textPrimary,
+    Color? textSecondary,
+    Color? textTertiary,
+    Color? iconMuted,
+    Color? border,
+    Color? controlBackground,
+    Color? controlBorder,
+    Color? controlIcon,
+    Color? shadow,
+    Color? skeletonBase,
+    Color? skeletonHighlight,
+  }) {
+    return UATPalette(
+      appBackground: appBackground ?? this.appBackground,
+      surface: surface ?? this.surface,
+      surfaceElevated: surfaceElevated ?? this.surfaceElevated,
+      surfaceMuted: surfaceMuted ?? this.surfaceMuted,
+      textPrimary: textPrimary ?? this.textPrimary,
+      textSecondary: textSecondary ?? this.textSecondary,
+      textTertiary: textTertiary ?? this.textTertiary,
+      iconMuted: iconMuted ?? this.iconMuted,
+      border: border ?? this.border,
+      controlBackground: controlBackground ?? this.controlBackground,
+      controlBorder: controlBorder ?? this.controlBorder,
+      controlIcon: controlIcon ?? this.controlIcon,
+      shadow: shadow ?? this.shadow,
+      skeletonBase: skeletonBase ?? this.skeletonBase,
+      skeletonHighlight: skeletonHighlight ?? this.skeletonHighlight,
+    );
+  }
+
+  @override
+  UATPalette lerp(ThemeExtension<UATPalette>? other, double t) {
+    if (other is! UATPalette) return this;
+
+    return UATPalette(
+      appBackground: Color.lerp(appBackground, other.appBackground, t)!,
+      surface: Color.lerp(surface, other.surface, t)!,
+      surfaceElevated: Color.lerp(surfaceElevated, other.surfaceElevated, t)!,
+      surfaceMuted: Color.lerp(surfaceMuted, other.surfaceMuted, t)!,
+      textPrimary: Color.lerp(textPrimary, other.textPrimary, t)!,
+      textSecondary: Color.lerp(textSecondary, other.textSecondary, t)!,
+      textTertiary: Color.lerp(textTertiary, other.textTertiary, t)!,
+      iconMuted: Color.lerp(iconMuted, other.iconMuted, t)!,
+      border: Color.lerp(border, other.border, t)!,
+      controlBackground: Color.lerp(
+        controlBackground,
+        other.controlBackground,
+        t,
+      )!,
+      controlBorder: Color.lerp(controlBorder, other.controlBorder, t)!,
+      controlIcon: Color.lerp(controlIcon, other.controlIcon, t)!,
+      shadow: Color.lerp(shadow, other.shadow, t)!,
+      skeletonBase: Color.lerp(skeletonBase, other.skeletonBase, t)!,
+      skeletonHighlight: Color.lerp(
+        skeletonHighlight,
+        other.skeletonHighlight,
+        t,
+      )!,
+    );
+  }
+}
+
+extension UATPaletteContext on BuildContext {
+  UATPalette get uatPalette =>
+      Theme.of(this).extension<UATPalette>() ?? UATPalette.dark;
+
+  bool get isUatLightMode => Theme.of(this).brightness == Brightness.light;
+}
+
+/// Extensión para facilitar el uso de colores UAT.
 extension UATColorExtension on Color {
   /// Convierte un color UAT a MaterialColor para usar en temas
   MaterialColor toMaterialColor() {

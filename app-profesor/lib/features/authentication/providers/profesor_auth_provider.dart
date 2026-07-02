@@ -23,6 +23,7 @@ class ProfesorAuthState {
   final List<Grupo> grupos;
   final String? token;
   final String? errorMessage;
+  final bool isLoadingGroups;
 
   const ProfesorAuthState({
     this.status = ProfesorAuthStatus.initial,
@@ -30,6 +31,7 @@ class ProfesorAuthState {
     this.grupos = const [],
     this.token,
     this.errorMessage,
+    this.isLoadingGroups = false,
   });
 
   ProfesorAuthState copyWith({
@@ -38,6 +40,7 @@ class ProfesorAuthState {
     List<Grupo>? grupos,
     String? token,
     String? errorMessage,
+    bool? isLoadingGroups,
   }) {
     return ProfesorAuthState(
       status: status ?? this.status,
@@ -45,6 +48,7 @@ class ProfesorAuthState {
       grupos: grupos ?? this.grupos,
       token: token ?? this.token,
       errorMessage: errorMessage ?? this.errorMessage,
+      isLoadingGroups: isLoadingGroups ?? this.isLoadingGroups,
     );
   }
 
@@ -155,7 +159,10 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
             Logger.info(
               '💾 ${cachedGrupos.length} clases cargadas desde cache local',
             );
-            state = state.copyWith(grupos: cachedGrupos);
+            state = state.copyWith(
+              grupos: cachedGrupos,
+              isLoadingGroups: false,
+            );
             return; // No hacer petición HTTP
           }
         }
@@ -165,6 +172,8 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
       Logger.info(
         '🌐 Cargando clases desde el servidor: ${state.profesor!.id}',
       );
+
+      state = state.copyWith(isLoadingGroups: true);
 
       final result = await _apiService.getGruposProfesor(state.token!);
 
@@ -177,14 +186,19 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
             Logger.info(
               '⚠️ Usando cache como fallback: ${cachedGrupos.length} clases',
             );
-            state = state.copyWith(grupos: cachedGrupos);
+            state = state.copyWith(
+              grupos: cachedGrupos,
+              isLoadingGroups: false,
+            );
+          } else {
+            state = state.copyWith(isLoadingGroups: false);
           }
         },
         (data) async {
           Logger.info(
             '✅ ${data.grupos.length} clases descargadas del servidor',
           );
-          state = state.copyWith(grupos: data.grupos);
+          state = state.copyWith(grupos: data.grupos, isLoadingGroups: false);
           // Guardar en cache para futuras sesiones
           await _authStorage.saveGrupos(data.grupos);
           // Guardar beacons
@@ -202,7 +216,9 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
         Logger.info(
           '⚠️ Usando cache como fallback tras error: ${cachedGrupos.length} clases',
         );
-        state = state.copyWith(grupos: cachedGrupos);
+        state = state.copyWith(grupos: cachedGrupos, isLoadingGroups: false);
+      } else {
+        state = state.copyWith(isLoadingGroups: false);
       }
     }
   }
@@ -216,7 +232,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
 
   /// Limpiar grupos locales (usado al iniciar nueva sincronización)
   Future<void> clearGrupos() async {
-    state = state.copyWith(grupos: []);
+    state = state.copyWith(grupos: [], isLoadingGroups: false);
     await _authStorage.clearGrupos();
   }
 
@@ -468,6 +484,12 @@ final profesorGruposProvider = Provider<List<Grupo>>((ref) {
 final profesorAuthLoadingProvider = Provider<bool>((ref) {
   final state = ref.watch(profesorAuthProvider);
   return state.isLoading;
+});
+
+/// Provider para saber si las clases estan descargandose del backend.
+final profesorGroupsLoadingProvider = Provider<bool>((ref) {
+  final state = ref.watch(profesorAuthProvider);
+  return state.isLoadingGroups;
 });
 
 /// Provider para obtener el error actual

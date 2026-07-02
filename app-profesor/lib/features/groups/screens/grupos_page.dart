@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/uat_colors.dart';
+import '../../../../core/theme/theme_controller.dart';
 import '../../../../shared/models/grupo.dart';
 import '../../../../services/asistencia_local_service.dart';
 import '../../../../services/api_service.dart';
@@ -66,13 +67,9 @@ class _GruposPageState extends ConsumerState<GruposPage>
     // Listener para animar el título basado en scroll
     _scrollController.addListener(_handleScroll);
 
-    // Configurar status bar para tema oscuro
+    // Configurar status bar transparente; el brillo se controla desde el tema.
     SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-      ),
+      const SystemUiOverlayStyle(statusBarColor: Colors.transparent),
     );
 
     // Check sync status on startup
@@ -372,7 +369,20 @@ class _GruposPageState extends ConsumerState<GruposPage>
   @override
   Widget build(BuildContext context) {
     final grupos = ref.watch(profesorGruposProvider);
-    final isLoading = ref.watch(profesorAuthLoadingProvider);
+    final isLoading =
+        ref.watch(profesorAuthLoadingProvider) ||
+        ref.watch(profesorGroupsLoadingProvider);
+    final palette = context.uatPalette;
+    final isLightMode = context.isUatLightMode;
+    final overlayStyle = SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: isLightMode ? Brightness.dark : Brightness.light,
+      statusBarBrightness: isLightMode ? Brightness.light : Brightness.dark,
+      systemNavigationBarColor: palette.appBackground,
+      systemNavigationBarIconBrightness: isLightMode
+          ? Brightness.dark
+          : Brightness.light,
+    );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && grupos.isNotEmpty) {
@@ -383,265 +393,270 @@ class _GruposPageState extends ConsumerState<GruposPage>
     // Ordenar grupos por proximidad
     final sortedGruposWithIndex = _sortGruposByProximity(grupos);
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // Content sin padding para que ocupe toda la pantalla
-          isLoading && sortedGruposWithIndex.isEmpty
-              ? _buildLoadingState()
-              : sortedGruposWithIndex.isEmpty
-              ? _buildEmptyState()
-              : RefreshIndicator(
-                  onRefresh: _handleRefresh,
-                  color: Colors.white,
-                  backgroundColor: const Color(0xFF2C2C2E),
-                  child: _buildWalletCards(sortedGruposWithIndex, grupos),
-                ),
-          // Floating title
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            left: 12,
-            child: AnimatedOpacity(
-              opacity: _showTitle ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              child: AnimatedSlide(
-                offset: _showTitle ? Offset.zero : const Offset(0, -0.5),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: overlayStyle,
+      child: Scaffold(
+        backgroundColor: palette.appBackground,
+        body: Stack(
+          children: [
+            // Content sin padding para que ocupe toda la pantalla
+            isLoading && sortedGruposWithIndex.isEmpty
+                ? _buildLoadingState()
+                : sortedGruposWithIndex.isEmpty
+                ? _buildEmptyState()
+                : RefreshIndicator(
+                    onRefresh: _handleRefresh,
+                    color: UATColors.primary,
+                    backgroundColor: palette.surfaceElevated,
+                    child: _buildWalletCards(sortedGruposWithIndex, grupos),
+                  ),
+            // Floating title
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              left: 12,
+              child: AnimatedOpacity(
+                opacity: _showTitle ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 300),
                 curve: Curves.easeInOut,
-                child: const Text(
-                  'Mis Clases',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 34,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.4,
-                    shadows: [
-                      Shadow(
-                        offset: Offset(0, 2),
-                        blurRadius: 8,
-                        color: Colors.black54,
-                      ),
-                    ],
+                child: AnimatedSlide(
+                  offset: _showTitle ? Offset.zero : const Offset(0, -0.5),
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  child: Text(
+                    'Mis Clases',
+                    style: TextStyle(
+                      color: palette.textPrimary,
+                      fontSize: 34,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.4,
+                      shadows: [
+                        Shadow(
+                          offset: const Offset(0, 2),
+                          blurRadius: 8,
+                          color: palette.shadow,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          // Floating buttons
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            right: 12,
-            child: Row(
-              children: [
-                // Botón de expandir/colapsar
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(22),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2C2C2E).withOpacity(0.72),
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
-                          width: 0.5,
-                        ),
-                      ),
-                      child: IconButton(
-                        padding: EdgeInsets.zero,
-                        icon: Icon(
-                          _isExpanded ? Icons.unfold_less : Icons.unfold_more,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        onPressed: () {
-                          HapticFeedback.lightImpact();
-                          setState(() {
-                            _isExpanded = !_isExpanded;
-                          });
-                        },
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Contenedor con tema y 3 puntos (como Wallet)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(22),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                    child: Container(
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2C2C2E).withOpacity(0.72),
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
-                          width: 0.5,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Botón de subida de asistencias
-                          GestureDetector(
-                            onTap: () {
-                              HapticFeedback.lightImpact();
-                              Navigator.of(context)
-                                  .push(
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          const UploadManagementPage(),
-                                    ),
-                                  )
-                                  .then((_) => _checkPendingUploads());
-                            },
-                            child: Container(
-                              width: 44,
-                              height: 44,
-                              alignment: Alignment.center,
-                              color: Colors.transparent,
-                              child: const Icon(
-                                Icons.upload,
-                                color: Colors.white,
-                                size: 20,
-                              ),
-                            ),
-                          ),
-                          // Botón de más opciones
-                          GestureDetector(
-                            onTap: () {
-                              HapticFeedback.lightImpact();
-                              _showOptionsMenu(context);
-                            },
-                            child: Container(
-                              width: 44,
-                              height: 44,
-                              alignment: Alignment.center,
-                              color: Colors.transparent,
-                              child: const Icon(
-                                Icons.more_horiz,
-                                color: Colors.white,
-                                size: 20,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Pending attendance banner (glassmorphism style)
-          if (_showPendingBanner)
+            // Floating buttons
             Positioned(
-              bottom: MediaQuery.of(context).padding.bottom + 16,
-              left: 20,
-              right: 20,
-              child: AnimatedSlide(
-                offset: _showPendingBanner ? Offset.zero : const Offset(0, 2),
-                duration: const Duration(milliseconds: 400),
-                curve: Curves.easeOutCubic,
-                child: AnimatedOpacity(
-                  opacity: _showPendingBanner ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 400),
-                  child: GestureDetector(
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      setState(() {
-                        _showPendingBanner = false;
-                      });
-                      Navigator.of(context)
-                          .push(
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  const UploadManagementPage(),
-                            ),
-                          )
-                          .then((_) => _checkPendingUploads());
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
+              top: MediaQuery.of(context).padding.top + 8,
+              right: 12,
+              child: Row(
+                children: [
+                  // Botón de expandir/colapsar
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(22),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: palette.controlBackground,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: palette.controlBorder,
+                            width: 0.5,
                           ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1C1C1E).withOpacity(0.78),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.12),
-                              width: 0.5,
-                            ),
+                        ),
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          icon: Icon(
+                            _isExpanded ? Icons.unfold_less : Icons.unfold_more,
+                            color: palette.controlIcon,
+                            size: 20,
                           ),
-                          child: Row(
-                            children: [
-                              // Pulsing indicator dot
-                              AnimatedBuilder(
-                                animation: _pulseController,
-                                builder: (context, child) {
-                                  return Container(
-                                    width: 10,
-                                    height: 10,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: Color.lerp(
-                                        const Color(0xFFFF9500),
-                                        const Color(0xFFFFCC00),
-                                        _pulseController.value,
+                          onPressed: () {
+                            HapticFeedback.lightImpact();
+                            setState(() {
+                              _isExpanded = !_isExpanded;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Contenedor con tema y 3 puntos (como Wallet)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(22),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                      child: Container(
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: palette.controlBackground,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: palette.controlBorder,
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Botón de subida de asistencias
+                            GestureDetector(
+                              onTap: () {
+                                HapticFeedback.lightImpact();
+                                Navigator.of(context)
+                                    .push(
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            const UploadManagementPage(),
                                       ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: const Color(0xFFFF9500)
-                                              .withOpacity(
-                                                0.4 +
-                                                    (_pulseController.value *
-                                                        0.3),
-                                              ),
-                                          blurRadius: 6,
-                                          spreadRadius: 1,
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                              const SizedBox(width: 12),
-                              // Cloud icon
-                              Icon(
-                                Icons.cloud_upload_outlined,
-                                color: Colors.white.withOpacity(0.9),
-                                size: 20,
-                              ),
-                              const SizedBox(width: 10),
-                              // Text
-                              Expanded(
-                                child: Text(
-                                  'Asistencias pendientes por subir',
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.92),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    letterSpacing: -0.2,
-                                  ),
+                                    )
+                                    .then((_) => _checkPendingUploads());
+                              },
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                alignment: Alignment.center,
+                                color: Colors.transparent,
+                                child: Icon(
+                                  Icons.upload,
+                                  color: palette.controlIcon,
+                                  size: 20,
                                 ),
                               ),
-                              // Chevron
-                              Icon(
-                                Icons.chevron_right_rounded,
-                                color: Colors.white.withOpacity(0.5),
-                                size: 22,
+                            ),
+                            // Botón de más opciones
+                            GestureDetector(
+                              onTap: () {
+                                HapticFeedback.lightImpact();
+                                _showOptionsMenu(context);
+                              },
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                alignment: Alignment.center,
+                                color: Colors.transparent,
+                                child: Icon(
+                                  Icons.more_horiz,
+                                  color: palette.controlIcon,
+                                  size: 20,
+                                ),
                               ),
-                            ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Pending attendance banner (glassmorphism style)
+            if (_showPendingBanner)
+              Positioned(
+                bottom: MediaQuery.of(context).padding.bottom + 16,
+                left: 20,
+                right: 20,
+                child: AnimatedSlide(
+                  offset: _showPendingBanner ? Offset.zero : const Offset(0, 2),
+                  duration: const Duration(milliseconds: 400),
+                  curve: Curves.easeOutCubic,
+                  child: AnimatedOpacity(
+                    opacity: _showPendingBanner ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 400),
+                    child: GestureDetector(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        setState(() {
+                          _showPendingBanner = false;
+                        });
+                        Navigator.of(context)
+                            .push(
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const UploadManagementPage(),
+                              ),
+                            )
+                            .then((_) => _checkPendingUploads());
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
+                            decoration: BoxDecoration(
+                              color: palette.surface.withOpacity(0.86),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: palette.border,
+                                width: 0.5,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                // Pulsing indicator dot
+                                AnimatedBuilder(
+                                  animation: _pulseController,
+                                  builder: (context, child) {
+                                    return Container(
+                                      width: 10,
+                                      height: 10,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: Color.lerp(
+                                          const Color(0xFFFF9500),
+                                          const Color(0xFFFFCC00),
+                                          _pulseController.value,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFFFF9500)
+                                                .withOpacity(
+                                                  0.4 +
+                                                      (_pulseController.value *
+                                                          0.3),
+                                                ),
+                                            blurRadius: 6,
+                                            spreadRadius: 1,
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                                const SizedBox(width: 12),
+                                // Cloud icon
+                                Icon(
+                                  Icons.cloud_upload_outlined,
+                                  color: palette.textPrimary.withOpacity(0.9),
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 10),
+                                // Text
+                                Expanded(
+                                  child: Text(
+                                    'Asistencias pendientes por subir',
+                                    style: TextStyle(
+                                      color: palette.textPrimary.withOpacity(
+                                        0.92,
+                                      ),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      letterSpacing: -0.2,
+                                    ),
+                                  ),
+                                ),
+                                // Chevron
+                                Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: palette.textSecondary.withOpacity(0.7),
+                                  size: 22,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -649,8 +664,8 @@ class _GruposPageState extends ConsumerState<GruposPage>
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -662,19 +677,253 @@ class _GruposPageState extends ConsumerState<GruposPage>
       _cardAccentColors[index % _cardAccentColors.length];
 
   Widget _buildLoadingState() {
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircularProgressIndicator(color: Colors.white),
-          SizedBox(height: 16),
-          Text('Cargando grupos...', style: TextStyle(color: Colors.white70)),
+    return AnimatedBuilder(
+      animation: _pulseController,
+      builder: (context, _) {
+        final pulse = _pulseController.value;
+
+        return SingleChildScrollView(
+          physics: const NeverScrollableScrollPhysics(),
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: MediaQuery.of(context).padding.top + 81,
+              bottom: MediaQuery.of(context).padding.bottom + 200,
+            ),
+            child: Column(
+              children: [
+                _buildSkeletonWalletCards(pulse),
+                const SizedBox(height: 12),
+                Icon(
+                  Icons.arrow_upward_rounded,
+                  size: 16,
+                  color: context.uatPalette.textTertiary,
+                ),
+                const SizedBox(height: 4),
+                _buildSkeletonBlock(
+                  width: 112,
+                  height: 10,
+                  pulse: pulse,
+                  opacity: 0.06,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSkeletonWalletCards(double pulse) {
+    const cardHeight = 200.0;
+    const cardPeekHeight = 50.0;
+    const cardCount = 5;
+    const totalHeight = cardHeight + ((cardCount - 1) * cardPeekHeight);
+
+    return SizedBox(
+      height: totalHeight,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: List.generate(cardCount, (index) {
+          return Positioned(
+            top: index * cardPeekHeight,
+            left: 0,
+            right: 0,
+            child: _buildSkeletonCard(index, pulse),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonCard(int index, double pulse) {
+    final palette = context.uatPalette;
+    final gradient = _gradientForCard(index);
+    final startColor = Color.lerp(
+      palette.skeletonBase,
+      gradient.first,
+      context.isUatLightMode ? 0.16 : 0.26,
+    )!;
+    final endColor = Color.lerp(
+      palette.skeletonBase,
+      gradient.last,
+      context.isUatLightMode ? 0.12 : 0.20,
+    )!;
+    final glowOpacity = 0.10 + (pulse * 0.08);
+
+    return Container(
+      height: 200,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [startColor, endColor],
+        ),
+        border: Border.all(color: palette.border, width: 0.7),
+        boxShadow: [
+          BoxShadow(
+            color: gradient.last.withOpacity(glowOpacity),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: palette.shadow,
+            blurRadius: 18,
+            offset: const Offset(0, 12),
+          ),
         ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          children: [
+            _buildSkeletonSweep(pulse),
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      _buildSkeletonBlock(
+                        width: 106,
+                        height: 26,
+                        pulse: pulse,
+                        opacity: 0.16,
+                      ),
+                      const Spacer(),
+                      _buildSkeletonBlock(
+                        width: 70,
+                        height: 14,
+                        pulse: pulse,
+                        opacity: 0.13,
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  _buildSkeletonBlock(
+                    width: double.infinity,
+                    height: 18,
+                    pulse: pulse,
+                    opacity: 0.14,
+                  ),
+                  const SizedBox(height: 8),
+                  _buildSkeletonBlock(
+                    width: 220,
+                    height: 18,
+                    pulse: pulse,
+                    opacity: 0.12,
+                  ),
+                  const Spacer(),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildSkeletonBlock(
+                            width: 52,
+                            height: 9,
+                            pulse: pulse,
+                            opacity: 0.11,
+                          ),
+                          const SizedBox(height: 8),
+                          _buildSkeletonBlock(
+                            width: 28,
+                            height: 16,
+                            pulse: pulse,
+                            opacity: 0.15,
+                          ),
+                        ],
+                      ),
+                      const Spacer(),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          _buildSkeletonBlock(
+                            width: 66,
+                            height: 9,
+                            pulse: pulse,
+                            opacity: 0.11,
+                          ),
+                          const SizedBox(height: 8),
+                          _buildSkeletonBlock(
+                            width: 48,
+                            height: 16,
+                            pulse: pulse,
+                            opacity: 0.15,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonSweep(double pulse) {
+    final palette = context.uatPalette;
+
+    return Positioned.fill(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final dx = ((width + 180) * pulse) - 140;
+
+          return Transform.translate(
+            offset: Offset(dx, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                width: 92,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      palette.skeletonHighlight.withOpacity(0),
+                      palette.skeletonHighlight.withOpacity(0.12),
+                      palette.skeletonHighlight.withOpacity(0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSkeletonBlock({
+    required double width,
+    required double height,
+    required double pulse,
+    required double opacity,
+  }) {
+    final palette = context.uatPalette;
+
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: palette.skeletonHighlight.withOpacity(opacity + (pulse * 0.08)),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.border, width: 0.5),
       ),
     );
   }
 
   Widget _buildEmptyState() {
+    final palette = context.uatPalette;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -686,29 +935,29 @@ class _GruposPageState extends ConsumerState<GruposPage>
               width: 120,
               height: 120,
               decoration: BoxDecoration(
-                color: Colors.grey.shade900,
+                color: palette.surfaceElevated,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.school_outlined,
                 size: 64,
-                color: Colors.grey,
+                color: palette.iconMuted,
               ),
             ),
             const SizedBox(height: 24),
-            const Text(
+            Text(
               'No tienes clases asignadas',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
-                color: Colors.white,
+                color: palette.textPrimary,
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
             Text(
               'Si iniciaste sincronización, revisa el progreso abajo.',
-              style: TextStyle(fontSize: 16, color: Colors.grey.shade400),
+              style: TextStyle(fontSize: 16, color: palette.textSecondary),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -825,13 +1074,13 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 Icon(
                   Icons.arrow_upward_rounded,
                   size: 16,
-                  color: Colors.grey.shade600,
+                  color: context.uatPalette.textTertiary,
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'Próxima por atender',
                   style: TextStyle(
-                    color: Colors.grey.shade600,
+                    color: context.uatPalette.textTertiary,
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                     letterSpacing: 0.5,
@@ -1170,18 +1419,20 @@ class _GruposPageState extends ConsumerState<GruposPage>
       barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
+          final palette = context.uatPalette;
+
           return AlertDialog(
-            backgroundColor: Colors.grey.shade900,
+            backgroundColor: palette.surfaceElevated,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
             ),
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.sync_rounded, color: Colors.blueAccent),
-                SizedBox(width: 12),
+                const Icon(Icons.sync_rounded, color: Colors.blueAccent),
+                const SizedBox(width: 12),
                 Text(
                   'Sincronizar Ciclo',
-                  style: TextStyle(color: Colors.white),
+                  style: TextStyle(color: palette.textPrimary),
                 ),
               ],
             ),
@@ -1189,9 +1440,12 @@ class _GruposPageState extends ConsumerState<GruposPage>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text(
+                  Text(
                     'Se descargarán tus clases actualizadas del portal UAT.',
-                    style: TextStyle(fontSize: 14, color: Colors.white70),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: palette.textSecondary,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Container(
@@ -1226,9 +1480,12 @@ class _GruposPageState extends ConsumerState<GruposPage>
                     const SizedBox(height: 20),
                     const CircularProgressIndicator(color: Colors.blueAccent),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'Solicitando sincronización...',
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ],
@@ -1237,9 +1494,9 @@ class _GruposPageState extends ConsumerState<GruposPage>
             actions: [
               TextButton(
                 onPressed: isLoading ? null : () => Navigator.of(context).pop(),
-                child: const Text(
+                child: Text(
                   'Cancelar',
-                  style: TextStyle(color: Colors.white70),
+                  style: TextStyle(color: palette.textSecondary),
                 ),
               ),
               FilledButton(
@@ -1296,18 +1553,20 @@ class _GruposPageState extends ConsumerState<GruposPage>
       barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
+          final palette = context.uatPalette;
+
           return AlertDialog(
-            backgroundColor: Colors.grey.shade900,
+            backgroundColor: palette.surfaceElevated,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
             ),
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.sync_rounded, color: Colors.blueAccent),
-                SizedBox(width: 12),
+                const Icon(Icons.sync_rounded, color: Colors.blueAccent),
+                const SizedBox(width: 12),
                 Text(
                   'Sincronizar Ciclo',
-                  style: TextStyle(color: Colors.white),
+                  style: TextStyle(color: palette.textPrimary),
                 ),
               ],
             ),
@@ -1315,9 +1574,12 @@ class _GruposPageState extends ConsumerState<GruposPage>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text(
+                  Text(
                     'Ingresa tu contraseña de la UAT para descargar tus clases actualizadas.',
-                    style: TextStyle(fontSize: 14, color: Colors.white70),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: palette.textSecondary,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Container(
@@ -1354,18 +1616,18 @@ class _GruposPageState extends ConsumerState<GruposPage>
                     child: TextFormField(
                       controller: passwordController,
                       obscureText: obscureText,
-                      style: const TextStyle(color: Colors.black),
+                      style: TextStyle(color: palette.textPrimary),
                       decoration: InputDecoration(
                         hintText: 'Contraseña UAT',
-                        hintStyle: TextStyle(color: Colors.grey.shade600),
+                        hintStyle: TextStyle(color: palette.textTertiary),
                         filled: true,
-                        fillColor: Colors.white,
+                        fillColor: palette.surface,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.grey.shade300),
+                          borderSide: BorderSide(color: palette.border),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -1379,7 +1641,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                             obscureText
                                 ? Icons.visibility_outlined
                                 : Icons.visibility_off_outlined,
-                            color: Colors.grey,
+                            color: palette.iconMuted,
                           ),
                           onPressed: () {
                             setState(() => obscureText = !obscureText);
@@ -1398,9 +1660,12 @@ class _GruposPageState extends ConsumerState<GruposPage>
                     const SizedBox(height: 20),
                     const CircularProgressIndicator(color: Colors.blueAccent),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'Solicitando sincronización...',
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ],
@@ -1409,9 +1674,9 @@ class _GruposPageState extends ConsumerState<GruposPage>
             actions: [
               TextButton(
                 onPressed: isLoading ? null : () => Navigator.of(context).pop(),
-                child: const Text(
+                child: Text(
                   'Cancelar',
-                  style: TextStyle(color: Colors.white70),
+                  style: TextStyle(color: palette.textSecondary),
                 ),
               ),
               FilledButton(
@@ -1461,248 +1726,311 @@ class _GruposPageState extends ConsumerState<GruposPage>
   void _showOptionsMenu(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.grey.shade900,
+      backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        final profesor = ref.read(currentProfesorProvider);
-        return Container(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Avatar y nombre
-              Row(
+        return Consumer(
+          builder: (context, ref, _) {
+            final profesor = ref.read(currentProfesorProvider);
+            final palette = context.uatPalette;
+            final isLightMode =
+                ref.watch(themeControllerProvider) == ThemeMode.light;
+
+            return Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: palette.surfaceElevated,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor: UATColors.primary,
-                    child: Text(
-                      profesor?.email[0].toUpperCase() ?? 'P',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          profesor?.name ?? 'Profesor',
+                  // Avatar y nombre
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 24,
+                        backgroundColor: UATColors.primary,
+                        child: Text(
+                          profesor?.email[0].toUpperCase() ?? 'P',
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                        Text(
-                          profesor?.email ?? '',
-                          style: TextStyle(
-                            color: Colors.grey.shade400,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-              const Divider(color: Colors.grey),
-              const SizedBox(height: 8),
-
-              // Opciones
-              ListTile(
-                leading: const Icon(
-                  Icons.sync_rounded,
-                  color: Colors.blueAccent,
-                ),
-                title: const Text(
-                  'Sincronizar Ciclo',
-                  style: TextStyle(color: Colors.white),
-                ),
-                subtitle: Text(
-                  'Descargar clases actualizadas del portal',
-                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showSyncDialog(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete_sweep, color: Colors.orange),
-                title: const Text(
-                  'Borrar Caché de Asistencias',
-                  style: TextStyle(color: Colors.white),
-                ),
-                subtitle: Text(
-                  'Eliminar asistencias guardadas localmente',
-                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showClearCacheDialog(context);
-                },
-              ),
-              if (kDebugMode)
-                ListTile(
-                  leading: const Icon(
-                    Icons.bug_report,
-                    color: Colors.greenAccent,
-                  ),
-                  title: const Text(
-                    'Imprimir Salones',
-                    style: TextStyle(color: Colors.greenAccent),
-                  ),
-                  subtitle: Text(
-                    'Debug: ver configuración de aulas en consola',
-                    style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    final beacons = AuthStorageService().getBeacons();
-                    if (beacons == null || beacons.isEmpty) {
-                      debugPrint('⚠️ No hay configuración de aulas almacenada');
-                    } else {
-                      debugPrint(
-                        '🏫 Configuración de aulas (${beacons.length}):',
-                      );
-                      for (final b in beacons) {
-                        debugPrint(
-                          '  Salón: ${b['classroom']} → UUID: ${b['uuid']}',
-                        );
-                      }
-                    }
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          beacons == null || beacons.isEmpty
-                              ? 'Sin configuración de aulas'
-                              : '${beacons.length} aulas impresas en consola',
-                        ),
-                        duration: const Duration(seconds: 2),
                       ),
-                    );
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              profesor?.name ?? 'Profesor',
+                              style: TextStyle(
+                                color: palette.textPrimary,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              profesor?.email ?? '',
+                              style: TextStyle(
+                                color: palette.textSecondary,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
 
-                    // Iniciar escaneo AltBeacon después de 2 segundos
-                    if (beacons != null && beacons.isNotEmpty) {
-                      Future.delayed(const Duration(seconds: 2), () async {
-                        final altBeacon = NativeAltBeaconChannel();
+                  const SizedBox(height: 24),
+                  Divider(color: palette.border),
+                  const SizedBox(height: 8),
 
-                        // Request runtime permissions before scanning
-                        final permGranted =
-                            await PermissionService.requestBluetoothPermissions();
-                        debugPrint(
-                          '[ALTBEACON-TEST] Permisos: ${permGranted ? "OK" : "DENEGADOS"}',
-                        );
-                        if (!permGranted) {
+                  // Opciones
+                  ListTile(
+                    leading: const Icon(
+                      Icons.sync_rounded,
+                      color: Colors.blueAccent,
+                    ),
+                    title: Text(
+                      'Sincronizar Ciclo',
+                      style: TextStyle(color: palette.textPrimary),
+                    ),
+                    subtitle: Text(
+                      'Descargar clases actualizadas del portal',
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showSyncDialog(context);
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(
+                      Icons.delete_sweep,
+                      color: Colors.orange,
+                    ),
+                    title: Text(
+                      'Borrar Caché de Asistencias',
+                      style: TextStyle(color: palette.textPrimary),
+                    ),
+                    subtitle: Text(
+                      'Eliminar asistencias guardadas localmente',
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showClearCacheDialog(context);
+                    },
+                  ),
+                  if (kDebugMode)
+                    ListTile(
+                      leading: const Icon(
+                        Icons.bug_report,
+                        color: Colors.greenAccent,
+                      ),
+                      title: const Text(
+                        'Imprimir Salones',
+                        style: TextStyle(color: Colors.greenAccent),
+                      ),
+                      subtitle: Text(
+                        'Debug: ver configuración de aulas en consola',
+                        style: TextStyle(
+                          color: palette.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        final beacons = AuthStorageService().getBeacons();
+                        if (beacons == null || beacons.isEmpty) {
                           debugPrint(
-                            '[ALTBEACON-TEST] No se puede escanear sin permisos',
+                            '⚠️ No hay configuración de aulas almacenada',
                           );
-                          return;
-                        }
-
-                        debugPrint(
-                          '══════════════════════════════════════════════',
-                        );
-                        debugPrint('[ALTBEACON-TEST] UUIDs en DB:');
-                        for (final b in beacons) {
+                        } else {
                           debugPrint(
-                            '[ALTBEACON-TEST]   ${b['classroom']} → ${b['uuid']}',
+                            '🏫 Configuración de aulas (${beacons.length}):',
                           );
-                        }
-                        debugPrint(
-                          '══════════════════════════════════════════════',
-                        );
-
-                        debugPrint('[ALTBEACON-TEST] Buscando por UUID...');
-                        final results = <String, bool>{};
-                        for (final b in beacons) {
-                          final uuid = b['uuid'] as String?;
-                          final salon = b['classroom'] as String?;
-                          if (uuid == null || uuid.isEmpty) continue;
-
-                          debugPrint(
-                            '──────────────────────────────────────────────',
-                          );
-                          debugPrint(
-                            '[ALTBEACON-TEST] Buscando UUID: $uuid (Salón: $salon)',
-                          );
-
-                          bool found = false;
-                          final rangingSub = altBeacon.detectionsStream.listen((
-                            detections,
-                          ) {
-                            if (detections.isEmpty) return;
-                            found = true;
-                            for (final detection in detections) {
-                              debugPrint(
-                                '[ALTBEACON-TEST] DETECTADO: '
-                                '${detection.uuid} | RSSI: ${detection.rssi} '
-                                '| distancia: ${detection.distance}',
-                              );
-                            }
-                          });
-                          final started = await altBeacon.startScanning(
-                            uuids: [uuid],
-                          );
-                          debugPrint(
-                            '[ALTBEACON-TEST] startScanning → $started',
-                          );
-                          await Future.delayed(const Duration(seconds: 5));
-                          await altBeacon.stopScanning();
-                          await rangingSub.cancel();
-                          results[salon ?? uuid] = found;
-                          if (!found) {
+                          for (final b in beacons) {
                             debugPrint(
-                              '[ALTBEACON-TEST] NO detectado: $salon ($uuid)',
+                              '  Salón: ${b['classroom']} → UUID: ${b['uuid']}',
                             );
                           }
-                          await Future.delayed(
-                            const Duration(milliseconds: 500),
-                          );
                         }
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              beacons == null || beacons.isEmpty
+                                  ? 'Sin configuración de aulas'
+                                  : '${beacons.length} aulas impresas en consola',
+                            ),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
 
-                        debugPrint(
-                          '══════════════════════════════════════════════',
-                        );
-                        debugPrint('[ALTBEACON-TEST] RESUMEN POR UUID:');
-                        for (final entry in results.entries) {
-                          final label = entry.value
-                              ? 'DETECTADO'
-                              : 'NO detectado';
-                          debugPrint('[ALTBEACON-TEST]   $label ${entry.key}');
+                        if (beacons != null && beacons.isNotEmpty) {
+                          Future.delayed(const Duration(seconds: 2), () async {
+                            final altBeacon = NativeAltBeaconChannel();
+
+                            final permGranted =
+                                await PermissionService.requestBluetoothPermissions();
+                            debugPrint(
+                              '[ALTBEACON-TEST] Permisos: ${permGranted ? "OK" : "DENEGADOS"}',
+                            );
+                            if (!permGranted) {
+                              debugPrint(
+                                '[ALTBEACON-TEST] No se puede escanear sin permisos',
+                              );
+                              return;
+                            }
+
+                            debugPrint(
+                              '══════════════════════════════════════════════',
+                            );
+                            debugPrint('[ALTBEACON-TEST] UUIDs en DB:');
+                            for (final b in beacons) {
+                              debugPrint(
+                                '[ALTBEACON-TEST]   ${b['classroom']} → ${b['uuid']}',
+                              );
+                            }
+                            debugPrint(
+                              '══════════════════════════════════════════════',
+                            );
+
+                            debugPrint('[ALTBEACON-TEST] Buscando por UUID...');
+                            final results = <String, bool>{};
+                            for (final b in beacons) {
+                              final uuid = b['uuid'] as String?;
+                              final salon = b['classroom'] as String?;
+                              if (uuid == null || uuid.isEmpty) continue;
+
+                              debugPrint(
+                                '──────────────────────────────────────────────',
+                              );
+                              debugPrint(
+                                '[ALTBEACON-TEST] Buscando UUID: $uuid (Salón: $salon)',
+                              );
+
+                              bool found = false;
+                              final rangingSub = altBeacon.detectionsStream.listen((
+                                detections,
+                              ) {
+                                if (detections.isEmpty) return;
+                                found = true;
+                                for (final detection in detections) {
+                                  debugPrint(
+                                    '[ALTBEACON-TEST] DETECTADO: '
+                                    '${detection.uuid} | RSSI: ${detection.rssi} '
+                                    '| distancia: ${detection.distance}',
+                                  );
+                                }
+                              });
+                              final started = await altBeacon.startScanning(
+                                uuids: [uuid],
+                              );
+                              debugPrint(
+                                '[ALTBEACON-TEST] startScanning → $started',
+                              );
+                              await Future.delayed(const Duration(seconds: 5));
+                              await altBeacon.stopScanning();
+                              await rangingSub.cancel();
+                              results[salon ?? uuid] = found;
+                              if (!found) {
+                                debugPrint(
+                                  '[ALTBEACON-TEST] NO detectado: $salon ($uuid)',
+                                );
+                              }
+                              await Future.delayed(
+                                const Duration(milliseconds: 500),
+                              );
+                            }
+
+                            debugPrint(
+                              '══════════════════════════════════════════════',
+                            );
+                            debugPrint('[ALTBEACON-TEST] RESUMEN POR UUID:');
+                            for (final entry in results.entries) {
+                              final label = entry.value
+                                  ? 'DETECTADO'
+                                  : 'NO detectado';
+                              debugPrint(
+                                '[ALTBEACON-TEST]   $label ${entry.key}',
+                              );
+                            }
+                            debugPrint(
+                              '══════════════════════════════════════════════',
+                            );
+                          });
                         }
-                        debugPrint(
-                          '══════════════════════════════════════════════',
-                        );
-                      });
-                    }
-                  },
-                ),
-              ListTile(
-                leading: const Icon(Icons.logout, color: Colors.red),
-                title: const Text(
-                  'Cerrar Sesión',
-                  style: TextStyle(color: Colors.red),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showLogoutDialog(context);
-                },
+                      },
+                    ),
+                  ListTile(
+                    leading: Icon(
+                      isLightMode
+                          ? Icons.light_mode_rounded
+                          : Icons.dark_mode_rounded,
+                      color: UATColors.primary,
+                    ),
+                    title: Text(
+                      isLightMode ? 'Modo claro' : 'Modo oscuro',
+                      style: TextStyle(color: palette.textPrimary),
+                    ),
+                    subtitle: Text(
+                      'Cambiar apariencia de la app',
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                    trailing: Switch.adaptive(
+                      value: isLightMode,
+                      activeThumbColor: UATColors.primary,
+                      onChanged: (enabled) {
+                        HapticFeedback.lightImpact();
+                        ref
+                            .read(themeControllerProvider.notifier)
+                            .setLightMode(enabled);
+                      },
+                    ),
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      ref
+                          .read(themeControllerProvider.notifier)
+                          .setLightMode(!isLightMode);
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.logout, color: Colors.red),
+                    title: const Text(
+                      'Cerrar Sesión',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showLogoutDialog(context);
+                    },
+                  ),
+
+                  SizedBox(height: MediaQuery.of(context).padding.bottom),
+                ],
               ),
-
-              SizedBox(height: MediaQuery.of(context).padding.bottom),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -1711,82 +2039,100 @@ class _GruposPageState extends ConsumerState<GruposPage>
   void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey.shade900,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.logout_rounded, color: Colors.red),
-            SizedBox(width: 12),
-            Text('Cerrar Sesión', style: TextStyle(color: Colors.white)),
+      builder: (context) {
+        final palette = context.uatPalette;
+
+        return AlertDialog(
+          backgroundColor: palette.surfaceElevated,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              const Icon(Icons.logout_rounded, color: Colors.red),
+              const SizedBox(width: 12),
+              Text(
+                'Cerrar Sesión',
+                style: TextStyle(color: palette.textPrimary),
+              ),
+            ],
+          ),
+          content: Text(
+            '¿Estás seguro de que quieres cerrar sesión?',
+            style: TextStyle(fontSize: 16, color: palette.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(color: palette.textSecondary),
+              ),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await ref.read(profesorAuthProvider.notifier).logout();
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Cerrar Sesión'),
+            ),
           ],
-        ),
-        content: const Text(
-          '¿Estás seguro de que quieres cerrar sesión?',
-          style: TextStyle(fontSize: 16, color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              'Cancelar',
-              style: TextStyle(color: Colors.white70),
-            ),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.of(context).pop();
-              await ref.read(profesorAuthProvider.notifier).logout();
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Cerrar Sesión'),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   void _showClearCacheDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey.shade900,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.delete_sweep, color: Colors.orange),
-            SizedBox(width: 12),
-            Text('Borrar Caché', style: TextStyle(color: Colors.white)),
+      builder: (context) {
+        final palette = context.uatPalette;
+
+        return AlertDialog(
+          backgroundColor: palette.surfaceElevated,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              const Icon(Icons.delete_sweep, color: Colors.orange),
+              const SizedBox(width: 12),
+              Text(
+                'Borrar Caché',
+                style: TextStyle(color: palette.textPrimary),
+              ),
+            ],
+          ),
+          content: Text(
+            '¿Estás seguro de que quieres eliminar todas las asistencias guardadas localmente?\n\nEsto solo afecta las asistencias no sincronizadas.',
+            style: TextStyle(fontSize: 16, color: palette.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(color: palette.textSecondary),
+              ),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _clearAsistenciasCache();
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Borrar Caché'),
+            ),
           ],
-        ),
-        content: const Text(
-          '¿Estás seguro de que quieres eliminar todas las asistencias guardadas localmente?\n\nEsto solo afecta las asistencias no sincronizadas.',
-          style: TextStyle(fontSize: 16, color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              'Cancelar',
-              style: TextStyle(color: Colors.white70),
-            ),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.of(context).pop();
-              await _clearAsistenciasCache();
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.orange,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Borrar Caché'),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
