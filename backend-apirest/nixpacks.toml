@@ -1,0 +1,16 @@
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm run start"
+
+[variables]
+NODE_ENV = "production"
+HOST = "0.0.0.0"
+PORT = "3100"
+UAT_BASE_URL = "https://administracionescolar.uat.edu.mx"
+UAT_HTTP_TIMEOUT_MS = "30000"
+UAT_SESSION_TTL_MINUTES = "45"
