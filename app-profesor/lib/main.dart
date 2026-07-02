@@ -222,9 +222,12 @@ class _MyAppState extends ConsumerState<MyApp> {
                   color: UATTheme.lightTheme.primaryColor,
                 ),
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'Cargando...',
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: activeTheme.colorScheme.onSurface.withOpacity(0.72),
+                  ),
                 ),
               ],
             ),
