@@ -60,12 +60,7 @@ export class UatPortalClient implements UatPortalClientPort {
         responseType: 'text',
         headers: this.htmlHeaders(),
       });
-
-      if (!this.hasCookie('ASP.NET_SessionId')) {
-        throw new UatPortalError('GET /Login no entrego la cookie ASP.NET_SessionId.', {
-          cookies: this.cookieNames(),
-        });
-      }
+      const initialCookieNames = this.cookieNames();
 
       const loginForm = this.toForm({
         txtUsuario: credentials.username,
@@ -91,6 +86,7 @@ export class UatPortalClient implements UatPortalClientPort {
 
       if (!this.hasCookie('.ASPXAUTH')) {
         throw new UatPortalError('El portal reporto login exitoso, pero no entrego la cookie .ASPXAUTH.', {
+          initialCookieNames,
           cookies: this.cookieNames(),
           login,
         });

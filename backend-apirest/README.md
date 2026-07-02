@@ -2,8 +2,9 @@
 
 API REST aislada para consumir endpoints internos del Sistema Administrativo
 Escolar UAT usando autenticacion ASP.NET por cookies. No usa Bearer token:
-cada login crea un `CookieJar` persistente en memoria con `ASP.NET_SessionId`,
-`.ASPXAUTH` y las cookies adicionales que entregue el sitio.
+cada login crea un `CookieJar` persistente en memoria y conserva `.ASPXAUTH`,
+`ASP.NET_SessionId` cuando el portal la emite, y las cookies adicionales que
+entregue el sitio.
 
 ## Instalacion
 
