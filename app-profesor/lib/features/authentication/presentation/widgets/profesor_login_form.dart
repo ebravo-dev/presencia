@@ -159,6 +159,8 @@ class _ProfesorLoginFormState extends ConsumerState<ProfesorLoginForm> {
             TextFormField(
               controller: _emailController,
               focusNode: _emailFocusNode,
+              cursorColor: UATColors.primary,
+              style: const TextStyle(color: UATColors.neutral, fontSize: 14),
               keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.next,
               enabled: !authState.isLoading,
@@ -172,6 +174,10 @@ class _ProfesorLoginFormState extends ConsumerState<ProfesorLoginForm> {
               decoration: InputDecoration(
                 labelText: 'Email institucional',
                 hintText: 'ejemplo@uat.edu.mx',
+                labelStyle: const TextStyle(color: UATColors.neutral80),
+                floatingLabelStyle: const TextStyle(color: UATColors.primary),
+                hintStyle: const TextStyle(color: UATColors.neutral40),
+                errorStyle: const TextStyle(color: UATColors.error),
                 prefixIcon: Icon(
                   Icons.email_outlined,
                   color: UATColors.neutral80,
@@ -211,6 +217,8 @@ class _ProfesorLoginFormState extends ConsumerState<ProfesorLoginForm> {
             // Password field
             TextFormField(
               controller: _passwordController,
+              cursorColor: UATColors.primary,
+              style: const TextStyle(color: UATColors.neutral, fontSize: 14),
               obscureText: _obscurePassword,
               textInputAction: TextInputAction.done,
               enabled: !authState.isLoading,
@@ -221,6 +229,10 @@ class _ProfesorLoginFormState extends ConsumerState<ProfesorLoginForm> {
               decoration: InputDecoration(
                 labelText: 'Contraseña',
                 hintText: 'Tu contraseña institucional',
+                labelStyle: const TextStyle(color: UATColors.neutral80),
+                floatingLabelStyle: const TextStyle(color: UATColors.primary),
+                hintStyle: const TextStyle(color: UATColors.neutral40),
+                errorStyle: const TextStyle(color: UATColors.error),
                 prefixIcon: Icon(
                   Icons.lock_outline,
                   color: UATColors.neutral80,
