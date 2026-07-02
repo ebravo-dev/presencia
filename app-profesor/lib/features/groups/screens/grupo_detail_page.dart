@@ -13,7 +13,6 @@ import '../../../services/ble_beacon_verification_service.dart';
 import '../../../core/theme/uat_colors.dart';
 
 import '../../../services/auth_storage_service.dart';
-import '../../../core/theme/uat_colors.dart';
 
 class GrupoDetailPage extends StatefulWidget {
   final Grupo grupo;
@@ -233,443 +232,440 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.uatPalette;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: palette.appBackground,
       body: NotificationListener<ScrollNotification>(
         onNotification: (ScrollNotification notification) {
           if (notification is ScrollUpdateNotification) {
             // Verificar si estamos en el top
             final isAtTop = notification.metrics.pixels <= 0;
 
-              if (isAtTop && notification.metrics.pixels < 0) {
-                // Hay overscroll negativo (estamos jalando hacia abajo desde el top)
-                final distance = notification.metrics.pixels.abs();
+            if (isAtTop && notification.metrics.pixels < 0) {
+              // Hay overscroll negativo (estamos jalando hacia abajo desde el top)
+              final distance = notification.metrics.pixels.abs();
 
-                // Si supera el threshold, cerrar
-                if (distance > 100) {
-                  HapticFeedback.mediumImpact();
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted && Navigator.of(context).canPop()) {
-                      Navigator.of(context).pop();
-                    }
-                  });
-                  return true; // Consumir la notificación
-                }
+              // Si supera el threshold, cerrar
+              if (distance > 100) {
+                HapticFeedback.mediumImpact();
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted && Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                  }
+                });
+                return true; // Consumir la notificación
               }
             }
-            return false;
-          },
-          child: Stack(
-            children: [
-              CustomScrollView(
-                controller: _scrollController,
-                // AlwaysScrollableScrollPhysics asegura que siempre se pueda hacer scroll
-                // incluso cuando el contenido es pequeño, permitiendo el pull-to-dismiss
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
-                ),
-                slivers: [
-                  SliverPadding(
-                    padding: EdgeInsets.only(
-                      top: MediaQuery.of(context).padding.top + 60,
-                    ),
+          }
+          return false;
+        },
+        child: Stack(
+          children: [
+            CustomScrollView(
+              controller: _scrollController,
+              // AlwaysScrollableScrollPhysics asegura que siempre se pueda hacer scroll
+              // incluso cuando el contenido es pequeño, permitiendo el pull-to-dismiss
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              slivers: [
+                SliverPadding(
+                  padding: EdgeInsets.only(
+                    top: MediaQuery.of(context).padding.top + 60,
                   ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12.0,
-                        vertical: 16.0,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Hero Card
-                          RepaintBoundary(
-                            child: Hero(
-                              tag:
-                                  'grupo_${widget.grupo.group}_${widget.grupo.subject}',
-                              child: Material(
-                                color: Colors.transparent,
-                                child: Container(
-                                  constraints: const BoxConstraints(
-                                    minHeight: 200,
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12.0,
+                      vertical: 16.0,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Hero Card
+                        RepaintBoundary(
+                          child: Hero(
+                            tag:
+                                'grupo_${widget.grupo.group}_${widget.grupo.subject}',
+                            child: Material(
+                              color: Colors.transparent,
+                              child: Container(
+                                constraints: const BoxConstraints(
+                                  minHeight: 200,
+                                ),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: widget.gradientColors,
                                   ),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: widget.gradientColors,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: widget.gradientColors[0]
+                                          .withOpacity(0.3),
+                                      blurRadius: 20,
+                                      offset: const Offset(0, 6),
                                     ),
-                                    borderRadius: BorderRadius.circular(16),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: widget.gradientColors[0]
-                                            .withOpacity(0.3),
-                                        blurRadius: 20,
-                                        offset: const Offset(0, 6),
-                                      ),
-                                    ],
-                                  ),
-                                  padding: const EdgeInsets.all(20),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      // Header con badge del grupo y hora
-                                      Stack(
-                                        clipBehavior: Clip.none,
-                                        children: [
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 12,
-                                                      vertical: 6,
-                                                    ),
-                                                decoration: BoxDecoration(
+                                  ],
+                                ),
+                                padding: const EdgeInsets.all(20),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    // Header con badge del grupo y hora
+                                    Stack(
+                                      clipBehavior: Clip.none,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 6,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: widget.accentColor
+                                                    .withOpacity(0.2),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                                border: Border.all(
                                                   color: widget.accentColor
-                                                      .withOpacity(0.2),
-                                                  borderRadius:
-                                                      BorderRadius.circular(8),
-                                                  border: Border.all(
-                                                    color: widget.accentColor
-                                                        .withOpacity(0.3),
-                                                  ),
-                                                ),
-                                                child: Text(
-                                                  widget.grupo.aula,
-                                                  style: TextStyle(
-                                                    color: widget.accentColor,
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.bold,
-                                                    letterSpacing: 1.2,
-                                                  ),
+                                                      .withOpacity(0.3),
                                                 ),
                                               ),
-                                              Text(
-                                                widget.horario,
+                                              child: Text(
+                                                widget.grupo.aula,
                                                 style: TextStyle(
-                                                  color: widget.accentColor
-                                                      .withOpacity(0.8),
-                                                  fontSize: 14,
-                                                  fontWeight: FontWeight.w600,
-                                                  letterSpacing: 0.5,
+                                                  color: widget.accentColor,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                  letterSpacing: 1.2,
                                                 ),
                                               ),
-                                            ],
-                                          ),
-                                          // Días flotando abajo a la derecha
-                                          Positioned(
-                                            right: 0,
-                                            top: 22,
-                                            child: Text(
-                                              widget.dias,
+                                            ),
+                                            Text(
+                                              widget.horario,
                                               style: TextStyle(
                                                 color: widget.accentColor
-                                                    .withOpacity(0.6),
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w500,
+                                                    .withOpacity(0.8),
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w600,
                                                 letterSpacing: 0.5,
                                               ),
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 12),
-                                      // Nombre de la materia con altura mínima fija para consistencia
-                                      SizedBox(
-                                        height: 56, // Espacio para 2 líneas
-                                        child: Align(
-                                          alignment: Alignment.centerLeft,
+                                          ],
+                                        ),
+                                        // Días flotando abajo a la derecha
+                                        Positioned(
+                                          right: 0,
+                                          top: 22,
                                           child: Text(
-                                            widget.grupo.materia
-                                                .replaceAll(
-                                                  RegExp(r'\([^)]*\)\s*'),
-                                                  '',
-                                                )
-                                                .trim(),
+                                            widget.dias,
                                             style: TextStyle(
-                                              color: widget.accentColor,
-                                              fontSize: 20,
-                                              fontWeight: FontWeight.bold,
+                                              color: widget.accentColor
+                                                  .withOpacity(0.6),
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w500,
                                               letterSpacing: 0.5,
-                                              height: 1.2,
                                             ),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    // Nombre de la materia con altura mínima fija para consistencia
+                                    SizedBox(
+                                      height: 56, // Espacio para 2 líneas
+                                      child: Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          widget.grupo.materia
+                                              .replaceAll(
+                                                RegExp(r'\([^)]*\)\s*'),
+                                                '',
+                                              )
+                                              .trim(),
+                                          style: TextStyle(
+                                            color: widget.accentColor,
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 0.5,
+                                            height: 1.2,
+                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
                                       ),
-                                      const SizedBox(height: 16),
-                                      // Info adicional - posición fija
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                'GRUPO',
-                                                style: TextStyle(
-                                                  color: widget.accentColor
-                                                      .withOpacity(0.7),
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w600,
-                                                  letterSpacing: 1,
-                                                ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    // Info adicional - posición fija
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'GRUPO',
+                                              style: TextStyle(
+                                                color: widget.accentColor
+                                                    .withOpacity(0.7),
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                letterSpacing: 1,
                                               ),
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                widget.grupo.grupoLetra,
-                                                style: TextStyle(
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              widget.grupo.grupoLetra,
+                                              style: TextStyle(
+                                                color: widget.accentColor,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.end,
+                                          children: [
+                                            Text(
+                                              'ESTUDIANTES',
+                                              style: TextStyle(
+                                                color: widget.accentColor
+                                                    .withOpacity(0.7),
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                letterSpacing: 1,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.people_rounded,
                                                   color: widget.accentColor,
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.w600,
+                                                  size: 18,
                                                 ),
-                                              ),
-                                            ],
-                                          ),
-                                          Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.end,
-                                            children: [
-                                              Text(
-                                                'ESTUDIANTES',
-                                                style: TextStyle(
-                                                  color: widget.accentColor
-                                                      .withOpacity(0.7),
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w600,
-                                                  letterSpacing: 1,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 2),
-                                              Row(
-                                                children: [
-                                                  Icon(
-                                                    Icons.people_rounded,
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  '${widget.grupo.totalAlumnos}',
+                                                  style: TextStyle(
                                                     color: widget.accentColor,
-                                                    size: 18,
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.w600,
                                                   ),
-                                                  const SizedBox(width: 4),
-                                                  Text(
-                                                    '${widget.grupo.totalAlumnos}',
-                                                    style: TextStyle(
-                                                      color: widget.accentColor,
-                                                      fontSize: 16,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                        ],
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        // Tab menu y contenido con animación
+                        FadeTransition(
+                          opacity: _studentsOpacity,
+                          child: SlideTransition(
+                            position: _studentsSlide,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Tab Menu
+                                _buildTabMenu(),
+                                const SizedBox(height: 16),
+                                // Contenido basado en el tab seleccionado
+                                _selectedTab == 0
+                                    ? _buildMiAsistenciaContent()
+                                    : _buildAlumnosContent(),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+                    ),
+                  ),
+                ),
+              ], // Cierre de slivers
+            ), // Cierre CustomScrollView
+            // Botón flotante izquierda (X)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              left: 12,
+              child: // Botón X
+              ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: palette.controlBackground,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(
+                        color: palette.controlBorder,
+                        width: 0.5,
+                      ),
+                    ),
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: Icon(
+                        Icons.close,
+                        color: palette.controlIcon,
+                        size: 24,
+                      ),
+                      onPressed: () {
+                        HapticFeedback.lightImpact();
+                        if (Navigator.of(context).canPop()) {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Botón flotante derecha (fecha)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              right: 12,
+              child: GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  _showDateTimePicker();
+                },
+                child:
+                    _neonAnimationController != null && _neonAnimation != null
+                    ? AnimatedBuilder(
+                        animation: _neonAnimation!,
+                        builder: (context, child) {
+                          final neonColor =
+                              widget.highlightColor ?? widget.gradientColors[0];
+                          final glowIntensity = _neonAnimation!.value;
+                          return Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(22),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: neonColor.withOpacity(
+                                    0.7 * glowIntensity,
+                                  ),
+                                  blurRadius: 16 * glowIntensity,
+                                  spreadRadius: 2 * glowIntensity,
+                                ),
+                                BoxShadow(
+                                  color: neonColor.withOpacity(
+                                    0.4 * glowIntensity,
+                                  ),
+                                  blurRadius: 30 * glowIntensity,
+                                  spreadRadius: 4 * glowIntensity,
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(22),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(
+                                  sigmaX: 20,
+                                  sigmaY: 20,
+                                ),
+                                child: Container(
+                                  height: 44,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: palette.controlBackground,
+                                    borderRadius: BorderRadius.circular(22),
+                                    border: Border.all(
+                                      color: neonColor.withOpacity(
+                                        0.3 + 0.5 * glowIntensity,
+                                      ),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        _getFormattedDateTime(),
+                                        style: TextStyle(
+                                          color: palette.controlIcon,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Icon(
+                                        Icons.edit,
+                                        size: 16,
+                                        color: palette.controlIcon,
                                       ),
                                     ],
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 32),
-                          // Tab menu y contenido con animación
-                          FadeTransition(
-                            opacity: _studentsOpacity,
-                            child: SlideTransition(
-                              position: _studentsSlide,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // Tab Menu
-                                  _buildTabMenu(),
-                                  const SizedBox(height: 16),
-                                  // Contenido basado en el tab seleccionado
-                                  _selectedTab == 0
-                                      ? _buildMiAsistenciaContent()
-                                      : _buildAlumnosContent(),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-                      ),
-                    ),
-                  ),
-                ], // Cierre de slivers
-              ), // Cierre CustomScrollView
-              // Botón flotante izquierda (X)
-              Positioned(
-                top: MediaQuery.of(context).padding.top + 8,
-                left: 12,
-                child: // Botón X
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(22),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: palette.controlBackground,
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(
-                          color: palette.controlBorder,
-                          width: 0.5,
-                        ),
-                      ),
-                      child: IconButton(
-                        padding: EdgeInsets.zero,
-                        icon: Icon(
-                          Icons.close,
-                          color: palette.controlIcon,
-                          size: 24,
-                        ),
-                        onPressed: () {
-                          HapticFeedback.lightImpact();
-                          if (Navigator.of(context).canPop()) {
-                            Navigator.of(context).pop();
-                          }
+                          );
                         },
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              // Botón flotante derecha (fecha)
-              Positioned(
-                top: MediaQuery.of(context).padding.top + 8,
-                right: 12,
-                child: GestureDetector(
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    _showDateTimePicker();
-                  },
-                  child:
-                      _neonAnimationController != null && _neonAnimation != null
-                      ? AnimatedBuilder(
-                          animation: _neonAnimation!,
-                          builder: (context, child) {
-                            final neonColor =
-                                widget.highlightColor ??
-                                widget.gradientColors[0];
-                            final glowIntensity = _neonAnimation!.value;
-                            return Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(22),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: neonColor.withOpacity(
-                                      0.7 * glowIntensity,
-                                    ),
-                                    blurRadius: 16 * glowIntensity,
-                                    spreadRadius: 2 * glowIntensity,
-                                  ),
-                                  BoxShadow(
-                                    color: neonColor.withOpacity(
-                                      0.4 * glowIntensity,
-                                    ),
-                                    blurRadius: 30 * glowIntensity,
-                                    spreadRadius: 4 * glowIntensity,
-                                  ),
-                                ],
+                      )
+                    : ClipRRect(
+                        borderRadius: BorderRadius.circular(22),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                          child: Container(
+                            height: 44,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            decoration: BoxDecoration(
+                              color: palette.controlBackground,
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(
+                                color: palette.controlBorder,
+                                width: 0.5,
                               ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(22),
-                                child: BackdropFilter(
-                                  filter: ImageFilter.blur(
-                                    sigmaX: 20,
-                                    sigmaY: 20,
-                                  ),
-                                  child: Container(
-                                    height: 44,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: palette.controlBackground,
-                                      borderRadius: BorderRadius.circular(22),
-                                      border: Border.all(
-                                        color: neonColor.withOpacity(
-                                          0.3 + 0.5 * glowIntensity,
-                                        ),
-                                        width: 1.5,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          _getFormattedDateTime(),
-                                          style: TextStyle(
-                                            color: palette.controlIcon,
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Icon(
-                                          Icons.edit,
-                                          size: 16,
-                                          color: palette.controlIcon,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        )
-                      : ClipRRect(
-                          borderRadius: BorderRadius.circular(22),
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                            child: Container(
-                              height: 44,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
-                              decoration: BoxDecoration(
-                                color: palette.controlBackground,
-                                borderRadius: BorderRadius.circular(22),
-                                border: Border.all(
-                                  color: palette.controlBorder,
-                                  width: 0.5,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    _getFormattedDateTime(),
-                                    style: TextStyle(
-                                      color: palette.controlIcon,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Icon(
-                                    Icons.edit,
-                                    size: 16,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _getFormattedDateTime(),
+                                  style: TextStyle(
                                     color: palette.controlIcon,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
                                   ),
-                                ],
-                              ),
+                                ),
+                                const SizedBox(width: 6),
+                                Icon(
+                                  Icons.edit,
+                                  size: 16,
+                                  color: palette.controlIcon,
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                ),
+                      ),
               ),
+            ),
 
             // Botón flotante para volver arriba
             if (_showScrollToTopButton)
@@ -772,7 +768,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           Text(
             label,
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.white.withOpacity(0.4),
+              color: isSelected ? palette.textPrimary : palette.textSecondary,
               fontSize: 24,
               fontWeight: FontWeight.bold,
             ),
@@ -1781,9 +1777,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   Future<void> _showDateTimePicker() async {
     // Obtener la hora actual para mantenerla cuando se cambie la fecha
     final now = DateTime.now();
-    final theme = Theme.of(context);
-    final palette = context.uatPalette;
-
     final DateTime? pickedDate = await showDatePicker(
       context: context,
       initialDate: _selectedDateTime,
@@ -1795,12 +1788,12 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         final baseTheme = Theme.of(context);
 
         return Theme(
-          data: ThemeData.dark().copyWith(
-            colorScheme: ColorScheme.dark(
+          data: baseTheme.copyWith(
+            colorScheme: baseTheme.colorScheme.copyWith(
               primary: widget.accentColor,
-              onPrimary: Colors.black, // Texto negro sobre el círculo de color
-              surface: const Color(0xFF1C1C1E),
-              onSurface: Colors.white,
+              onPrimary: Colors.white,
+              surface: palette.surfaceElevated,
+              onSurface: palette.textPrimary,
             ),
             textButtonTheme: TextButtonThemeData(
               style: TextButton.styleFrom(foregroundColor: widget.accentColor),
