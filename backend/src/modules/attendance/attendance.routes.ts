@@ -2,16 +2,51 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../../core/database/prisma.js';
 import { jwtService, rsaService, sessionService } from '../../core/security/index.js';
 import { addAttendanceUploadJob } from '../../core/queue/queue.config.js';
-import { PortalSyncStatus, SyncStatus } from '@prisma/client';
+import { AttendanceStatus, PortalSyncStatus, SyncStatus } from '@prisma/client';
 import {
     registerAttendanceSchema,
     attendanceHistoryQuerySchema,
+    professorBeaconEntrySchema,
+    studentBeaconDetectionsSchema,
+    studentBeaconBindingsSchema,
     type RegisterAttendanceRequest,
     type AttendanceHistoryQuery,
+    type ProfessorBeaconEntryRequest,
+    type StudentBeaconDetectionsRequest,
+    type StudentBeaconBindingsRequest,
 } from './attendance.schemas.js';
+
+const studentDeviceBinding = (prisma as any).studentDeviceBinding;
+
+type StudentDeviceBindingRow = {
+    matricula: string;
+    attendanceUuid: string;
+    deviceBindingId?: string | null;
+    updatedAt?: Date | null;
+};
 
 interface AuthenticatedRequest extends FastifyRequest {
     professorId?: string;
+}
+
+function normalizeUuid(uuid: string): string {
+    return uuid.replace(/-/g, '').toLowerCase().trim();
+}
+
+async function resolveProfessorGroup(params: {
+    professorId: string;
+    code: string;
+    groupLetter: string;
+    period: string;
+}) {
+    return prisma.group.findFirst({
+        where: {
+            code: params.code,
+            groupLetter: params.groupLetter,
+            period: params.period,
+            professorId: params.professorId,
+        },
+    });
 }
 
 /**
@@ -212,6 +247,303 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                     statusCode: 500,
                     error: 'Internal Server Error',
                     message: 'Error al registrar asistencia',
+                });
+            }
+        }
+    );
+
+    fastify.post<{ Body: ProfessorBeaconEntryRequest }>(
+        '/attendance/professor-entry',
+        async (request, reply) => {
+            try {
+                const validated = professorBeaconEntrySchema.parse(request.body);
+                const professorId = (request as AuthenticatedRequest).professorId!;
+                const { code, groupLetter, period, date, detectedAt, beaconUuid, rssi, distance, bluetoothAddress } = validated;
+
+                const group = await resolveProfessorGroup({ professorId, code, groupLetter, period });
+                if (!group) {
+                    return reply.code(404).send({
+                        statusCode: 404,
+                        error: 'Not Found',
+                        message: `Grupo no encontrado (code: ${code}, group: ${groupLetter}, period: ${period})`,
+                    });
+                }
+
+                const classroomBeacon = await prisma.beacon.findFirst({
+                    where: { classroom: group.classroom },
+                });
+
+                if (classroomBeacon && normalizeUuid(classroomBeacon.uuid) !== normalizeUuid(beaconUuid)) {
+                    return reply.code(409).send({
+                        statusCode: 409,
+                        error: 'Conflict',
+                        message: 'El beacon detectado no corresponde al salón del grupo',
+                    });
+                }
+
+                const attendanceRecord = await prisma.attendanceRecord.upsert({
+                    where: {
+                        date_groupId: {
+                            date: new Date(date),
+                            groupId: group.id,
+                        },
+                    },
+                    create: {
+                        date: new Date(date),
+                        groupId: group.id,
+                        professorId,
+                        professorEntryAt: new Date(detectedAt),
+                        roomBeaconUuid: beaconUuid,
+                        roomBeaconRssi: rssi,
+                        roomBeaconDistance: distance,
+                        roomBeaconAddress: bluetoothAddress,
+                    },
+                    update: {
+                        professorEntryAt: new Date(detectedAt),
+                        roomBeaconUuid: beaconUuid,
+                        roomBeaconRssi: rssi,
+                        roomBeaconDistance: distance,
+                        roomBeaconAddress: bluetoothAddress,
+                    },
+                });
+
+                return reply.code(201).send({
+                    data: {
+                        attendanceRecordId: attendanceRecord.id,
+                        groupId: group.id,
+                        date,
+                        professorEntryAt: attendanceRecord.professorEntryAt,
+                    },
+                    message: 'Entrada del profesor registrada por beacon',
+                });
+            } catch (error) {
+                request.log.error(error);
+                return reply.code(500).send({
+                    statusCode: 500,
+                    error: 'Internal Server Error',
+                    message: 'Error registrando entrada del profesor',
+                });
+            }
+        }
+    );
+
+    fastify.post<{ Body: StudentBeaconDetectionsRequest }>(
+        '/attendance/student-beacon-detections',
+        async (request, reply) => {
+            try {
+                const validated = studentBeaconDetectionsSchema.parse(request.body);
+                const professorId = (request as AuthenticatedRequest).professorId!;
+                const { code, groupLetter, period, date, detections } = validated;
+
+                const group = await resolveProfessorGroup({ professorId, code, groupLetter, period });
+                if (!group) {
+                    return reply.code(404).send({
+                        statusCode: 404,
+                        error: 'Not Found',
+                        message: `Grupo no encontrado (code: ${code}, group: ${groupLetter}, period: ${period})`,
+                    });
+                }
+
+                const attendanceRecord = await prisma.attendanceRecord.upsert({
+                    where: {
+                        date_groupId: {
+                            date: new Date(date),
+                            groupId: group.id,
+                        },
+                    },
+                    create: {
+                        date: new Date(date),
+                        groupId: group.id,
+                        professorId,
+                    },
+                    update: {},
+                });
+
+                const students = await prisma.student.findMany({
+                    where: {
+                        groupId: group.id,
+                    },
+                    select: {
+                        id: true,
+                        matricula: true,
+                        beaconUuid: true,
+                    },
+                });
+
+                const bindings = await studentDeviceBinding.findMany({
+                    where: {
+                        matricula: { in: students.map(student => student.matricula) },
+                    },
+                    select: {
+                        matricula: true,
+                        attendanceUuid: true,
+                    },
+                }) as StudentDeviceBindingRow[];
+                const bindingByMatricula = new Map(
+                    bindings.map(binding => [binding.matricula, binding.attendanceUuid])
+                );
+
+                const studentsByBeacon = new Map<string, { id: string; matricula: string }>();
+                for (const student of students) {
+                    const beaconUuid = bindingByMatricula.get(student.matricula) ?? student.beaconUuid;
+                    if (beaconUuid) {
+                        studentsByBeacon.set(normalizeUuid(beaconUuid), student);
+                    }
+                }
+
+                const matched: Array<{ studentId: string; beaconUuid: string; detectedAt: string }> = [];
+
+                for (const detection of detections) {
+                    const student = studentsByBeacon.get(normalizeUuid(detection.beaconUuid));
+                    if (!student) continue;
+
+                    await prisma.attendance.upsert({
+                        where: {
+                            studentId_attendanceRecordId: {
+                                studentId: student.id,
+                                attendanceRecordId: attendanceRecord.id,
+                            },
+                        },
+                        create: {
+                            studentId: student.id,
+                            attendanceRecordId: attendanceRecord.id,
+                            status: AttendanceStatus.PRESENT,
+                        },
+                        update: {
+                            status: AttendanceStatus.PRESENT,
+                        },
+                    });
+
+                    await prisma.studentBeaconDetection.upsert({
+                        where: {
+                            studentId_attendanceRecordId: {
+                                studentId: student.id,
+                                attendanceRecordId: attendanceRecord.id,
+                            },
+                        },
+                        create: {
+                            studentId: student.id,
+                            attendanceRecordId: attendanceRecord.id,
+                            beaconUuid: detection.beaconUuid,
+                            detectedAt: new Date(detection.detectedAt),
+                            rssi: detection.rssi,
+                            distance: detection.distance,
+                            txPower: detection.txPower,
+                            bluetoothAddress: detection.bluetoothAddress,
+                        },
+                        update: {
+                            beaconUuid: detection.beaconUuid,
+                            detectedAt: new Date(detection.detectedAt),
+                            rssi: detection.rssi,
+                            distance: detection.distance,
+                            txPower: detection.txPower,
+                            bluetoothAddress: detection.bluetoothAddress,
+                        },
+                    });
+
+                    matched.push({
+                        studentId: student.id,
+                        beaconUuid: detection.beaconUuid,
+                        detectedAt: detection.detectedAt,
+                    });
+                }
+
+                return reply.code(201).send({
+                    data: {
+                        attendanceRecordId: attendanceRecord.id,
+                        matchedCount: matched.length,
+                        matched,
+                    },
+                    message: 'Detecciones de alumnos procesadas',
+                });
+            } catch (error) {
+                request.log.error(error);
+                return reply.code(500).send({
+                    statusCode: 500,
+                    error: 'Internal Server Error',
+                    message: 'Error registrando beacons de alumnos',
+                });
+            }
+        }
+    );
+
+    fastify.post<{ Body: StudentBeaconBindingsRequest }>(
+        '/attendance/student-beacon-bindings',
+        async (request, reply) => {
+            try {
+                const validated = studentBeaconBindingsSchema.parse(request.body);
+                const professorId = (request as AuthenticatedRequest).professorId!;
+                const { code, groupLetter, period } = validated;
+
+                const group = await resolveProfessorGroup({ professorId, code, groupLetter, period });
+                if (!group) {
+                    return reply.code(404).send({
+                        statusCode: 404,
+                        error: 'Not Found',
+                        message: `Grupo no encontrado (code: ${code}, group: ${groupLetter}, period: ${period})`,
+                    });
+                }
+
+                const students = await prisma.student.findMany({
+                    where: { groupId: group.id },
+                    select: {
+                        id: true,
+                        matricula: true,
+                        name: true,
+                        beaconUuid: true,
+                    },
+                    orderBy: { name: 'asc' },
+                });
+
+                const matriculas = students.map(student => student.matricula);
+                const bindings = await studentDeviceBinding.findMany({
+                    where: { matricula: { in: matriculas } },
+                    select: {
+                        matricula: true,
+                        attendanceUuid: true,
+                        deviceBindingId: true,
+                        updatedAt: true,
+                    },
+                }) as StudentDeviceBindingRow[];
+                const bindingByMatricula = new Map(
+                    bindings.map(binding => [binding.matricula, binding])
+                );
+
+                const data: Array<{
+                    studentId: string;
+                    matricula: string;
+                    name: string;
+                    beaconUuid: string;
+                    deviceBindingId: string | null;
+                    updatedAt: Date | null;
+                }> = [];
+
+                for (const student of students) {
+                    const binding = bindingByMatricula.get(student.matricula);
+                    const beaconUuid = binding?.attendanceUuid ?? student.beaconUuid;
+                    if (!beaconUuid) continue;
+
+                    data.push({
+                        studentId: student.id,
+                        matricula: student.matricula,
+                        name: student.name,
+                        beaconUuid,
+                        deviceBindingId: binding?.deviceBindingId ?? null,
+                        updatedAt: binding?.updatedAt ?? null,
+                    });
+                }
+
+                return reply.send({
+                    data,
+                    totalStudents: students.length,
+                    registeredCount: data.length,
+                });
+            } catch (error) {
+                request.log.error(error);
+                return reply.code(500).send({
+                    statusCode: 500,
+                    error: 'Internal Server Error',
+                    message: 'Error obteniendo UUIDs de alumnos',
                 });
             }
         }

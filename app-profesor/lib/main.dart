@@ -6,9 +6,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'services/database_service.dart';
 import 'services/auth_storage_service.dart';
 import 'services/asistencia_local_service.dart';
-import 'services/bluetooth_attendance_service.dart';
 import 'core/constants/app_constants.dart';
 import 'core/constants/api_constants.dart';
+import 'core/permissions/permission_service.dart';
 import 'core/utils/utils.dart';
 import 'core/theme/uat_theme.dart';
 import 'features/authentication/presentation/pages/login_page.dart';
@@ -37,9 +37,8 @@ void main() async {
     await DatabaseService().init();
     Logger.info('App initialization completed');
 
-    // Request Bluetooth permissions at startup
-    // This triggers the iOS/Android permission dialog early
-    BluetoothAttendanceService().requestPermissions().then((granted) {
+    // Request Bluetooth permissions at startup.
+    PermissionService.requestBluetoothPermissions().then((granted) {
       Logger.info('Bluetooth permissions: ${granted ? "granted" : "denied"}');
     });
 
@@ -116,7 +115,10 @@ final routerProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
-      GoRoute(path: '/relogin', builder: (context, state) => const ReloginPage()),
+      GoRoute(
+        path: '/relogin',
+        builder: (context, state) => const ReloginPage(),
+      ),
       GoRoute(path: '/grupos', builder: (context, state) => const GruposPage()),
       GoRoute(
         path: '/sync-status',

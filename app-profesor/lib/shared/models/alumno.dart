@@ -7,12 +7,14 @@ part 'alumno.g.dart';
 class Alumno extends Equatable {
   final String? id;
   final String? matricula;
+  final String? beaconUuid;
   final int number;
   final String name;
 
   const Alumno({
     this.id,
     this.matricula,
+    this.beaconUuid,
     required this.number,
     required this.name,
   });
@@ -22,7 +24,7 @@ class Alumno extends Equatable {
   Map<String, dynamic> toJson() => _$AlumnoToJson(this);
 
   @override
-  List<Object?> get props => [id, matricula, number, name];
+  List<Object?> get props => [id, matricula, beaconUuid, number, name];
 
   String get nombreCompleto => name;
   int get numeroLista => number;

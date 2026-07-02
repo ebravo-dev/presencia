@@ -948,8 +948,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   /// Si no, permite marcar con motivo (entrada parcial).
   Future<void> _verificarBeaconYMarcarEntrada() async {
     // Buscar el UUID del beacon asignado al salón de este grupo
-    final beaconUuid = AuthStorageService()
-        .getBeaconUuidForClassroom(widget.grupo.classroom);
+    final beaconUuid = AuthStorageService().getBeaconUuidForClassroom(
+      widget.grupo.classroom,
+    );
 
     if (beaconUuid == null) {
       if (!mounted) return;
@@ -1034,6 +1035,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       setState(() {
         _entradaProfesor = registro.horaEntrada;
         _salidaProfesor = registro.horaSalida;
+        _entradaVerificada = registro.entradaVerificada;
+        _motivoEntrada = registro.motivoEntrada;
         _asistencias.clear();
         _asistencias.addAll(
           _normalizarAsistencias(registro.asistenciasAlumnos),
@@ -1082,6 +1085,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       asistenciasSincronizadas: existente?.asistenciasSincronizadas,
       entradaVerificada: _entradaVerificada,
       motivoEntrada: _motivoEntrada,
+      grupoCode: widget.grupo.code,
+      grupoGroupLetter: widget.grupo.groupLetter,
+      grupoPeriod: widget.grupo.period,
     );
 
     await _asistenciaService.guardarAsistencia(registro);
@@ -1950,7 +1956,9 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
       _lastDeviceFound = null;
     });
 
-    debugPrint('[BLE-Dialog] Iniciando verificación con UUID: ${widget.beaconUuid}');
+    debugPrint(
+      '[BLE-Dialog] Iniciando verificación con UUID: ${widget.beaconUuid}',
+    );
     final result = await widget.bleService.verifyBeaconPresence(
       beaconUuid: widget.beaconUuid,
     );

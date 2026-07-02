@@ -3,7 +3,7 @@ import UIKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
-  private let nativeBlePlugin = NativeBlePlugin()
+  private let beaconPlugin = IosBeaconPlugin()
 
   override func application(
     _ application: UIApplication,
@@ -12,7 +12,7 @@ import UIKit
     GeneratedPluginRegistrant.register(with: self)
 
     if let controller = window?.rootViewController as? FlutterViewController {
-      nativeBlePlugin.register(with: controller.binaryMessenger)
+      beaconPlugin.register(with: controller.binaryMessenger)
     }
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)

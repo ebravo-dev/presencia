@@ -2,6 +2,13 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../../core/database/prisma.js';
 import { jwtService, sessionService } from '../../core/security/index.js';
 
+const studentDeviceBinding = (prisma as any).studentDeviceBinding;
+
+type StudentDeviceBindingRow = {
+    matricula: string;
+    attendanceUuid: string;
+};
+
 interface AuthenticatedRequest extends FastifyRequest {
     professorId?: string;
 }
@@ -142,6 +149,7 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
                             id: true,
                             matricula: true,
                             name: true,
+                            beaconUuid: true,
                         },
                         orderBy: { name: 'asc' },
                     },
@@ -151,6 +159,20 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
                 },
                 orderBy: { name: 'asc' },
             });
+
+            const matriculas = Array.from(
+                new Set(groups.flatMap(group => group.students.map(student => student.matricula)))
+            );
+            const bindings = await studentDeviceBinding.findMany({
+                where: { matricula: { in: matriculas } },
+                select: {
+                    matricula: true,
+                    attendanceUuid: true,
+                },
+            }) as StudentDeviceBindingRow[];
+            const bindingByMatricula = new Map(
+                bindings.map(binding => [binding.matricula, binding.attendanceUuid])
+            );
 
             // Transform to match Flutter app expected format
             const formattedGroups = groups.map((group) => {
@@ -171,6 +193,7 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
                     students: group.students.map((student, index) => ({
                         id: student.id,
                         matricula: student.matricula,
+                        beaconUuid: bindingByMatricula.get(student.matricula) ?? student.beaconUuid,
                         name: student.name,
                         number: index + 1,
                     })),

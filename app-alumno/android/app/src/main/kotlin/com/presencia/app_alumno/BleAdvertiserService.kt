@@ -1,131 +1,69 @@
 package com.presencia.app_alumno
 
-import android.app.*
-import android.bluetooth.*
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
 import android.bluetooth.le.AdvertiseCallback
-import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
-import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
-import android.os.*
+import android.os.Build
+import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import java.util.*
+import org.altbeacon.beacon.Beacon
+import org.altbeacon.beacon.BeaconParser
+import org.altbeacon.beacon.BeaconTransmitter
 
-/**
- * BLE GATT Server + Advertiser service.
- * Exposes student matrícula via GATT READ characteristic.
- * Professor app connects, reads matrícula, optionally writes confirmation.
- */
 class BleAdvertiserService : Service() {
 
     companion object {
-        private const val TAG = "BLE"
-        val SERVICE_UUID: UUID = UUID.fromString("12345678-1234-1234-1234-123456789abc")
-        val MATRICULA_CHAR_UUID: UUID = UUID.fromString("12345678-1234-1234-1234-000000000001") // READ
-        val CONFIRM_CHAR_UUID: UUID = UUID.fromString("12345678-1234-1234-1234-000000000002")   // WRITE
+        private const val TAG = "StudentBeacon"
         const val PREFS_NAME = "ble_prefs"
 
         private const val NOTIFICATION_ID = 9001
-        private const val CHANNEL_ID = "ble_advertiser_channel"
+        private const val CHANNEL_ID = "student_beacon_advertiser"
 
         const val ACTION_START = "com.presencia.START_ADVERTISE"
         const val ACTION_STOP = "com.presencia.STOP_ADVERTISE"
 
-        // Callbacks to relay events to Flutter via MainActivity
+        const val EXTRA_UUID = "uuid"
+        const val EXTRA_MAJOR = "major"
+        const val EXTRA_MINOR = "minor"
+        const val EXTRA_MEASURED_POWER = "measuredPower"
+
+        private const val DEFAULT_MAJOR = 1
+        private const val DEFAULT_MINOR = 1
+        private const val DEFAULT_MEASURED_POWER = -59
+
         @Volatile
         var onAdvertisingStateChanged: ((Boolean) -> Unit)? = null
-        @Volatile
-        var onAttendanceConfirmed: ((String) -> Unit)? = null
-        @Volatile
-        var onMatriculaRead: (() -> Unit)? = null
     }
 
-    private var bluetoothAdapter: BluetoothAdapter? = null
-    private var advertiser: BluetoothLeAdvertiser? = null
-    private var gattServer: BluetoothGattServer? = null
+    private var beaconTransmitter: BeaconTransmitter? = null
     private var prefs: SharedPreferences? = null
-    private var isAdvertising = false
 
     private val advertiseCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
-            isAdvertising = true
-            Log.i(TAG, "✅ BLE advertising started")
-            updateNotification("📡 Emitiendo matrícula por BLE")
+            Log.i(TAG, "Student iBeacon advertising started")
+            updateNotification("Asistencia activa")
             onAdvertisingStateChanged?.invoke(true)
         }
 
         override fun onStartFailure(errorCode: Int) {
-            isAdvertising = false
-            Log.e(TAG, "❌ Advertising failed: error $errorCode")
+            Log.e(TAG, "Student iBeacon advertising failed: $errorCode")
             onAdvertisingStateChanged?.invoke(false)
-        }
-    }
-
-    private val gattServerCallback = object : BluetoothGattServerCallback() {
-        override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
-            val state = if (newState == BluetoothProfile.STATE_CONNECTED) "connected" else "disconnected"
-            Log.i(TAG, "📱 Device $state: ${device.address}")
-        }
-
-        override fun onCharacteristicReadRequest(
-            device: BluetoothDevice,
-            requestId: Int,
-            offset: Int,
-            characteristic: BluetoothGattCharacteristic
-        ) {
-            if (characteristic.uuid == MATRICULA_CHAR_UUID) {
-                val matricula = prefs?.getString("student_matricula", "") ?: ""
-                val data = matricula.toByteArray(Charsets.UTF_8)
-                Log.i(TAG, "📖 Matrícula read by professor: $matricula")
-
-                if (offset > data.size) {
-                    gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_INVALID_OFFSET, offset, null)
-                    return
-                }
-
-                val responseData = data.copyOfRange(offset, data.size)
-                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, responseData)
-                onMatriculaRead?.invoke()
-            } else {
-                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, 0, null)
-            }
-        }
-
-        override fun onCharacteristicWriteRequest(
-            device: BluetoothDevice,
-            requestId: Int,
-            characteristic: BluetoothGattCharacteristic,
-            preparedWrite: Boolean,
-            responseNeeded: Boolean,
-            offset: Int,
-            value: ByteArray?
-        ) {
-            if (characteristic.uuid == CONFIRM_CHAR_UUID) {
-                val message = value?.toString(Charsets.UTF_8) ?: ""
-                Log.i(TAG, "✅ Confirmation received from professor: $message")
-                onAttendanceConfirmed?.invoke(message)
-
-                if (responseNeeded) {
-                    gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
-                }
-            } else {
-                if (responseNeeded) {
-                    gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, 0, null)
-                }
-            }
+            stopSelf()
         }
     }
 
     override fun onCreate() {
         super.onCreate()
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val btManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-        bluetoothAdapter = btManager?.adapter
-        advertiser = bluetoothAdapter?.bluetoothLeAdvertiser
         createNotificationChannel()
     }
 
@@ -133,8 +71,15 @@ class BleAdvertiserService : Service() {
         when (intent?.action) {
             ACTION_START -> {
                 startForegroundWithNotification()
-                setupGattServer()
-                startAdvertising()
+                val uuid = intent.getStringExtra(EXTRA_UUID)
+                    ?: prefs?.getString("student_attendance_uuid", null)
+                val major = intent.getIntExtra(EXTRA_MAJOR, DEFAULT_MAJOR)
+                val minor = intent.getIntExtra(EXTRA_MINOR, DEFAULT_MINOR)
+                val measuredPower = intent.getIntExtra(
+                    EXTRA_MEASURED_POWER,
+                    DEFAULT_MEASURED_POWER,
+                )
+                startAdvertising(uuid, major, minor, measuredPower)
             }
             ACTION_STOP -> {
                 stopAdvertising()
@@ -146,27 +91,81 @@ class BleAdvertiserService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    // MARK: - Notification
+    private fun startAdvertising(
+        uuid: String?,
+        major: Int,
+        minor: Int,
+        measuredPower: Int,
+    ) {
+        if (uuid.isNullOrBlank()) {
+            Log.e(TAG, "Missing student attendance UUID")
+            onAdvertisingStateChanged?.invoke(false)
+            stopSelf()
+            return
+        }
+
+        val support = BeaconTransmitter.checkTransmissionSupported(this)
+        if (support != BeaconTransmitter.SUPPORTED) {
+            Log.e(TAG, "Beacon transmission unsupported: $support")
+            onAdvertisingStateChanged?.invoke(false)
+            stopSelf()
+            return
+        }
+
+        stopAdvertising()
+
+        val parser = BeaconParser()
+            .setBeaconLayout("m:2-3=0215,i:4-19,i:20-21,i:22-23,p:24-24")
+        val beacon = Beacon.Builder()
+            .setId1(uuid)
+            .setId2(major.toString())
+            .setId3(minor.toString())
+            .setManufacturer(0x004C)
+            .setTxPower(measuredPower)
+            .build()
+
+        beaconTransmitter = BeaconTransmitter(applicationContext, parser).apply {
+            advertiseMode = AdvertiseSettings.ADVERTISE_MODE_BALANCED
+            advertiseTxPowerLevel = AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM
+            startAdvertising(beacon, advertiseCallback)
+        }
+    }
+
+    private fun stopAdvertising() {
+        try {
+            if (beaconTransmitter?.isStarted == true) {
+                beaconTransmitter?.stopAdvertising()
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Error stopping beacon advertising: ${error.message}")
+        }
+        beaconTransmitter = null
+        onAdvertisingStateChanged?.invoke(false)
+    }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "BLE Presencia",
-                NotificationManager.IMPORTANCE_LOW
+                "Asistencia automatica",
+                NotificationManager.IMPORTANCE_LOW,
             ).apply {
-                description = "Emitiendo matrícula por BLE"
+                description = "Registro automatico de asistencia"
                 setShowBadge(false)
             }
-            val nm = getSystemService(NotificationManager::class.java)
-            nm.createNotificationChannel(channel)
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
         }
     }
 
     private fun startForegroundWithNotification() {
-        val notification = buildNotification("Iniciando emisión BLE...")
+        val notification = buildNotification("Iniciando asistencia")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
+            )
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
@@ -175,8 +174,10 @@ class BleAdvertiserService : Service() {
     private fun buildNotification(text: String): Notification {
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, launchIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            this,
+            0,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Presencia")
@@ -189,123 +190,12 @@ class BleAdvertiserService : Service() {
     }
 
     private fun updateNotification(text: String) {
-        val nm = getSystemService(NotificationManager::class.java)
-        nm.notify(NOTIFICATION_ID, buildNotification(text))
-    }
-
-    // MARK: - GATT Server
-
-    private fun setupGattServer() {
-        val btManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager ?: return
-
-        gattServer = try {
-            btManager.openGattServer(this, gattServerCallback)
-        } catch (e: SecurityException) {
-            Log.e(TAG, "❌ SecurityException opening GATT server: ${e.message}")
-            return
-        }
-
-        val matriculaChar = BluetoothGattCharacteristic(
-            MATRICULA_CHAR_UUID,
-            BluetoothGattCharacteristic.PROPERTY_READ,
-            BluetoothGattCharacteristic.PERMISSION_READ
-        )
-
-        val confirmChar = BluetoothGattCharacteristic(
-            CONFIRM_CHAR_UUID,
-            BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
-            BluetoothGattCharacteristic.PERMISSION_WRITE
-        )
-
-        val service = BluetoothGattService(SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
-        service.addCharacteristic(matriculaChar)
-        service.addCharacteristic(confirmChar)
-
-        try {
-            gattServer?.addService(service)
-            Log.i(TAG, "✅ GATT server + service added")
-        } catch (e: SecurityException) {
-            Log.e(TAG, "❌ SecurityException adding service: ${e.message}")
-        }
-    }
-
-    // MARK: - Advertising
-
-    private fun startAdvertising() {
-        if (bluetoothAdapter?.isEnabled != true) {
-            Log.w(TAG, "⚠️ Bluetooth not enabled")
-            return
-        }
-        if (advertiser == null) {
-            Log.e(TAG, "❌ BLE advertising not supported on this device")
-            return
-        }
-
-        val settings = AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER)
-            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
-            .setConnectable(true)
-            .setTimeout(0) // Advertise indefinitely
-            .build()
-
-        val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(false) // Save space in advertising packet
-            .addServiceUuid(ParcelUuid(SERVICE_UUID))
-            .build()
-
-        val scanResponse = AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
-            .build()
-
-        try {
-            advertiser?.startAdvertising(settings, data, scanResponse, advertiseCallback)
-            Log.i(TAG, "📡 Starting BLE advertising...")
-        } catch (e: SecurityException) {
-            Log.e(TAG, "❌ SecurityException starting advertising: ${e.message}")
-        }
-    }
-
-    private fun stopAdvertising() {
-        try {
-            advertiser?.stopAdvertising(advertiseCallback)
-        } catch (_: SecurityException) {}
-        isAdvertising = false
-
-        try {
-            gattServer?.close()
-        } catch (_: Exception) {}
-        gattServer = null
-
-        onAdvertisingStateChanged?.invoke(false)
-        Log.i(TAG, "🛑 Stopped advertising + GATT server")
-    }
-
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        super.onTaskRemoved(rootIntent)
-        Log.i(TAG, "🔄 onTaskRemoved — scheduling restart")
-        scheduleRestart()
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.notify(NOTIFICATION_ID, buildNotification(text))
     }
 
     override fun onDestroy() {
         stopAdvertising()
-        Log.i(TAG, "🔄 onDestroy — scheduling restart")
-        scheduleRestart()
         super.onDestroy()
-    }
-
-    private fun scheduleRestart() {
-        val intent = Intent(this, BootReceiver::class.java).apply {
-            action = BootReceiver.ACTION_RESTART_SERVICE
-        }
-        val pendingIntent = PendingIntent.getBroadcast(
-            this, 0, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        alarmManager.setExactAndAllowWhileIdle(
-            AlarmManager.ELAPSED_REALTIME_WAKEUP,
-            SystemClock.elapsedRealtime() + 5_000,
-            pendingIntent
-        )
     }
 }

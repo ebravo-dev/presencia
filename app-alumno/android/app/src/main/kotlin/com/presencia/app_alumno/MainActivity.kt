@@ -41,16 +41,8 @@ class MainActivity : FlutterActivity() {
                 flutterChannel?.invokeMethod("onAdvertisingStateChanged", advertising)
             }
         }
-        BleAdvertiserService.onAttendanceConfirmed = { message ->
-            mainHandler.post {
-                flutterChannel?.invokeMethod("onAttendanceConfirmed", message)
-            }
-        }
-        BleAdvertiserService.onMatriculaRead = {
-            mainHandler.post {
-                flutterChannel?.invokeMethod("onMatriculaRead", null)
-            }
-        }
+
+        AltBeaconScannerPlugin(this).register(flutterEngine.dartExecutor.binaryMessenger)
 
         flutterChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -60,7 +52,23 @@ class MainActivity : FlutterActivity() {
                         result.success(false)
                         return@setMethodCallHandler
                     }
-                    startAdvertiserService(BleAdvertiserService.ACTION_START)
+                    val args = call.arguments as? Map<*, *>
+                    val uuid = args?.get("uuid") as? String
+                        ?: prefs?.getString("student_attendance_uuid", null)
+                    val major = (args?.get("major") as? Number)?.toInt() ?: 1
+                    val minor = (args?.get("minor") as? Number)?.toInt() ?: 1
+                    val measuredPower = (args?.get("measuredPower") as? Number)?.toInt() ?: -59
+                    if (uuid.isNullOrBlank()) {
+                        result.error("MISSING_UUID", "No hay UUID de asistencia del alumno", null)
+                        return@setMethodCallHandler
+                    }
+                    startAdvertiserService(
+                        BleAdvertiserService.ACTION_START,
+                        uuid,
+                        major,
+                        minor,
+                        measuredPower,
+                    )
                     result.success(true)
                 }
                 "stopAdvertising" -> {
@@ -75,12 +83,21 @@ class MainActivity : FlutterActivity() {
                     val state = if (btManager?.adapter?.isEnabled == true) "on" else "off"
                     result.success(state)
                 }
-                "setMatricula" -> {
-                    val matricula = call.arguments as? String
-                    if (matricula != null) {
-                        prefs?.edit()?.putString("student_matricula", matricula)?.apply()
-                        Log.i(TAG, "📝 Matrícula set: $matricula")
-                    }
+                "setStudentIdentity" -> {
+                    val args = call.arguments as? Map<*, *>
+                    val matricula = args?.get("matricula") as? String
+                    val attendanceUuid = args?.get("attendanceUuid") as? String
+                    val deviceBindingId = args?.get("deviceBindingId") as? String
+                    prefs?.edit()?.apply {
+                        if (matricula != null) putString("student_matricula", matricula)
+                        if (attendanceUuid != null) {
+                            putString("student_attendance_uuid", attendanceUuid)
+                        }
+                        if (deviceBindingId != null) {
+                            putString("student_device_binding_id", deviceBindingId)
+                        }
+                    }?.apply()
+                    Log.i(TAG, "Student identity set: $matricula / $attendanceUuid / $deviceBindingId")
                     result.success(true)
                 }
                 else -> result.notImplemented()
@@ -88,9 +105,21 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun startAdvertiserService(action: String) {
+    private fun startAdvertiserService(
+        action: String,
+        uuid: String? = null,
+        major: Int = 1,
+        minor: Int = 1,
+        measuredPower: Int = -59,
+    ) {
         val intent = Intent(this, BleAdvertiserService::class.java).apply {
             this.action = action
+            if (uuid != null) {
+                putExtra(BleAdvertiserService.EXTRA_UUID, uuid)
+                putExtra(BleAdvertiserService.EXTRA_MAJOR, major)
+                putExtra(BleAdvertiserService.EXTRA_MINOR, minor)
+                putExtra(BleAdvertiserService.EXTRA_MEASURED_POWER, measuredPower)
+            }
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
@@ -101,6 +130,7 @@ class MainActivity : FlutterActivity() {
 
     private fun hasBlePermissions(): Boolean {
         val base = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADVERTISE) == PackageManager.PERMISSION_GRANTED &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
         } else {
@@ -115,6 +145,7 @@ class MainActivity : FlutterActivity() {
     private fun requestBlePermissions() {
         val perms = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            perms.add(Manifest.permission.BLUETOOTH_SCAN)
             perms.add(Manifest.permission.BLUETOOTH_ADVERTISE)
             perms.add(Manifest.permission.BLUETOOTH_CONNECT)
         }

@@ -1,16 +1,21 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+import '../services/attendance_session_service.dart';
 import '../services/ble_advertiser_service.dart';
 import '../services/local_storage_service.dart';
 
 class HomeScreen extends StatefulWidget {
   final LocalStorageService storage;
   final BleAdvertiserService bleService;
+  final AttendanceSessionService attendanceSession;
 
   const HomeScreen({
     super.key,
     required this.storage,
     required this.bleService,
+    required this.attendanceSession,
   });
 
   @override
@@ -19,11 +24,13 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   AdvertiserState _advState = AdvertiserState.idle;
-  String _statusText = 'Iniciando...';
+  AttendanceSessionState _sessionState = AttendanceSessionState.idle;
+  String _statusText = 'Preparando asistencia';
   String? _lastConfirmation;
 
   StreamSubscription<AdvertiserState>? _stateSub;
   StreamSubscription<String>? _confirmSub;
+  StreamSubscription<AttendanceSessionSnapshot>? _sessionSub;
 
   @override
   void initState() {
@@ -31,55 +38,53 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
 
     _stateSub = widget.bleService.stateStream.listen((state) {
-      if (mounted) {
-        setState(() {
-          _advState = state;
-          _statusText = _textForState(state);
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _advState = state;
+        if (_sessionState != AttendanceSessionState.broadcasting) {
+          _statusText = _textForAdvertiser(state);
+        }
+      });
     });
 
     _confirmSub = widget.bleService.confirmationStream.listen((message) {
-      if (mounted) {
+      if (!mounted) return;
+      setState(() {
+        _lastConfirmation = message;
+        _statusText = 'Asistencia confirmada';
+      });
+      Future.delayed(const Duration(seconds: 5), () {
+        if (!mounted || _lastConfirmation != message) return;
         setState(() {
-          _lastConfirmation = message;
-          _statusText = '¡Asistencia confirmada!';
+          _lastConfirmation = null;
+          _statusText = _textForSession(_sessionState);
         });
-        // Reset after a few seconds
-        Future.delayed(const Duration(seconds: 5), () {
-          if (mounted && _lastConfirmation == message) {
-            setState(() {
-              _lastConfirmation = null;
-              _statusText = _textForState(_advState);
-            });
-          }
-        });
-      }
+      });
     });
 
-    // Set initial state
+    _sessionSub = widget.attendanceSession.stateStream.listen((snapshot) {
+      if (!mounted) return;
+      setState(() {
+        _sessionState = snapshot.state;
+        _statusText = snapshot.message ?? _textForSession(snapshot.state);
+      });
+    });
+
     _advState = widget.bleService.currentState;
-    _statusText = _textForState(_advState);
+    _sessionState = widget.attendanceSession.currentState;
+    _statusText = _textForSession(_sessionState);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        widget.attendanceSession.start();
+      }
+    });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Re-start advertising if needed
-      widget.bleService.startAdvertising();
-    }
-  }
-
-  String _textForState(AdvertiserState state) {
-    switch (state) {
-      case AdvertiserState.advertising:
-        return 'Emitiendo tu matrícula por BLE';
-      case AdvertiserState.bluetoothOff:
-        return 'Activa el Bluetooth';
-      case AdvertiserState.error:
-        return 'Error — revisa el Bluetooth';
-      case AdvertiserState.idle:
-        return 'Toca para iniciar emisión';
+      widget.attendanceSession.start();
     }
   }
 
@@ -88,188 +93,538 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _stateSub?.cancel();
     _confirmSub?.cancel();
+    _sessionSub?.cancel();
     super.dispose();
+  }
+
+  bool get _isActive => _advState == AdvertiserState.advertising;
+  bool get _isChecking => _sessionState == AttendanceSessionState.checkingRoom;
+  bool get _isConfirmed => _lastConfirmation != null;
+  bool get _hasError =>
+      _advState == AdvertiserState.error ||
+      _sessionState == AttendanceSessionState.error ||
+      _sessionState == AttendanceSessionState.roomNotFound ||
+      _sessionState == AttendanceSessionState.missingRoomBeacon;
+  bool get _bluetoothOff =>
+      _advState == AdvertiserState.bluetoothOff ||
+      _sessionState == AttendanceSessionState.bluetoothOff;
+
+  String _textForAdvertiser(AdvertiserState state) {
+    switch (state) {
+      case AdvertiserState.advertising:
+        return 'Asistencia activa';
+      case AdvertiserState.bluetoothOff:
+        return 'Activa Bluetooth';
+      case AdvertiserState.error:
+        return 'Revisa permisos y Bluetooth';
+      case AdvertiserState.idle:
+        return 'Asistencia pausada';
+    }
+  }
+
+  String _textForSession(AttendanceSessionState state) {
+    switch (state) {
+      case AttendanceSessionState.checkingRoom:
+        return 'Validando tu clase';
+      case AttendanceSessionState.roomVerified:
+        return 'Clase validada';
+      case AttendanceSessionState.broadcasting:
+        return 'Asistencia activa';
+      case AttendanceSessionState.bluetoothOff:
+        return 'Activa Bluetooth';
+      case AttendanceSessionState.missingRoomBeacon:
+      case AttendanceSessionState.roomNotFound:
+        return 'No se pudo validar tu clase';
+      case AttendanceSessionState.error:
+        return 'Revisa permisos y Bluetooth';
+      case AttendanceSessionState.idle:
+        return 'Asistencia pausada';
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isAdvertising = _advState == AdvertiserState.advertising;
-    final isConfirmed = _lastConfirmation != null;
+    final visual = _visualState;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF0B0F14),
       body: SafeArea(
-        child: Column(
-          children: [
-            // ── Header ──
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-              child: Row(
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Presencia',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      Text(
-                        widget.storage.matricula,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.4),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                ],
-              ),
-            ),
-
-            const Spacer(),
-
-            // ── Central status indicator ──
-            GestureDetector(
-              onTap: () {
-                if (!isAdvertising) {
-                  widget.bleService.startAdvertising();
-                }
-              },
-              child: Container(
-                width: 200,
-                height: 200,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: _getGradientColors(isAdvertising, isConfirmed),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _getGradientColors(
-                        isAdvertising,
-                        isConfirmed,
-                      )[0].withOpacity(0.3),
-                      blurRadius: 40,
-                      spreadRadius: 5,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight - 40,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _Header(matricula: widget.storage.matricula),
+                    const SizedBox(height: 24),
+                    _StatusPanel(
+                      visual: visual,
+                      statusText: _statusText,
+                      active: _isActive,
+                      checking: _isChecking,
+                    ),
+                    const SizedBox(height: 20),
+                    _PrimaryAction(
+                      active: _isActive,
+                      checking: _isChecking,
+                      hasError: _hasError || _bluetoothOff,
+                      onPressed: _toggleAttendance,
+                    ),
+                    const SizedBox(height: 18),
+                    _DevicePanel(
+                      matricula: widget.storage.matricula,
+                      statusLabel: _deviceStatusLabel,
+                      statusIcon: visual.smallIcon,
+                      statusColor: visual.accent,
+                    ),
+                    const SizedBox(height: 14),
+                    _HelpPanel(
+                      title: _helpTitle,
+                      body: _helpBody,
+                      icon: _helpIcon,
                     ),
                   ],
                 ),
-                child: Icon(
-                  _getIcon(isAdvertising, isConfirmed),
-                  color: Colors.white,
-                  size: 72,
-                ),
               ),
-            ),
-            const SizedBox(height: 32),
-
-            // ── Status text ──
-            Text(
-              _statusText,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-
-            if (isAdvertising && !isConfirmed) ...[
-              const SizedBox(height: 16),
-              Text(
-                'El profesor detectará tu dispositivo automáticamente',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.3),
-                  fontSize: 13,
-                ),
-              ),
-            ],
-
-            const Spacer(),
-
-            // ── Info bar ──
-            Container(
-              margin: const EdgeInsets.all(24),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1C1C1E),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF2C2C2E)),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    isAdvertising
-                        ? Icons.bluetooth_connected_rounded
-                        : Icons.bluetooth_disabled_rounded,
-                    color: isAdvertising
-                        ? const Color(0xFF4DFF88)
-                        : Colors.white38,
-                    size: 24,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          isAdvertising ? 'BLE Activo' : 'BLE Inactivo',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          isAdvertising
-                              ? 'Tu matrícula está visible para el profesor'
-                              : 'Necesitas Bluetooth encendido',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.4),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
   }
 
-  List<Color> _getGradientColors(bool isAdvertising, bool isConfirmed) {
-    if (isConfirmed) {
-      return [const Color(0xFF4DFF88), const Color(0xFF00C853)];
+  Future<void> _toggleAttendance() async {
+    if (_isActive || _isChecking) {
+      await widget.attendanceSession.stop();
+    } else {
+      await widget.attendanceSession.start();
     }
-    if (isAdvertising) {
-      return [const Color(0xFF6B9DFF), const Color(0xFF4DC4FF)];
-    }
-    if (_advState == AdvertiserState.bluetoothOff ||
-        _advState == AdvertiserState.error) {
-      return [const Color(0xFFFF9D6B), const Color(0xFFFF6B6B)];
-    }
-    return [const Color(0xFFFF6B9D), const Color(0xFFC44DFF)];
   }
 
-  IconData _getIcon(bool isAdvertising, bool isConfirmed) {
-    if (isConfirmed) return Icons.check_rounded;
-    if (isAdvertising) return Icons.bluetooth_rounded;
-    if (_advState == AdvertiserState.bluetoothOff) {
-      return Icons.bluetooth_disabled_rounded;
+  _VisualState get _visualState {
+    if (_isConfirmed) {
+      return const _VisualState(
+        accent: Color(0xFF62D6A2),
+        surface: Color(0xFF11231C),
+        icon: Icons.check_rounded,
+        smallIcon: Icons.verified_rounded,
+      );
     }
-    return Icons.bluetooth_rounded;
+    if (_isActive) {
+      return const _VisualState(
+        accent: Color(0xFF62D6A2),
+        surface: Color(0xFF11231C),
+        icon: Icons.sensors_rounded,
+        smallIcon: Icons.radio_button_checked_rounded,
+      );
+    }
+    if (_isChecking) {
+      return const _VisualState(
+        accent: Color(0xFFF4B860),
+        surface: Color(0xFF261E12),
+        icon: Icons.sync_rounded,
+        smallIcon: Icons.hourglass_top_rounded,
+      );
+    }
+    if (_hasError || _bluetoothOff) {
+      return const _VisualState(
+        accent: Color(0xFFFF7A70),
+        surface: Color(0xFF2A1516),
+        icon: Icons.priority_high_rounded,
+        smallIcon: Icons.error_rounded,
+      );
+    }
+    return const _VisualState(
+      accent: Color(0xFF79A8FF),
+      surface: Color(0xFF121D31),
+      icon: Icons.pause_rounded,
+      smallIcon: Icons.phone_android_rounded,
+    );
   }
+
+  String get _deviceStatusLabel {
+    if (_isConfirmed) return 'Registro confirmado';
+    if (_isActive) return 'Disponible para pase de lista';
+    if (_isChecking) return 'Validando clase';
+    if (_bluetoothOff) return 'Bluetooth apagado';
+    if (_hasError) return 'Requiere atención';
+    return 'Vinculado';
+  }
+
+  String get _helpTitle {
+    if (_isConfirmed) return 'Listo';
+    if (_isActive) return 'Mantén la app abierta';
+    if (_isChecking) return 'Validación en curso';
+    if (_bluetoothOff) return 'Bluetooth requerido';
+    if (_hasError) return 'Permisos necesarios';
+    return 'Tu celular está vinculado';
+  }
+
+  String get _helpBody {
+    if (_isConfirmed) {
+      return 'Tu asistencia fue registrada por el profesor.';
+    }
+    if (_isActive) {
+      return 'Cuando el profesor pase lista, este celular podrá ser reconocido automáticamente.';
+    }
+    if (_isChecking) {
+      return 'Estamos confirmando tu clase antes de activar la asistencia.';
+    }
+    if (_bluetoothOff) {
+      return 'Activa Bluetooth en el sistema y vuelve a intentarlo.';
+    }
+    if (_hasError) {
+      return 'Revisa los permisos de la app y vuelve a activar la asistencia.';
+    }
+    return 'Si cambias de celular, un maestro deberá autorizar el nuevo vínculo.';
+  }
+
+  IconData get _helpIcon {
+    if (_isConfirmed) return Icons.task_alt_rounded;
+    if (_isActive) return Icons.visibility_rounded;
+    if (_isChecking) return Icons.manage_search_rounded;
+    if (_bluetoothOff || _hasError) return Icons.settings_rounded;
+    return Icons.lock_rounded;
+  }
+}
+
+class _Header extends StatelessWidget {
+  final String matricula;
+
+  const _Header({required this.matricula});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            color: const Color(0xFF17202B),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF263241)),
+          ),
+          child: const Icon(
+            Icons.school_rounded,
+            color: Color(0xFF62D6A2),
+            size: 25,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Presencia',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                matricula,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF8F9BA8),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatusPanel extends StatelessWidget {
+  final _VisualState visual;
+  final String statusText;
+  final bool active;
+  final bool checking;
+
+  const _StatusPanel({
+    required this.visual,
+    required this.statusText,
+    required this.active,
+    required this.checking,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111923),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF223040)),
+      ),
+      child: Column(
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 260),
+            width: 156,
+            height: 156,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: visual.surface,
+              border: Border.all(color: visual.accent, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: visual.accent.withValues(alpha: active ? 0.24 : 0.12),
+                  blurRadius: active ? 34 : 18,
+                  spreadRadius: active ? 5 : 1,
+                ),
+              ],
+            ),
+            child: Icon(visual.icon, color: visual.accent, size: 66),
+          ),
+          const SizedBox(height: 22),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: Text(
+              statusText,
+              key: ValueKey(statusText),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                height: 1.15,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            active
+                ? 'Esperando pase de lista'
+                : checking
+                ? 'Esto puede tomar unos segundos'
+                : 'La asistencia puede activarse al entrar a clase',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.55),
+              fontSize: 14,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PrimaryAction extends StatelessWidget {
+  final bool active;
+  final bool checking;
+  final bool hasError;
+  final VoidCallback onPressed;
+
+  const _PrimaryAction({
+    required this.active,
+    required this.checking,
+    required this.hasError,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = active
+        ? 'Pausar asistencia'
+        : checking
+        ? 'Cancelar'
+        : hasError
+        ? 'Reintentar'
+        : 'Activar asistencia';
+    final icon = active
+        ? Icons.pause_rounded
+        : checking
+        ? Icons.close_rounded
+        : hasError
+        ? Icons.refresh_rounded
+        : Icons.play_arrow_rounded;
+
+    return SizedBox(
+      height: 56,
+      child: FilledButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon),
+        label: Text(label),
+      ),
+    );
+  }
+}
+
+class _DevicePanel extends StatelessWidget {
+  final String matricula;
+  final String statusLabel;
+  final IconData statusIcon;
+  final Color statusColor;
+
+  const _DevicePanel({
+    required this.matricula,
+    required this.statusLabel,
+    required this.statusIcon,
+    required this.statusColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _InfoTile(
+            icon: Icons.badge_rounded,
+            label: 'Matrícula',
+            value: matricula,
+            color: const Color(0xFF79A8FF),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _InfoTile(
+            icon: statusIcon,
+            label: 'Celular',
+            value: statusLabel,
+            color: statusColor,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InfoTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _InfoTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 112),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111923),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF223040)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 14),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF8F9BA8),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              height: 1.15,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HelpPanel extends StatelessWidget {
+  final String title;
+  final String body;
+  final IconData icon;
+
+  const _HelpPanel({
+    required this.title,
+    required this.body,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF10161E),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF1D2936)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: const Color(0xFF8F9BA8), size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  body,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.58),
+                    fontSize: 13,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VisualState {
+  final Color accent;
+  final Color surface;
+  final IconData icon;
+  final IconData smallIcon;
+
+  const _VisualState({
+    required this.accent,
+    required this.surface,
+    required this.icon,
+    required this.smallIcon,
+  });
 }

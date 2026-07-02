@@ -1,5 +1,5 @@
 import '../core/utils/utils.dart';
-import 'bluetooth_service.dart';
+import 'native_altbeacon_channel.dart';
 
 /// Model for Beacon data
 class BeaconData {
@@ -24,22 +24,20 @@ class BeaconService {
   factory BeaconService() => _instance;
   BeaconService._internal();
 
-  final BluetoothService _bluetoothService = BluetoothService();
+  final NativeAltBeaconChannel _altBeacon = NativeAltBeaconChannel();
 
   /// Start monitoring for beacons
   Future<void> startMonitoring() async {
     try {
       Logger.info('Starting beacon monitoring');
 
-      final isBluetoothAvailable = await _bluetoothService
-          .isBluetoothAvailable();
+      final isBluetoothAvailable = await _altBeacon.isBluetoothAvailable();
       if (!isBluetoothAvailable) {
         Logger.error('Bluetooth not available for beacon monitoring');
         return;
       }
 
-      await _bluetoothService.startScan();
-      // TODO: Implement beacon-specific logic
+      Logger.info('Beacon monitoring requires target UUIDs via AltBeacon');
     } catch (e, stackTrace) {
       Logger.error('Error starting beacon monitoring', e, stackTrace);
     }
@@ -48,7 +46,7 @@ class BeaconService {
   /// Stop monitoring for beacons
   Future<void> stopMonitoring() async {
     try {
-      await _bluetoothService.stopScan();
+      await _altBeacon.stopScanning();
       Logger.info('Beacon monitoring stopped');
     } catch (e, stackTrace) {
       Logger.error('Error stopping beacon monitoring', e, stackTrace);

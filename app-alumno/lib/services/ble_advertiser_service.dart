@@ -3,16 +3,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// State of the BLE advertiser
-enum AdvertiserState {
-  idle,
-  advertising,
-  bluetoothOff,
-  error,
-}
+enum AdvertiserState { idle, advertising, bluetoothOff, error }
 
 /// BLE Advertiser service that routes through native MethodChannel.
-/// The student app acts as a BLE peripheral (GATT server) that advertises
-/// its service UUID. The professor app scans, connects, and reads the matrícula.
+/// The student app acts as an iBeacon transmitter. The professor app detects
+/// the stable student UUID and uploads the attendance detection.
 class BleAdvertiserService {
   static const _channel = MethodChannel('com.presencia.alumno/ble_advertiser');
 
@@ -29,16 +24,26 @@ class BleAdvertiserService {
     _channel.setMethodCallHandler(_handleNativeCall);
   }
 
-  /// Start BLE advertising + GATT server
-  Future<void> startAdvertising() async {
+  /// Start iBeacon advertising with the UUID associated to this student.
+  Future<void> startAdvertising({
+    required String uuid,
+    int major = 1,
+    int minor = 1,
+    int measuredPower = -59,
+  }) async {
     try {
       final state = await _channel.invokeMethod('getBluetoothState');
       if (state != 'on') {
         _updateState(AdvertiserState.bluetoothOff);
         return;
       }
-      await _channel.invokeMethod('startAdvertising');
-      debugPrint('[BLE] Starting advertising...');
+      await _channel.invokeMethod('startAdvertising', {
+        'uuid': uuid,
+        'major': major,
+        'minor': minor,
+        'measuredPower': measuredPower,
+      });
+      debugPrint('[BLE] Starting attendance beacon...');
     } catch (e) {
       debugPrint('[BLE] Error starting advertising: $e');
       _updateState(AdvertiserState.error);
@@ -54,12 +59,20 @@ class BleAdvertiserService {
     }
   }
 
-  /// Save matrícula to native storage so GATT server can serve it
-  Future<void> setMatricula(String matricula) async {
+  /// Save student identity to native storage so background services can read it.
+  Future<void> setStudentIdentity({
+    required String matricula,
+    required String attendanceUuid,
+    String? deviceBindingId,
+  }) async {
     try {
-      await _channel.invokeMethod('setMatricula', matricula);
+      await _channel.invokeMethod('setStudentIdentity', {
+        'matricula': matricula,
+        'attendanceUuid': attendanceUuid,
+        'deviceBindingId': ?deviceBindingId,
+      });
     } catch (e) {
-      debugPrint('[BLE] Error setting matrícula: $e');
+      debugPrint('[BLE] Error setting student identity: $e');
     }
   }
 
@@ -100,12 +113,12 @@ class BleAdvertiserService {
 
       case 'onAttendanceConfirmed':
         final message = call.arguments as String? ?? '';
-        debugPrint('[BLE] ✅ Attendance confirmed: $message');
+        debugPrint('[BLE] Attendance confirmed: $message');
         _confirmController.add(message);
         break;
 
-      case 'onMatriculaRead':
-        debugPrint('[BLE] 📖 Matrícula was read by professor');
+      case 'onBeaconDetected':
+        debugPrint('[BLE] Attendance beacon was detected by professor');
         break;
     }
     return null;

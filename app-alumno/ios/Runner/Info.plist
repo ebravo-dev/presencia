@@ -46,11 +46,17 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Esta app usa Bluetooth para emitir tu matrícula y que el profesor registre tu asistencia automáticamente.</string>
+	<string>Esta app usa Bluetooth para registrar tu asistencia automáticamente cuando estás en clase.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Esta app usa Bluetooth para emitir tu matrícula y que el profesor registre tu asistencia automáticamente.</string>
+	<string>Esta app usa Bluetooth para registrar tu asistencia automáticamente cuando estás en clase.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Esta app usa ubicación para confirmar que estás en tu clase antes de registrar asistencia.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Esta app usa ubicación para confirmar tus clases y registrar asistencia de forma automática.</string>
 	<key>UIBackgroundModes</key>
 	<array>
+		<string>location</string>
+		<string>bluetooth-central</string>
 		<string>bluetooth-peripheral</string>
 	</array>
 </dict>

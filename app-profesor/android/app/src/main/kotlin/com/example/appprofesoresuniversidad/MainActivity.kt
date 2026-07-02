@@ -6,6 +6,6 @@ import io.flutter.embedding.engine.FlutterEngine
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        NativeBlePlugin(this).register(flutterEngine.dartExecutor.binaryMessenger)
+        AltBeaconPlugin(this).register(flutterEngine.dartExecutor.binaryMessenger)
     }
 }

@@ -15,3 +15,13 @@ export const studentBleAttendanceBatchSchema = z.object({
 });
 
 export type StudentBleAttendanceInput = z.infer<typeof studentBleAttendanceSchema>;
+
+export const studentDeviceBindingSchema = z.object({
+    matricula: z.string().min(1, 'matricula is required').transform((value) => value.trim().toUpperCase()),
+    attendanceUuid: z.string().uuid('attendanceUuid must be a valid UUID'),
+    deviceBindingId: z.string().uuid('deviceBindingId must be a valid UUID').optional(),
+    platform: z.string().max(40).optional(),
+    deviceInfo: z.string().max(500).optional(),
+});
+
+export type StudentDeviceBindingInput = z.infer<typeof studentDeviceBindingSchema>;

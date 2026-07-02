@@ -46,14 +46,31 @@ model Student {
   id          String       @id @default(cuid())
   matricula   String
   name        String
+  beaconUuid  String?      @map("beacon_uuid")
   groupId     String       @map("group_id")
   createdAt   DateTime     @default(now()) @map("created_at")
   updatedAt   DateTime     @updatedAt @map("updated_at")
   attendances Attendance[]
+  beaconDetections StudentBeaconDetection[]
   group       Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
   @@unique([matricula, groupId])
+  @@index([beaconUuid])
   @@map("students")
+}
+
+model StudentDeviceBinding {
+  id              String   @id @default(cuid())
+  matricula       String   @unique
+  attendanceUuid  String   @unique @map("attendance_uuid")
+  deviceBindingId String?  @map("device_binding_id")
+  platform        String?
+  deviceInfo      String?  @map("device_info")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([attendanceUuid])
+  @@map("student_device_bindings")
 }
 
 model AttendanceRecord {
@@ -61,6 +78,12 @@ model AttendanceRecord {
   date        DateTime     @db.Date
   groupId     String       @map("group_id")
   professorId String       @map("professor_id")
+  professorEntryAt DateTime? @map("professor_entry_at")
+  professorExitAt  DateTime? @map("professor_exit_at")
+  roomBeaconUuid   String?   @map("room_beacon_uuid")
+  roomBeaconRssi   Int?      @map("room_beacon_rssi")
+  roomBeaconDistance Float?  @map("room_beacon_distance")
+  roomBeaconAddress String?  @map("room_beacon_address")
   portalSyncStatus PortalSyncStatus @default(NOT_REQUESTED) @map("portal_sync_status")
   portalSyncError  String?          @map("portal_sync_error")
   portalSyncedAt   DateTime?        @map("portal_synced_at")
@@ -68,6 +91,7 @@ model AttendanceRecord {
   group       Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
   professor   Professor    @relation(fields: [professorId], references: [id], onDelete: Cascade)
   attendances Attendance[]
+  studentBeaconDetections StudentBeaconDetection[]
 
   @@unique([date, groupId])
   @@map("attendance_records")
@@ -134,6 +158,25 @@ model StudentBleAttendance {
   syncedAt    DateTime @default(now()) @map("synced_at")
 
   @@map("student_ble_attendances")
+}
+
+model StudentBeaconDetection {
+  id                 String           @id @default(cuid())
+  studentId          String           @map("student_id")
+  attendanceRecordId String           @map("attendance_record_id")
+  beaconUuid         String           @map("beacon_uuid")
+  detectedAt         DateTime         @map("detected_at")
+  rssi               Int?
+  distance           Float?
+  txPower            Int?             @map("tx_power")
+  bluetoothAddress   String?          @map("bluetooth_address")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  attendanceRecord   AttendanceRecord @relation(fields: [attendanceRecordId], references: [id], onDelete: Cascade)
+  student            Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, attendanceRecordId])
+  @@index([beaconUuid])
+  @@map("student_beacon_detections")
 }
 
 model Beacon {

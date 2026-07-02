@@ -45,6 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>bluetooth-central</string>
+	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Se necesita Bluetooth para detectar alumnos cercanos y pasar lista automáticamente.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>

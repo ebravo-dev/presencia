@@ -85,25 +85,53 @@ class ApiService {
     return loginProfesor(email: email, password: encryptedPassword);
   }
 
+  /// Obtiene las clases asignadas al profesor autenticado
+  /// Endpoint: GET /professors/classes
+  /// Requiere JWT token en el header Authorization
+  /// Retorna tupla (grupos, beacons) donde beacons es la lista cruda del server
   Future<
     Either<String, ({List<Grupo> grupos, List<Map<String, dynamic>> beacons})>
   >
   getGruposProfesor(String token) async {
     try {
-      Logger.info('Obteniendo grupos del backend-apirest');
+      Logger.info('Obteniendo clases del profesor autenticado');
 
-      final grupos = await _uatRepository.sincronizarDatos(sessionId: token);
-      return Right((grupos: grupos, beacons: <Map<String, dynamic>>[]));
+      final response = await _dio.get(
+        '/professors/classes',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> clasesJson = response.data['data'] ?? [];
+        final grupos = clasesJson.map((json) => Grupo.fromJson(json)).toList();
+
+        final List<dynamic> beaconsJson = response.data['beacons'] ?? [];
+        final beacons = beaconsJson
+            .map((b) => Map<String, dynamic>.from(b as Map))
+            .toList();
+
+        Logger.info(
+          'Clases obtenidas: ${grupos.length}, Beacons: ${beacons.length}',
+        );
+        return Right((grupos: grupos, beacons: beacons));
+      } else {
+        final errorMessage =
+            response.data['message'] ?? 'Error al obtener clases';
+        Logger.error('Error obteniendo clases: $errorMessage');
+        return Left(errorMessage);
+      }
     } on DioException catch (e) {
       final errorMessage = _handleDioError(e);
-      Logger.error('Error de conexion obteniendo grupos: $errorMessage', e);
+      Logger.error('Error de conexión obteniendo clases: $errorMessage', e);
       return Left(errorMessage);
-    } catch (e, stackTrace) {
-      Logger.error('Error inesperado obteniendo grupos', e, stackTrace);
-      return Left(_cleanException(e));
+    } catch (e) {
+      Logger.error('Error inesperado obteniendo clases', e);
+      return Left('Error inesperado: ${e.toString()}');
     }
   }
 
+  /// Fuerza la sincronización de grupos desatando el scraping
+  /// Endpoint: POST /professors/sync
   Future<Either<String, String>> forceSync({
     required String email,
     required String encryptedPassword,
@@ -202,6 +230,135 @@ class ApiService {
         : message;
   }
 
+  Future<Either<String, Map<String, dynamic>>> recordProfessorBeaconEntry({
+    required String token,
+    required String code,
+    required String groupLetter,
+    required String period,
+    required DateTime detectedAt,
+    required String beaconUuid,
+    int? rssi,
+    double? distance,
+    String? bluetoothAddress,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/attendance/professor-entry',
+        data: {
+          'code': code,
+          'groupLetter': groupLetter,
+          'period': period,
+          'date':
+              '${detectedAt.year.toString().padLeft(4, '0')}-${detectedAt.month.toString().padLeft(2, '0')}-${detectedAt.day.toString().padLeft(2, '0')}',
+          'detectedAt': detectedAt.toIso8601String(),
+          'beaconUuid': beaconUuid,
+          if (rssi != null) 'rssi': rssi,
+          if (distance != null) 'distance': distance,
+          if (bluetoothAddress != null) 'bluetoothAddress': bluetoothAddress,
+        },
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return Right(response.data as Map<String, dynamic>);
+      }
+
+      return Left(response.data['message'] ?? 'Error registrando entrada');
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error('Error registrando entrada por beacon: $errorMessage', e);
+      return Left(errorMessage);
+    } catch (e, stackTrace) {
+      Logger.error(
+        'Error inesperado registrando entrada por beacon',
+        e,
+        stackTrace,
+      );
+      return Left('Error inesperado: ${e.toString()}');
+    }
+  }
+
+  Future<Either<String, Map<String, dynamic>>> recordStudentBeaconDetections({
+    required String token,
+    required String code,
+    required String groupLetter,
+    required String period,
+    required DateTime date,
+    required List<Map<String, dynamic>> detections,
+  }) async {
+    try {
+      final formattedDate =
+          '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+      final response = await _dio.post(
+        '/attendance/student-beacon-detections',
+        data: {
+          'code': code,
+          'groupLetter': groupLetter,
+          'period': period,
+          'date': formattedDate,
+          'detections': detections,
+        },
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return Right(response.data as Map<String, dynamic>);
+      }
+
+      return Left(
+        response.data['message'] ?? 'Error registrando beacons de alumnos',
+      );
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error('Error registrando beacons de alumnos: $errorMessage', e);
+      return Left(errorMessage);
+    } catch (e, stackTrace) {
+      Logger.error(
+        'Error inesperado registrando beacons de alumnos',
+        e,
+        stackTrace,
+      );
+      return Left('Error inesperado: ${e.toString()}');
+    }
+  }
+
+  Future<Either<String, List<Map<String, dynamic>>>> getStudentBeaconBindings({
+    required String token,
+    required String code,
+    required String groupLetter,
+    required String period,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/attendance/student-beacon-bindings',
+        data: {'code': code, 'groupLetter': groupLetter, 'period': period},
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data['data'] as List<dynamic>? ?? [];
+        return Right(
+          data.map((item) => Map<String, dynamic>.from(item as Map)).toList(),
+        );
+      }
+
+      return Left(response.data['message'] ?? 'Error obteniendo UUIDs');
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error('Error obteniendo UUIDs de alumnos: $errorMessage', e);
+      return Left(errorMessage);
+    } catch (e, stackTrace) {
+      Logger.error(
+        'Error inesperado obteniendo UUIDs de alumnos',
+        e,
+        stackTrace,
+      );
+      return Left('Error inesperado: ${e.toString()}');
+    }
+  }
+
+  /// Maneja errores de Dio y devuelve mensajes amigables
   String _handleDioError(DioException e) {
     final data = e.response?.data;
     String? serverMessage;

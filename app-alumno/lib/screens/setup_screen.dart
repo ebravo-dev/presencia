@@ -13,6 +13,7 @@ class SetupScreen extends StatefulWidget {
 class _SetupScreenState extends State<SetupScreen> {
   final _matriculaController = TextEditingController();
   bool _loading = false;
+  String? _errorText;
 
   @override
   void dispose() {
@@ -21,16 +22,23 @@ class _SetupScreenState extends State<SetupScreen> {
   }
 
   Future<void> _submit() async {
-    final matricula = _matriculaController.text.trim();
+    final matricula = _matriculaController.text.trim().toUpperCase();
 
     if (matricula.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Ingresa tu matrícula')));
+      setState(() => _errorText = 'Ingresa tu matrícula');
       return;
     }
 
-    setState(() => _loading = true);
+    if (matricula.length < 5) {
+      setState(() => _errorText = 'Revisa que tu matrícula esté completa');
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _loading = true;
+      _errorText = null;
+    });
     HapticFeedback.mediumImpact();
     await widget.onComplete(matricula);
   }
@@ -38,112 +46,190 @@ class _SetupScreenState extends State<SetupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF0B0F14),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Spacer(),
-              // Icon
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFF6B9D), Color(0xFFC44DFF)],
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Icon(
-                  Icons.bluetooth_rounded,
-                  color: Colors.white,
-                  size: 40,
-                ),
-              ),
-              const SizedBox(height: 32),
-              const Text(
-                'Presencia\nAlumno',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 36,
-                  fontWeight: FontWeight.w800,
-                  height: 1.1,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Tu dispositivo emitirá tu matrícula por Bluetooth para que el profesor registre tu asistencia.',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.5),
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 40),
-              // Matricula
-              Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1C1C1E),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFF2C2C2E)),
-                ),
-                child: TextField(
-                  controller: _matriculaController,
-                  textCapitalization: TextCapitalization.characters,
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(
-                      Icons.badge_rounded,
-                      color: Colors.white38,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 24),
+                    const _BrandHeader(),
+                    SizedBox(height: constraints.maxHeight < 700 ? 44 : 84),
+                    const Text(
+                      'Vincula tu celular',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 34,
+                        fontWeight: FontWeight.w800,
+                        height: 1.05,
+                      ),
                     ),
-                    hintText: 'Tu matrícula (ej. A2130587)',
-                    hintStyle: TextStyle(color: Colors.white30),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 18,
+                    const SizedBox(height: 12),
+                    Text(
+                      'Tu matrícula quedará asociada a este dispositivo. Un cambio de celular deberá ser autorizado por un maestro.',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.62),
+                        fontSize: 15,
+                        height: 1.45,
+                      ),
                     ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 32),
-              // Button
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _loading ? null : _submit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF6B9D),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: _loading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text(
-                          'Comenzar',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
+                    const SizedBox(height: 34),
+                    TextField(
+                      controller: _matriculaController,
+                      enabled: !_loading,
+                      textCapitalization: TextCapitalization.characters,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _loading ? null : _submit(),
+                      onChanged: (_) {
+                        if (_errorText != null) {
+                          setState(() => _errorText = null);
+                        }
+                      },
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'[a-zA-Z0-9]'),
                         ),
+                        LengthLimitingTextInputFormatter(14),
+                        TextInputFormatter.withFunction((oldValue, newValue) {
+                          return newValue.copyWith(
+                            text: newValue.text.toUpperCase(),
+                            selection: newValue.selection,
+                          );
+                        }),
+                      ],
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Matrícula',
+                        hintText: 'A2130587',
+                        errorText: _errorText,
+                        prefixIcon: const Icon(Icons.badge_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    _InfoStrip(
+                      icon: Icons.verified_user_rounded,
+                      text:
+                          'Este vínculo ayuda a evitar registros desde otro celular.',
+                    ),
+                    const SizedBox(height: 28),
+                    SizedBox(
+                      height: 56,
+                      child: FilledButton.icon(
+                        onPressed: _loading ? null : _submit,
+                        icon: _loading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.4,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.arrow_forward_rounded),
+                        label: Text(_loading ? 'Vinculando' : 'Continuar'),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                 ),
               ),
-              const Spacer(),
-            ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _BrandHeader extends StatelessWidget {
+  const _BrandHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: const Color(0xFF17202B),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF263241)),
+          ),
+          child: const Icon(
+            Icons.school_rounded,
+            color: Color(0xFF62D6A2),
+            size: 26,
           ),
         ),
+        const SizedBox(width: 12),
+        const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Presencia',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            SizedBox(height: 2),
+            Text(
+              'Alumno',
+              style: TextStyle(
+                color: Color(0xFF8F9BA8),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _InfoStrip extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _InfoStrip({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111923),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF223040)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: const Color(0xFF62D6A2), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.68),
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

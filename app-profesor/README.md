@@ -66,10 +66,10 @@ lib/
 │   ├── beacon_detection/ # Detección de beacons BLE
 │   └── reports/         # Reportes y estadísticas
 ├── services/
-│   ├── bluetooth_service.dart  # Servicio Bluetooth
-│   ├── beacon_service.dart     # Manejo de beacons
-│   ├── database_service.dart   # Base de datos local
-│   └── sync_service.dart       # Sincronización
+│   ├── native_altbeacon_channel.dart      # Canal nativo AltBeacon
+│   ├── teacher_beacon_attendance_service.dart # Flujo de asistencia por beacons
+│   ├── database_service.dart              # Base de datos local
+│   └── sync_service.dart                  # Sincronización
 └── shared/
     ├── providers/       # Providers compartidos
     ├── models/         # Modelos de datos globales

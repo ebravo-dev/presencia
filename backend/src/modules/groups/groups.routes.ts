@@ -73,6 +73,7 @@ export async function groupsRoutes(fastify: FastifyInstance): Promise<void> {
                             id: true,
                             matricula: true,
                             name: true,
+                            beaconUuid: true,
                         },
                         orderBy: { name: 'asc' },
                     },
@@ -123,6 +124,7 @@ export async function groupsRoutes(fastify: FastifyInstance): Promise<void> {
                     id: true,
                     matricula: true,
                     name: true,
+                    beaconUuid: true,
                 },
                 orderBy: { name: 'asc' },
             });

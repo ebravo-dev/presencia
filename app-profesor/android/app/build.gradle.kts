@@ -42,3 +42,7 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    implementation("org.altbeacon:android-beacon-library:2.21.2")
+}

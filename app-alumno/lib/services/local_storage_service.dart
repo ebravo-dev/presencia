@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,10 +19,85 @@ class LocalStorageService {
 
   String get matricula => _profile.get('matricula', defaultValue: '');
 
+  String get attendanceUuid =>
+      _profile.get('attendance_uuid', defaultValue: '');
+
+  String get deviceBindingId =>
+      _profile.get('device_binding_id', defaultValue: '');
+
+  String get classroomBeaconUuid =>
+      _profile.get('classroom_beacon_uuid', defaultValue: '');
+
+  bool get hasPendingDeviceBindingSync =>
+      _profile.get('device_binding_sync_pending', defaultValue: false) == true;
+
+  bool get hasClassroomBeacon => classroomBeaconUuid.trim().isNotEmpty;
+
+  Future<void> ensureDeviceBinding() async {
+    if (!isProfileSet) return;
+
+    final stableUuid = attendanceUuid.isNotEmpty ? attendanceUuid : _uuidV4();
+    final bindingId = deviceBindingId.isNotEmpty ? deviceBindingId : _uuidV4();
+
+    await _profile.put('attendance_uuid', stableUuid);
+    await _profile.put('device_binding_id', bindingId);
+    await _syncNativeIdentity(
+      matricula: matricula,
+      attendanceUuid: stableUuid,
+      deviceBindingId: bindingId,
+    );
+  }
+
   Future<void> saveProfile(String matricula) async {
+    final stableUuid = attendanceUuid.isNotEmpty ? attendanceUuid : _uuidV4();
+    final bindingId = deviceBindingId.isNotEmpty ? deviceBindingId : _uuidV4();
+
     await _profile.put('matricula', matricula);
-    // Also sync to SharedPreferences/UserDefaults so native BLE can read it
+    await _profile.put('attendance_uuid', stableUuid);
+    await _profile.put('device_binding_id', bindingId);
+
+    await _syncNativeIdentity(
+      matricula: matricula,
+      attendanceUuid: stableUuid,
+      deviceBindingId: bindingId,
+    );
+  }
+
+  Future<void> saveClassroomBeaconUuid(String uuid) async {
+    await _profile.put('classroom_beacon_uuid', uuid.trim());
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('classroom_beacon_uuid', uuid.trim());
+  }
+
+  Future<void> setDeviceBindingSyncPending(bool pending) async {
+    await _profile.put('device_binding_sync_pending', pending);
+  }
+
+  Future<void> _syncNativeIdentity({
+    required String matricula,
+    required String attendanceUuid,
+    required String deviceBindingId,
+  }) async {
+    // Also sync to SharedPreferences/UserDefaults so native BLE can read it.
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('student_matricula', matricula);
+    await prefs.setString('student_attendance_uuid', attendanceUuid);
+    await prefs.setString('student_device_binding_id', deviceBindingId);
+    await prefs.setString('classroom_beacon_uuid', classroomBeaconUuid);
+  }
+
+  String _uuidV4() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    String hex(int value) => value.toRadixString(16).padLeft(2, '0');
+    final chars = bytes.map(hex).join();
+    return '${chars.substring(0, 8)}-'
+        '${chars.substring(8, 12)}-'
+        '${chars.substring(12, 16)}-'
+        '${chars.substring(16, 20)}-'
+        '${chars.substring(20)}';
   }
 }
