@@ -11,6 +11,7 @@ import type {
   UatCredentials,
   UatDesItem,
   UatExamenItem,
+  UatAsistenciaAlumnoItem,
   UatAsistenciaGrupoParams,
   UatAsistenciaGrupoResponse,
   UatGuardaAsistenciasPayload,
@@ -179,30 +180,36 @@ export class UatPortalClient implements UatPortalClientPort {
   }
 
   async getGruposProfesor(params: UatProfesorGruposParams): Promise<UatProfesorGrupoItem[]> {
-    return this.getJsonList<UatProfesorGrupoItem>(
+    const grupos = await this.getJsonList<UatProfesorGrupoItem>(
       '/Profesor/ControlAsistencia/BuscaGruposProfesor',
       params,
       'GET /Profesor/ControlAsistencia/BuscaGruposProfesor',
       `${this.baseUrl}/Profesor/ControlAsistencia/Index`,
     );
+
+    return grupos.map((grupo) => this.normalizeProfesorGrupo(grupo));
   }
 
   async getSemanasGrupo(params: UatSemanasGrupoParams): Promise<UatSemanaItem[]> {
-    return this.getJsonList<UatSemanaItem>(
+    const semanas = await this.getJsonList<UatSemanaItem>(
       '/Profesor/ControlAsistencia/BuscaSemanas',
       params,
       'GET /Profesor/ControlAsistencia/BuscaSemanas',
       `${this.baseUrl}/Profesor/ControlAsistencia/Index`,
     );
+
+    return semanas.map((semana) => this.normalizeSemana(semana));
   }
 
   async getAsistenciaGrupo(params: UatAsistenciaGrupoParams): Promise<UatAsistenciaGrupoResponse> {
-    return this.getJsonObject<UatAsistenciaGrupoResponse>(
+    const asistencia = await this.getJsonObject<UatAsistenciaGrupoResponse>(
       '/Profesor/ControlAsistencia/BuscaAsistenciaGrupo',
       params,
       'GET /Profesor/ControlAsistencia/BuscaAsistenciaGrupo',
       `${this.baseUrl}/Profesor/ControlAsistencia/Index`,
     );
+
+    return this.normalizeAsistenciaGrupo(asistencia);
   }
 
   async guardaAsistencias(payload: UatGuardaAsistenciasPayload): Promise<UatGuardaAsistenciasResponse> {
@@ -229,6 +236,73 @@ export class UatPortalClient implements UatPortalClientPort {
       hasSessionCookie: this.hasCookie('ASP.NET_SessionId'),
       hasAuthCookie: this.hasCookie('.ASPXAUTH'),
     };
+  }
+
+  private normalizeProfesorGrupo(grupo: UatProfesorGrupoItem): UatProfesorGrupoItem {
+    const idGrupo = this.readNumber(grupo, ['Id_Grupo', 'id_grupo', 'idGrupo']);
+    const materia = this.readString(grupo, ['Txt_Materia', 'txt_materia', 'Materia']);
+    const letra = this.readString(grupo, ['Txt_Letra', 'txt_letra', 'Grupo']);
+    const ciclo = this.readString(grupo, ['Ciclo', 'Txt_Ciclo_Escolar', 'ciclo']);
+    const idDes = this.readNumber(grupo, ['Id_DES', 'Id_Des', 'id_des']);
+    const idCiclo = this.readNumber(grupo, ['Id_Ciclo_Escolar', 'Id_Ciclo', 'id_ciclo']);
+
+    return {
+      ...grupo,
+      ...(idGrupo !== undefined ? { Id_Grupo: idGrupo, id_grupo: idGrupo, idGrupo } : {}),
+      ...(materia !== undefined ? { Txt_Materia: materia, txt_materia: materia, Materia: materia } : {}),
+      ...(letra !== undefined ? { Txt_Letra: letra, txt_letra: letra, Grupo: letra } : {}),
+      ...(ciclo !== undefined ? { Ciclo: ciclo, Txt_Ciclo_Escolar: ciclo } : {}),
+      ...(idDes !== undefined ? { Id_DES: idDes, Id_Des: idDes, id_des: idDes } : {}),
+      ...(idCiclo !== undefined ? { Id_Ciclo_Escolar: idCiclo, Id_Ciclo: idCiclo, id_ciclo: idCiclo } : {}),
+    };
+  }
+
+  private normalizeSemana(semana: UatSemanaItem): UatSemanaItem {
+    const idGrupo = this.readNumber(semana, ['Id_Grupo', 'id_grupo', 'idGrupo']);
+    const fecIni = this.readString(semana, ['Fec_Ini', 'fec_ini', 'FecIni', 'Fec_Inicio']);
+    const fecFin = this.readString(semana, ['Fec_Fin', 'fec_fin', 'FecFin', 'Fec_Termino']);
+    const numSemana = this.readNumber(semana, ['Semana', 'Num_Semana', 'num_semana']);
+
+    return {
+      ...semana,
+      ...(idGrupo !== undefined ? { Id_Grupo: idGrupo, id_grupo: idGrupo, idGrupo } : {}),
+      ...(fecIni !== undefined ? { Fec_Ini: fecIni, fec_ini: fecIni, Fec_Inicio: fecIni } : {}),
+      ...(fecFin !== undefined ? { Fec_Fin: fecFin, fec_fin: fecFin, Fec_Termino: fecFin } : {}),
+      ...(numSemana !== undefined ? { Semana: numSemana, Num_Semana: numSemana, num_semana: numSemana } : {}),
+    };
+  }
+
+  private normalizeAsistenciaGrupo(asistencia: UatAsistenciaGrupoResponse): UatAsistenciaGrupoResponse {
+    const alumnos = this.readArray(asistencia, ['alumnos', 'Alumnos', 'data', 'Data', 'result', 'Result'])
+      .filter((item): item is JsonRecord => this.isJsonRecord(item))
+      .map((alumno) => this.normalizeAlumno(alumno));
+
+    if (alumnos.length === 0) {
+      return asistencia;
+    }
+
+    return {
+      ...asistencia,
+      alumnos,
+      Alumnos: alumnos,
+      data: alumnos,
+      result: alumnos,
+    };
+  }
+
+  private normalizeAlumno(alumno: JsonRecord): UatAsistenciaAlumnoItem {
+    const idAlumno = this.readNumber(alumno, ['Id_Alumno', 'id_alumno', 'idAlumno']);
+    const numLista = this.readNumber(alumno, ['Num_Lista', 'num_lista', 'numeroLista']);
+    const matricula = this.readString(alumno, ['Num_Matricula', 'num_matricula', 'Matricula']);
+    const nombre = this.readString(alumno, ['Txt_Alumno', 'txt_alumno', 'Nombre', 'Alumno']);
+
+    return {
+      ...alumno,
+      ...(idAlumno !== undefined ? { Id_Alumno: idAlumno, id_alumno: idAlumno, idAlumno } : {}),
+      ...(numLista !== undefined ? { Num_Lista: numLista, num_lista: numLista, numeroLista: numLista } : {}),
+      ...(matricula !== undefined ? { Num_Matricula: matricula, num_matricula: matricula, Matricula: matricula } : {}),
+      ...(nombre !== undefined ? { Txt_Alumno: nombre, txt_alumno: nombre, Nombre: nombre, Alumno: nombre } : {}),
+    } as UatAsistenciaAlumnoItem;
   }
 
   private async getJsonList<TItem extends JsonRecord>(
@@ -401,6 +475,51 @@ export class UatPortalClient implements UatPortalClientPort {
     throw new UatPortalError(`${context} no contiene un arreglo de datos reconocible.`, {
       payload,
     });
+  }
+
+  private readNumber(record: JsonRecord, keys: string[]): number | undefined {
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+
+      if (typeof value === 'string') {
+        const parsed = Number.parseInt(value.trim(), 10);
+        if (Number.isFinite(parsed)) {
+          return parsed;
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  private readString(record: JsonRecord, keys: string[]): string | undefined {
+    for (const key of keys) {
+      const value = record[key];
+      if (value === undefined || value === null) {
+        continue;
+      }
+
+      const text = String(value).trim();
+      if (text.length > 0) {
+        return text;
+      }
+    }
+
+    return undefined;
+  }
+
+  private readArray(record: JsonRecord, keys: string[]): JsonValue[] {
+    for (const key of keys) {
+      const value = record[key];
+      if (Array.isArray(value)) {
+        return value;
+      }
+    }
+
+    return [];
   }
 
   private isJsonRecord(value: JsonValue): value is JsonRecord {
