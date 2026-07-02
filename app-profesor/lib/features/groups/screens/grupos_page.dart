@@ -1411,18 +1411,20 @@ class _GruposPageState extends ConsumerState<GruposPage>
       barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
+          final palette = context.uatPalette;
+
           return AlertDialog(
-            backgroundColor: Colors.grey.shade900,
+            backgroundColor: palette.surfaceElevated,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
             ),
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.sync_rounded, color: Colors.blueAccent),
-                SizedBox(width: 12),
+                const Icon(Icons.sync_rounded, color: Colors.blueAccent),
+                const SizedBox(width: 12),
                 Text(
                   'Sincronizar Ciclo',
-                  style: TextStyle(color: Colors.white),
+                  style: TextStyle(color: palette.textPrimary),
                 ),
               ],
             ),
@@ -1430,9 +1432,12 @@ class _GruposPageState extends ConsumerState<GruposPage>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text(
+                  Text(
                     'Se descargarán tus clases actualizadas del portal UAT.',
-                    style: TextStyle(fontSize: 14, color: Colors.white70),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: palette.textSecondary,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Container(
@@ -1467,9 +1472,12 @@ class _GruposPageState extends ConsumerState<GruposPage>
                     const SizedBox(height: 20),
                     const CircularProgressIndicator(color: Colors.blueAccent),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'Solicitando sincronización...',
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ],
@@ -1478,9 +1486,9 @@ class _GruposPageState extends ConsumerState<GruposPage>
             actions: [
               TextButton(
                 onPressed: isLoading ? null : () => Navigator.of(context).pop(),
-                child: const Text(
+                child: Text(
                   'Cancelar',
-                  style: TextStyle(color: Colors.white70),
+                  style: TextStyle(color: palette.textSecondary),
                 ),
               ),
               FilledButton(
@@ -1537,18 +1545,20 @@ class _GruposPageState extends ConsumerState<GruposPage>
       barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
+          final palette = context.uatPalette;
+
           return AlertDialog(
-            backgroundColor: Colors.grey.shade900,
+            backgroundColor: palette.surfaceElevated,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
             ),
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.sync_rounded, color: Colors.blueAccent),
-                SizedBox(width: 12),
+                const Icon(Icons.sync_rounded, color: Colors.blueAccent),
+                const SizedBox(width: 12),
                 Text(
                   'Sincronizar Ciclo',
-                  style: TextStyle(color: Colors.white),
+                  style: TextStyle(color: palette.textPrimary),
                 ),
               ],
             ),
@@ -1556,9 +1566,12 @@ class _GruposPageState extends ConsumerState<GruposPage>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text(
+                  Text(
                     'Ingresa tu contraseña de la UAT para descargar tus clases actualizadas.',
-                    style: TextStyle(fontSize: 14, color: Colors.white70),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: palette.textSecondary,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Container(
@@ -1595,12 +1608,12 @@ class _GruposPageState extends ConsumerState<GruposPage>
                     child: TextFormField(
                       controller: passwordController,
                       obscureText: obscureText,
-                      style: const TextStyle(color: Colors.black),
+                      style: TextStyle(color: palette.textPrimary),
                       decoration: InputDecoration(
                         hintText: 'Contraseña UAT',
-                        hintStyle: TextStyle(color: Colors.grey.shade600),
+                        hintStyle: TextStyle(color: palette.textTertiary),
                         filled: true,
-                        fillColor: Colors.white,
+                        fillColor: palette.surface,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -1639,9 +1652,12 @@ class _GruposPageState extends ConsumerState<GruposPage>
                     const SizedBox(height: 20),
                     const CircularProgressIndicator(color: Colors.blueAccent),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'Solicitando sincronización...',
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ],
@@ -1650,9 +1666,9 @@ class _GruposPageState extends ConsumerState<GruposPage>
             actions: [
               TextButton(
                 onPressed: isLoading ? null : () => Navigator.of(context).pop(),
-                child: const Text(
+                child: Text(
                   'Cancelar',
-                  style: TextStyle(color: Colors.white70),
+                  style: TextStyle(color: palette.textSecondary),
                 ),
               ),
               FilledButton(
@@ -2052,82 +2068,100 @@ class _GruposPageState extends ConsumerState<GruposPage>
   void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey.shade900,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.logout_rounded, color: Colors.red),
-            SizedBox(width: 12),
-            Text('Cerrar Sesión', style: TextStyle(color: Colors.white)),
+      builder: (context) {
+        final palette = context.uatPalette;
+
+        return AlertDialog(
+          backgroundColor: palette.surfaceElevated,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              const Icon(Icons.logout_rounded, color: Colors.red),
+              const SizedBox(width: 12),
+              Text(
+                'Cerrar Sesión',
+                style: TextStyle(color: palette.textPrimary),
+              ),
+            ],
+          ),
+          content: Text(
+            '¿Estás seguro de que quieres cerrar sesión?',
+            style: TextStyle(fontSize: 16, color: palette.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(color: palette.textSecondary),
+              ),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await ref.read(profesorAuthProvider.notifier).logout();
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Cerrar Sesión'),
+            ),
           ],
-        ),
-        content: const Text(
-          '¿Estás seguro de que quieres cerrar sesión?',
-          style: TextStyle(fontSize: 16, color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              'Cancelar',
-              style: TextStyle(color: Colors.white70),
-            ),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.of(context).pop();
-              await ref.read(profesorAuthProvider.notifier).logout();
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Cerrar Sesión'),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   void _showClearCacheDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey.shade900,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.delete_sweep, color: Colors.orange),
-            SizedBox(width: 12),
-            Text('Borrar Caché', style: TextStyle(color: Colors.white)),
+      builder: (context) {
+        final palette = context.uatPalette;
+
+        return AlertDialog(
+          backgroundColor: palette.surfaceElevated,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              const Icon(Icons.delete_sweep, color: Colors.orange),
+              const SizedBox(width: 12),
+              Text(
+                'Borrar Caché',
+                style: TextStyle(color: palette.textPrimary),
+              ),
+            ],
+          ),
+          content: Text(
+            '¿Estás seguro de que quieres eliminar todas las asistencias guardadas localmente?\n\nEsto solo afecta las asistencias no sincronizadas.',
+            style: TextStyle(fontSize: 16, color: palette.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(color: palette.textSecondary),
+              ),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _clearAsistenciasCache();
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Borrar Caché'),
+            ),
           ],
-        ),
-        content: const Text(
-          '¿Estás seguro de que quieres eliminar todas las asistencias guardadas localmente?\n\nEsto solo afecta las asistencias no sincronizadas.',
-          style: TextStyle(fontSize: 16, color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              'Cancelar',
-              style: TextStyle(color: Colors.white70),
-            ),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.of(context).pop();
-              await _clearAsistenciasCache();
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.orange,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Borrar Caché'),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 

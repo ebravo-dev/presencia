@@ -5,6 +5,7 @@ import 'package:table_calendar/table_calendar.dart';
 
 import '../../../services/asistencia_local_service.dart';
 import '../../../shared/models/asistencia_registro.dart';
+import '../../../core/theme/uat_colors.dart';
 import '../../../core/utils/utils.dart';
 import '../../../services/api_service.dart';
 import '../../../services/auth_storage_service.dart';
@@ -524,6 +525,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     return ValueListenableBuilder<List<_SyncStepData>>(
       valueListenable: _stepsNotifier,
       builder: (context, steps, _) {
+        final palette = context.uatPalette;
         final allCompleted = steps.every(
           (s) => s.status == _StepStatus.completed,
         );
@@ -540,7 +542,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
               width: double.infinity,
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: const Color(0xFF1C1C1E),
+                color: palette.surface,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Column(
@@ -553,8 +555,8 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                         : anyFailed
                         ? 'Error en sincronización'
                         : 'Sincronizando...',
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: palette.textPrimary,
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                     ),
@@ -565,7 +567,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                     Text(
                       activeStep.subtitle!,
                       style: TextStyle(
-                        color: Colors.grey.shade400,
+                        color: palette.textSecondary,
                         fontSize: 14,
                       ),
                     ),
@@ -611,6 +613,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   }
 
   Widget _buildStepItem(_SyncStepData step, int index, int total) {
+    final palette = context.uatPalette;
     final isLast = index == total - 1;
     final isActive = step.status == _StepStatus.inProgress;
     final isPast = step.status == _StepStatus.completed;
@@ -624,7 +627,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     } else if (isFailed) {
       circleColor = Colors.red;
     } else {
-      circleColor = Colors.grey.shade700;
+      circleColor = palette.textTertiary;
     }
 
     return IntrinsicHeight(
@@ -670,7 +673,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                     child: Container(
                       width: 2,
                       margin: const EdgeInsets.symmetric(vertical: 4),
-                      color: isPast ? Colors.orange : Colors.grey.shade800,
+                      color: isPast ? Colors.orange : palette.border,
                     ),
                   ),
               ],
@@ -697,8 +700,8 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                     step.label,
                     style: TextStyle(
                       color: step.status == _StepStatus.pending
-                          ? Colors.grey.shade600
-                          : Colors.white,
+                          ? palette.textTertiary
+                          : palette.textPrimary,
                       fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
                       fontSize: isActive ? 16 : 14,
                     ),
@@ -712,7 +715,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                       style: TextStyle(
                         color: isFailed
                             ? Colors.red.shade300
-                            : Colors.grey.shade400,
+                            : palette.textSecondary,
                         fontSize: 12,
                       ),
                     ),
@@ -844,105 +847,125 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: _isLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(color: Colors.white),
-                    )
-                  : _buildContent(),
+    final palette = context.uatPalette;
+    final isLightMode = context.isUatLightMode;
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: isLightMode
+            ? Brightness.dark
+            : Brightness.light,
+        statusBarBrightness: isLightMode ? Brightness.light : Brightness.dark,
+        systemNavigationBarColor: palette.appBackground,
+        systemNavigationBarIconBrightness: isLightMode
+            ? Brightness.dark
+            : Brightness.light,
+      ),
+      child: Scaffold(
+        backgroundColor: palette.appBackground,
+        body: Stack(
+          children: [
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _isLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                          color: UATColors.primary,
+                        ),
+                      )
+                    : _buildContent(),
+              ),
             ),
-          ),
-          // Botón de cerrar
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            left: 12,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(22),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2C2C2E).withOpacity(0.72),
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.1),
-                      width: 0.5,
+            // Botón de cerrar
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              left: 12,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: palette.controlBackground,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(
+                        color: palette.controlBorder,
+                        width: 0.5,
+                      ),
                     ),
-                  ),
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(
-                      Icons.close,
-                      color: Colors.white,
-                      size: 24,
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: Icon(
+                        Icons.close,
+                        color: palette.controlIcon,
+                        size: 24,
+                      ),
+                      onPressed: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.of(context).pop();
+                      },
                     ),
-                    onPressed: () {
-                      HapticFeedback.lightImpact();
-                      Navigator.of(context).pop();
-                    },
                   ),
                 ),
               ),
             ),
-          ),
-          // Botón Ver calendario — glassmorphism, esquina superior derecha
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            right: 12,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(22),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2C2C2E).withOpacity(0.72),
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.1),
-                      width: 0.5,
+            // Botón Ver calendario — glassmorphism, esquina superior derecha
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              right: 12,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: palette.controlBackground,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(
+                        color: palette.controlBorder,
+                        width: 0.5,
+                      ),
                     ),
-                  ),
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(
-                      Icons.calendar_month_rounded,
-                      color: Colors.white,
-                      size: 20,
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: Icon(
+                        Icons.calendar_month_rounded,
+                        color: palette.controlIcon,
+                        size: 20,
+                      ),
+                      onPressed: () {
+                        HapticFeedback.lightImpact();
+                        _showCalendarModal();
+                      },
                     ),
-                    onPressed: () {
-                      HapticFeedback.lightImpact();
-                      _showCalendarModal();
-                    },
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildContent() {
+    final palette = context.uatPalette;
+
     return Column(
       children: [
         const SizedBox(height: 80),
-        const Align(
+        Align(
           alignment: Alignment.centerLeft,
           child: Text(
             'Sincronización',
             style: TextStyle(
-              color: Colors.white,
+              color: palette.textPrimary,
               fontSize: 34,
               fontWeight: FontWeight.bold,
               letterSpacing: 0.4,
@@ -962,6 +985,8 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   }
 
   Widget _buildAllSyncedState() {
+    final palette = context.uatPalette;
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -979,10 +1004,10 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
           ),
         ),
         const SizedBox(height: 32),
-        const Text(
+        Text(
           '¡Estás al día!',
           style: TextStyle(
-            color: Colors.white,
+            color: palette.textPrimary,
             fontSize: 28,
             fontWeight: FontWeight.bold,
           ),
@@ -990,7 +1015,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         const SizedBox(height: 12),
         Text(
           'Toda tu información está en la nube',
-          style: TextStyle(color: Colors.grey.shade400, fontSize: 16),
+          style: TextStyle(color: palette.textSecondary, fontSize: 16),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 80),
@@ -999,6 +1024,8 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   }
 
   Widget _buildPendingState() {
+    final palette = context.uatPalette;
+
     return Column(
       children: [
         // Banner: records being synced server-side (professor left mid-upload)
@@ -1042,12 +1069,9 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
             width: double.infinity,
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: const Color(0xFF1C1C1E),
+              color: palette.surface,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.06),
-                width: 0.5,
-              ),
+              border: Border.all(color: palette.border, width: 0.5),
             ),
             child: Column(
               children: [
@@ -1072,10 +1096,10 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'Asistencias pendientes',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: palette.textPrimary,
                               fontSize: 17,
                               fontWeight: FontWeight.w500,
                             ),
@@ -1084,7 +1108,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                           Text(
                             '${_pendientes.length} registro${_pendientes.length == 1 ? '' : 's'} por subir',
                             style: TextStyle(
-                              color: Colors.grey.shade400,
+                              color: palette.textSecondary,
                               fontSize: 14,
                             ),
                           ),
@@ -1098,7 +1122,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
+                    color: palette.surfaceMuted,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -1106,14 +1130,14 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                     children: [
                       Icon(
                         Icons.list_alt_rounded,
-                        color: Colors.grey.shade300,
+                        color: palette.textSecondary,
                         size: 16,
                       ),
                       const SizedBox(width: 8),
                       Text(
                         'Revisar detalles',
                         style: TextStyle(
-                          color: Colors.grey.shade300,
+                          color: palette.textSecondary,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
@@ -1142,12 +1166,9 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                     vertical: 16,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1C1C1E),
+                    color: palette.surface,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.06),
-                      width: 0.5,
-                    ),
+                    border: Border.all(color: palette.border, width: 0.5),
                   ),
                   child: Row(
                     children: [
@@ -1182,7 +1203,9 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                             ? 'Sincronizando...'
                             : 'Subir Asistencias',
                         style: TextStyle(
-                          color: blocked ? Colors.grey.shade600 : Colors.white,
+                          color: blocked
+                              ? palette.textTertiary
+                              : palette.textPrimary,
                           fontSize: 17,
                           fontWeight: FontWeight.w500,
                         ),
@@ -1232,11 +1255,13 @@ class _CalendarModalState extends State<_CalendarModal> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.uatPalette;
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.75,
-      decoration: const BoxDecoration(
-        color: Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.only(
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(20),
           topRight: Radius.circular(20),
         ),
@@ -1251,17 +1276,17 @@ class _CalendarModalState extends State<_CalendarModal> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.grey.shade600,
+                color: palette.textTertiary,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             // Title
-            const Padding(
-              padding: EdgeInsets.all(20),
+            Padding(
+              padding: const EdgeInsets.all(20),
               child: Text(
                 'Calendario de Asistencias',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: palette.textPrimary,
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
@@ -1297,45 +1322,45 @@ class _CalendarModalState extends State<_CalendarModal> {
                   headerStyle: HeaderStyle(
                     formatButtonVisible: false,
                     titleCentered: true,
-                    titleTextStyle: const TextStyle(
-                      color: Colors.white,
+                    titleTextStyle: TextStyle(
+                      color: palette.textPrimary,
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
-                    leftChevronIcon: const Icon(
+                    leftChevronIcon: Icon(
                       Icons.chevron_left,
-                      color: Colors.white,
+                      color: palette.textPrimary,
                       size: 28,
                     ),
-                    rightChevronIcon: const Icon(
+                    rightChevronIcon: Icon(
                       Icons.chevron_right,
-                      color: Colors.white,
+                      color: palette.textPrimary,
                       size: 28,
                     ),
                   ),
                   daysOfWeekStyle: DaysOfWeekStyle(
                     weekdayStyle: TextStyle(
-                      color: Colors.grey.shade400,
+                      color: palette.textSecondary,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
                     weekendStyle: TextStyle(
-                      color: Colors.grey.shade600,
+                      color: palette.textTertiary,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   calendarStyle: CalendarStyle(
-                    defaultTextStyle: const TextStyle(
-                      color: Colors.white,
+                    defaultTextStyle: TextStyle(
+                      color: palette.textPrimary,
                       fontSize: 16,
                     ),
                     weekendTextStyle: TextStyle(
-                      color: Colors.grey.shade500,
+                      color: palette.textSecondary,
                       fontSize: 16,
                     ),
                     outsideTextStyle: TextStyle(
-                      color: Colors.grey.shade700,
+                      color: palette.textTertiary,
                       fontSize: 16,
                     ),
                     todayDecoration: BoxDecoration(
@@ -1507,8 +1532,8 @@ class _CalendarModalState extends State<_CalendarModal> {
                 child: ElevatedButton(
                   onPressed: () => Navigator.of(context).pop(),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey.shade800,
-                    foregroundColor: Colors.white,
+                    backgroundColor: palette.surfaceMuted,
+                    foregroundColor: palette.textPrimary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -1527,6 +1552,8 @@ class _CalendarModalState extends State<_CalendarModal> {
   }
 
   Widget _buildDayWithIndicator(DateTime day, Color indicatorColor) {
+    final palette = context.uatPalette;
+
     return Container(
       margin: const EdgeInsets.all(4),
       child: Stack(
@@ -1538,7 +1565,7 @@ class _CalendarModalState extends State<_CalendarModal> {
             child: Center(
               child: Text(
                 '${day.day}',
-                style: const TextStyle(color: Colors.white, fontSize: 16),
+                style: TextStyle(color: palette.textPrimary, fontSize: 16),
               ),
             ),
           ),
@@ -1570,6 +1597,8 @@ class _CalendarModalState extends State<_CalendarModal> {
   }
 
   Widget _buildLegendItem(Color color, String label) {
+    final palette = context.uatPalette;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1581,7 +1610,7 @@ class _CalendarModalState extends State<_CalendarModal> {
         const SizedBox(width: 8),
         Text(
           label,
-          style: TextStyle(color: Colors.grey.shade300, fontSize: 14),
+          style: TextStyle(color: palette.textSecondary, fontSize: 14),
         ),
       ],
     );
@@ -1609,7 +1638,6 @@ class _PendingDetailsModal extends StatefulWidget {
 }
 
 class _PendingDetailsModalState extends State<_PendingDetailsModal> {
-  final Set<int> _expandedIndices = {};
   late List<AsistenciaRegistro> _localPendientes;
 
   // Gradientes (igual que en grupos_page)
@@ -1677,10 +1705,6 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
     return '$diaSemana $fechaStr';
   }
 
-  String _resolveStudentName(String key) {
-    return widget.studentNames[key] ?? key;
-  }
-
   /// Returns (className, groupMeta) where groupMeta is "Grupo K · Salón 301"
   (String, String?) _resolveGrupoMeta(AsistenciaRegistro registro) {
     final grupo = widget.grupoMap[registro.grupoId];
@@ -1695,11 +1719,13 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.uatPalette;
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.75,
-      decoration: const BoxDecoration(
-        color: Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.only(
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(20),
           topRight: Radius.circular(20),
         ),
@@ -1712,17 +1738,17 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.grey.shade600,
+              color: palette.textTertiary,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           // Title
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
             child: Text(
               'Asistencias Pendientes',
               style: TextStyle(
-                color: Colors.white,
+                color: palette.textPrimary,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
@@ -1732,25 +1758,24 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
             padding: const EdgeInsets.only(bottom: 12),
             child: Text(
               '${widget.pendientes.length} registro${widget.pendientes.length == 1 ? '' : 's'}',
-              style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+              style: TextStyle(color: palette.textSecondary, fontSize: 14),
             ),
           ),
-          const Divider(color: Color(0xFF3A3A3C), height: 1),
+          Divider(color: palette.border, height: 1),
           // List
           Expanded(
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(vertical: 8),
               itemCount: _localPendientes.length,
-              separatorBuilder: (_, __) => const Divider(
-                color: Color(0xFF3A3A3C),
+              separatorBuilder: (_, __) => Divider(
+                color: palette.border,
                 height: 1,
                 indent: 16,
                 endIndent: 16,
               ),
               itemBuilder: (context, index) {
                 final registro = _localPendientes[index];
-                final isExpanded = _expandedIndices.contains(index);
-                return _buildRegistroTile(registro, index, isExpanded);
+                return _buildRegistroTile(registro);
               },
             ),
           ),
@@ -1763,8 +1788,8 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
               child: ElevatedButton(
                 onPressed: () => Navigator.of(context).pop(),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.grey.shade800,
-                  foregroundColor: Colors.white,
+                  backgroundColor: palette.surfaceMuted,
+                  foregroundColor: palette.textPrimary,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -1793,307 +1818,140 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
     );
   }
 
-  Widget _buildRegistroTile(
-    AsistenciaRegistro registro,
-    int index,
-    bool isExpanded,
-  ) {
+  Future<void> _openRegistroDetail(AsistenciaRegistro registro) async {
+    HapticFeedback.selectionClick();
+    final changed = _changedEntries(registro);
+    final (className, grupoMeta) = _resolveGrupoMeta(registro);
+    final deleted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => _PendingRegistroDetailPage(
+          registro: registro,
+          className: className,
+          grupoMeta: grupoMeta,
+          formattedDate: _formatFecha(registro.fecha),
+          changedEntries: changed,
+          studentNames: widget.studentNames,
+          gradientColors: _getColoresParaGrupo(registro.grupoId),
+          hasSnapshot: registro.asistenciasSincronizadas != null,
+          onDelete: () => _deleteRegistro(registro),
+          onShowInClass: () =>
+              _navigateToGrupoDetail(registro, fromDetailPage: true),
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    if (deleted == true && _localPendientes.isEmpty) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _deleteRegistro(AsistenciaRegistro registro) async {
+    await widget.onDelete(registro.id);
+    if (!mounted) return;
+
+    setState(() {
+      _localPendientes.removeWhere((item) => item.id == registro.id);
+    });
+  }
+
+  Widget _buildRegistroTile(AsistenciaRegistro registro) {
+    final palette = context.uatPalette;
     final changed = _changedEntries(registro);
     final total = changed.length;
     final (className, grupoMeta) = _resolveGrupoMeta(registro);
 
-    return Column(
-      children: [
-        // Header row (tappable)
-        InkWell(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            setState(() {
-              if (isExpanded) {
-                _expandedIndices.remove(index);
-              } else {
-                _expandedIndices.add(index);
-              }
-            });
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Row(
-              children: [
-                // Orange dot
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: const BoxDecoration(
-                    color: Colors.orange,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                // Date + group info
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _formatFecha(registro.fecha),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        className,
-                        style: TextStyle(
-                          color: Colors.grey.shade400,
-                          fontSize: 13,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (grupoMeta != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          grupoMeta,
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 12,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Changed count chip
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    total == 1 ? '$total cambio' : '$total cambios',
-                    style: TextStyle(
-                      color: Colors.orange.shade400,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Expand arrow
-                AnimatedRotation(
-                  turns: isExpanded ? 0.5 : 0,
-                  duration: const Duration(milliseconds: 200),
-                  child: Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    color: Colors.grey.shade400,
-                    size: 24,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        // Expandable details
-        AnimatedCrossFade(
-          alignment: Alignment.topCenter,
-          firstChild: const SizedBox(width: double.infinity, height: 0),
-          secondChild: SizedBox(
-            width: double.infinity,
-            child: Column(
-              children: [
-                _buildStudentList(registro),
-                _buildActionButtons(registro, index),
-              ],
-            ),
-          ),
-          crossFadeState: isExpanded
-              ? CrossFadeState.showSecond
-              : CrossFadeState.showFirst,
-          duration: const Duration(milliseconds: 200),
-        ),
-      ],
-    );
-  }
-
-  /// Botones de "Eliminar" y "Mostrar en pantalla" debajo de cada registro expandido
-  Widget _buildActionButtons(AsistenciaRegistro registro, int index) {
-    final grupoColors = _getColoresParaGrupo(registro.grupoId);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(38, 0, 16, 12),
-      child: Row(
-        children: [
-          // Botón Eliminar
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _showDeleteConfirmation(registro, index),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: Colors.red.withOpacity(0.25),
-                    width: 0.5,
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.delete_outline_rounded,
-                      color: Colors.red.shade400,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Eliminar',
-                      style: TextStyle(
-                        color: Colors.red.shade400,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _openRegistroDetail(registro),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  color: Colors.orange,
+                  shape: BoxShape.circle,
                 ),
               ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          // Botón Mostrar en pantalla
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _navigateToGrupoDetail(registro),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: grupoColors[0].withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: grupoColors[0].withOpacity(0.25),
-                    width: 0.5,
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.open_in_new_rounded,
-                      color: grupoColors[0],
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
                     Text(
-                      'Mostrar en pantalla',
+                      _formatFecha(registro.fecha),
                       style: TextStyle(
-                        color: grupoColors[0],
-                        fontSize: 12,
+                        color: palette.textPrimary,
+                        fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
-                      maxLines: 1,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      className,
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 13,
+                      ),
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (grupoMeta != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        grupoMeta,
+                        style: TextStyle(
+                          color: palette.textTertiary,
+                          fontSize: 12,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ],
                 ),
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Muestra un diálogo de confirmación antes de eliminar
-  void _showDeleteConfirmation(AsistenciaRegistro registro, int index) {
-    final (className, _) = _resolveGrupoMeta(registro);
-    HapticFeedback.mediumImpact();
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFF2C2C2E),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: const Text(
-          '¿Eliminar registro?',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        content: Text(
-          'Se eliminará el registro de asistencia de "$className" del día ${_formatFecha(registro.fecha)}.\n\nEsta acción no se puede deshacer.',
-          style: TextStyle(
-            color: Colors.grey.shade400,
-            fontSize: 14,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(
-              'Cancelar',
-              style: TextStyle(
-                color: Colors.grey.shade400,
-                fontWeight: FontWeight.w600,
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  total == 1 ? '$total cambio' : '$total cambios',
+                  style: TextStyle(
+                    color: Colors.orange.shade400,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
-            ),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.of(dialogContext).pop();
-              await widget.onDelete(registro.id);
-              if (mounted) {
-                HapticFeedback.heavyImpact();
-                setState(() {
-                  _localPendientes.removeAt(index);
-                  _expandedIndices.remove(index);
-                  // Recalcular índices expandidos que estén por encima del eliminado
-                  final adjusted = <int>{};
-                  for (final i in _expandedIndices) {
-                    if (i > index) {
-                      adjusted.add(i - 1);
-                    } else {
-                      adjusted.add(i);
-                    }
-                  }
-                  _expandedIndices
-                    ..clear()
-                    ..addAll(adjusted);
-                });
-                // Si ya no quedan registros, cerrar el modal
-                if (_localPendientes.isEmpty) {
-                  Navigator.of(context).pop();
-                }
-              }
-            },
-            child: Text(
-              'Eliminar',
-              style: TextStyle(
-                color: Colors.red.shade400,
-                fontWeight: FontWeight.bold,
+              const SizedBox(width: 8),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: palette.textSecondary,
+                size: 24,
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
   /// Navegar a la pantalla de detalle del grupo con la fecha específica
-  void _navigateToGrupoDetail(AsistenciaRegistro registro) {
+  void _navigateToGrupoDetail(
+    AsistenciaRegistro registro, {
+    bool fromDetailPage = false,
+  }) {
     final grupo = widget.grupoMap[registro.grupoId];
     if (grupo == null) return;
 
@@ -2102,107 +1960,433 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
     // Capturar el navigator antes de cerrar el modal (el context se invalida al hacer pop)
     final navigator = Navigator.of(context);
 
-    // Cerrar el modal
-    navigator.pop();
+    if (fromDetailPage && navigator.canPop()) {
+      navigator.pop();
+    }
 
-    // Cerrar la página de sincronización (UploadManagementPage)
-    navigator.pop();
+    if (navigator.canPop()) {
+      navigator.pop();
+    }
+
+    if (navigator.canPop()) {
+      navigator.pop();
+    }
 
     // Navegar a GrupoDetailPage con la fecha del registro y efecto neón
     navigator.push(
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) =>
             GrupoDetailPage(
-          grupo: grupo,
-          gradientColors: gradientColors,
-          accentColor: Colors.white,
-          horario: grupo.horario ?? '00:00-00:00',
-          dias: grupo.diasClase ?? 'N/A',
-          todosLosGrupos: widget.todosLosGrupos,
-          initialDate: registro.fecha,
-          highlightDateSelector: true,
-          highlightColor: gradientColors[0],
-        ),
+              grupo: grupo,
+              gradientColors: gradientColors,
+              accentColor: Colors.white,
+              horario: grupo.horario ?? '00:00-00:00',
+              dias: grupo.diasClase ?? 'N/A',
+              todosLosGrupos: widget.todosLosGrupos,
+              initialDate: registro.fecha,
+              highlightDateSelector: true,
+              highlightColor: gradientColors[0],
+            ),
         transitionDuration: const Duration(milliseconds: 400),
         reverseTransitionDuration: const Duration(milliseconds: 350),
-        transitionsBuilder:
-            (context, animation, secondaryAnimation, child) {
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
           final curvedAnimation = CurvedAnimation(
             parent: animation,
             curve: Curves.easeOut,
             reverseCurve: Curves.easeIn,
           );
-          return FadeTransition(
-            opacity: curvedAnimation,
-            child: child,
-          );
+          return FadeTransition(opacity: curvedAnimation, child: child);
         },
       ),
     );
   }
+}
 
-  Widget _buildStudentList(AsistenciaRegistro registro) {
-    // Only show students whose attendance changed vs last synced snapshot
-    final changed = _changedEntries(registro);
-    final hasSnapshot = registro.asistenciasSincronizadas != null;
+class _PendingRegistroDetailPage extends StatelessWidget {
+  final AsistenciaRegistro registro;
+  final String className;
+  final String? grupoMeta;
+  final String formattedDate;
+  final Map<String, bool> changedEntries;
+  final Map<String, String> studentNames;
+  final List<Color> gradientColors;
+  final bool hasSnapshot;
+  final Future<void> Function() onDelete;
+  final VoidCallback onShowInClass;
 
-    // Sort: present (new) first, then absent
-    final entries = changed.entries.toList()
-      ..sort((a, b) {
-        if (a.value != b.value) return a.value ? -1 : 1;
-        return _resolveStudentName(a.key).compareTo(_resolveStudentName(b.key));
-      });
+  const _PendingRegistroDetailPage({
+    required this.registro,
+    required this.className,
+    required this.grupoMeta,
+    required this.formattedDate,
+    required this.changedEntries,
+    required this.studentNames,
+    required this.gradientColors,
+    required this.hasSnapshot,
+    required this.onDelete,
+    required this.onShowInClass,
+  });
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(38, 0, 16, 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2C2C2E),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (hasSnapshot)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+  String _resolveStudentName(String key) => studentNames[key] ?? key;
+
+  List<MapEntry<String, bool>> get _sortedEntries {
+    return changedEntries.entries.toList()..sort((a, b) {
+      if (a.value != b.value) return a.value ? -1 : 1;
+      return _resolveStudentName(a.key).compareTo(_resolveStudentName(b.key));
+    });
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    HapticFeedback.mediumImpact();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final palette = dialogContext.uatPalette;
+
+        return AlertDialog(
+          backgroundColor: palette.surfaceElevated,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            '¿Eliminar registro?',
+            style: TextStyle(
+              color: palette.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Text(
+            'Se eliminará el registro de asistencia de "$className" del día $formattedDate.\n\nEsta acción no se puede deshacer.',
+            style: TextStyle(color: palette.textSecondary, fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
               child: Text(
-                'Cambios desde la última subida:',
+                'Cancelar',
                 style: TextStyle(
-                  color: Colors.grey.shade500,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
+                  color: palette.textSecondary,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
-          ...entries.map((entry) {
-            final name = _resolveStudentName(entry.key);
-            final present = entry.value;
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 5),
-              child: Row(
-                children: [
-                  Icon(
-                    present ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                    color: present
-                        ? Colors.green.shade400
-                        : Colors.red.shade400,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      name,
-                      style: TextStyle(
-                        color: present ? Colors.white : Colors.grey.shade500,
-                        fontSize: 14,
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(
+                'Eliminar',
+                style: TextStyle(
+                  color: Colors.red.shade400,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    HapticFeedback.heavyImpact();
+    await onDelete();
+    if (context.mounted) {
+      Navigator.of(context).pop(true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.uatPalette;
+    final isLightMode = context.isUatLightMode;
+    final entries = _sortedEntries;
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: isLightMode
+            ? Brightness.dark
+            : Brightness.light,
+        statusBarBrightness: isLightMode ? Brightness.light : Brightness.dark,
+        systemNavigationBarColor: palette.appBackground,
+        systemNavigationBarIconBrightness: isLightMode
+            ? Brightness.dark
+            : Brightness.light,
+      ),
+      child: Scaffold(
+        backgroundColor: palette.appBackground,
+        body: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 20, 8),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      icon: Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        color: palette.textPrimary,
+                        size: 20,
                       ),
                     ),
-                  ),
-                ],
+                    Expanded(
+                      child: Text(
+                        'Registro pendiente',
+                        style: TextStyle(
+                          color: palette.textPrimary,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            );
-          }),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: palette.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: palette.border, width: 0.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: palette.shadow,
+                            blurRadius: 12,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  formattedDate,
+                                  style: TextStyle(
+                                    color: palette.textPrimary,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  entries.length == 1
+                                      ? '1 cambio'
+                                      : '${entries.length} cambios',
+                                  style: TextStyle(
+                                    color: Colors.orange.shade400,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            className,
+                            style: TextStyle(
+                              color: palette.textSecondary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (grupoMeta != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              grupoMeta!,
+                              style: TextStyle(
+                                color: palette.textTertiary,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      hasSnapshot
+                          ? 'Cambios desde la última subida'
+                          : 'Lista marcada',
+                      style: TextStyle(
+                        color: palette.textPrimary,
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: palette.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: palette.border, width: 0.5),
+                      ),
+                      child: entries.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.all(18),
+                              child: Text(
+                                'Sin cambios pendientes',
+                                style: TextStyle(
+                                  color: palette.textSecondary,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            )
+                          : Column(
+                              children: [
+                                for (var i = 0; i < entries.length; i++) ...[
+                                  _StudentAttendanceChangeRow(
+                                    name: _resolveStudentName(entries[i].key),
+                                    present: entries[i].value,
+                                  ),
+                                  if (i != entries.length - 1)
+                                    Divider(
+                                      color: palette.border,
+                                      height: 1,
+                                      indent: 16,
+                                      endIndent: 16,
+                                    ),
+                                ],
+                              ],
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                decoration: BoxDecoration(
+                  color: palette.surface,
+                  border: Border(top: BorderSide(color: palette.border)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _confirmDelete(context),
+                        icon: Icon(
+                          Icons.delete_outline_rounded,
+                          color: Colors.red.shade400,
+                          size: 18,
+                        ),
+                        label: Text(
+                          'Eliminar',
+                          style: TextStyle(
+                            color: Colors.red.shade400,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: Colors.red.withOpacity(0.25)),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          HapticFeedback.selectionClick();
+                          onShowInClass();
+                        },
+                        icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                        label: const Text(
+                          'Mostrar',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: gradientColors[0],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StudentAttendanceChangeRow extends StatelessWidget {
+  final String name;
+  final bool present;
+
+  const _StudentAttendanceChangeRow({
+    required this.name,
+    required this.present,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.uatPalette;
+    final statusColor = present ? Colors.green.shade400 : Colors.red.shade400;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Icon(
+            present ? Icons.check_circle_rounded : Icons.cancel_rounded,
+            color: statusColor,
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              name,
+              style: TextStyle(
+                color: palette.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            decoration: BoxDecoration(
+              color: statusColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              present ? 'Presente' : 'Ausente',
+              style: TextStyle(
+                color: statusColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
         ],
       ),
     );
