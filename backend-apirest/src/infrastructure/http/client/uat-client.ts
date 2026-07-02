@@ -366,7 +366,18 @@ export class UatPortalClient implements UatPortalClientPort {
       });
     }
 
-    const candidates = ['data', 'Data', 'datos', 'Datos', 'items', 'Items'];
+    const candidates = [
+      'data',
+      'Data',
+      'datos',
+      'Datos',
+      'items',
+      'Items',
+      'result',
+      'Result',
+      'resultado',
+      'Resultado',
+    ];
 
     for (const candidate of candidates) {
       const value = payload[candidate];

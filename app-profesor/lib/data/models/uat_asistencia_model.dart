@@ -73,15 +73,25 @@ class UatSemanaModel {
 
     return UatSemanaModel(
       raw: Map<String, dynamic>.from(json),
-      idGrupo: _readInt(json, const ['Id_Grupo']),
+      idGrupo: _readInt(json, const ['Id_Grupo', 'id_grupo', 'idGrupo']),
       fecIni:
-          _readString(json, const ['Fec_Ini', 'fec_ini']) ??
+          _readString(json, const [
+            'Fec_Ini',
+            'fec_ini',
+            'FecIni',
+            'Fec_Inicio',
+          ]) ??
           (datesFromPeriodo.isNotEmpty ? datesFromPeriodo.first : ''),
       fecFin:
-          _readString(json, const ['Fec_Fin', 'fec_fin']) ??
+          _readString(json, const [
+            'Fec_Fin',
+            'fec_fin',
+            'FecFin',
+            'Fec_Termino',
+          ]) ??
           (datesFromPeriodo.length > 1 ? datesFromPeriodo[1] : ''),
       periodo: periodo,
-      semana: _readString(json, const ['Semana', 'Num_Semana']),
+      semana: _readString(json, const ['Semana', 'Num_Semana', 'num_semana']),
     );
   }
 
@@ -106,11 +116,22 @@ class UatAsistenciaAlumnoModel {
   factory UatAsistenciaAlumnoModel.fromJson(Map<String, dynamic> json) {
     return UatAsistenciaAlumnoModel(
       raw: Map<String, dynamic>.from(json),
-      idAlumno: _readInt(json, const ['Id_Alumno', 'id_alumno']) ?? 0,
-      numeroLista: _readInt(json, const ['Num_Lista', 'numeroLista']) ?? 0,
-      matricula: _readString(json, const ['Num_Matricula', 'Matricula']),
+      idAlumno:
+          _readInt(json, const ['Id_Alumno', 'id_alumno', 'idAlumno']) ?? 0,
+      numeroLista:
+          _readInt(json, const ['Num_Lista', 'num_lista', 'numeroLista']) ?? 0,
+      matricula: _readString(json, const [
+        'Num_Matricula',
+        'num_matricula',
+        'Matricula',
+      ]),
       nombre:
-          _readString(json, const ['Txt_Alumno', 'Nombre', 'Alumno']) ??
+          _readString(json, const [
+            'Txt_Alumno',
+            'txt_alumno',
+            'Nombre',
+            'Alumno',
+          ]) ??
           'Alumno sin nombre',
     );
   }
@@ -140,7 +161,11 @@ class UatAsistenciaGrupoModel {
 
   factory UatAsistenciaGrupoModel.fromJson(Map<String, dynamic> json) {
     final rawAlumnos = _asList(
-      json['alumnos'] ?? json['Alumnos'] ?? json['data'],
+      json['alumnos'] ??
+          json['Alumnos'] ??
+          json['data'] ??
+          json['result'] ??
+          json['Result'],
     );
 
     return UatAsistenciaGrupoModel(

@@ -78,16 +78,25 @@ class UatHorarioModel {
   factory UatHorarioModel.fromJson(Map<String, dynamic> json) {
     return UatHorarioModel(
       raw: Map<String, dynamic>.from(json),
-      idGrupo: _readInt(json, const ['Id_Grupo', 'idGrupo']) ?? 0,
-      des: _readString(json, const ['Txt_DES', 'DES']),
-      nivel: _readString(json, const ['Txt_Nombre_Corto']),
-      ciclo: _readString(json, const ['Ciclo', 'Txt_Ciclo_Escolar']),
-      letra: _readString(json, const ['Txt_Letra', 'Grupo']),
-      materia: _readString(json, const ['Txt_Materia', 'Materia']),
-      profesor: _readString(json, const ['Txt_Nombre_Profesor']),
-      periodo: _readString(json, const ['Num_Periodo']),
+      idGrupo: _readInt(json, const ['Id_Grupo', 'idGrupo', 'id_grupo']) ?? 0,
+      des: _readString(json, const ['Txt_DES', 'txt_des', 'DES']),
+      nivel: _readString(json, const ['Txt_Nombre_Corto', 'txt_nombre_corto']),
+      ciclo: _readString(json, const ['Ciclo', 'Txt_Ciclo_Escolar', 'ciclo']),
+      letra: _readString(json, const ['Txt_Letra', 'txt_letra', 'Grupo']),
+      materia: _readString(json, const [
+        'Txt_Materia',
+        'txt_materia',
+        'Materia',
+      ]),
+      profesor: _readString(json, const [
+        'Txt_Nombre_Profesor',
+        'Nombre_Profesor',
+        'nombre_profesor',
+      ]),
+      periodo: _readString(json, const ['Num_Periodo', 'num_periodo']),
       espacioFisico: _readString(json, const [
         'Txt_Espacio_Fisico',
+        'txt_espacio_fisico',
         'Txt_Aula',
         'Aula',
       ]),
@@ -145,12 +154,20 @@ class UatGrupoModel {
   factory UatGrupoModel.fromJson(Map<String, dynamic> json) {
     return UatGrupoModel(
       raw: Map<String, dynamic>.from(json),
-      idGrupo: _readInt(json, const ['Id_Grupo', 'idGrupo']) ?? 0,
-      materia: _readString(json, const ['Materia', 'Txt_Materia']),
-      letra: _readString(json, const ['Grupo', 'Txt_Letra']),
-      ciclo: _readString(json, const ['Ciclo', 'Txt_Ciclo_Escolar']),
-      idCicloEscolar: _readInt(json, const ['Id_Ciclo_Escolar', 'Id_Ciclo']),
-      idDes: _readInt(json, const ['Id_DES', 'Id_Des']),
+      idGrupo: _readInt(json, const ['Id_Grupo', 'idGrupo', 'id_grupo']) ?? 0,
+      materia: _readString(json, const [
+        'Materia',
+        'Txt_Materia',
+        'txt_materia',
+      ]),
+      letra: _readString(json, const ['Grupo', 'Txt_Letra', 'txt_letra']),
+      ciclo: _readString(json, const ['Ciclo', 'Txt_Ciclo_Escolar', 'ciclo']),
+      idCicloEscolar: _readInt(json, const [
+        'Id_Ciclo_Escolar',
+        'Id_Ciclo',
+        'id_ciclo',
+      ]),
+      idDes: _readInt(json, const ['Id_DES', 'Id_Des', 'id_des']),
     );
   }
 
