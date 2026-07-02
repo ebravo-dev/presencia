@@ -10,6 +10,7 @@ import '../../../services/api_service.dart';
 import '../../../services/auth_storage_service.dart';
 import '../../../services/sync_service.dart';
 import '../../../shared/models/grupo.dart';
+import 'grupo_detail_page.dart';
 
 class UploadManagementPage extends StatefulWidget {
   const UploadManagementPage({super.key});
@@ -832,6 +833,11 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         pendientes: sorted,
         studentNames: studentNames,
         grupoMap: grupoMap,
+        todosLosGrupos: grupos,
+        onDelete: (registroId) async {
+          await _asistenciaService.eliminarAsistencia(registroId);
+          await _cargarAsistencias();
+        },
       ),
     );
   }
@@ -1587,11 +1593,15 @@ class _PendingDetailsModal extends StatefulWidget {
   final List<AsistenciaRegistro> pendientes;
   final Map<String, String> studentNames;
   final Map<String, Grupo> grupoMap;
+  final List<Grupo> todosLosGrupos;
+  final Future<void> Function(String registroId) onDelete;
 
   const _PendingDetailsModal({
     required this.pendientes,
     required this.studentNames,
     required this.grupoMap,
+    required this.todosLosGrupos,
+    required this.onDelete,
   });
 
   @override
@@ -1600,6 +1610,32 @@ class _PendingDetailsModal extends StatefulWidget {
 
 class _PendingDetailsModalState extends State<_PendingDetailsModal> {
   final Set<int> _expandedIndices = {};
+  late List<AsistenciaRegistro> _localPendientes;
+
+  // Gradientes (igual que en grupos_page)
+  static const List<List<Color>> _cardGradients = [
+    [Color(0xFF8B5CF6), Color(0xFF7C3AED)],
+    [Color(0xFFFF6B9D), Color(0xFFFF5A8F)],
+    [Color(0xFF2DD4BF), Color(0xFF14B8A6)],
+    [Color(0xFFFF8A65), Color(0xFFFF7043)],
+    [Color(0xFF60A5FA), Color(0xFF3B82F6)],
+    [Color(0xFFFF6B9D), Color(0xFFFF5A8F)],
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _localPendientes = List.from(widget.pendientes);
+  }
+
+  /// Obtener colores del gradiente para un grupo específico
+  List<Color> _getColoresParaGrupo(String grupoId) {
+    final index = widget.todosLosGrupos.indexWhere(
+      (g) => g.id == grupoId || g.identificadorUnico == grupoId,
+    );
+    if (index == -1) return _cardGradients[0];
+    return _cardGradients[index % _cardGradients.length];
+  }
 
   String _formatFecha(DateTime fecha) {
     final now = DateTime.now();
@@ -1704,7 +1740,7 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
           Expanded(
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: widget.pendientes.length,
+              itemCount: _localPendientes.length,
               separatorBuilder: (_, __) => const Divider(
                 color: Color(0xFF3A3A3C),
                 height: 1,
@@ -1712,7 +1748,7 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
                 endIndent: 16,
               ),
               itemBuilder: (context, index) {
-                final registro = widget.pendientes[index];
+                final registro = _localPendientes[index];
                 final isExpanded = _expandedIndices.contains(index);
                 return _buildRegistroTile(registro, index, isExpanded);
               },
@@ -1873,7 +1909,12 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
           firstChild: const SizedBox(width: double.infinity, height: 0),
           secondChild: SizedBox(
             width: double.infinity,
-            child: _buildStudentList(registro),
+            child: Column(
+              children: [
+                _buildStudentList(registro),
+                _buildActionButtons(registro, index),
+              ],
+            ),
           ),
           crossFadeState: isExpanded
               ? CrossFadeState.showSecond
@@ -1881,6 +1922,222 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
           duration: const Duration(milliseconds: 200),
         ),
       ],
+    );
+  }
+
+  /// Botones de "Eliminar" y "Mostrar en pantalla" debajo de cada registro expandido
+  Widget _buildActionButtons(AsistenciaRegistro registro, int index) {
+    final grupoColors = _getColoresParaGrupo(registro.grupoId);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(38, 0, 16, 12),
+      child: Row(
+        children: [
+          // Botón Eliminar
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _showDeleteConfirmation(registro, index),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: Colors.red.withOpacity(0.25),
+                    width: 0.5,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.delete_outline_rounded,
+                      color: Colors.red.shade400,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Eliminar',
+                      style: TextStyle(
+                        color: Colors.red.shade400,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // Botón Mostrar en pantalla
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _navigateToGrupoDetail(registro),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: grupoColors[0].withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: grupoColors[0].withOpacity(0.25),
+                    width: 0.5,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.open_in_new_rounded,
+                      color: grupoColors[0],
+                      size: 16,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Mostrar en pantalla',
+                      style: TextStyle(
+                        color: grupoColors[0],
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Muestra un diálogo de confirmación antes de eliminar
+  void _showDeleteConfirmation(AsistenciaRegistro registro, int index) {
+    final (className, _) = _resolveGrupoMeta(registro);
+    HapticFeedback.mediumImpact();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF2C2C2E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Text(
+          '¿Eliminar registro?',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          'Se eliminará el registro de asistencia de "$className" del día ${_formatFecha(registro.fecha)}.\n\nEsta acción no se puede deshacer.',
+          style: TextStyle(
+            color: Colors.grey.shade400,
+            fontSize: 14,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(
+              'Cancelar',
+              style: TextStyle(
+                color: Colors.grey.shade400,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await widget.onDelete(registro.id);
+              if (mounted) {
+                HapticFeedback.heavyImpact();
+                setState(() {
+                  _localPendientes.removeAt(index);
+                  _expandedIndices.remove(index);
+                  // Recalcular índices expandidos que estén por encima del eliminado
+                  final adjusted = <int>{};
+                  for (final i in _expandedIndices) {
+                    if (i > index) {
+                      adjusted.add(i - 1);
+                    } else {
+                      adjusted.add(i);
+                    }
+                  }
+                  _expandedIndices
+                    ..clear()
+                    ..addAll(adjusted);
+                });
+                // Si ya no quedan registros, cerrar el modal
+                if (_localPendientes.isEmpty) {
+                  Navigator.of(context).pop();
+                }
+              }
+            },
+            child: Text(
+              'Eliminar',
+              style: TextStyle(
+                color: Colors.red.shade400,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Navegar a la pantalla de detalle del grupo con la fecha específica
+  void _navigateToGrupoDetail(AsistenciaRegistro registro) {
+    final grupo = widget.grupoMap[registro.grupoId];
+    if (grupo == null) return;
+
+    final gradientColors = _getColoresParaGrupo(registro.grupoId);
+
+    // Capturar el navigator antes de cerrar el modal (el context se invalida al hacer pop)
+    final navigator = Navigator.of(context);
+
+    // Cerrar el modal
+    navigator.pop();
+
+    // Cerrar la página de sincronización (UploadManagementPage)
+    navigator.pop();
+
+    // Navegar a GrupoDetailPage con la fecha del registro y efecto neón
+    navigator.push(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            GrupoDetailPage(
+          grupo: grupo,
+          gradientColors: gradientColors,
+          accentColor: Colors.white,
+          horario: grupo.horario ?? '00:00-00:00',
+          dias: grupo.diasClase ?? 'N/A',
+          todosLosGrupos: widget.todosLosGrupos,
+          initialDate: registro.fecha,
+          highlightDateSelector: true,
+          highlightColor: gradientColors[0],
+        ),
+        transitionDuration: const Duration(milliseconds: 400),
+        reverseTransitionDuration: const Duration(milliseconds: 350),
+        transitionsBuilder:
+            (context, animation, secondaryAnimation, child) {
+          final curvedAnimation = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOut,
+            reverseCurve: Curves.easeIn,
+          );
+          return FadeTransition(
+            opacity: curvedAnimation,
+            child: child,
+          );
+        },
+      ),
     );
   }
 

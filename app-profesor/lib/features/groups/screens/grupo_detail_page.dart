@@ -8,6 +8,7 @@ import '../../../shared/models/grupo.dart';
 import '../../../shared/models/alumno.dart';
 import '../../../shared/models/asistencia_registro.dart';
 import '../../../services/asistencia_local_service.dart';
+import '../../../services/api_service.dart';
 import '../../../services/ble_beacon_verification_service.dart';
 
 import '../../../services/auth_storage_service.dart';
@@ -19,6 +20,12 @@ class GrupoDetailPage extends StatefulWidget {
   final String horario;
   final String dias;
   final List<Grupo>? todosLosGrupos;
+  /// Fecha inicial para mostrar (si viene de "Mostrar en pantalla")
+  final DateTime? initialDate;
+  /// Si true, muestra un efecto neón parpadeante en el botón de fecha
+  final bool highlightDateSelector;
+  /// Color del efecto neón (normalmente el color del gradiente de la materia)
+  final Color? highlightColor;
 
   const GrupoDetailPage({
     super.key,
@@ -28,6 +35,9 @@ class GrupoDetailPage extends StatefulWidget {
     required this.horario,
     required this.dias,
     this.todosLosGrupos,
+    this.initialDate,
+    this.highlightDateSelector = false,
+    this.highlightColor,
   });
 
   @override
@@ -49,12 +59,17 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   DateTime? _salidaProfesor;
   DateTime _selectedDateTime = DateTime.now();
 
+  // Controlador para el efecto neón parpadeante en el botón de fecha
+  AnimationController? _neonAnimationController;
+  Animation<double>? _neonAnimation;
+
   // Estado de verificación BLE
   bool _entradaVerificada = true;
   String? _motivoEntrada;
 
   // Servicio de almacenamiento local
   final AsistenciaLocalService _asistenciaService = AsistenciaLocalService();
+  final ApiService _apiService = ApiService();
 
   // Servicio de verificación BLE beacon
   final BleBeaconVerificationService _bleBeaconService =
@@ -81,8 +96,52 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       ),
     );
 
+    // Si se recibió una fecha inicial, usarla
+    if (widget.initialDate != null) {
+      _selectedDateTime = DateTime(
+        widget.initialDate!.year,
+        widget.initialDate!.month,
+        widget.initialDate!.day,
+        DateTime.now().hour,
+        DateTime.now().minute,
+      );
+    }
+
     // Cargar asistencia existente
     _cargarAsistencia();
+
+    // Efecto neón parpadeante si se solicitó
+    if (widget.highlightDateSelector) {
+      _neonAnimationController = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 600),
+      );
+      _neonAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(
+          parent: _neonAnimationController!,
+          curve: Curves.easeInOut,
+        ),
+      );
+      // Iniciar después de que termine la animación Hero
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted && _neonAnimationController != null) {
+          _neonAnimationController!.repeat(reverse: true);
+          // Auto-detener después de ~3.5 segundos
+          Future.delayed(const Duration(milliseconds: 3500), () {
+            if (mounted && _neonAnimationController != null) {
+              _neonAnimationController!.forward().then((_) {
+                if (mounted) {
+                  _neonAnimationController!.stop();
+                  _neonAnimationController!.dispose();
+                  _neonAnimationController = null;
+                  setState(() {});
+                }
+              });
+            }
+          });
+        }
+      });
+    }
 
     // Listener para detectar scroll y mostrar/ocultar botón flotante
     _scrollController.addListener(_scrollListener);
@@ -165,6 +224,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     _scrollController.removeListener(_scrollListener);
     _buttonAnimationController.dispose();
     _studentsAnimationController.dispose();
+    _neonAnimationController?.dispose();
     _scrollController.dispose();
     _bleBeaconService.dispose();
     super.dispose();
@@ -490,39 +550,97 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                   HapticFeedback.lightImpact();
                   _showDateTimePicker();
                 },
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(22),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2C2C2E).withOpacity(0.72),
+                child: _neonAnimationController != null && _neonAnimation != null
+                    ? AnimatedBuilder(
+                        animation: _neonAnimation!,
+                        builder: (context, child) {
+                          final neonColor = widget.highlightColor ?? widget.gradientColors[0];
+                          final glowIntensity = _neonAnimation!.value;
+                          return Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(22),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: neonColor.withOpacity(0.7 * glowIntensity),
+                                  blurRadius: 16 * glowIntensity,
+                                  spreadRadius: 2 * glowIntensity,
+                                ),
+                                BoxShadow(
+                                  color: neonColor.withOpacity(0.4 * glowIntensity),
+                                  blurRadius: 30 * glowIntensity,
+                                  spreadRadius: 4 * glowIntensity,
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(22),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                                child: Container(
+                                  height: 44,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF2C2C2E).withOpacity(0.72),
+                                    borderRadius: BorderRadius.circular(22),
+                                    border: Border.all(
+                                      color: neonColor.withOpacity(0.3 + 0.5 * glowIntensity),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        _getFormattedDateTime(),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      const Icon(Icons.edit, size: 16, color: Colors.white),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      )
+                    : ClipRRect(
                         borderRadius: BorderRadius.circular(22),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
-                          width: 0.5,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _getFormattedDateTime(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                          child: Container(
+                            height: 44,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2C2C2E).withOpacity(0.72),
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.1),
+                                width: 0.5,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _getFormattedDateTime(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                const Icon(Icons.edit, size: 16, color: Colors.white),
+                              ],
                             ),
                           ),
-                          const SizedBox(width: 6),
-                          const Icon(Icons.edit, size: 16, color: Colors.white),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
-                ),
               ),
             ),
 
@@ -873,7 +991,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: _entradaProfesor != null && _salidaProfesor != null
+              onTap: _puedeSubirAsistencia()
                   ? () {
                       HapticFeedback.mediumImpact();
                       _intentarSincronizarAsistencia();
@@ -883,9 +1001,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
               splashColor: widget.gradientColors[0].withOpacity(0.2),
               highlightColor: widget.gradientColors[0].withOpacity(0.1),
               child: Opacity(
-                opacity: _entradaProfesor != null && _salidaProfesor != null
-                    ? 1.0
-                    : 0.6,
+                opacity: _puedeSubirAsistencia() ? 1.0 : 0.6,
                 child: Padding(
                   padding: const EdgeInsets.all(20.0),
                   child: Row(
@@ -913,9 +1029,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                         child: Text(
                           'Subir Asistencia',
                           style: TextStyle(
-                            color:
-                                _entradaProfesor != null &&
-                                    _salidaProfesor != null
+                            color: _puedeSubirAsistencia()
                                 ? Colors.white.withOpacity(0.9)
                                 : Colors.white.withOpacity(0.5),
                             fontSize: 18,
@@ -924,7 +1038,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                         ),
                       ),
                       // Icono de flecha
-                      if (_entradaProfesor != null && _salidaProfesor != null)
+                      if (_puedeSubirAsistencia())
                         Icon(
                           Icons.arrow_forward_rounded,
                           color: widget.gradientColors[0],
@@ -948,8 +1062,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   /// Si no, permite marcar con motivo (entrada parcial).
   Future<void> _verificarBeaconYMarcarEntrada() async {
     // Buscar el UUID del beacon asignado al salón de este grupo
-    final beaconUuid = AuthStorageService()
-        .getBeaconUuidForClassroom(widget.grupo.classroom);
+    final beaconUuid = AuthStorageService().getBeaconUuidForClassroom(
+      widget.grupo.classroom,
+    );
 
     if (beaconUuid == null) {
       if (!mounted) return;
@@ -1057,9 +1172,41 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   }
 
   // Guardar asistencia localmente
+  String _registroAsistenciaId() {
+    return '${widget.grupo.id}_${_selectedDateTime.year}-${_selectedDateTime.month}-${_selectedDateTime.day}';
+  }
+
+  List<Map<String, dynamic>> _buildAttendancesForUpload() {
+    final studentIdMap = <String, int>{};
+    for (final student in widget.grupo.students) {
+      final idAlumno = int.tryParse(student.id ?? '');
+      if (idAlumno != null) {
+        studentIdMap[student.id!] = idAlumno;
+        studentIdMap[student.number.toString()] = idAlumno;
+        if (student.matricula != null) {
+          studentIdMap[student.matricula!] = idAlumno;
+        }
+      }
+    }
+
+    final attendances = <Map<String, dynamic>>[];
+    _asistencias.forEach((key, present) {
+      final studentId = studentIdMap[key];
+      if (studentId == null) return;
+
+      attendances.add({
+        'id_alumno': studentId,
+        'num_pase_lista': 1,
+        'num_dia': _selectedDateTime.weekday,
+        'sn_asistencia': present,
+      });
+    });
+
+    return attendances;
+  }
+
   Future<void> _guardarAsistencia() async {
-    final registroId =
-        '${widget.grupo.id}_${_selectedDateTime.year}-${_selectedDateTime.month}-${_selectedDateTime.day}';
+    final registroId = _registroAsistenciaId();
 
     final profesorId = _authStorage.getProfesor()?.id ?? 'unknown_professor';
 
@@ -1091,6 +1238,19 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   Future<void> _intentarSincronizarAsistencia() async {
     // Mostrar diálogo de progreso
     if (!mounted) return;
+
+    await _guardarAsistencia();
+    if (!mounted) return;
+
+    final token = _authStorage.getToken();
+    final attendances = _buildAttendancesForUpload();
+
+    if (token == null || token.isEmpty || attendances.isEmpty) {
+      if (mounted) {
+        _mostrarDialogoErrorSincronizacion();
+      }
+      return;
+    }
 
     showDialog(
       context: context,
@@ -1156,32 +1316,37 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       },
     );
 
-    // Simular intento de sincronización
-    // TODO: Implementar llamada real al API
-    await Future.delayed(const Duration(seconds: 2));
+    final result = await _apiService.uploadAttendance(
+      token: token,
+      groupId: widget.grupo.id,
+      code: widget.grupo.code ?? '',
+      groupLetter: widget.grupo.groupLetter ?? widget.grupo.grupoLetra,
+      period: widget.grupo.period ?? '',
+      date: _selectedDateTime,
+      attendances: attendances,
+      encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
+    );
 
     // Cerrar diálogo
     if (mounted) {
       Navigator.of(context).pop();
     }
 
-    // Simular éxito/fallo aleatorio para pruebas
-    // TODO: Reemplazar con lógica real de sincronización
-    final exito = DateTime.now().second % 2 == 0; // Simulación temporal
-
-    if (exito) {
-      // Éxito: actualizar estado y mostrar confirmación
-
-      if (mounted) {
-        _mostrarDialogoExito();
-      }
-    } else {
-      // Error: mantener como pendiente y mostrar mensaje
-
-      if (mounted) {
-        _mostrarDialogoErrorSincronizacion();
-      }
-    }
+    await result.fold(
+      (_) async {
+        if (mounted) {
+          _mostrarDialogoErrorSincronizacion();
+        }
+      },
+      (_) async {
+        await _asistenciaService.marcarComoSincronizada(
+          _registroAsistenciaId(),
+        );
+        if (mounted) {
+          _mostrarDialogoExito();
+        }
+      },
+    );
   }
 
   // Mostrar diálogo de éxito
@@ -1384,6 +1549,15 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   // Para alumnos: permite marcar en cualquier fecha si es día de clase
   bool _puedeMarcarAsistenciaAlumnos() {
     return _esDiaDeClase();
+  }
+
+  bool _puedeSubirAsistencia() {
+    final tieneAsistenciaProfesor =
+        _entradaProfesor != null && _salidaProfesor != null;
+    final tieneAsistenciaAlumnos =
+        _puedeMarcarAsistenciaAlumnos() && _asistencias.isNotEmpty;
+
+    return tieneAsistenciaProfesor || tieneAsistenciaAlumnos;
   }
 
   String _getFormattedDate(DateTime dateTime) {
@@ -1950,7 +2124,9 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
       _lastDeviceFound = null;
     });
 
-    debugPrint('[BLE-Dialog] Iniciando verificación con UUID: ${widget.beaconUuid}');
+    debugPrint(
+      '[BLE-Dialog] Iniciando verificación con UUID: ${widget.beaconUuid}',
+    );
     final result = await widget.bleService.verifyBeaconPresence(
       beaconUuid: widget.beaconUuid,
     );

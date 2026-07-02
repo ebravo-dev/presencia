@@ -9,6 +9,8 @@ class UATTheme {
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
+      scaffoldBackgroundColor: UATPalette.light.appBackground,
+      extensions: const [UATPalette.light],
 
       // Esquema de colores basado en la paleta UAT
       colorScheme: ColorScheme.light(
@@ -193,10 +195,68 @@ class UATTheme {
     );
   }
 
-  /// Tema oscuro (para implementar en el futuro)
   static ThemeData get darkTheme {
-    // TODO: Implementar tema oscuro con colores UAT
-    return lightTheme;
+    final base = lightTheme;
+    final palette = UATPalette.dark;
+
+    return base.copyWith(
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: palette.appBackground,
+      extensions: const [UATPalette.dark],
+      colorScheme: ColorScheme.dark(
+        primary: UATColors.primary,
+        onPrimary: UATColors.onPrimary,
+        secondary: UATColors.accent80,
+        onSecondary: UATColors.onAccent,
+        tertiary: UATColors.secondary80,
+        surface: palette.surface,
+        onSurface: palette.textPrimary,
+        error: UATColors.error,
+        outline: palette.border,
+        outlineVariant: palette.surfaceMuted,
+      ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: palette.appBackground,
+        foregroundColor: palette.textPrimary,
+        elevation: 0,
+        centerTitle: true,
+        titleTextStyle: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: palette.textPrimary,
+        ),
+      ),
+      cardTheme: CardThemeData(
+        color: palette.surface,
+        elevation: 8,
+        shadowColor: palette.shadow,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: palette.surfaceElevated,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
+      iconTheme: IconThemeData(color: palette.textSecondary, size: 24),
+      dividerTheme: DividerThemeData(
+        color: palette.border,
+        thickness: 1,
+        space: 1,
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: palette.surfaceMuted,
+        labelStyle: TextStyle(color: palette.textPrimary),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      inputDecorationTheme: base.inputDecorationTheme.copyWith(
+        fillColor: palette.surface,
+        labelStyle: TextStyle(color: palette.textSecondary, fontSize: 14),
+        hintStyle: TextStyle(color: palette.textTertiary, fontSize: 14),
+      ),
+      textTheme: base.textTheme.apply(
+        bodyColor: palette.textPrimary,
+        displayColor: palette.textPrimary,
+      ),
+    );
   }
 }
 

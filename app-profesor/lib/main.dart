@@ -11,6 +11,7 @@ import 'core/constants/app_constants.dart';
 import 'core/constants/api_constants.dart';
 import 'core/utils/utils.dart';
 import 'core/theme/uat_theme.dart';
+import 'core/theme/theme_controller.dart';
 import 'features/authentication/presentation/pages/login_page.dart';
 import 'features/authentication/presentation/pages/relogin_page.dart';
 import 'features/groups/screens/grupos_page.dart';
@@ -116,7 +117,10 @@ final routerProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
-      GoRoute(path: '/relogin', builder: (context, state) => const ReloginPage()),
+      GoRoute(
+        path: '/relogin',
+        builder: (context, state) => const ReloginPage(),
+      ),
       GoRoute(path: '/grupos', builder: (context, state) => const GruposPage()),
       GoRoute(
         path: '/sync-status',
@@ -182,12 +186,20 @@ class _MyAppState extends ConsumerState<MyApp> {
 
   @override
   Widget build(BuildContext context) {
+    final themeMode = ref.watch(themeControllerProvider);
+    final activeTheme = themeMode == ThemeMode.light
+        ? UATTheme.lightTheme
+        : UATTheme.darkTheme;
+
     if (_isChecking || !_initialized) {
       // Show splash screen while checking stored session
       return MaterialApp(
         debugShowCheckedModeBanner: false,
+        theme: UATTheme.lightTheme,
+        darkTheme: UATTheme.darkTheme,
+        themeMode: themeMode,
         home: Scaffold(
-          backgroundColor: Colors.white,
+          backgroundColor: activeTheme.scaffoldBackgroundColor,
           body: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -227,6 +239,8 @@ class _MyAppState extends ConsumerState<MyApp> {
       debugShowCheckedModeBanner: false,
       title: AppConstants.appName,
       theme: UATTheme.lightTheme,
+      darkTheme: UATTheme.darkTheme,
+      themeMode: themeMode,
       routerConfig: router,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
