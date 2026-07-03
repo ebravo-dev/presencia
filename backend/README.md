@@ -127,14 +127,9 @@ Configuración recomendada en Dokploy:
 |-------|-------|
 | Compose path | `backend/docker-compose.dokploy.yml` |
 | Build context | `backend` |
-| Nixpacks config | `backend/nixpacks.toml` |
 | Puerto interno | `3000` |
 | Healthcheck | `/health` |
 | Dashboard | `/admin/` |
-
-Si despliegas con Nixpacks en lugar de Docker Compose, configura el root del
-servicio como `backend`. El archivo `nixpacks.toml` fuerza el provider de Node,
-ejecuta `npm ci`, genera Prisma, compila TypeScript y arranca con `start.sh`.
 
 Variables requeridas:
 
