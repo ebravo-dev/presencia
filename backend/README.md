@@ -117,7 +117,9 @@ docker-compose down
 
 ## Deploy en Dokploy
 
-Usa el archivo `docker-compose.dokploy.yml` como compose del servicio.
+Usa el archivo `docker-compose.dokploy.yml` como compose del servicio de API.
+PostgreSQL y Redis se crean como servicios separados en Dokploy y se conectan
+por variables de entorno.
 
 Configuración recomendada en Dokploy:
 
@@ -132,9 +134,8 @@ Configuración recomendada en Dokploy:
 Variables requeridas:
 
 ```bash
-POSTGRES_DB=presencia
-POSTGRES_USER=presencia
-POSTGRES_PASSWORD=una-contrasena-fuerte
+DATABASE_URL=postgresql://user:password@postgres-host:5432/presencia?schema=public
+REDIS_URL=redis://redis-host:6379
 JWT_SECRET=un-secreto-largo-minimo-32-caracteres
 JWT_EXPIRES_IN=7d
 RSA_PRIVATE_KEY=clave-privada-rsa-en-base64
@@ -142,10 +143,9 @@ UAT_PORTAL_URL=https://administracionescolar.uat.edu.mx
 APP_PORT=3000
 ```
 
-Puedes partir de `.env.dokploy.example`. El compose incluye PostgreSQL 16 y
-Redis 7 con volúmenes persistentes (`postgres_data` y `redis_data`). Al iniciar,
-el contenedor ejecuta `prisma migrate deploy` automáticamente antes de levantar
-la API.
+Puedes partir de `.env.dokploy.example`. Al iniciar, el contenedor ejecuta
+`prisma migrate deploy` automáticamente contra `DATABASE_URL` antes de levantar
+la API. Redis se usa por BullMQ mediante `REDIS_URL`.
 
 Para generar `RSA_PRIVATE_KEY`:
 
