@@ -115,6 +115,51 @@ docker-compose logs -f api
 docker-compose down
 ```
 
+## Deploy en Dokploy
+
+Usa el archivo `docker-compose.dokploy.yml` como compose del servicio.
+
+Configuración recomendada en Dokploy:
+
+| Campo | Valor |
+|-------|-------|
+| Compose path | `backend/docker-compose.dokploy.yml` |
+| Build context | `backend` |
+| Puerto interno | `3000` |
+| Healthcheck | `/health` |
+| Dashboard | `/admin/` |
+
+Variables requeridas:
+
+```bash
+POSTGRES_DB=presencia
+POSTGRES_USER=presencia
+POSTGRES_PASSWORD=una-contrasena-fuerte
+JWT_SECRET=un-secreto-largo-minimo-32-caracteres
+JWT_EXPIRES_IN=7d
+RSA_PRIVATE_KEY=clave-privada-rsa-en-base64
+UAT_PORTAL_URL=https://administracionescolar.uat.edu.mx
+APP_PORT=3000
+```
+
+Puedes partir de `.env.dokploy.example`. El compose incluye PostgreSQL 16 y
+Redis 7 con volúmenes persistentes (`postgres_data` y `redis_data`). Al iniciar,
+el contenedor ejecuta `prisma migrate deploy` automáticamente antes de levantar
+la API.
+
+Para generar `RSA_PRIVATE_KEY`:
+
+```bash
+openssl genpkey -algorithm RSA -out private.pem -pkeyopt rsa_keygen_bits:4096
+base64 -w 0 private.pem
+```
+
+Después de desplegar, configura las apps con:
+
+```bash
+PRESENCIA_API_BASE_URL=https://tu-dominio-de-dokploy
+```
+
 ## Variables de Entorno
 
 | Variable | Descripción | Ejemplo |
