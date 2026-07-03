@@ -1,4 +1,5 @@
 import type { Group } from '../entities/group.js';
+import type { WeeklySchedule } from '../entities/group.js';
 
 export interface GroupAssignmentDetail {
   id: string;
@@ -6,6 +7,10 @@ export interface GroupAssignmentDetail {
   groupCode: string | null;
   schoolCycleExternalId: string;
   schoolCycleName: string | null;
+  classroom: string | null;
+  educationLevel: string | null;
+  period: string | null;
+  schedule: WeeklySchedule;
   firstSeenAt: Date;
   lastSeenAt: Date;
   teacher: { id: string; externalId: string; name: string };

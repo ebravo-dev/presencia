@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { Group } from '../../../domain/entities/group.js';
+import type { WeeklySchedule } from '../../../domain/entities/group.js';
 import type { GroupAssignmentDetail, IGroupAssignmentRepository } from '../../../domain/repositories/group-assignment.repository.js';
 
 const detailInclude = {
@@ -24,6 +25,10 @@ export class PrismaGroupAssignmentRepository implements IGroupAssignmentReposito
         groupCode: group.groupCode,
         schoolCycleExternalId: group.schoolCycleExternalId,
         schoolCycleName: group.schoolCycleName,
+        classroom: group.classroom,
+        educationLevel: group.educationLevel,
+        period: group.period,
+        schedule: group.schedule as unknown as Prisma.InputJsonValue,
         rawPayload: group.rawPayload as Prisma.InputJsonValue,
         ...relations,
       },
@@ -31,6 +36,10 @@ export class PrismaGroupAssignmentRepository implements IGroupAssignmentReposito
         groupCode: group.groupCode,
         schoolCycleExternalId: group.schoolCycleExternalId,
         schoolCycleName: group.schoolCycleName,
+        classroom: group.classroom,
+        educationLevel: group.educationLevel,
+        period: group.period,
+        schedule: group.schedule as unknown as Prisma.InputJsonValue,
         rawPayload: group.rawPayload as Prisma.InputJsonValue,
         ...relations,
       },
@@ -38,14 +47,22 @@ export class PrismaGroupAssignmentRepository implements IGroupAssignmentReposito
   }
 
   async findByTeacherId(teacherId: string): Promise<GroupAssignmentDetail[]> {
-    return this.prisma.groupAssignment.findMany({
+    const records = await this.prisma.groupAssignment.findMany({
       where: { teacherId },
       include: detailInclude,
       orderBy: [{ schoolCycleExternalId: 'desc' }, { subject: { name: 'asc' } }],
     });
+    return records.map((record) => ({
+      ...record,
+      schedule: (record.schedule ?? emptySchedule()) as unknown as WeeklySchedule,
+    }));
   }
 
   count(): Promise<number> {
     return this.prisma.groupAssignment.count();
   }
+}
+
+function emptySchedule(): WeeklySchedule {
+  return { monday: [], tuesday: [], wednesday: [], thursday: [], friday: [], saturday: [], sunday: [] };
 }

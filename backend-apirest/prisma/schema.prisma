@@ -59,6 +59,10 @@ model GroupAssignment {
   groupCode               String?
   schoolCycleExternalId   String
   schoolCycleName         String?
+  classroom               String?
+  educationLevel          String?
+  period                   String?
+  schedule                 Json?
   rawPayload              Json?
   teacherId               String
   subjectId               String
@@ -73,4 +77,29 @@ model GroupAssignment {
   @@index([teacherId])
   @@index([subjectId])
   @@index([coordinationId, schoolCycleExternalId])
+}
+
+model CoordinatorUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         String   @default("COORDINATOR")
+  disabledAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions CoordinatorSession[]
+}
+
+model CoordinatorSession {
+  id        String   @id
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user CoordinatorUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }

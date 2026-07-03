@@ -15,6 +15,15 @@ const envSchema = z.object({
   UAT_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   UAT_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(45),
   DATABASE_URL: z.string().min(1).default('file:./coordination.db'),
+  COORDINATION_JWT_SECRET: z.string().min(32).default('development-coordination-jwt-secret-change-me'),
+  COORDINATION_WEB_ORIGIN: z.string().url().default('http://localhost:5173'),
+  COORDINATION_COOKIE_SECURE: z.preprocess(
+    (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
+    z.boolean().optional(),
+  ),
+  ATTENDANCE_BACKEND_URL: z.string().url().default('http://localhost:3000'),
+  ATTENDANCE_BACKEND_SERVICE_TOKEN: z.string().min(32).default('development-internal-service-token-change-me'),
+  COORDINATION_WEB_DIST: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

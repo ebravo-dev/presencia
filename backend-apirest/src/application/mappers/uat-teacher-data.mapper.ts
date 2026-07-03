@@ -1,8 +1,8 @@
 import type { Coordination } from '../../domain/entities/coordination.js';
-import type { Group } from '../../domain/entities/group.js';
+import type { Group, ScheduleDay, ScheduleSlot, WeeklySchedule } from '../../domain/entities/group.js';
 import type { Subject } from '../../domain/entities/subject.js';
 import type { AuthenticatedTeacherIdentity } from '../../domain/events/teacher-authenticated.event.js';
-import type { JsonRecord, JsonValue, UatDesItem, UatProfesorGrupoItem } from '../../domain/types/uat.interfaces.js';
+import type { JsonRecord, JsonValue, UatDesItem, UatHorarioItem, UatProfesorGrupoItem } from '../../domain/types/uat.interfaces.js';
 
 export interface MappedTeacherGroup {
   coordination: Coordination;
@@ -17,6 +17,8 @@ export class UatTeacherDataMapper {
     des: UatDesItem;
     cycleExternalId: string;
     cycleName: string | null;
+    educationLevel: string | null;
+    schedule?: UatHorarioItem;
   }): MappedTeacherGroup {
     const coordinationExternalId = String(input.des.Id_DES);
     const coordinationName = clean(input.des.Txt_DES) ?? `Coordinacion ${coordinationExternalId}`;
@@ -52,6 +54,10 @@ export class UatTeacherDataMapper {
         groupCode: readString(input.raw, ['Txt_Letra', 'Grupo', 'txt_letra']),
         schoolCycleExternalId: input.cycleExternalId,
         schoolCycleName: readString(input.raw, ['Ciclo', 'Txt_Ciclo_Escolar']) ?? input.cycleName,
+        classroom: cleanNullable(input.schedule?.Txt_Espacio_Fisico),
+        educationLevel: input.educationLevel,
+        period: input.schedule?.Num_Periodo == null ? null : String(input.schedule.Num_Periodo),
+        schedule: mapWeeklySchedule(input.schedule),
         teacherExternalId: input.teacher.externalId,
         subjectExternalId,
         coordinationExternalId,
@@ -59,6 +65,39 @@ export class UatTeacherDataMapper {
       },
     };
   }
+}
+
+const UAT_DAY_FIELDS: Array<[ScheduleDay, keyof UatHorarioItem]> = [
+  ['monday', 'Txt_Lunes'],
+  ['tuesday', 'Txt_Martes'],
+  ['wednesday', 'Txt_Miercoles'],
+  ['thursday', 'Txt_Jueves'],
+  ['friday', 'Txt_Viernes'],
+  ['saturday', 'Txt_Sabado'],
+  ['sunday', 'Txt_Domingo'],
+];
+
+export function mapWeeklySchedule(item?: UatHorarioItem): WeeklySchedule {
+  const result = Object.fromEntries(UAT_DAY_FIELDS.map(([day]) => [day, []])) as unknown as WeeklySchedule;
+  if (!item) return result;
+
+  for (const [day, field] of UAT_DAY_FIELDS) {
+    const rawValue = item[field];
+    if (typeof rawValue === 'string' && rawValue.trim()) result[day] = parseScheduleSlots(rawValue);
+  }
+  return result;
+}
+
+export function parseScheduleSlots(value: string): ScheduleSlot[] {
+  return value.split(/[;\n]+/).map((part) => part.trim()).filter(Boolean).map((raw) => {
+    const match = raw.match(/\b(\d{1,2}:\d{2})\s*(?:-|a)\s*(\d{1,2}:\d{2})\b/i);
+    return { raw, startTime: match?.[1] ? padTime(match[1]) : null, endTime: match?.[2] ? padTime(match[2]) : null };
+  });
+}
+
+function padTime(value: string): string {
+  const [hours, minutes] = value.split(':');
+  return `${hours?.padStart(2, '0')}:${minutes}`;
 }
 
 function readString(record: JsonRecord, keys: string[]): string | null {
@@ -73,6 +112,11 @@ function readString(record: JsonRecord, keys: string[]): string | null {
 }
 
 function clean(value: string | undefined): string | null {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
+}
+
+function cleanNullable(value: string | null | undefined): string | null {
   const normalized = value?.trim();
   return normalized ? normalized : null;
 }

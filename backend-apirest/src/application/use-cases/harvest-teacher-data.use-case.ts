@@ -4,7 +4,7 @@ import type { ICoordinationRepository } from '../../domain/repositories/coordina
 import type { IGroupAssignmentRepository } from '../../domain/repositories/group-assignment.repository.js';
 import type { ISubjectRepository } from '../../domain/repositories/subject.repository.js';
 import type { ITeacherRepository } from '../../domain/repositories/teacher.repository.js';
-import type { UatCicloEscolarItem, UatDesItem } from '../../domain/types/uat.interfaces.js';
+import type { UatCicloEscolarItem, UatDesItem, UatNivelEducativoItem } from '../../domain/types/uat.interfaces.js';
 import type { UatService } from '../services/uat.service.js';
 import { UatTeacherDataMapper } from '../mappers/uat-teacher-data.mapper.js';
 
@@ -51,7 +51,8 @@ export class HarvestTeacherDataUseCase {
     const desItems = await this.discoverCoordinations(event.sessionId);
     let groupCount = 0;
 
-    for (const des of desItems) {
+    for (const context of desItems) {
+      const { des } = context;
       await this.coordinationRepository.upsert(toCoordination(des));
 
       for (const cycle of cycles) {
@@ -62,6 +63,11 @@ export class HarvestTeacherDataUseCase {
           Id_Ciclo: cycle.Id_Ciclo_Escolar,
           Id_Plantilla: event.teacher.plantillaId,
         });
+        const schedules = await this.uatService.getHorariosPorSesion(event.sessionId, {
+          Id_Ciclo_Escolar: cycle.Id_Ciclo_Escolar,
+          Id_DES: des.Id_DES,
+        });
+        const scheduleByGroup = new Map(schedules.data.map((item) => [String(item.Id_Grupo), item]));
 
         for (const raw of response.data) {
           const mapped = this.mapper.mapGroup({
@@ -70,6 +76,8 @@ export class HarvestTeacherDataUseCase {
             des,
             cycleExternalId,
             cycleName,
+            educationLevel: context.level.Txt_Nivel_Educativo || context.level.Txt_Nombre_Corto || null,
+            schedule: scheduleByGroup.get(String(raw.Id_Grupo)),
           });
 
           await this.coordinationRepository.upsert(mapped.coordination);
@@ -90,16 +98,18 @@ export class HarvestTeacherDataUseCase {
     };
   }
 
-  private async discoverCoordinations(sessionId: string): Promise<UatDesItem[]> {
+  private async discoverCoordinations(
+    sessionId: string,
+  ): Promise<Array<{ des: UatDesItem; level: UatNivelEducativoItem }>> {
     const levels = (await this.uatService.getNivelesEducativosPorSesion(sessionId)).data;
-    const coordinations = new Map<number, UatDesItem>();
+    const coordinations = new Map<number, { des: UatDesItem; level: UatNivelEducativoItem }>();
 
     for (const level of levels) {
       const campuses = (await this.uatService.getCampusPorSesion(sessionId, level.Id_Nivel_Educativo)).data;
 
       for (const campus of campuses) {
         const items = (await this.uatService.getDesPorSesion(sessionId, level.Id_Nivel_Educativo, campus.Id_CU)).data;
-        for (const item of items) coordinations.set(item.Id_DES, item);
+        for (const item of items) coordinations.set(item.Id_DES, { des: item, level });
       }
     }
 

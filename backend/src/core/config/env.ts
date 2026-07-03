@@ -21,6 +21,7 @@ const envSchema = z.object({
 
     // UAT Portal
     UAT_PORTAL_URL: z.string().url().default('https://administracionescolar.uat.edu.mx'),
+    INTERNAL_API_TOKEN: z.string().min(32).default('development-internal-service-token-change-me'),
 });
 
 export type Env = z.infer<typeof envSchema>;

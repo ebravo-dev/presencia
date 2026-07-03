@@ -12,6 +12,14 @@ export const teacherListQuerySchema = z
 
 export const teacherParamsSchema = z.object({ teacherId: z.string().trim().min(1) }).strict();
 
+export const weeklyReportQuerySchema = z.object({
+  teacherId: z.string().trim().min(1),
+  weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(
+    (value) => new Date(`${value}T12:00:00.000Z`).getUTCDay() === 1,
+    'weekStart debe ser lunes.',
+  ),
+}).strict();
+
 export function parseCoordinationPayload<TSchema extends z.ZodTypeAny>(
   schema: TSchema,
   value: unknown,
@@ -85,6 +93,10 @@ const assignmentSummary = {
     'groupCode',
     'schoolCycleExternalId',
     'schoolCycleName',
+    'classroom',
+    'educationLevel',
+    'period',
+    'schedule',
     'firstSeenAt',
     'lastSeenAt',
     'teacher',
@@ -97,6 +109,10 @@ const assignmentSummary = {
     groupCode: nullableString,
     schoolCycleExternalId: { type: 'string' },
     schoolCycleName: nullableString,
+    classroom: nullableString,
+    educationLevel: nullableString,
+    period: nullableString,
+    schedule: { type: 'object', additionalProperties: { type: 'array', items: { type: 'object', additionalProperties: true } } },
     firstSeenAt: dateTime,
     lastSeenAt: dateTime,
     teacher: {
@@ -213,6 +229,15 @@ export const coordinationRouteSchemas = {
           },
           meta: generatedMeta,
         },
+      },
+    },
+  },
+  weeklyReport: {
+    querystring: {
+      type: 'object', additionalProperties: false, required: ['teacherId', 'weekStart'],
+      properties: {
+        teacherId: { type: 'string', minLength: 1 },
+        weekStart: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
       },
     },
   },
