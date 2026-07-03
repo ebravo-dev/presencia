@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Coordination {
+  id          String   @id @default(cuid())
+  externalId  String   @unique
+  name        String
+  shortName   String?
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @updatedAt
+
+  subjects   Subject[]
+  assignments GroupAssignment[]
+
+  @@index([name])
+}
+
+model Teacher {
+  id                 String    @id @default(cuid())
+  externalId         String    @unique
+  institutionalCode  String?
+  name               String
+  email               String?
+  lastAuthenticatedAt DateTime
+  lastHarvestedAt     DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  assignments GroupAssignment[]
+
+  @@index([name])
+  @@index([institutionalCode])
+}
+
+model Subject {
+  id             String   @id @default(cuid())
+  externalId     String   @unique
+  code           String?
+  name           String
+  coordinationId String
+  firstSeenAt    DateTime @default(now())
+  lastSeenAt     DateTime @updatedAt
+
+  coordination Coordination @relation(fields: [coordinationId], references: [id], onDelete: Restrict)
+  assignments  GroupAssignment[]
+
+  @@index([coordinationId, name])
+}
+
+model GroupAssignment {
+  id                     String   @id @default(cuid())
+  externalGroupId        String   @unique
+  groupCode               String?
+  schoolCycleExternalId   String
+  schoolCycleName         String?
+  rawPayload              Json?
+  teacherId               String
+  subjectId               String
+  coordinationId          String
+  firstSeenAt              DateTime @default(now())
+  lastSeenAt               DateTime @updatedAt
+
+  teacher      Teacher      @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  coordination Coordination @relation(fields: [coordinationId], references: [id], onDelete: Restrict)
+
+  @@index([teacherId])
+  @@index([subjectId])
+  @@index([coordinationId, schoolCycleExternalId])
+}

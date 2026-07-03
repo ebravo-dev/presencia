@@ -38,6 +38,7 @@ PORT=3100
 UAT_BASE_URL=https://administracionescolar.uat.edu.mx
 UAT_HTTP_TIMEOUT_MS=30000
 UAT_SESSION_TTL_MINUTES=45
+DATABASE_URL=file:./coordination.db
 ```
 
 El archivo `.dockerignore` esta pensado para que el contexto sea solo
@@ -123,6 +124,10 @@ GET    /api/uat/profesor/control-asistencia/semanas
 GET    /api/uat/profesor/control-asistencia/asistencia-grupo
 POST   /api/uat/profesor/control-asistencia/asistencias
 POST   /api/uat/asistencia/guardar
+GET    /api/coordinacion/resumen
+GET    /api/coordinacion/coordinaciones
+GET    /api/coordinacion/profesores
+GET    /api/coordinacion/profesores/:teacherId/asignaciones
 ```
 
 ## Arquitectura
@@ -135,6 +140,24 @@ src/infrastructure  Axios + CookieJar, factory y store en memoria
 src/application     UatService con casos de uso y snapshot
 src/presentation    Controladores, hooks Fastify, schemas Zod y rutas
 ```
+
+## Cosecha incremental para coordinacion
+
+Cada `POST /api/uat/sessions` exitoso publica una sola vez el evento interno
+`teacher.authenticated`. El listener se ejecuta fuera del camino de respuesta,
+reutiliza el cliente UAT y sus cookies, descubre ciclos/DES y acumula profesores,
+materias y grupos mediante `upsert` en Prisma. Un fallo de portal o persistencia
+solo produce un log estructurado y no invalida la sesion del profesor.
+
+Inicializa la base local y genera el cliente:
+
+```bash
+npm run prisma:generate
+npm run prisma:migrate
+```
+
+El listado admite `coordinationId`, `search`, `page` y `pageSize` (maximo 100).
+Los contratos completos se encuentran en `docs/openapi.yaml`.
 
 Las rutas protegidas usan el hook `authUatHook`, que lee `X-UAT-Session-Id`,
 valida la sesion mediante `UatService` e inyecta `request.uatSession`.

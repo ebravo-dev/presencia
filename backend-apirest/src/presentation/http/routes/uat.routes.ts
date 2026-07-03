@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { UatService } from '../../../application/services/uat.service.js';
+import type { IDomainEventBus } from '../../../domain/events/domain-event-bus.js';
 import { AsistenciaController } from '../controllers/asistencia.controller.js';
 import { CatalogoController } from '../controllers/catalogo.controller.js';
 import { ConsultaController } from '../controllers/consulta.controller.js';
@@ -8,11 +9,12 @@ import { buildAuthUatHook } from '../hooks/auth-uat.hook.js';
 
 export interface UatRoutesOptions {
   uatService: UatService;
+  eventBus: IDomainEventBus;
 }
 
-export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (fastify, { uatService }) => {
+export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (fastify, { uatService, eventBus }) => {
   const authUat = buildAuthUatHook(uatService);
-  const sessionController = new SessionController(uatService);
+  const sessionController = new SessionController(uatService, eventBus);
   const consultaController = new ConsultaController(uatService);
   const catalogoController = new CatalogoController(uatService);
   const asistenciaController = new AsistenciaController(uatService);
