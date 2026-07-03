@@ -47,9 +47,7 @@ class TeacherBeaconAttendanceService {
     try {
       await stop();
       _activeGroup = currentGroup;
-      _roomBeaconUuid = _authStorage.getBeaconUuidForClassroom(
-        currentGroup.classroom,
-      );
+      _roomBeaconUuid = await _loadRoomBeaconUuid(currentGroup);
 
       final granted = await PermissionService.requestBluetoothPermissions();
       if (!granted) {
@@ -266,23 +264,15 @@ class TeacherBeaconAttendanceService {
           _normalizeUuid(student.beaconUuid!): student.id!,
     };
 
-    final token = _authStorage.getToken();
-    final code = grupo.code;
-    final groupLetter = grupo.groupLetter ?? grupo.grupoLetra;
-    final period = grupo.period;
+    final studentIdByMatricula = <String, String>{
+      for (final student in grupo.students)
+        if (student.id != null &&
+            (student.matricula?.trim().isNotEmpty ?? false))
+          student.matricula!.trim().toUpperCase(): student.id!,
+    };
 
-    if (token == null ||
-        code == null ||
-        groupLetter.isEmpty ||
-        period == null) {
-      return fallback;
-    }
-
-    final result = await _apiService.getStudentBeaconBindings(
-      token: token,
-      code: code,
-      groupLetter: groupLetter,
-      period: period,
+    final result = await _apiService.resolveStudentDeviceBindings(
+      matriculas: studentIdByMatricula.keys.toList(),
     );
 
     return result.fold(
@@ -293,11 +283,14 @@ class TeacherBeaconAttendanceService {
       (bindings) {
         final resolved = <String, String>{};
         for (final binding in bindings) {
-          final studentId = binding['studentId'] as String?;
-          final beaconUuid = binding['beaconUuid'] as String?;
-          if (studentId == null || beaconUuid == null || beaconUuid.isEmpty) {
+          final matricula = binding['matricula'] as String?;
+          final beaconUuid = binding['attendanceUuid'] as String?;
+          if (matricula == null || beaconUuid == null || beaconUuid.isEmpty) {
             continue;
           }
+          final studentId =
+              studentIdByMatricula[matricula.trim().toUpperCase()];
+          if (studentId == null) continue;
           resolved[_normalizeUuid(beaconUuid)] = studentId;
         }
 
@@ -309,6 +302,46 @@ class TeacherBeaconAttendanceService {
           '[BeaconFlow] UUIDs registrados para grupo: ${resolved.length}',
         );
         return resolved;
+      },
+    );
+  }
+
+  Future<String?> _loadRoomBeaconUuid(Grupo grupo) async {
+    final cached = _authStorage.getBeaconUuidForClassroom(grupo.classroom);
+    if (cached != null && cached.isNotEmpty) return cached;
+
+    final result = await _apiService.resolveClassroomBeacons(
+      classrooms: [grupo.classroom],
+    );
+
+    return result.fold<Future<String?>>(
+      (error) async {
+        Logger.info(
+          '[BeaconFlow] No se pudo consultar beacon de salón: $error',
+        );
+        return cached;
+      },
+      (beacons) async {
+        if (beacons.isEmpty) return cached;
+
+        final existing = _authStorage.getBeacons() ?? [];
+        final merged = <String, Map<String, dynamic>>{
+          for (final beacon in existing)
+            if (beacon['classroom'] != null)
+              beacon['classroom'].toString().trim().toUpperCase(): beacon,
+        };
+
+        for (final beacon in beacons) {
+          final classroom = beacon['classroom']
+              ?.toString()
+              .trim()
+              .toUpperCase();
+          if (classroom == null || classroom.isEmpty) continue;
+          merged[classroom] = beacon;
+        }
+
+        await _authStorage.saveBeacons(merged.values.toList());
+        return beacons.first['uuid'] as String?;
       },
     );
   }

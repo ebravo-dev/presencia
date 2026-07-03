@@ -147,24 +147,11 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
       if (!forceRefresh) {
         final cachedGrupos = _authStorage.getGrupos();
         if (cachedGrupos != null && cachedGrupos.isNotEmpty) {
-          final hasStudentBeaconAssignments = cachedGrupos.any(
-            (grupo) => grupo.students.any(
-              (student) =>
-                  student.beaconUuid != null && student.beaconUuid!.isNotEmpty,
-            ),
+          Logger.info(
+            '💾 ${cachedGrupos.length} clases cargadas desde cache local',
           );
-          if (!hasStudentBeaconAssignments) {
-            Logger.info('Cache sin UUIDs de alumnos; refrescando clases');
-          } else {
-            Logger.info(
-              '💾 ${cachedGrupos.length} clases cargadas desde cache local',
-            );
-            state = state.copyWith(
-              grupos: cachedGrupos,
-              isLoadingGroups: false,
-            );
-            return; // No hacer petición HTTP
-          }
+          state = state.copyWith(grupos: cachedGrupos, isLoadingGroups: false);
+          return; // No hacer petición HTTP
         }
       }
 

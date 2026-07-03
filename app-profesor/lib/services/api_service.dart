@@ -1,6 +1,7 @@
 import 'package:dartz/dartz.dart';
 import 'package:dio/dio.dart';
 
+import '../core/constants/api_constants.dart';
 import '../core/network/uat_dio_client.dart';
 import '../core/utils/utils.dart';
 import '../data/datasources/uat_local_datasource.dart';
@@ -14,6 +15,7 @@ import 'auth_storage_service.dart';
 
 class ApiService {
   late final Dio _dio;
+  late final Dio _presenceDio;
   late final UatRepositoryImpl _uatRepository;
   final AuthStorageService _authStorage = AuthStorageService();
   final AsistenciaLocalService _asistenciaLocal = AsistenciaLocalService();
@@ -25,6 +27,24 @@ class ApiService {
     _dio = UatDioClient.create(
       authStorage: _authStorage,
       onSessionExpired: () => onSessionExpired?.call(),
+    );
+    _presenceDio = Dio(
+      BaseOptions(
+        baseUrl: ApiConstants.presenceApiBaseUrl,
+        headers: const {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        connectTimeout: Duration(
+          milliseconds: ApiConstants.presenceTimeoutDuration,
+        ),
+        receiveTimeout: Duration(
+          milliseconds: ApiConstants.presenceTimeoutDuration,
+        ),
+        sendTimeout: Duration(
+          milliseconds: ApiConstants.presenceTimeoutDuration,
+        ),
+      ),
     );
 
     _uatRepository = UatRepositoryImpl(
@@ -230,6 +250,79 @@ class ApiService {
         : message;
   }
 
+  Future<Either<String, List<Map<String, dynamic>>>> resolveClassroomBeacons({
+    required List<String> classrooms,
+  }) async {
+    try {
+      final normalizedClassrooms = classrooms
+          .map((classroom) => classroom.trim().toUpperCase())
+          .where((classroom) => classroom.isNotEmpty)
+          .toSet()
+          .toList();
+
+      if (normalizedClassrooms.isEmpty) return const Right([]);
+
+      final response = await _presenceDio.post(
+        '/api/beacons/resolve',
+        data: {'classrooms': normalizedClassrooms},
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data['data'] as List<dynamic>? ?? [];
+        return Right(
+          data.map((item) => Map<String, dynamic>.from(item as Map)).toList(),
+        );
+      }
+
+      return Left(response.data['message'] ?? 'Error obteniendo beacons');
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error('Error obteniendo beacons de salones: $errorMessage', e);
+      return Left(errorMessage);
+    } catch (e, stackTrace) {
+      Logger.error('Error inesperado obteniendo beacons', e, stackTrace);
+      return Left('Error inesperado: ${e.toString()}');
+    }
+  }
+
+  Future<Either<String, List<Map<String, dynamic>>>>
+  resolveStudentDeviceBindings({required List<String> matriculas}) async {
+    try {
+      final normalizedMatriculas = matriculas
+          .map((matricula) => matricula.trim().toUpperCase())
+          .where((matricula) => matricula.isNotEmpty)
+          .toSet()
+          .toList();
+
+      if (normalizedMatriculas.isEmpty) return const Right([]);
+
+      final response = await _presenceDio.post(
+        '/api/student-device-bindings/resolve',
+        data: {'matriculas': normalizedMatriculas},
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data['data'] as List<dynamic>? ?? [];
+        return Right(
+          data.map((item) => Map<String, dynamic>.from(item as Map)).toList(),
+        );
+      }
+
+      return Left(response.data['message'] ?? 'Error obteniendo UUIDs');
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error('Error obteniendo UUIDs de alumnos: $errorMessage', e);
+      return Left(errorMessage);
+    } catch (e, stackTrace) {
+      Logger.error(
+        'Error inesperado resolviendo UUIDs de alumnos',
+        e,
+        stackTrace,
+      );
+      return Left('Error inesperado: ${e.toString()}');
+    }
+  }
+
   Future<Either<String, Map<String, dynamic>>> recordProfessorBeaconEntry({
     required String token,
     required String code,
@@ -242,7 +335,7 @@ class ApiService {
     String? bluetoothAddress,
   }) async {
     try {
-      final response = await _dio.post(
+      final response = await _presenceDio.post(
         '/attendance/professor-entry',
         data: {
           'code': code,
@@ -290,7 +383,7 @@ class ApiService {
       final formattedDate =
           '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
-      final response = await _dio.post(
+      final response = await _presenceDio.post(
         '/attendance/student-beacon-detections',
         data: {
           'code': code,
@@ -330,7 +423,7 @@ class ApiService {
     required String period,
   }) async {
     try {
-      final response = await _dio.post(
+      final response = await _presenceDio.post(
         '/attendance/student-beacon-bindings',
         data: {'code': code, 'groupLetter': groupLetter, 'period': period},
         options: Options(headers: {'Authorization': 'Bearer $token'}),

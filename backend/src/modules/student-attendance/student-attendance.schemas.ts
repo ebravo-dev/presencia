@@ -25,3 +25,11 @@ export const studentDeviceBindingSchema = z.object({
 });
 
 export type StudentDeviceBindingInput = z.infer<typeof studentDeviceBindingSchema>;
+
+export const studentDeviceBindingResolveSchema = z.object({
+    matriculas: z.array(
+        z.string().min(1).transform((value) => value.trim().toUpperCase())
+    ).min(1, 'At least one matricula is required'),
+});
+
+export type StudentDeviceBindingResolveInput = z.infer<typeof studentDeviceBindingResolveSchema>;

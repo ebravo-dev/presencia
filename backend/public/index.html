@@ -3,50 +3,109 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Presencia — Gestión de Beacons</title>
+  <title>Presencia Admin</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <h1>Gestión de Beacons</h1>
-    <p>Asigna un beacon BLE a cada salón</p>
+  <header class="topbar">
+    <div>
+      <h1>Presencia Admin</h1>
+      <p>Beacons de salones y vinculaciones BLE de alumnos</p>
+    </div>
+    <button id="btn-refresh" type="button">Actualizar</button>
   </header>
 
   <main>
-    <section id="form-section">
-      <h2 id="form-title">Agregar Beacon</h2>
-      <form id="beacon-form" autocomplete="off">
+    <section class="stats-grid" aria-label="Resumen">
+      <article class="stat">
+        <span class="stat-label">Salones con beacon</span>
+        <strong id="stat-beacons">0</strong>
+      </article>
+      <article class="stat">
+        <span class="stat-label">Alumnos vinculados</span>
+        <strong id="stat-bindings">0</strong>
+      </article>
+      <article class="stat">
+        <span class="stat-label">Registros BLE</span>
+        <strong id="stat-attendance">0</strong>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2 id="form-title">Registrar beacon de salón</h2>
+          <p>Un salón debe tener un UUID BLE activo para validar la entrada del profesor.</p>
+        </div>
+      </div>
+
+      <form id="beacon-form" autocomplete="off" class="beacon-form">
         <input type="hidden" id="beacon-id">
-        <div class="form-row">
-          <div class="field">
-            <label for="beacon-uuid">UUID del Beacon</label>
-            <input type="text" id="beacon-uuid" placeholder="ej: 12345678-1234-1234-1234-123456789abc" required>
-          </div>
-          <div class="field">
-            <label for="beacon-classroom">Salón</label>
-            <input type="text" id="beacon-classroom" placeholder="ej: 304" required>
-          </div>
-          <div class="field field-actions">
-            <button type="submit" id="btn-submit">Agregar</button>
-            <button type="button" id="btn-cancel" class="btn-secondary" hidden>Cancelar</button>
-          </div>
+        <label>
+          <span>Salón</span>
+          <input type="text" id="beacon-classroom" placeholder="AULA 304" required>
+        </label>
+        <label>
+          <span>UUID del beacon</span>
+          <input type="text" id="beacon-uuid" placeholder="12345678-1234-1234-1234-123456789abc" required>
+        </label>
+        <div class="form-actions">
+          <button type="submit" id="btn-submit">Guardar</button>
+          <button type="button" id="btn-cancel" class="secondary" hidden>Cancelar</button>
         </div>
       </form>
     </section>
 
-    <section id="table-section">
-      <table>
-        <thead>
-          <tr>
-            <th>UUID</th>
-            <th>Salón</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody id="beacons-body">
-          <tr><td colspan="3" class="empty">Cargando...</td></tr>
-        </tbody>
-      </table>
+    <section class="grid">
+      <article class="panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Beacons registrados</h2>
+            <p>UUIDs que las apps usan para identificar salones.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Salón</th>
+                <th>UUID</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="beacons-body">
+              <tr><td colspan="3" class="empty">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-heading split">
+          <div>
+            <h2>Alumnos vinculados</h2>
+            <p>Matrícula y UUID estable generado por la app de alumnos.</p>
+          </div>
+          <input type="search" id="student-search" placeholder="Buscar matrícula">
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Matrícula</th>
+                <th>UUID</th>
+                <th>Alumno / Grupo</th>
+                <th>Dispositivo</th>
+                <th>Actualizado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="bindings-body">
+              <tr><td colspan="6" class="empty">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
     </section>
   </main>
 

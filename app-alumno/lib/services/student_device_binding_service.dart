@@ -1,15 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../config/app_environment.dart';
 import 'local_storage_service.dart';
 
 class StudentDeviceBindingService {
-  static const String baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'https://backendapirest.149828.xyz',
+  static const String baseUrl = AppEnvironment.presenceApiBaseUrl;
+  static const Duration _timeout = Duration(
+    milliseconds: AppEnvironment.apiTimeoutMs,
   );
-
-  static const Duration _timeout = Duration(seconds: 12);
 
   Future<bool> sync(LocalStorageService storage) async {
     final matricula = storage.matricula.trim().toUpperCase();

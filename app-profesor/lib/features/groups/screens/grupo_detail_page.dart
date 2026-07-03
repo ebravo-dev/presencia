@@ -1114,11 +1114,41 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   /// Si no, permite marcar con motivo (entrada parcial).
   Future<void> _verificarBeaconYMarcarEntrada() async {
     // Buscar el UUID del beacon asignado al salón de este grupo
-    final beaconUuid = AuthStorageService().getBeaconUuidForClassroom(
+    final authStorage = AuthStorageService();
+    var beaconUuid = authStorage.getBeaconUuidForClassroom(
       widget.grupo.classroom,
     );
 
-    if (beaconUuid == null) {
+    if (beaconUuid == null || beaconUuid.isEmpty) {
+      final result = await _apiService.resolveClassroomBeacons(
+        classrooms: [widget.grupo.classroom],
+      );
+      await result.fold((_) async {}, (beacons) async {
+        if (beacons.isEmpty) return;
+
+        final existing = authStorage.getBeacons() ?? [];
+        final merged = <String, Map<String, dynamic>>{
+          for (final beacon in existing)
+            if (beacon['classroom'] != null)
+              beacon['classroom'].toString().trim().toUpperCase(): beacon,
+        };
+
+        for (final beacon in beacons) {
+          final classroom = beacon['classroom']
+              ?.toString()
+              .trim()
+              .toUpperCase();
+          if (classroom == null || classroom.isEmpty) continue;
+          merged[classroom] = beacon;
+        }
+
+        await authStorage.saveBeacons(merged.values.toList());
+        beaconUuid = beacons.first['uuid'] as String?;
+      });
+    }
+
+    final resolvedBeaconUuid = beaconUuid;
+    if (resolvedBeaconUuid == null || resolvedBeaconUuid.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1133,12 +1163,13 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       return;
     }
 
+    if (!mounted) return;
     final resultado = await showDialog<_BleDialogResult>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => _BleBeaconScanDialog(
         bleService: _bleBeaconService,
-        beaconUuid: beaconUuid,
+        beaconUuid: resolvedBeaconUuid,
         gradientColors: widget.gradientColors,
       ),
     );

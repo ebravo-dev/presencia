@@ -9,9 +9,17 @@ class ApiConstants {
     'API_BASE_URL',
     defaultValue: 'https://backendapirest.149828.xyz',
   );
+  static const String presenceApiBaseUrl = String.fromEnvironment(
+    'PRESENCIA_API_BASE_URL',
+    defaultValue: baseUrl,
+  );
   static const int timeoutDuration = int.fromEnvironment(
     'API_TIMEOUT',
     defaultValue: 30000,
+  );
+  static const int presenceTimeoutDuration = int.fromEnvironment(
+    'PRESENCIA_API_TIMEOUT',
+    defaultValue: timeoutDuration,
   );
   static const int uatDefaultIdCiclo = int.fromEnvironment(
     'UAT_ID_CICLO',
@@ -24,7 +32,8 @@ class ApiConstants {
 
   static void printConfig() {
     Logger.info('API Configuration:');
-    Logger.info('   baseUrl: $baseUrl');
+    Logger.info('   UAT baseUrl: $baseUrl');
+    Logger.info('   Presencia baseUrl: $presenceApiBaseUrl');
     Logger.info('   timeout: $timeoutDuration ms');
     Logger.info('   UAT cycle: $uatDefaultIdCiclo');
     Logger.info('   UAT DES: $uatDefaultIdDes');
