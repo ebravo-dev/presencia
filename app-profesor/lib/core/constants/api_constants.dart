@@ -2,12 +2,12 @@ import '../utils/utils.dart';
 
 /// API endpoints constants for the Fastify ACL backend.
 class ApiConstants {
-  // Base configuration for the backend-apirest bridge.
+  // Base configuration for the main Presencia backend.
   // For Android emulator use:
-  // --dart-define=API_BASE_URL=http://10.0.2.2:3100
+  // --dart-define=API_BASE_URL=http://10.0.2.2:3000
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://backendapirest.149828.xyz',
+    defaultValue: 'http://10.0.2.2:3000',
   );
   static const String presenceApiBaseUrl = String.fromEnvironment(
     'PRESENCIA_API_BASE_URL',
@@ -32,7 +32,7 @@ class ApiConstants {
 
   static void printConfig() {
     Logger.info('API Configuration:');
-    Logger.info('   UAT baseUrl: $baseUrl');
+    Logger.info('   Backend baseUrl: $baseUrl');
     Logger.info('   Presencia baseUrl: $presenceApiBaseUrl');
     Logger.info('   timeout: $timeoutDuration ms');
     Logger.info('   UAT cycle: $uatDefaultIdCiclo');

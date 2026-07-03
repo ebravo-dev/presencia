@@ -4,7 +4,7 @@ class AppConstants {
   static const String appVersion = '1.0.0';
 
   // Prefer ApiConstants.baseUrl (supports env override).
-  static const String baseUrl = 'https://backendapirest.149828.xyz';
+  static const String baseUrl = 'http://10.0.2.2:3000';
   static const int timeoutDuration = 30000; // 30 seconds
 
   // Database

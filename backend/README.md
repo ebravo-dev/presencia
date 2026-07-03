@@ -136,6 +136,7 @@ Variables requeridas:
 ```bash
 DATABASE_URL=postgresql://user:password@postgres-host:5432/presencia?schema=public
 REDIS_URL=redis://redis-host:6379
+BACKEND_API_REST_URL=http://backend-apirest-host:3100
 JWT_SECRET=un-secreto-largo-minimo-32-caracteres
 JWT_EXPIRES_IN=7d
 RSA_PRIVATE_KEY=clave-privada-rsa-en-base64
@@ -145,7 +146,9 @@ APP_PORT=3000
 
 Puedes partir de `.env.dokploy.example`. Al iniciar, el contenedor ejecuta
 `prisma migrate deploy` automáticamente contra `DATABASE_URL` antes de levantar
-la API. Redis se usa por BullMQ mediante `REDIS_URL`.
+la API. Redis se usa por BullMQ mediante `REDIS_URL`. Las rutas `/api/uat/*`
+se reenvían a `BACKEND_API_REST_URL`, que debe apuntar al servicio interno
+`backend-apirest`.
 
 Para generar `RSA_PRIVATE_KEY`:
 
@@ -166,6 +169,7 @@ PRESENCIA_API_BASE_URL=https://tu-dominio-de-dokploy
 |----------|-------------|---------|
 | `DATABASE_URL` | URL de PostgreSQL | `postgresql://user:pass@host:5432/db` |
 | `REDIS_URL` | URL de Redis | `redis://localhost:6379` |
+| `BACKEND_API_REST_URL` | URL interna de backend-apirest | `http://backend-apirest:3100` |
 | `JWT_SECRET` | Secreto para JWT (min 32 chars) | `tu-secreto-muy-largo` |
 | `JWT_EXPIRES_IN` | Duración del token | `7d` |
 | `RSA_PRIVATE_KEY` | Clave privada RSA (base64) | `...` |

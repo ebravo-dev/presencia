@@ -106,40 +106,31 @@ class ApiService {
   }
 
   /// Obtiene las clases asignadas al profesor autenticado
-  /// Endpoint: GET /professors/classes
-  /// Requiere JWT token en el header Authorization
+  /// Usa el backend principal como gateway hacia backend-apirest.
   /// Retorna tupla (grupos, beacons) donde beacons es la lista cruda del server
   Future<
     Either<String, ({List<Grupo> grupos, List<Map<String, dynamic>> beacons})>
   >
   getGruposProfesor(String token) async {
     try {
-      Logger.info('Obteniendo clases del profesor autenticado');
+      Logger.info('Obteniendo clases del profesor via backend principal');
 
-      final response = await _dio.get(
-        '/professors/classes',
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      final grupos = await _uatRepository.sincronizarDatos(sessionId: token);
+      final classrooms = grupos
+          .map((grupo) => grupo.classroom.trim())
+          .where((classroom) => classroom.isNotEmpty)
+          .toSet()
+          .toList();
+
+      final beaconsResult = await resolveClassroomBeacons(
+        classrooms: classrooms,
       );
+      final beacons = beaconsResult.getOrElse(() => const []);
 
-      if (response.statusCode == 200) {
-        final List<dynamic> clasesJson = response.data['data'] ?? [];
-        final grupos = clasesJson.map((json) => Grupo.fromJson(json)).toList();
-
-        final List<dynamic> beaconsJson = response.data['beacons'] ?? [];
-        final beacons = beaconsJson
-            .map((b) => Map<String, dynamic>.from(b as Map))
-            .toList();
-
-        Logger.info(
-          'Clases obtenidas: ${grupos.length}, Beacons: ${beacons.length}',
-        );
-        return Right((grupos: grupos, beacons: beacons));
-      } else {
-        final errorMessage =
-            response.data['message'] ?? 'Error al obtener clases';
-        Logger.error('Error obteniendo clases: $errorMessage');
-        return Left(errorMessage);
-      }
+      Logger.info(
+        'Clases obtenidas: ${grupos.length}, Beacons: ${beacons.length}',
+      );
+      return Right((grupos: grupos, beacons: beacons));
     } on DioException catch (e) {
       final errorMessage = _handleDioError(e);
       Logger.error('Error de conexión obteniendo clases: $errorMessage', e);
@@ -158,7 +149,7 @@ class ApiService {
     required String token,
   }) async {
     try {
-      Logger.info('Sincronizando datos UAT via backend-apirest: $email');
+      Logger.info('Sincronizando datos UAT via backend principal: $email');
       final grupos = await _uatRepository.sincronizarDatos(sessionId: token);
       return Right('${grupos.length} grupos sincronizados');
     } on DioException catch (e) {
@@ -177,7 +168,7 @@ class ApiService {
         status: 'COMPLETED',
         step: 5,
         totalSteps: 5,
-        stepDescription: 'Datos disponibles desde backend-apirest',
+        stepDescription: 'Datos disponibles desde backend principal',
         percentage: 100,
         message: 'Sincronizacion completada',
         completedAt: DateTime.now(),
@@ -194,7 +185,7 @@ class ApiService {
       'step': 5,
       'totalSteps': 5,
       'percentage': 100,
-      'message': 'Datos disponibles desde backend-apirest',
+      'message': 'Datos disponibles desde backend principal',
       'retryAvailable': false,
     });
   }
