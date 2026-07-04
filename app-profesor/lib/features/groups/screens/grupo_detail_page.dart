@@ -10,6 +10,7 @@ import '../../../shared/models/asistencia_registro.dart';
 import '../../../services/asistencia_local_service.dart';
 import '../../../services/api_service.dart';
 import '../../../services/ble_beacon_verification_service.dart';
+import '../../../services/offline_attendance_queue_service.dart';
 import '../../../core/theme/uat_colors.dart';
 
 import '../../../services/auth_storage_service.dart';
@@ -1169,7 +1170,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         _entradaVerificada = resultado.verificada;
         _motivoEntrada = resultado.motivo;
       });
-      _guardarAsistencia();
+      await _guardarAsistencia();
+      await OfflineAttendanceQueueService().syncPendingNow();
     }
   }
 

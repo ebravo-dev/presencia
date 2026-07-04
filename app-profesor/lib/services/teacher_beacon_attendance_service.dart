@@ -8,8 +8,10 @@ import 'api_service.dart';
 import 'asistencia_local_service.dart';
 import 'auth_storage_service.dart';
 import 'native_altbeacon_channel.dart';
+import 'offline_attendance_queue_service.dart';
 
 class TeacherBeaconAttendanceService {
+  static const bool _scanStudentBeaconsAfterRoomEntry = false;
   static final TeacherBeaconAttendanceService _instance =
       TeacherBeaconAttendanceService._internal();
   factory TeacherBeaconAttendanceService() => _instance;
@@ -25,6 +27,7 @@ class TeacherBeaconAttendanceService {
   String? _roomBeaconUuid;
   bool _starting = false;
   bool _professorEntryRecorded = false;
+  bool _roomEntryHandled = false;
   final Set<String> _uploadedStudentBeaconUuids = {};
   Map<String, String> _studentIdByBeaconUuid = {};
 
@@ -39,7 +42,8 @@ class TeacherBeaconAttendanceService {
       return;
     }
 
-    if (_activeGroup?.id == currentGroup.id && isScanning) {
+    if (_activeGroup?.id == currentGroup.id &&
+        (isScanning || _roomEntryHandled)) {
       return;
     }
 
@@ -62,7 +66,12 @@ class TeacherBeaconAttendanceService {
       _professorEntryRecorded = existing?.horaEntrada != null;
 
       if (_professorEntryRecorded) {
-        await _startStudentScan(currentGroup);
+        if (_scanStudentBeaconsAfterRoomEntry) {
+          await _startStudentScan(currentGroup);
+        } else {
+          _roomEntryHandled = true;
+          await _syncPendingAttendanceToPortal();
+        }
       } else {
         await _startRoomScan(currentGroup);
       }
@@ -78,8 +87,15 @@ class TeacherBeaconAttendanceService {
     _activeGroup = null;
     _roomBeaconUuid = null;
     _professorEntryRecorded = false;
+    _roomEntryHandled = false;
     _uploadedStudentBeaconUuids.clear();
     _studentIdByBeaconUuid = {};
+  }
+
+  Future<void> _stopNativeScan() async {
+    await _subscription?.cancel();
+    _subscription = null;
+    await _beacons.stopScanning();
   }
 
   Future<void> _startRoomScan(Grupo grupo) async {
@@ -100,7 +116,15 @@ class TeacherBeaconAttendanceService {
       if (match == null || _professorEntryRecorded) return;
 
       await _recordProfessorEntry(grupo, match);
-      await _startStudentScan(grupo);
+      if (_scanStudentBeaconsAfterRoomEntry) {
+        await _startStudentScan(grupo);
+      } else {
+        _roomEntryHandled = true;
+        await _stopNativeScan();
+        Logger.info(
+          '[BeaconFlow] Beacon de salón ${grupo.classroom} detectado; escaneo detenido',
+        );
+      }
     });
 
     await _beacons.startScanning(uuids: [uuid]);
@@ -173,6 +197,18 @@ class TeacherBeaconAttendanceService {
         rssi: detection.rssi,
         distance: detection.distance,
         bluetoothAddress: detection.bluetoothAddress,
+      );
+    }
+
+    await _syncPendingAttendanceToPortal();
+  }
+
+  Future<void> _syncPendingAttendanceToPortal() async {
+    final result = await OfflineAttendanceQueueService().syncPendingNow();
+    if (result.uploaded > 0 || result.failed > 0 || result.skipped > 0) {
+      Logger.info(
+        '[BeaconFlow] Subida al portal tras beacon: '
+        '${result.uploaded} subidas, ${result.failed} fallidas, ${result.skipped} omitidas',
       );
     }
   }
