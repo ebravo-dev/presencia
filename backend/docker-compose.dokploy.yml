@@ -13,7 +13,10 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       RSA_PRIVATE_KEY: ${RSA_PRIVATE_KEY:?RSA_PRIVATE_KEY is required}
       UAT_PORTAL_URL: ${UAT_PORTAL_URL:-https://administracionescolar.uat.edu.mx}
+      UAT_ID_CICLO_ESCOLAR: ${UAT_ID_CICLO_ESCOLAR:-150}
+      UAT_ID_DES: ${UAT_ID_DES:-12}
       BACKEND_API_REST_URL: ${BACKEND_API_REST_URL:?BACKEND_API_REST_URL is required}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
     ports:
       - "${APP_PORT:-3000}:3000"
     healthcheck:
