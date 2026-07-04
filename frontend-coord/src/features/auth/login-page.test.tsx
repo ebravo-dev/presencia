@@ -16,7 +16,7 @@ describe('LoginPage', () => {
     await user.type(screen.getByLabelText('Contraseña'), 'incorrecta');
     await user.click(screen.getByRole('button', { name: /entrar al panel/i }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Correo o contraseña incorrectos');
-    expect(sessionStorage.length).toBe(0);
-    expect(localStorage.length).toBe(0);
+    expect(window.sessionStorage?.length ?? 0).toBe(0);
+    expect(window.localStorage?.length ?? 0).toBe(0);
   });
 });

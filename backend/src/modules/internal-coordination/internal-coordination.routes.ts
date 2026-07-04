@@ -49,6 +49,46 @@ function parseDate(value: string | null | undefined): Date | null {
   return value ? new Date(value) : null;
 }
 
+async function attachStudentsToBindings<TBinding extends { matricula: string }>(bindings: TBinding[]) {
+  const matriculas = bindings.map((binding) => binding.matricula);
+  const students = await prisma.student.findMany({
+    where: { matricula: { in: matriculas } },
+    select: {
+      id: true,
+      matricula: true,
+      name: true,
+      group: {
+        select: {
+          code: true,
+          groupLetter: true,
+          name: true,
+          classroom: true,
+          period: true,
+          professor: {
+            select: {
+              name: true,
+              institutionalEmail: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: { name: 'asc' },
+  });
+
+  const studentsByMatricula = new Map<string, typeof students>();
+  for (const student of students) {
+    const list = studentsByMatricula.get(student.matricula) ?? [];
+    list.push(student);
+    studentsByMatricula.set(student.matricula, list);
+  }
+
+  return bindings.map((binding) => ({
+    ...binding,
+    students: studentsByMatricula.get(binding.matricula) ?? [],
+  }));
+}
+
 function substitutionInclude() {
   return {
     group: {
@@ -152,6 +192,60 @@ export async function internalCoordinationRoutes(fastify: FastifyInstance): Prom
     return reply.send({ data: beacons });
   });
 
+  fastify.get('/internal/coordination/infrastructure-summary', async (_request, reply) => {
+    const now = new Date();
+    const [beaconsCount, bindingsCount, attendanceCount, activeSubstitutionsCount, recentBindings, recentSubstitutions, recentBeacons] =
+      await Promise.all([
+        prisma.beacon.count(),
+        studentDeviceBinding.count(),
+        prisma.studentBleAttendance.count(),
+        substituteAssignment.count({
+          where: {
+            active: true,
+            AND: [
+              { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+              { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+            ],
+          },
+        }),
+        studentDeviceBinding.findMany({
+          orderBy: { updatedAt: 'desc' },
+          take: 6,
+        }),
+        substituteAssignment.findMany({
+          where: {
+            active: true,
+            AND: [
+              { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+              { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+            ],
+          },
+          include: substitutionInclude(),
+          orderBy: { updatedAt: 'desc' },
+          take: 6,
+        }),
+        prisma.beacon.findMany({
+          orderBy: { updatedAt: 'desc' },
+          take: 6,
+        }),
+      ]);
+
+    return reply.send({
+      data: {
+        counts: {
+          beacons: beaconsCount,
+          studentDeviceBindings: bindingsCount,
+          studentBleAttendances: attendanceCount,
+          activeSubstitutions: activeSubstitutionsCount,
+        },
+        recentBindings: await attachStudentsToBindings(recentBindings),
+        recentSubstitutions,
+        recentBeacons,
+      },
+      meta: { generatedAt: new Date().toISOString() },
+    });
+  });
+
   fastify.post('/internal/coordination/beacons', async (request, reply) => {
     const parsed = beaconSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -226,44 +320,8 @@ export async function internalCoordinationRoutes(fastify: FastifyInstance): Prom
       orderBy: { updatedAt: 'desc' },
       take: 500,
     });
-    const matriculas = bindings.map((binding: { matricula: string }) => binding.matricula);
-    const students = await prisma.student.findMany({
-      where: { matricula: { in: matriculas } },
-      select: {
-        id: true,
-        matricula: true,
-        name: true,
-        group: {
-          select: {
-            code: true,
-            groupLetter: true,
-            name: true,
-            classroom: true,
-            period: true,
-            professor: {
-              select: {
-                name: true,
-                institutionalEmail: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: { name: 'asc' },
-    });
-
-    const studentsByMatricula = new Map<string, typeof students>();
-    for (const student of students) {
-      const list = studentsByMatricula.get(student.matricula) ?? [];
-      list.push(student);
-      studentsByMatricula.set(student.matricula, list);
-    }
-
     return reply.send({
-      data: bindings.map((binding: { matricula: string }) => ({
-        ...binding,
-        students: studentsByMatricula.get(binding.matricula) ?? [],
-      })),
+      data: await attachStudentsToBindings(bindings),
     });
   });
 

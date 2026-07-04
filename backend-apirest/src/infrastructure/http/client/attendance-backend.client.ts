@@ -55,6 +55,10 @@ export class AttendanceBackendClient {
     return this.request(() => this.http.get('/internal/coordination/beacons'));
   }
 
+  async getInfrastructureSummary() {
+    return this.request(() => this.http.get('/internal/coordination/infrastructure-summary'));
+  }
+
   async createBeacon(input: { classroom: string; uuid: string }) {
     return this.request(() => this.http.post('/internal/coordination/beacons', input));
   }

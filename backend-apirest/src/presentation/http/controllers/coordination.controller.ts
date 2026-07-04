@@ -38,6 +38,10 @@ export class CoordinationController {
     return reply.send(await this.attendanceBackendClient.listBeacons());
   };
 
+  infrastructureSummary = async (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.send(await this.attendanceBackendClient.getInfrastructureSummary());
+  };
+
   createBeacon = async (request: FastifyRequest, reply: FastifyReply) => {
     return reply.code(201).send(await this.attendanceBackendClient.createBeacon(request.body as { classroom: string; uuid: string }));
   };

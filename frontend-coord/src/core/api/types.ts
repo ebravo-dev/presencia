@@ -100,3 +100,18 @@ export interface SubstituteAssignment {
   primaryProfessor: ProfessorOption;
   substituteProfessor: ProfessorOption;
 }
+
+export interface InfrastructureSummaryResponse {
+  data: {
+    counts: {
+      beacons: number;
+      studentDeviceBindings: number;
+      studentBleAttendances: number;
+      activeSubstitutions: number;
+    };
+    recentBindings: StudentDeviceBinding[];
+    recentSubstitutions: SubstituteAssignment[];
+    recentBeacons: Beacon[];
+  };
+  meta: { generatedAt: string };
+}

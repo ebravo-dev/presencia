@@ -39,6 +39,7 @@ export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> =
     controller.weeklyReport,
   );
 
+  fastify.get('/api/coordinacion/infraestructura/resumen', controller.infrastructureSummary);
   fastify.get('/api/coordinacion/infraestructura/beacons', controller.beacons);
   fastify.post('/api/coordinacion/infraestructura/beacons', controller.createBeacon);
   fastify.put('/api/coordinacion/infraestructura/beacons/:id', controller.updateBeacon);

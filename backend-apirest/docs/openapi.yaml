@@ -310,6 +310,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CoordinationOverviewResponse"
+  /api/coordinacion/infraestructura/resumen:
+    get:
+      tags: [Coordinacion]
+      summary: Resumen operativo de beacons, vinculaciones y sustituciones
+      responses:
+        "200":
+          description: Conteos y actividad reciente del backend de asistencia
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InfrastructureSummaryResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Error"
   /api/coordinacion/coordinaciones:
     get:
       tags: [Coordinacion]
@@ -709,6 +724,38 @@ components:
         data:
           type: array
           items: { $ref: "#/components/schemas/CoordinationSummary" }
+        meta: { $ref: "#/components/schemas/GeneratedMeta" }
+    InfrastructureSummaryResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [counts, recentBindings, recentSubstitutions, recentBeacons]
+          properties:
+            counts:
+              type: object
+              required: [beacons, studentDeviceBindings, studentBleAttendances, activeSubstitutions]
+              properties:
+                beacons: { type: integer }
+                studentDeviceBindings: { type: integer }
+                studentBleAttendances: { type: integer }
+                activeSubstitutions: { type: integer }
+            recentBindings:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            recentSubstitutions:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            recentBeacons:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
         meta: { $ref: "#/components/schemas/GeneratedMeta" }
     TeacherListResponse:
       type: object
