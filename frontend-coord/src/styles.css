@@ -1,24 +1,57 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
-:root { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1e1e20; background: #f2f3f5; color-scheme: light; font-synthesis: none; }
-.dark { color: #e8eaed; background: #111317; color-scheme: dark; }
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #1e1e20;
+  background: #f2f3f5;
+  color-scheme: light;
+  font-synthesis: none;
+  --field-border: #d4d6db;
+  --field-background: #ffffff;
+  --field-text: #1e1e20;
+  --field-placeholder: #7a8290;
+  --field-focus-border: #c8102e;
+  --field-focus-ring: rgb(200 16 46 / .10);
+  --label-text: #4b4d52;
+}
+.dark {
+  color: #e8eaed;
+  background: #111317;
+  color-scheme: dark;
+  --field-border: #2e3138;
+  --field-background: #1a1d23;
+  --field-text: #e8eaed;
+  --field-placeholder: #6b7280;
+  --label-text: #a1a5ad;
+}
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; }
 button, input, select { font: inherit; }
 ::selection { background: #c8102e; color: white; }
 
 /* --- Fields ---------------------------------------------------------------- */
-.field { width: 100%; border: 1px solid #d4d6db; border-radius: .65rem; background: white; padding: .7rem .85rem; color: #1e1e20; outline: none; transition: border-color .2s, box-shadow .2s, background .2s; }
-.field:focus { border-color: #c8102e; box-shadow: 0 0 0 3px rgb(200 16 46 / .10); }
-.dark .field { border-color: #2e3138; background: #1a1d23; color: #e8eaed; }
-.dark .field::placeholder { color: #6b7280; }
+.field { width: 100%; border: 1px solid var(--field-border); border-radius: .65rem; background: var(--field-background); padding: .7rem .85rem; color: var(--field-text); outline: none; transition: border-color .2s, box-shadow .2s, background .2s; }
+.field::placeholder { color: var(--field-placeholder); opacity: 1; }
+.field:focus { border-color: var(--field-focus-border); box-shadow: 0 0 0 3px var(--field-focus-ring); }
 .field-leading-icon { padding-left: 2.65rem !important; }
 .field-both-icons { padding-left: 2.65rem !important; padding-right: 3rem !important; }
 
 /* --- Labels ---------------------------------------------------------------- */
-.label { display: block; margin-bottom: .4rem; font-size: .78rem; font-weight: 700; color: #4b4d52; letter-spacing: .01em; }
-.dark .label { color: #a1a5ad; }
+.label { display: block; margin-bottom: .4rem; font-size: .78rem; font-weight: 700; color: var(--label-text); letter-spacing: .01em; }
+
+/* --- Theme scopes ---------------------------------------------------------- */
+.light-surface {
+  color: #172033;
+  color-scheme: light;
+  --field-border: #fecaca;
+  --field-background: rgb(254 242 242 / .35);
+  --field-text: #1e293b;
+  --field-placeholder: #64748b;
+  --label-text: #6b7280;
+}
+
+.light-surface .field:focus { --field-background: #ffffff; }
 
 /* --- Print ----------------------------------------------------------------- */
 @media print { aside, header, .no-print { display: none !important; } .lg\:pl-72 { padding-left: 0 !important; } main { padding: 0 !important; } }
