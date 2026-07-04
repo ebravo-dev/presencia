@@ -15,6 +15,8 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }
 
+const REFRESH_INTERVAL_MS = 10_000;
+
 export function InfrastructurePage() {
   const queryClient = useQueryClient();
   const [beaconEdit, setBeaconEdit] = useState<Beacon | null>(null);
@@ -28,10 +30,10 @@ export function InfrastructurePage() {
   const [notes, setNotes] = useState('');
   const debouncedStudentSearch = useDebounce(studentSearch);
 
-  const beacons = useQuery({ queryKey: ['infra', 'beacons'], queryFn: coordinationApi.beacons });
-  const bindings = useQuery({ queryKey: ['infra', 'bindings', debouncedStudentSearch], queryFn: () => coordinationApi.studentDeviceBindings({ q: debouncedStudentSearch || undefined }) });
+  const beacons = useQuery({ queryKey: ['infra', 'beacons'], queryFn: coordinationApi.beacons, refetchInterval: REFRESH_INTERVAL_MS });
+  const bindings = useQuery({ queryKey: ['infra', 'bindings', debouncedStudentSearch], queryFn: () => coordinationApi.studentDeviceBindings({ q: debouncedStudentSearch || undefined }), refetchInterval: REFRESH_INTERVAL_MS });
   const substitutionOptions = useQuery({ queryKey: ['infra', 'substitution-options'], queryFn: coordinationApi.substitutionOptions });
-  const substitutions = useQuery({ queryKey: ['infra', 'substitutions'], queryFn: coordinationApi.substituteAssignments });
+  const substitutions = useQuery({ queryKey: ['infra', 'substitutions'], queryFn: coordinationApi.substituteAssignments, refetchInterval: REFRESH_INTERVAL_MS });
 
   const resetBeaconForm = () => { setBeaconEdit(null); setClassroom(''); setUuid(''); };
   const resetSubstitutionForm = () => { setSelectedGroup(''); setSelectedSubstitute(''); setStartsAt(''); setEndsAt(''); setNotes(''); };

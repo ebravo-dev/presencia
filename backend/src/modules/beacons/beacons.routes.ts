@@ -6,6 +6,7 @@ import {
     deleteBeacon,
     findBeaconByClassroom,
     resolveBeaconsByClassrooms,
+    normalizeClassroomKey,
     beaconSchema,
     beaconUpdateSchema,
     beaconResolveSchema,
@@ -133,13 +134,17 @@ export async function beaconsRoutes(fastify: FastifyInstance) {
             });
         }
 
-        const requested = new Set(parsed.data.classrooms);
+        const requested = new Map(
+            parsed.data.classrooms.map((classroom) => [normalizeClassroomKey(classroom), classroom])
+        );
         const resolved = await resolveBeaconsByClassrooms(parsed.data.classrooms);
-        const found = new Set(resolved.map(beacon => beacon.classroom));
+        const found = new Set(resolved.map(beacon => normalizeClassroomKey(beacon.classroom)));
 
         return reply.send({
             data: resolved,
-            missing: Array.from(requested).filter(classroom => !found.has(classroom)),
+            missing: Array.from(requested.entries())
+                .filter(([classroomKey]) => !found.has(classroomKey))
+                .map(([, classroom]) => classroom),
         });
     });
 }

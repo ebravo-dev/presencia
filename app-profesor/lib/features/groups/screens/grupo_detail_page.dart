@@ -1107,21 +1107,29 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         final existing = authStorage.getBeacons() ?? [];
         final merged = <String, Map<String, dynamic>>{
           for (final beacon in existing)
-            if (beacon['classroom'] != null)
-              beacon['classroom'].toString().trim().toUpperCase(): beacon,
+            if (AuthStorageService.classroomKey(
+              beacon['classroomKey']?.toString() ??
+                  beacon['classroom']?.toString(),
+            ).isNotEmpty)
+              AuthStorageService.classroomKey(
+                beacon['classroomKey']?.toString() ??
+                    beacon['classroom']?.toString(),
+              ): beacon,
         };
 
         for (final beacon in beacons) {
-          final classroom = beacon['classroom']
-              ?.toString()
-              .trim()
-              .toUpperCase();
-          if (classroom == null || classroom.isEmpty) continue;
-          merged[classroom] = beacon;
+          final classroomKey = AuthStorageService.classroomKey(
+            beacon['classroomKey']?.toString() ??
+                beacon['classroom']?.toString(),
+          );
+          if (classroomKey.isEmpty) continue;
+          merged[classroomKey] = beacon;
         }
 
         await authStorage.saveBeacons(merged.values.toList());
-        beaconUuid = beacons.first['uuid'] as String?;
+        beaconUuid = authStorage.getBeaconUuidForClassroom(
+          widget.grupo.classroom,
+        );
       });
     }
 

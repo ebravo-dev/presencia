@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../../core/database/prisma.js';
 import { jwtService, sessionService } from '../../core/security/index.js';
+import { normalizeClassroomKey, serializeBeacon } from '../beacons/beacons.service.js';
 
 const studentDeviceBinding = (prisma as any).studentDeviceBinding;
 const substituteAssignment = (prisma as any).substituteAssignment;
@@ -62,13 +63,15 @@ type ProfessorSummary = {
 function formatGroupForApp(params: {
     group: GroupRow;
     bindingByMatricula: Map<string, string>;
+    beaconByClassroomKey?: Map<string, { id: string; uuid: string; classroom: string; classroomKey: string }>;
     isSubstitute?: boolean;
     substituteAssignmentId?: string;
     primaryProfessor?: ProfessorSummary;
 }) {
-    const { group, bindingByMatricula, isSubstitute = false, substituteAssignmentId, primaryProfessor } = params;
+    const { group, bindingByMatricula, beaconByClassroomKey, isSubstitute = false, substituteAssignmentId, primaryProfessor } = params;
     const codeMatch = group.code.match(/\.(\d+-\d+)$/);
     const groupCode = codeMatch ? codeMatch[1] : group.code;
+    const classroomKey = normalizeClassroomKey(group.classroom);
 
     return {
         id: group.id,
@@ -79,6 +82,8 @@ function formatGroupForApp(params: {
         name: group.name,
         level: group.level,
         classroom: group.classroom,
+        classroomKey,
+        classroomBeacon: beaconByClassroomKey?.get(classroomKey) ?? null,
         schedule: group.schedule,
         students: group.students.map((student, index) => ({
             id: student.id,
@@ -275,22 +280,27 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
                 bindings.map(binding => [binding.matricula, binding.attendanceUuid])
             );
 
+            // Fetch all beacons for classroom matching
+            const rawBeacons = await prisma.beacon.findMany({
+                select: { id: true, uuid: true, classroom: true },
+                orderBy: { classroom: 'asc' },
+            });
+            const beacons = rawBeacons.map(serializeBeacon);
+            const beaconByClassroomKey = new Map(
+                beacons.map((beacon) => [beacon.classroomKey, beacon])
+            );
+
             // Transform to match Flutter app expected format
             const formattedGroups = allGroups.map((group) => {
                 const assignment = assignmentByGroupId.get(group.id);
                 return formatGroupForApp({
                     group,
                     bindingByMatricula,
+                    beaconByClassroomKey,
                     isSubstitute: Boolean(assignment),
                     substituteAssignmentId: assignment?.id,
                     primaryProfessor: assignment?.primaryProfessor,
                 });
-            });
-
-            // Fetch all beacons for classroom matching
-            const beacons = await prisma.beacon.findMany({
-                select: { id: true, uuid: true, classroom: true },
-                orderBy: { classroom: 'asc' },
             });
 
             return reply.send({ data: formattedGroups, beacons, syncInProgress: false });

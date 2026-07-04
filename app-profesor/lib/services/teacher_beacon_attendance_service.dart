@@ -327,21 +327,27 @@ class TeacherBeaconAttendanceService {
         final existing = _authStorage.getBeacons() ?? [];
         final merged = <String, Map<String, dynamic>>{
           for (final beacon in existing)
-            if (beacon['classroom'] != null)
-              beacon['classroom'].toString().trim().toUpperCase(): beacon,
+            if (AuthStorageService.classroomKey(
+              beacon['classroomKey']?.toString() ??
+                  beacon['classroom']?.toString(),
+            ).isNotEmpty)
+              AuthStorageService.classroomKey(
+                beacon['classroomKey']?.toString() ??
+                    beacon['classroom']?.toString(),
+              ): beacon,
         };
 
         for (final beacon in beacons) {
-          final classroom = beacon['classroom']
-              ?.toString()
-              .trim()
-              .toUpperCase();
-          if (classroom == null || classroom.isEmpty) continue;
-          merged[classroom] = beacon;
+          final classroomKey = AuthStorageService.classroomKey(
+            beacon['classroomKey']?.toString() ??
+                beacon['classroom']?.toString(),
+          );
+          if (classroomKey.isEmpty) continue;
+          merged[classroomKey] = beacon;
         }
 
         await _authStorage.saveBeacons(merged.values.toList());
-        return beacons.first['uuid'] as String?;
+        return _authStorage.getBeaconUuidForClassroom(grupo.classroom);
       },
     );
   }

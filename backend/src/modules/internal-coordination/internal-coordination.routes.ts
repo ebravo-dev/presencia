@@ -3,6 +3,11 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { env } from '../../core/config/env.js';
 import { prisma } from '../../core/database/prisma.js';
+import {
+  findBeaconByClassroom,
+  normalizeClassroomDisplay,
+  serializeBeacon,
+} from '../beacons/beacons.service.js';
 
 const querySchema = z.object({
   professorEmail: z.string().email().transform((value) => value.toLowerCase()),
@@ -14,8 +19,8 @@ const studentDeviceBinding = (prisma as any).studentDeviceBinding;
 const substituteAssignment = (prisma as any).substituteAssignment;
 
 const beaconSchema = z.object({
-  classroom: z.string().trim().min(1),
-  uuid: z.string().trim().min(8),
+  classroom: z.string().trim().min(1).transform(normalizeClassroomDisplay),
+  uuid: z.string().trim().min(8).transform((value) => value.toLowerCase()),
 });
 
 const beaconUpdateSchema = beaconSchema.partial();
@@ -189,16 +194,17 @@ export async function internalCoordinationRoutes(fastify: FastifyInstance): Prom
 
   fastify.get('/internal/coordination/beacons', async (_request, reply) => {
     const beacons = await prisma.beacon.findMany({ orderBy: { classroom: 'asc' } });
-    return reply.send({ data: beacons });
+    return reply.send({ data: beacons.map(serializeBeacon) });
   });
 
   fastify.get('/internal/coordination/infrastructure-summary', async (_request, reply) => {
     const now = new Date();
-    const [beaconsCount, bindingsCount, attendanceCount, activeSubstitutionsCount, recentBindings, recentSubstitutions, recentBeacons] =
+    const [beaconsCount, bindingsCount, legacyAttendanceCount, beaconDetectionCount, activeSubstitutionsCount, recentBindings, recentSubstitutions, recentBeacons] =
       await Promise.all([
         prisma.beacon.count(),
         studentDeviceBinding.count(),
         prisma.studentBleAttendance.count(),
+        prisma.studentBeaconDetection.count(),
         substituteAssignment.count({
           where: {
             active: true,
@@ -235,12 +241,12 @@ export async function internalCoordinationRoutes(fastify: FastifyInstance): Prom
         counts: {
           beacons: beaconsCount,
           studentDeviceBindings: bindingsCount,
-          studentBleAttendances: attendanceCount,
+          studentBleAttendances: legacyAttendanceCount + beaconDetectionCount,
           activeSubstitutions: activeSubstitutionsCount,
         },
         recentBindings: await attachStudentsToBindings(recentBindings),
         recentSubstitutions,
-        recentBeacons,
+        recentBeacons: recentBeacons.map(serializeBeacon),
       },
       meta: { generatedAt: new Date().toISOString() },
     });
@@ -252,16 +258,14 @@ export async function internalCoordinationRoutes(fastify: FastifyInstance): Prom
       return reply.code(400).send({ error: 'VALIDATION_ERROR', details: parsed.error.flatten() });
     }
 
-    const existingClassroom = await prisma.beacon.findFirst({
-      where: { classroom: parsed.data.classroom },
-    });
+    const existingClassroom = await findBeaconByClassroom(parsed.data.classroom);
     if (existingClassroom) {
       return reply.code(409).send({ error: 'CLASSROOM_BEACON_EXISTS', message: 'Ya existe un beacon asignado a ese salón.' });
     }
 
     try {
       const beacon = await prisma.beacon.create({ data: parsed.data });
-      return reply.code(201).send({ data: beacon });
+      return reply.code(201).send({ data: serializeBeacon(beacon) });
     } catch (error: any) {
       if (error.code === 'P2002') {
         return reply.code(409).send({ error: 'BEACON_UUID_EXISTS', message: 'Ya existe un beacon con ese UUID.' });
@@ -277,12 +281,7 @@ export async function internalCoordinationRoutes(fastify: FastifyInstance): Prom
     }
 
     if (parsed.data.classroom) {
-      const existingClassroom = await prisma.beacon.findFirst({
-        where: {
-          classroom: parsed.data.classroom,
-          id: { not: request.params.id },
-        },
-      });
+      const existingClassroom = await findBeaconByClassroom(parsed.data.classroom, request.params.id);
       if (existingClassroom) {
         return reply.code(409).send({ error: 'CLASSROOM_BEACON_EXISTS', message: 'Ya existe un beacon asignado a ese salón.' });
       }
@@ -290,7 +289,7 @@ export async function internalCoordinationRoutes(fastify: FastifyInstance): Prom
 
     try {
       const beacon = await prisma.beacon.update({ where: { id: request.params.id }, data: parsed.data });
-      return reply.send({ data: beacon });
+      return reply.send({ data: serializeBeacon(beacon) });
     } catch (error: any) {
       if (error.code === 'P2025') return reply.code(404).send({ error: 'BEACON_NOT_FOUND', message: 'Beacon no encontrado.' });
       if (error.code === 'P2002') return reply.code(409).send({ error: 'BEACON_UUID_EXISTS', message: 'Ya existe un beacon con ese UUID.' });

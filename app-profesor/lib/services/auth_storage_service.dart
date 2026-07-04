@@ -247,11 +247,50 @@ class AuthStorageService {
     }
   }
 
+  static String classroomKey(String? classroom) {
+    if (classroom == null) return '';
+    return classroom.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+  }
+
+  Map<String, dynamic> _normalizeBeacon(Map<String, dynamic> beacon) {
+    final normalized = Map<String, dynamic>.from(beacon);
+    final classroom = normalized['classroom']?.toString();
+    final key = classroomKey(
+      normalized['classroomKey']?.toString() ?? classroom,
+    );
+    if (classroom != null) {
+      normalized['classroom'] = classroom.trim().toUpperCase();
+    }
+    if (key.isNotEmpty) {
+      normalized['classroomKey'] = key;
+    }
+    return normalized;
+  }
+
   Future<void> saveBeacons(List<Map<String, dynamic>> beacons) async {
     try {
-      final beaconsJson = jsonEncode(beacons);
+      final byClassroom = <String, Map<String, dynamic>>{};
+      final withoutClassroom = <Map<String, dynamic>>[];
+
+      for (final beacon in beacons) {
+        final normalized = _normalizeBeacon(beacon);
+        final key = classroomKey(
+          normalized['classroomKey']?.toString() ??
+              normalized['classroom']?.toString(),
+        );
+        if (key.isEmpty) {
+          withoutClassroom.add(normalized);
+          continue;
+        }
+        byClassroom[key] = normalized;
+      }
+
+      final normalizedBeacons = [...byClassroom.values, ...withoutClassroom];
+      final beaconsJson = jsonEncode(normalizedBeacons);
       await _box?.put(_beaconsKey, beaconsJson);
-      Logger.info('${beacons.length} configuraciones de aulas guardadas');
+      Logger.info(
+        '${normalizedBeacons.length} configuraciones de aulas guardadas',
+      );
     } catch (e, stackTrace) {
       Logger.error('Error al guardar beacons', e, stackTrace);
     }
@@ -272,12 +311,22 @@ class AuthStorageService {
   }
 
   String? getBeaconUuidForClassroom(String classroom) {
+    return getBeaconForClassroom(classroom)?['uuid'] as String?;
+  }
+
+  Map<String, dynamic>? getBeaconForClassroom(String classroom) {
     try {
       final beacons = getBeacons();
       if (beacons == null) return null;
+      final targetKey = classroomKey(classroom);
+      if (targetKey.isEmpty) return null;
+
       for (final beacon in beacons) {
-        if (beacon['classroom'] == classroom) {
-          return beacon['uuid'] as String?;
+        final beaconKey = classroomKey(
+          beacon['classroomKey']?.toString() ?? beacon['classroom']?.toString(),
+        );
+        if (beaconKey == targetKey) {
+          return beacon;
         }
       }
       return null;

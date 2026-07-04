@@ -40,6 +40,7 @@ export interface WeeklyReportResponse {
 export interface Beacon {
   id: string;
   classroom: string;
+  classroomKey?: string;
   uuid: string;
   createdAt: string;
   updatedAt: string;

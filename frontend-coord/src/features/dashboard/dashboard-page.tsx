@@ -20,9 +20,11 @@ const infrastructureCards = [
   { key: 'activeSubstitutions', label: 'Sustituciones activas', icon: ShieldCheck, accent: 'bg-orange-50 text-orange-700' },
 ] as const;
 
+const REFRESH_INTERVAL_MS = 10_000;
+
 export function DashboardPage() {
-  const overview = useQuery({ queryKey: ['coordination', 'overview'], queryFn: coordinationApi.overview });
-  const infrastructure = useQuery({ queryKey: ['coordination', 'infrastructure-summary'], queryFn: coordinationApi.infrastructureSummary });
+  const overview = useQuery({ queryKey: ['coordination', 'overview'], queryFn: coordinationApi.overview, refetchInterval: REFRESH_INTERVAL_MS });
+  const infrastructure = useQuery({ queryKey: ['coordination', 'infrastructure-summary'], queryFn: coordinationApi.infrastructureSummary, refetchInterval: REFRESH_INTERVAL_MS });
 
   if (overview.isLoading || infrastructure.isLoading) {
     return <div className="space-y-8">

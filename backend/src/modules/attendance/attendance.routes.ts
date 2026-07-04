@@ -3,6 +3,7 @@ import { prisma } from '../../core/database/prisma.js';
 import { jwtService, rsaService, sessionService } from '../../core/security/index.js';
 import { AttendanceStatus, PortalSyncStatus, SyncStatus } from '@prisma/client';
 import { uatRestSyncService } from '../uat-rest/index.js';
+import { findBeaconByClassroom } from '../beacons/beacons.service.js';
 import {
     registerAttendanceSchema,
     attendanceHistoryQuerySchema,
@@ -394,11 +395,17 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                 }
 
                 const { group, attendanceProfessorId } = resolvedGroup;
-                const classroomBeacon = await prisma.beacon.findFirst({
-                    where: { classroom: group.classroom },
-                });
+                const classroomBeacon = await findBeaconByClassroom(group.classroom);
 
-                if (classroomBeacon && normalizeUuid(classroomBeacon.uuid) !== normalizeUuid(beaconUuid)) {
+                if (!classroomBeacon) {
+                    return reply.code(409).send({
+                        statusCode: 409,
+                        error: 'Conflict',
+                        message: `No hay beacon asignado al salón ${group.classroom}`,
+                    });
+                }
+
+                if (normalizeUuid(classroomBeacon.uuid) !== normalizeUuid(beaconUuid)) {
                     return reply.code(409).send({
                         statusCode: 409,
                         error: 'Conflict',
