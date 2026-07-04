@@ -1,13 +1,18 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
-:root { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #111111; background: #f8fafc; font-synthesis: none; }
+:root { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #111111; background: #f8fafc; color-scheme: light; font-synthesis: none; }
+.dark { color: #f1f5f9; background: #0b0d10; color-scheme: dark; }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; }
 button, input, select { font: inherit; }
 ::selection { background: #c8102e; color: white; }
 .field { width: 100%; border: 1px solid #cbd5e1; border-radius: .65rem; background: white; padding: .7rem .85rem; color: #111; outline: none; transition: border-color .15s, box-shadow .15s; }
 .field:focus { border-color: #c8102e; box-shadow: 0 0 0 3px rgb(200 16 46 / .12); }
+.dark .field { border-color: #334155; background: #15181d; color: #f8fafc; }
+.dark .field::placeholder { color: #64748b; }
 .field-leading-icon { padding-left: 2.65rem !important; }
 .field-both-icons { padding-left: 2.65rem !important; padding-right: 3rem !important; }
 .label { display: block; margin-bottom: .4rem; font-size: .78rem; font-weight: 700; color: #334155; }
+.dark .label { color: #cbd5e1; }
 @media print { aside, header, .no-print { display: none !important; } .lg\:pl-72 { padding-left: 0 !important; } main { padding: 0 !important; } }

@@ -7,7 +7,7 @@ import {
   type AttendanceSourceRecord,
 } from '../../infrastructure/http/client/attendance-backend.client.js';
 
-const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday'] as const;
+const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
 type ReportDay = typeof DAYS[number];
 type CellStatus = 'TAKEN' | 'MISSING' | 'FUTURE' | 'NOT_SCHEDULED' | 'UNKNOWN_SCHEDULE';
 
@@ -46,7 +46,14 @@ export class WeeklyAttendanceReportService {
     summary.completionRate = summary.taken + summary.missing === 0 ? 0 : Math.round((summary.taken / (summary.taken + summary.missing)) * 100);
     return {
       data: {
-        availability: 'READY', teacher: { id: teacher.id, name: teacher.name, email: teacher.email },
+        availability: 'READY',
+        teacher: {
+          id: teacher.id,
+          name: teacher.name,
+          email: teacher.email,
+          institutionalCode: teacher.institutionalCode,
+          coordinations: teacher.coordinations,
+        },
         week: { start: weekStart, end: weekEnd, isoWeek: isoWeekNumber(weekStart) }, summary, rows,
       },
       meta: { generatedAt: new Date().toISOString(), timezone: 'America/Mexico_City' },
@@ -82,7 +89,14 @@ function buildCell(date: string, slot: NormalizedSlot | undefined, records: Atte
 interface NormalizedSlot { key: string; raw: string; startTime: string | null; endTime: string | null }
 function normalizeSourceSchedule(value: unknown): Record<ReportDay, NormalizedSlot[]> {
   const record = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
-  const sourceKeys: Record<ReportDay, string> = { monday: 'lunes', tuesday: 'martes', wednesday: 'miercoles', thursday: 'jueves' };
+  const sourceKeys: Record<ReportDay, string> = {
+    monday: 'lunes',
+    tuesday: 'martes',
+    wednesday: 'miercoles',
+    thursday: 'jueves',
+    friday: 'viernes',
+    saturday: 'sabado',
+  };
   return Object.fromEntries(DAYS.map((day) => {
     const raw = record[sourceKeys[day]];
     const values = typeof raw === 'string' ? raw.split(/[;\n]+/).map((item) => item.trim()).filter(Boolean) : [];
@@ -109,6 +123,6 @@ function isoWeekNumber(date: string): number {
   const value = new Date(`${date}T00:00:00.000Z`); value.setUTCDate(value.getUTCDate() + 4 - (value.getUTCDay() || 7));
   const yearStart = new Date(Date.UTC(value.getUTCFullYear(), 0, 1)); return Math.ceil((((value.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 }
-function emptyReport(teacher: { id: string; name: string; email: string | null }, start: string, end: string, availability: string) {
-  return { data: { availability, teacher, week: { start, end, isoWeek: isoWeekNumber(start) }, summary: { scheduled: 0, taken: 0, missing: 0, future: 0, unknownSchedule: 0, completionRate: 0 }, rows: [] }, meta: { generatedAt: new Date().toISOString(), timezone: 'America/Mexico_City' } };
+function emptyReport(teacher: { id: string; name: string; email: string | null; institutionalCode?: string | null; coordinations?: Array<{ id: string; externalId: string; name: string }> }, start: string, end: string, availability: string) {
+  return { data: { availability, teacher: { id: teacher.id, name: teacher.name, email: teacher.email, institutionalCode: teacher.institutionalCode ?? null, coordinations: teacher.coordinations ?? [] }, week: { start, end, isoWeek: isoWeekNumber(start) }, summary: { scheduled: 0, taken: 0, missing: 0, future: 0, unknownSchedule: 0, completionRate: 0 }, rows: [] }, meta: { generatedAt: new Date().toISOString(), timezone: 'America/Mexico_City' } };
 }

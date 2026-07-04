@@ -420,7 +420,7 @@ paths:
           schema: { type: string, format: date }
       responses:
         "200":
-          description: Matriz semanal con estados TAKEN, MISSING, FUTURE, NOT_SCHEDULED o UNKNOWN_SCHEDULE
+          description: Matriz semanal de lunes a sabado con estados TAKEN, MISSING, FUTURE, NOT_SCHEDULED o UNKNOWN_SCHEDULE
           content:
             application/json:
               schema: { $ref: "#/components/schemas/WeeklyAttendanceReport" }

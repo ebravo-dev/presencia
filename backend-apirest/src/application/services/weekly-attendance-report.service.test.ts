@@ -20,6 +20,18 @@ describe('WeeklyAttendanceReportService', () => {
     expect(report.data.rows[0]?.cells.monday.portalSyncStatus).toBe('FAILED');
     expect(report.data.rows[0]?.cells.tuesday.status).toBe('MISSING');
     expect(report.data.summary.completionRate).toBe(50);
+    expect(report.data.week.end).toBe('2020-01-11');
+  });
+
+  it('incluye viernes y sabado y deja en NOT_SCHEDULED los dias sin clase', async () => {
+    const source = { getWeeklyAttendance: async () => ({
+      id: 'p1', institutionalEmail: teacher.email, name: teacher.name,
+      groups: [{ id: 'g1', code: 'MAT-1', groupLetter: 'A', name: 'Calculo', level: 'Licenciatura', classroom: 'A1', period: '2020-1', schedule: { viernes: '09:00 - 10:00', sabado: '09:00 - 10:00' }, attendanceRecords: [{ date: '2020-01-11T00:00:00.000Z', portalSyncStatus: 'COMPLETED', portalSyncError: null, portalSyncedAt: '2020-01-11T11:00:00.000Z', createdAt: '2020-01-11T10:00:00.000Z' }] }],
+    }) } as unknown as AttendanceBackendClient;
+    const report = await new WeeklyAttendanceReportService(teacherRepository, source).getReport(teacher.id, '2020-01-06');
+    expect(report.data.rows[0]?.cells.friday.status).toBe('MISSING');
+    expect(report.data.rows[0]?.cells.saturday.status).toBe('TAKEN');
+    expect(report.data.rows[0]?.cells.monday.status).toBe('NOT_SCHEDULED');
   });
 
   it('devuelve disponibilidad explicita cuando el profesor no se ha sincronizado', async () => {
