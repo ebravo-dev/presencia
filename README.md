@@ -35,9 +35,12 @@ Compose Path: compose.coordination.yaml
 Root Directory / Base Directory: raiz del repositorio
 ```
 
-Asigna el dominio web a `frontend-coord`, puerto `8080`. Si otras aplicaciones
-consumen directamente la API, asigna tambien su dominio a `backend-apirest`,
-puerto `3100`.
+Asigna el dominio web a `frontend-coord` apuntando al puerto interno `8080`.
+La URL publica debe quedar sin puerto visible, por ejemplo
+`https://administracionuat.149828.xyz/coordinacion/`; Dokploy/Traefik se encarga
+de enrutar internamente hacia `8080`. Si otras aplicaciones consumen
+directamente la API, asigna tambien su dominio a `backend-apirest`, puerto
+interno `3100`.
 
 Ambos contenedores se conectan a la red externa `dokploy-network`, necesaria
 para que Traefik enrute los dominios y para alcanzar servicios administrados
