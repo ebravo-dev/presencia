@@ -53,21 +53,23 @@ export async function exportReportPdf(report: WeeklyReportResponse): Promise<voi
     startY: 63,
     margin: { left: 14, right: 14 },
     theme: 'grid',
-    head: [['Horario / Materia', ...days.map((day, index) => `${day.label}\n${formatDay(addDays(report.data.week.start, index))}`)]],
+    head: [['Horario / Materia', ...days.map((day, index) => `${day.label}\n${formatDay(addDays(report.data.week.start, index))}`), 'Cumpl.\nSemana']],
     body: report.data.rows.map((row) => [
       `${row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : row.rawSchedule}\n${row.subject}\nGrupo ${row.groupCode}${row.classroom ? ` · ${row.classroom}` : ''}`,
       ...days.map((day) => row.cells[day.key]?.status ?? 'NOT_SCHEDULED'),
+      formatRate(row.completionRate),
     ]),
     styles: { font: 'helvetica', fontSize: 6.5, cellPadding: 2.2, valign: 'middle', lineColor: [203, 213, 225], lineWidth: 0.2 },
     headStyles: { fillColor: [241, 245, 249], textColor: [51, 65, 85], fontStyle: 'bold', halign: 'center', minCellHeight: 12 },
     bodyStyles: { textColor: [31, 41, 55], minCellHeight: 16 },
     columnStyles: {
-      0: { cellWidth: 56, halign: 'left', fontStyle: 'bold' },
-      1: { cellWidth: 21, halign: 'center' }, 2: { cellWidth: 21, halign: 'center' }, 3: { cellWidth: 21, halign: 'center' },
-      4: { cellWidth: 21, halign: 'center' }, 5: { cellWidth: 21, halign: 'center' }, 6: { cellWidth: 21, halign: 'center' },
+      0: { cellWidth: 52, halign: 'left', fontStyle: 'bold' },
+      1: { cellWidth: 19, halign: 'center' }, 2: { cellWidth: 19, halign: 'center' }, 3: { cellWidth: 19, halign: 'center' },
+      4: { cellWidth: 19, halign: 'center' }, 5: { cellWidth: 19, halign: 'center' }, 6: { cellWidth: 19, halign: 'center' },
+      7: { cellWidth: 16, halign: 'center', fontStyle: 'bold' },
     },
     didParseCell: (data) => {
-      if (data.section === 'body' && data.column.index > 0) data.cell.text = [];
+      if (data.section === 'body' && data.column.index > 0 && data.column.index <= days.length) data.cell.text = [];
     },
     didDrawCell: (data) => drawStatusMark(doc, data, report),
   });
@@ -132,4 +134,5 @@ function addDays(value: string, amount: number) { const date = new Date(`${value
 function formatDay(value: string) { return new Date(`${value}T12:00:00Z`).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }); }
 function formatDate(value: string) { return new Date(value).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }); }
 function formatRange(start: string, end: string) { return `${formatDay(start)} – ${formatDay(end)}`; }
+function formatRate(value: number | null | undefined) { return value == null ? 'N/D' : `${value}%`; }
 function filename(report: WeeklyReportResponse) { return `asistencia-${report.data.teacher.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')}-semana-${report.data.week.isoWeek}.pdf`; }

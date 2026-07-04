@@ -19,7 +19,7 @@ describe('ReportsPage', () => {
           teacher: { id: 't1', name: 'Ada Lovelace', email: 'ada@uat.edu.mx', institutionalCode: 'FI-4829', coordinations: [{ id: 'c1', externalId: '12', name: 'Ciencias Básicas' }] },
           week: { start: '2026-06-29', end: '2026-07-04', isoWeek: 27 },
           summary: { scheduled: 2, taken: 1, missing: 1, future: 0, unknownSchedule: 0, completionRate: 50 },
-          rows: [{ id: 'r1', groupId: 'g1', groupCode: 'A', subject: 'Cálculo', classroom: 'Aula 101', educationLevel: 'Licenciatura', period: '2026-2', startTime: '07:00', endTime: '09:00', rawSchedule: '07:00 - 09:00', cells: {
+          rows: [{ id: 'r1', groupId: 'g1', groupCode: 'A', subject: 'Cálculo', classroom: 'Aula 101', educationLevel: 'Licenciatura', period: '2026-2', startTime: '07:00', endTime: '09:00', rawSchedule: '07:00 - 09:00', completionRate: 50, cells: {
             monday: cell('2026-06-29', 'TAKEN'), tuesday: cell('2026-06-30', 'NOT_SCHEDULED'), wednesday: cell('2026-07-01', 'MISSING'), thursday: cell('2026-07-02', 'NOT_SCHEDULED'), friday: cell('2026-07-03', 'NOT_SCHEDULED'), saturday: cell('2026-07-04', 'NOT_SCHEDULED'),
           } }],
         },
@@ -34,6 +34,8 @@ describe('ReportsPage', () => {
     expect(screen.getByLabelText('Asistencia registrada')).toBeInTheDocument();
     expect(screen.getByLabelText('Inasistencia')).toBeInTheDocument();
     expect(screen.getAllByLabelText('Sin clase')).toHaveLength(4);
+    expect(screen.getByText('Cumpl.')).toBeInTheDocument();
+    expect(screen.getAllByText('50%')).toHaveLength(2);
   });
 });
 

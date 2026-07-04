@@ -25,6 +25,7 @@ export interface ReportCell { date: string; status: ReportCellStatus; portalSync
 export interface ReportRow {
   id: string; groupId: string; groupCode: string; subject: string; classroom: string | null; educationLevel: string | null;
   period: string; startTime: string | null; endTime: string | null; rawSchedule: string;
+  completionRate: number | null;
   cells: Partial<Record<ReportDay, ReportCell>>;
 }
 export interface WeeklyReportResponse {

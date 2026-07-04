@@ -257,6 +257,10 @@ function DocumentPreview({ report, fallbackTeacher }: { report: WeeklyReportResp
                     <span className="mt-0.5 block text-[8px] font-normal text-slate-500">{dayDate(rows[0]?.cells[day.key], week.start, index)}</span>
                   </th>
                 ))}
+                <th className="border-b border-slate-300 px-1 py-2 text-center">
+                  <span className="block font-bold">Cumpl.</span>
+                  <span className="mt-0.5 block text-[8px] font-normal text-slate-500">Semana</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -272,6 +276,11 @@ function DocumentPreview({ report, fallbackTeacher }: { report: WeeklyReportResp
                       <ReportMark cell={row.cells[day.key]} />
                     </td>
                   ))}
+                  <td className="h-[66px] border-b border-slate-300 text-center">
+                    <span className={cn('text-xs font-black', row.completionRate == null ? 'text-slate-400' : 'text-[#C8102E]')}>
+                      {formatRate(row.completionRate)}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -347,3 +356,4 @@ function isoWeekLabel(monday: string) {
 }
 function formatDateTime(value: string) { return new Date(value).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }); }
 function dayDate(cell: ReportCell | undefined, weekStart: string, offset: number) { const value = cell?.date ?? addDays(weekStart, offset); return new Date(`${value}T12:00:00Z`).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }); }
+function formatRate(value: number | null | undefined) { return value == null ? 'N/D' : `${value}%`; }
