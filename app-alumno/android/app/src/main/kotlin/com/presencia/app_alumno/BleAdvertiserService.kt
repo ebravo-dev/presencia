@@ -61,6 +61,7 @@ class BleAdvertiserService : Service() {
     private var gattServer: BluetoothGattServer? = null
     private var prefs: SharedPreferences? = null
     private var activeUuid: String? = null
+    private var attendanceCharacteristic: BluetoothGattCharacteristic? = null
     private val advertiser by lazy {
         (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager)
             .adapter
@@ -88,6 +89,10 @@ class BleAdvertiserService : Service() {
             }
         }
 
+        override fun onServiceAdded(status: Int, service: BluetoothGattService) {
+            Log.i(TAG, "Attendance GATT service added status=$status service=${service.uuid}")
+        }
+
         override fun onCharacteristicReadRequest(
             device: BluetoothDevice,
             requestId: Int,
@@ -99,6 +104,8 @@ class BleAdvertiserService : Service() {
                 return
             }
             val bytes = activeUuid.orEmpty().toByteArray(Charsets.UTF_8)
+            characteristic.value = bytes
+            Log.i(TAG, "Professor read attendance UUID offset=$offset bytes=${bytes.size}")
             gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, bytes)
         }
 
@@ -191,14 +198,18 @@ class BleAdvertiserService : Service() {
             stopSelf()
             return
         }
+        val uuidBytes = uuid.toByteArray(Charsets.UTF_8)
+        attendanceCharacteristic = BluetoothGattCharacteristic(
+            ATTENDANCE_UUID_CHAR,
+            BluetoothGattCharacteristic.PROPERTY_READ,
+            BluetoothGattCharacteristic.PERMISSION_READ,
+        ).apply {
+            value = uuidBytes
+        }
         server.addService(
             BluetoothGattService(SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY).apply {
                 addCharacteristic(
-                    BluetoothGattCharacteristic(
-                        ATTENDANCE_UUID_CHAR,
-                        BluetoothGattCharacteristic.PROPERTY_READ,
-                        BluetoothGattCharacteristic.PERMISSION_READ,
-                    )
+                    attendanceCharacteristic
                 )
                 addCharacteristic(
                     BluetoothGattCharacteristic(
@@ -232,6 +243,7 @@ class BleAdvertiserService : Service() {
         gattServer?.close()
         gattServer = null
         activeUuid = null
+        attendanceCharacteristic = null
         onAdvertisingStateChanged?.invoke(false)
     }
 

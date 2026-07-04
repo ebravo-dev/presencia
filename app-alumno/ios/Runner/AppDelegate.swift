@@ -19,6 +19,7 @@ import UIKit
   private var pendingAdvertisementData: [String: Any]?
   private var isAdvertising = false
   private var activeAttendanceUuid: String?
+  private var attendanceUuidValue: Data?
 
   private var locationManager: CLLocationManager?
   private var activeConstraints: [String: CLBeaconIdentityConstraint] = [:]
@@ -176,6 +177,7 @@ import UIKit
   private func startBeacon(uuid: UUID, major: UInt16, minor: UInt16, measuredPower: Int8) {
     configurePeripheralManager()
     activeAttendanceUuid = uuid.uuidString
+    attendanceUuidValue = uuid.uuidString.data(using: .utf8)
     configureAttendanceGattService()
     pendingAdvertisementData = [
       CBAdvertisementDataServiceUUIDsKey: [attendanceServiceUuid],
@@ -189,6 +191,7 @@ import UIKit
     peripheralManager?.removeAllServices()
     pendingAdvertisementData = nil
     activeAttendanceUuid = nil
+    attendanceUuidValue = nil
     isAdvertising = false
     advertiserChannel?.invokeMethod("onAdvertisingStateChanged", arguments: false)
   }
@@ -200,7 +203,7 @@ import UIKit
     let uuidCharacteristic = CBMutableCharacteristic(
       type: attendanceUuidCharacteristicUuid,
       properties: [.read],
-      value: nil,
+      value: attendanceUuidValue,
       permissions: [.readable]
     )
     let confirmationCharacteristic = CBMutableCharacteristic(
@@ -426,8 +429,7 @@ extension AppDelegate: CBPeripheralManagerDelegate {
 
   func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
     guard request.characteristic.uuid == attendanceUuidCharacteristicUuid,
-          let uuid = activeAttendanceUuid,
-          let value = uuid.data(using: .utf8)
+          let value = attendanceUuidValue
     else {
       peripheral.respond(to: request, withResult: .attributeNotFound)
       return

@@ -146,21 +146,34 @@ class StudentAttendanceBlePlugin(
         val callback = object : BluetoothGattCallback() {
             override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    gatt.discoverServices()
+                    Log.i(TAG, "Connected to student candidate $address; discovering services")
+                    if (!gatt.discoverServices()) {
+                        Log.w(TAG, "Could not start service discovery for $address")
+                        closeGatt(address, gatt)
+                    }
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     closeGatt(address, gatt)
                 }
             }
 
             override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+                if (status != BluetoothGatt.GATT_SUCCESS) {
+                    Log.w(TAG, "Service discovery failed for $address with status=$status")
+                    closeGatt(address, gatt)
+                    return
+                }
                 val characteristic = gatt
                     .getService(SERVICE_UUID)
                     ?.getCharacteristic(ATTENDANCE_UUID_CHAR)
                 if (characteristic == null) {
+                    Log.w(TAG, "Attendance characteristic not found for $address")
                     closeGatt(address, gatt)
                     return
                 }
-                gatt.readCharacteristic(characteristic)
+                if (!gatt.readCharacteristic(characteristic)) {
+                    Log.w(TAG, "Could not start attendance UUID read for $address")
+                    closeGatt(address, gatt)
+                }
             }
 
             @Suppress("DEPRECATION")
@@ -179,7 +192,7 @@ class StudentAttendanceBlePlugin(
                 value: ByteArray,
                 status: Int,
             ) {
-                handleAttendanceUuid(gatt, address, result.rssi, value)
+                handleAttendanceUuid(gatt, address, result.rssi, value, status)
             }
 
             override fun onCharacteristicWrite(
@@ -204,14 +217,23 @@ class StudentAttendanceBlePlugin(
         gatt: BluetoothGatt,
         address: String,
         rssi: Int,
-        value: ByteArray,
+        value: ByteArray?,
+        status: Int = BluetoothGatt.GATT_SUCCESS,
     ) {
-        val uuid = value.toString(Charset.forName("UTF-8")).trim()
-        val normalized = normalizeUuid(uuid)
-        if (normalized.isEmpty() || !targetUuids.contains(normalized) || !handledUuids.add(normalized)) {
+        if (status != BluetoothGatt.GATT_SUCCESS || value == null) {
+            Log.w(TAG, "Attendance UUID read failed for $address status=$status valueIsNull=${value == null}")
             closeGatt(address, gatt)
             return
         }
+        val uuid = value.toString(Charset.forName("UTF-8")).trim()
+        val normalized = normalizeUuid(uuid)
+        if (normalized.isEmpty() || !targetUuids.contains(normalized) || !handledUuids.add(normalized)) {
+            Log.i(TAG, "Ignoring non-target student UUID from $address: $uuid")
+            closeGatt(address, gatt)
+            return
+        }
+
+        Log.i(TAG, "Matched student UUID from $address: $uuid")
 
         mainHandler.post {
             eventSink?.success(
@@ -227,11 +249,15 @@ class StudentAttendanceBlePlugin(
 
         val confirmation = gatt.getService(SERVICE_UUID)?.getCharacteristic(CONFIRMATION_CHAR)
         if (confirmation == null) {
+            Log.w(TAG, "Confirmation characteristic not found for $address")
             closeGatt(address, gatt)
             return
         }
         confirmation.value = "CONFIRMED".toByteArray(Charsets.UTF_8)
-        gatt.writeCharacteristic(confirmation)
+        if (!gatt.writeCharacteristic(confirmation)) {
+            Log.w(TAG, "Could not write confirmation to $address")
+            closeGatt(address, gatt)
+        }
     }
 
     private fun closeGatt(address: String, gatt: BluetoothGatt) {
