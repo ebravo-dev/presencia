@@ -13,6 +13,10 @@ const envSchema = z.object({
     .default(UAT_PORTAL_BASE_URL)
     .transform((value) => value.replace(/\/+$/, '')),
   UAT_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+  UAT_ID_CICLO_ESCOLAR: z.preprocess(
+    (value) => value === undefined || value === '' ? undefined : value,
+    z.coerce.number().int().positive().optional(),
+  ),
   UAT_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(45),
   DATABASE_URL: z
     .string()

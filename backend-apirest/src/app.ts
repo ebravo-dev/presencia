@@ -58,6 +58,7 @@ export async function buildApp() {
     subjectRepository,
     coordinationRepository,
     groupAssignmentRepository,
+    { preferredCycleId: env.UAT_ID_CICLO_ESCOLAR },
   );
   const unsubscribeSync = new SyncTeacherDataListener(eventBus, harvestTeacherData, fastify.log).register();
   const coordinationService = new CoordinationService(

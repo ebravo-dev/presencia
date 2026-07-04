@@ -462,7 +462,7 @@ export class UatPortalClient implements UatPortalClientPort {
 
     if (payload.exito === false) {
       const message = typeof payload.mensaje === 'string' ? payload.mensaje : 'El portal no devolvio datos.';
-      if (message.toLowerCase().includes('no existe')) {
+      if (isEmptyListMessage(message)) {
         return [];
       }
 
@@ -579,4 +579,13 @@ export class UatPortalClient implements UatPortalClientPort {
 
     return new UatPortalError(error instanceof Error ? error.message : fallbackMessage);
   }
+}
+
+function isEmptyListMessage(message: string): boolean {
+  const normalized = message
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  return normalized.includes('no existe') || normalized.includes('no tiene grupos asignados');
 }

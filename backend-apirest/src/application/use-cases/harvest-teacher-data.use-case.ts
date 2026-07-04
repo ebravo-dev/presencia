@@ -16,6 +16,10 @@ export interface HarvestTeacherDataResult {
   skipReason?: string;
 }
 
+export interface HarvestTeacherDataOptions {
+  preferredCycleId?: number;
+}
+
 export class HarvestTeacherDataUseCase {
   constructor(
     private readonly uatService: UatService,
@@ -23,6 +27,7 @@ export class HarvestTeacherDataUseCase {
     private readonly subjectRepository: ISubjectRepository,
     private readonly coordinationRepository: ICoordinationRepository,
     private readonly groupAssignmentRepository: IGroupAssignmentRepository,
+    private readonly options: HarvestTeacherDataOptions = {},
     private readonly mapper = new UatTeacherDataMapper(),
   ) {}
 
@@ -47,7 +52,7 @@ export class HarvestTeacherDataUseCase {
     }
 
     const cyclesResponse = await this.uatService.getCiclosEscolaresPorSesion(event.sessionId);
-    const cycles = selectHarvestCycles(cyclesResponse.data);
+    const cycles = selectHarvestCycles(cyclesResponse.data, this.options.preferredCycleId);
     const desItems = await this.discoverCoordinations(event.sessionId);
     let groupCount = 0;
 
@@ -63,6 +68,8 @@ export class HarvestTeacherDataUseCase {
           Id_Ciclo: cycle.Id_Ciclo_Escolar,
           Id_Plantilla: event.teacher.plantillaId,
         });
+        if (response.data.length === 0) continue;
+
         const schedules = await this.uatService.getHorariosPorSesion(event.sessionId, {
           Id_Ciclo_Escolar: cycle.Id_Ciclo_Escolar,
           Id_DES: des.Id_DES,
@@ -161,7 +168,12 @@ function readNumber(record: JsonRecord, keys: string[]): number | null {
   return null;
 }
 
-function selectHarvestCycles(cycles: UatCicloEscolarItem[]): UatCicloEscolarItem[] {
+function selectHarvestCycles(cycles: UatCicloEscolarItem[], preferredCycleId?: number): UatCicloEscolarItem[] {
+  if (preferredCycleId) {
+    const preferred = cycles.find((cycle) => cycle.Id_Ciclo_Escolar === preferredCycleId);
+    return [preferred ?? { Id_Ciclo_Escolar: preferredCycleId, Ciclo: String(preferredCycleId) }];
+  }
+
   const active = cycles.filter((cycle) => isTruthyFlag(cycle.Sn_Activo));
   return active.length > 0 ? active : cycles;
 }
