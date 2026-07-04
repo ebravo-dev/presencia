@@ -441,6 +441,85 @@ paths:
               schema: { $ref: "#/components/schemas/WeeklyAttendanceReport" }
         "400": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /api/uat/profesor/clases-compartidas:
+    get:
+      summary: Lista las clases no oficiales vigentes del profesor autenticado
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      responses:
+        "200":
+          description: Clases compartidas listas para integrarse con la carga oficial
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProfessorSharedClassesResponse" }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/coordinacion/clases-compartidas/opciones:
+    get:
+      tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
+      summary: Lista profesores y clases oficiales disponibles para compartir
+      responses:
+        "200": { description: Opciones de asignacion }
+  /api/coordinacion/clases-compartidas:
+    get:
+      tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
+      summary: Lista las asignaciones de clases compartidas
+      responses:
+        "200":
+          description: Asignaciones registradas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/SharedClassAssignment" }
+    post:
+      tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
+      summary: Comparte una clase oficial con otro profesor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SharedClassInput" }
+      responses:
+        "201": { description: Clase compartida }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/coordinacion/clases-compartidas/{id}:
+    put:
+      tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
+      summary: Actualiza vigencia, profesor receptor o estado
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SharedClassUpdate" }
+      responses:
+        "200": { description: Asignacion actualizada }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
+      summary: Elimina una asignacion compartida
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Asignacion eliminada }
+        "404": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     CoordinatorCookie:
@@ -763,6 +842,66 @@ components:
         coordination:
           type: object
           additionalProperties: true
+    SharedClassInput:
+      type: object
+      required: [sourceAssignmentId, assignedTeacherId]
+      properties:
+        sourceAssignmentId: { type: string }
+        assignedTeacherId: { type: string }
+        startsAt: { type: string, format: date-time, nullable: true }
+        endsAt: { type: string, format: date-time, nullable: true }
+        active: { type: boolean, default: true }
+        notes: { type: string, nullable: true, maxLength: 500 }
+    SharedClassAssignment:
+      allOf:
+        - $ref: "#/components/schemas/SharedClassInput"
+        - type: object
+          required: [id, active, createdAt, updatedAt, sourceAssignment, assignedTeacher]
+          properties:
+            id: { type: string }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+            sourceAssignment: { $ref: "#/components/schemas/GroupAssignment" }
+            assignedTeacher:
+              type: object
+              additionalProperties: true
+    SharedClassUpdate:
+      type: object
+      properties:
+        sourceAssignmentId: { type: string }
+        assignedTeacherId: { type: string }
+        startsAt: { type: string, format: date-time, nullable: true }
+        endsAt: { type: string, format: date-time, nullable: true }
+        active: { type: boolean }
+        notes: { type: string, nullable: true, maxLength: 500 }
+    ProfessorSharedClass:
+      type: object
+      required: [id, code, groupLetter, period, group, name, classroom, schedule, students, studentsCount, source, isShared, sharedAssignmentId]
+      properties:
+        id: { type: string, description: Id_Grupo de Administracion Escolar }
+        code: { type: string }
+        groupLetter: { type: string }
+        period: { type: string }
+        group: { type: string }
+        name: { type: string }
+        level: { type: string, nullable: true }
+        classroom: { type: string }
+        schedule: { type: object, additionalProperties: true }
+        students: { type: array, items: { type: object } }
+        studentsCount: { type: integer }
+        source: { type: string, enum: [SHARED] }
+        isShared: { type: boolean, enum: [true] }
+        sharedAssignmentId: { type: string }
+        primaryProfessor: { type: object, additionalProperties: true }
+    ProfessorSharedClassesResponse:
+      type: object
+      required: [source, data, fetchedAt]
+      properties:
+        source: { type: string, enum: [SHARED_CLASSES] }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/ProfessorSharedClass" }
+        fetchedAt: { type: string, format: date-time }
     CoordinationOverviewResponse:
       type: object
       required: [data, meta]
