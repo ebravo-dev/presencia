@@ -46,19 +46,19 @@ PORT=3100
 UAT_BASE_URL=https://administracionescolar.uat.edu.mx
 UAT_HTTP_TIMEOUT_MS=30000
 UAT_SESSION_TTL_MINUTES=45
-DATABASE_URL=postgresql://usuario:password@postgres:5432/presencia_coordination?schema=public
+DATABASE_URL=postgresql://<usuario>:<password>@<host-postgres>:5432/<base_de_datos>?schema=public
 DATABASE_MIGRATION_MAX_ATTEMPTS=10
 DATABASE_MIGRATION_RETRY_MS=3000
-COORDINATION_JWT_SECRET=cambia-este-secreto-de-al-menos-32-caracteres
+COORDINATION_JWT_SECRET=<secreto-jwt-de-al-menos-32-caracteres>
 COORDINATION_WEB_ORIGIN=https://tu-dominio.example
 COORDINATION_COOKIE_SECURE=true
 ATTENDANCE_BACKEND_URL=http://backend:3000
-ATTENDANCE_BACKEND_SERVICE_TOKEN=token-interno-compartido-de-al-menos-32-caracteres
-COORDINATOR_EMAIL=coordinacion@uat.edu.mx
-COORDINATOR_NAME=Coordinacion Academica
-COORDINATOR_PASSWORD=una-clave-segura-de-al-menos-12-caracteres
+ATTENDANCE_BACKEND_SERVICE_TOKEN=<token-interno-compartido>
+COORDINATOR_EMAIL=<correo-del-coordinador>
+COORDINATOR_NAME=<nombre-del-coordinador>
+COORDINATOR_PASSWORD=<definir-en-dokploy>
 # Alternativa para varias cuentas:
-COORDINATORS_JSON=[{"email":"coord1@uat.edu.mx","name":"Coordinador Uno","password":"clave-segura-123"}]
+COORDINATORS_JSON=[{"email":"<correo-1>","name":"<nombre-1>","password":"<password-1>"}]
 ```
 
 En `DATABASE_URL` usa el hostname interno del servicio PostgreSQL de Dokploy;
@@ -209,9 +209,9 @@ Provisiona o rota una cuenta de coordinación sin guardar su contraseña en el
 frontend:
 
 ```powershell
-$env:COORDINATOR_EMAIL="coordinacion@uat.edu.mx"
-$env:COORDINATOR_NAME="Coordinación Académica"
-$env:COORDINATOR_PASSWORD="una-clave-segura-de-12-caracteres"
+$env:COORDINATOR_EMAIL="<correo-del-coordinador>"
+$env:COORDINATOR_NAME="<nombre-del-coordinador>"
+$env:COORDINATOR_PASSWORD="<definir-localmente>"
 npm run coordinator:create
 ```
 

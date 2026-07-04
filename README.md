@@ -50,9 +50,9 @@ Copia las variables de `.env.example` al apartado Environment de Dokploy. Para
 el primer coordinador usa:
 
 ```env
-COORDINATOR_EMAIL=coordinacion@uat.edu.mx
-COORDINATOR_NAME=Coordinacion Academica
-COORDINATOR_PASSWORD=una-clave-segura-de-al-menos-12-caracteres
+COORDINATOR_EMAIL=<correo-del-coordinador>
+COORDINATOR_NAME=<nombre-del-coordinador>
+COORDINATOR_PASSWORD=<definir-en-dokploy>
 ```
 
 Para varios coordinadores usa `COORDINATORS_JSON`; cada despliegue realiza UPSERT
