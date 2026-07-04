@@ -20,13 +20,11 @@ export const weeklyReportQuerySchema = z.object({
   ),
 }).strict();
 
-const optionalDateTimeSchema = z.string().datetime().nullable().optional();
-
 export const sharedClassBodySchema = z.object({
   sourceAssignmentId: z.string().trim().min(1),
   assignedTeacherId: z.string().trim().min(1),
-  startsAt: optionalDateTimeSchema,
-  endsAt: optionalDateTimeSchema,
+  schoolCycleYear: z.coerce.number().int().min(2000).max(2100),
+  schoolCycleTerm: z.coerce.number().int().min(1).max(3),
   active: z.boolean().optional(),
   notes: z.string().trim().max(500).nullable().optional(),
 }).strict();

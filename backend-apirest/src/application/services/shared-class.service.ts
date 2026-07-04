@@ -10,8 +10,8 @@ import type { ITeacherRepository } from '../../domain/repositories/teacher.repos
 export interface SharedClassInput {
   sourceAssignmentId: string;
   assignedTeacherId: string;
-  startsAt?: string | null;
-  endsAt?: string | null;
+  schoolCycleYear: number;
+  schoolCycleTerm: number;
   active?: boolean;
   notes?: string | null;
 }
@@ -34,7 +34,6 @@ export class SharedClassService {
 
   async create(input: SharedClassInput) {
     await this.validateReferences(input.sourceAssignmentId, input.assignedTeacherId);
-    validateDateRange(input.startsAt, input.endsAt);
     try {
       return { data: await this.repository.create(toData(input)) };
     } catch (error) {
@@ -49,11 +48,6 @@ export class SharedClassService {
     const sourceAssignmentId = input.sourceAssignmentId ?? current.sourceAssignmentId;
     const assignedTeacherId = input.assignedTeacherId ?? current.assignedTeacherId;
     await this.validateReferences(sourceAssignmentId, assignedTeacherId);
-    validateDateRange(
-      input.startsAt === undefined ? toIso(current.startsAt) : input.startsAt,
-      input.endsAt === undefined ? toIso(current.endsAt) : input.endsAt,
-    );
-
     try {
       return { data: await this.repository.update(id, toPartialData(input)) };
     } catch (error) {
@@ -67,8 +61,8 @@ export class SharedClassService {
     }
   }
 
-  async listForAuthenticatedTeacher(identity: string) {
-    const records = await this.repository.findActiveByTeacherIdentity(identity, new Date());
+  async listForAuthenticatedTeacher(identity: string, cycle?: { year: number; term: number }) {
+    const records = await this.repository.findActiveByTeacherIdentity(identity, cycle);
     return {
       source: 'SHARED_CLASSES',
       data: records.map(toProfessorClass),
@@ -93,8 +87,8 @@ function toData(input: SharedClassInput): SharedClassAssignmentData {
   return {
     sourceAssignmentId: input.sourceAssignmentId,
     assignedTeacherId: input.assignedTeacherId,
-    startsAt: parseDate(input.startsAt),
-    endsAt: parseDate(input.endsAt),
+    schoolCycleYear: input.schoolCycleYear,
+    schoolCycleTerm: input.schoolCycleTerm,
     active: input.active ?? true,
     notes: cleanNotes(input.notes),
   };
@@ -104,8 +98,8 @@ function toPartialData(input: Partial<SharedClassInput>): Partial<SharedClassAss
   return {
     ...(input.sourceAssignmentId !== undefined ? { sourceAssignmentId: input.sourceAssignmentId } : {}),
     ...(input.assignedTeacherId !== undefined ? { assignedTeacherId: input.assignedTeacherId } : {}),
-    ...(input.startsAt !== undefined ? { startsAt: parseDate(input.startsAt) } : {}),
-    ...(input.endsAt !== undefined ? { endsAt: parseDate(input.endsAt) } : {}),
+    ...(input.schoolCycleYear !== undefined ? { schoolCycleYear: input.schoolCycleYear } : {}),
+    ...(input.schoolCycleTerm !== undefined ? { schoolCycleTerm: input.schoolCycleTerm } : {}),
     ...(input.active !== undefined ? { active: input.active } : {}),
     ...(input.notes !== undefined ? { notes: cleanNotes(input.notes) } : {}),
   };
@@ -119,7 +113,7 @@ function toProfessorClass(record: SharedClassAssignmentDetail) {
     id: source.externalGroupId,
     code: classCode,
     groupLetter,
-    period: source.schoolCycleName ?? source.period ?? source.schoolCycleExternalId,
+    period: formatCycle(record.schoolCycleYear, record.schoolCycleTerm),
     group: groupLetter ? `${classCode}-${groupLetter}` : classCode,
     name: source.subject.name,
     level: source.educationLevel,
@@ -135,26 +129,11 @@ function toProfessorClass(record: SharedClassAssignmentDetail) {
       id: source.teacher.id,
       name: source.teacher.name,
     },
-    sharingWindow: {
-      startsAt: record.startsAt,
-      endsAt: record.endsAt,
+    sharedCycle: {
+      year: record.schoolCycleYear,
+      term: record.schoolCycleTerm,
     },
   };
-}
-
-function validateDateRange(startsAt?: string | null, endsAt?: string | null) {
-  const start = parseDate(startsAt);
-  const end = parseDate(endsAt);
-  if (start && end && start > end) {
-    throw new ApiError(400, 'INVALID_DATE_RANGE', 'La fecha inicial debe ser anterior a la fecha final.');
-  }
-}
-
-function parseDate(value?: string | null): Date | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) throw new ApiError(400, 'INVALID_DATE', 'La fecha proporcionada no es valida.');
-  return date;
 }
 
 function cleanNotes(value?: string | null): string | null {
@@ -162,8 +141,9 @@ function cleanNotes(value?: string | null): string | null {
   return normalized || null;
 }
 
-function toIso(value: Date | null): string | null {
-  return value?.toISOString() ?? null;
+function formatCycle(year: number, term: number): string {
+  const season = term === 1 ? 'PRIMAVERA' : term === 2 ? 'VERANO' : 'OTONO';
+  return `${year} - ${term} ${season}`;
 }
 
 function mapPersistenceError(error: unknown): ApiError {

@@ -56,11 +56,12 @@ export class PrismaSharedClassAssignmentRepository implements ISharedClassAssign
     return record ? toDetail(record) : null;
   }
 
-  async findActiveByTeacherIdentity(identity: string, at: Date): Promise<SharedClassAssignmentDetail[]> {
+  async findActiveByTeacherIdentity(identity: string, cycle?: { year: number; term: number }): Promise<SharedClassAssignmentDetail[]> {
     const normalized = identity.trim().toLowerCase();
     const records = await this.prisma.sharedClassAssignment.findMany({
       where: {
         active: true,
+        ...(cycle ? { schoolCycleYear: cycle.year, schoolCycleTerm: cycle.term } : {}),
         assignedTeacher: {
           OR: [
             { email: { equals: normalized, mode: 'insensitive' } },
@@ -68,10 +69,6 @@ export class PrismaSharedClassAssignmentRepository implements ISharedClassAssign
             { externalId: identity.trim() },
           ],
         },
-        AND: [
-          { OR: [{ startsAt: null }, { startsAt: { lte: at } }] },
-          { OR: [{ endsAt: null }, { endsAt: { gte: at } }] },
-        ],
       },
       include: detailInclude,
       orderBy: { updatedAt: 'desc' },
@@ -84,8 +81,8 @@ export class PrismaSharedClassAssignmentRepository implements ISharedClassAssign
       data: {
         sourceAssignmentId: data.sourceAssignmentId,
         assignedTeacherId: data.assignedTeacherId,
-        startsAt: data.startsAt,
-        endsAt: data.endsAt,
+        schoolCycleYear: data.schoolCycleYear,
+        schoolCycleTerm: data.schoolCycleTerm,
         active: data.active ?? true,
         notes: data.notes,
       },
@@ -113,8 +110,8 @@ function toDetail(record: {
   id: string;
   sourceAssignmentId: string;
   assignedTeacherId: string;
-  startsAt: Date | null;
-  endsAt: Date | null;
+  schoolCycleYear: number;
+  schoolCycleTerm: number;
   active: boolean;
   notes: string | null;
   createdAt: Date;

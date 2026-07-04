@@ -117,8 +117,8 @@ export interface SharedClassAssignment {
   id: string;
   sourceAssignmentId: string;
   assignedTeacherId: string;
-  startsAt: string | null;
-  endsAt: string | null;
+  schoolCycleYear: number;
+  schoolCycleTerm: 1 | 2 | 3;
   active: boolean;
   notes: string | null;
   createdAt: string;

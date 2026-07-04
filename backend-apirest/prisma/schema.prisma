@@ -85,8 +85,8 @@ model SharedClassAssignment {
   id                 String    @id @default(cuid())
   sourceAssignmentId String
   assignedTeacherId  String
-  startsAt           DateTime?
-  endsAt             DateTime?
+  schoolCycleYear    Int
+  schoolCycleTerm    Int
   active             Boolean   @default(true)
   notes              String?
   createdAt          DateTime  @default(now())
@@ -95,8 +95,8 @@ model SharedClassAssignment {
   sourceAssignment GroupAssignment @relation(fields: [sourceAssignmentId], references: [id], onDelete: Cascade)
   assignedTeacher  Teacher         @relation("SharedClassAssignee", fields: [assignedTeacherId], references: [id], onDelete: Cascade)
 
-  @@unique([sourceAssignmentId, assignedTeacherId])
-  @@index([assignedTeacherId, active])
+  @@unique([sourceAssignmentId, assignedTeacherId, schoolCycleYear, schoolCycleTerm])
+  @@index([assignedTeacherId, schoolCycleYear, schoolCycleTerm, active])
   @@index([sourceAssignmentId])
 }
 

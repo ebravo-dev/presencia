@@ -43,13 +43,15 @@ describe('SharedClassService', () => {
     const response = await service.create({
       sourceAssignmentId: sourceAssignment.id,
       assignedTeacherId: assignedTeacher.id,
-      startsAt: '2026-07-01T00:00:00.000Z',
-      endsAt: '2026-07-31T23:59:59.000Z',
+      schoolCycleYear: 2026,
+      schoolCycleTerm: 1,
     });
 
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
       sourceAssignmentId: sourceAssignment.id,
       assignedTeacherId: assignedTeacher.id,
+      schoolCycleYear: 2026,
+      schoolCycleTerm: 1,
       active: true,
     }));
     expect(response.data.sourceAssignment.subject.name).toBe('Clase compartida');
@@ -70,6 +72,7 @@ describe('SharedClassService', () => {
       source: 'SHARED',
       isShared: true,
       sharedAssignmentId: 'shared-1',
+      period: '2026 - 1 PRIMAVERA',
     });
   });
 
@@ -78,6 +81,8 @@ describe('SharedClassService', () => {
     await expect(service.create({
       sourceAssignmentId: sourceAssignment.id,
       assignedTeacherId: owner.id,
+      schoolCycleYear: 2026,
+      schoolCycleTerm: 1,
     })).rejects.toMatchObject({ code: 'INVALID_SHARED_CLASS', statusCode: 409 });
   });
 });
@@ -106,8 +111,8 @@ function sharedAssignment(overrides: object): SharedClassAssignmentDetail {
     id: 'shared-1',
     sourceAssignmentId: sourceAssignment.id,
     assignedTeacherId: assignedTeacher.id,
-    startsAt: null,
-    endsAt: null,
+    schoolCycleYear: 2026,
+    schoolCycleTerm: 1,
     active: true,
     notes: null,
     createdAt: new Date('2026-07-04T10:00:00.000Z'),

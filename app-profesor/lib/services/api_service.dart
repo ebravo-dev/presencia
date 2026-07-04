@@ -257,6 +257,10 @@ class ApiService {
       try {
         final sharedResponse = await _presenceDio.get(
           ApiConstants.uatSharedClasses,
+          queryParameters: {
+            'year': ApiConstants.uatAcademicYear,
+            'term': ApiConstants.uatAcademicTerm,
+          },
           options: requestOptions,
         );
         sharedGroups = _dataList(sharedResponse.data)

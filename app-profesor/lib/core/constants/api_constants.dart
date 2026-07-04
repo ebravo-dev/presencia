@@ -29,6 +29,14 @@ class ApiConstants {
     'UAT_ID_DES',
     defaultValue: 12,
   );
+  static const int uatAcademicYear = int.fromEnvironment(
+    'UAT_ACADEMIC_YEAR',
+    defaultValue: 2026,
+  );
+  static const int uatAcademicTerm = int.fromEnvironment(
+    'UAT_ACADEMIC_TERM',
+    defaultValue: 1,
+  );
 
   static void printConfig() {
     Logger.info('API Configuration:');
@@ -37,6 +45,7 @@ class ApiConstants {
     Logger.info('   timeout: $timeoutDuration ms');
     Logger.info('   UAT cycle: $uatDefaultIdCiclo');
     Logger.info('   UAT DES: $uatDefaultIdDes');
+    Logger.info('   UAT academic cycle: $uatAcademicYear-$uatAcademicTerm');
   }
 
   // Main backend professor endpoints.

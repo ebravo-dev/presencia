@@ -12,8 +12,8 @@ export interface SharedClassAssignmentDetail {
   id: string;
   sourceAssignmentId: string;
   assignedTeacherId: string;
-  startsAt: Date | null;
-  endsAt: Date | null;
+  schoolCycleYear: number;
+  schoolCycleTerm: number;
   active: boolean;
   notes: string | null;
   createdAt: Date;
@@ -25,8 +25,8 @@ export interface SharedClassAssignmentDetail {
 export interface SharedClassAssignmentData {
   sourceAssignmentId: string;
   assignedTeacherId: string;
-  startsAt?: Date | null;
-  endsAt?: Date | null;
+  schoolCycleYear: number;
+  schoolCycleTerm: number;
   active?: boolean;
   notes?: string | null;
 }
@@ -40,7 +40,7 @@ export interface ISharedClassAssignmentRepository {
   listOptions(): Promise<SharedClassOptions>;
   findAll(): Promise<SharedClassAssignmentDetail[]>;
   findById(id: string): Promise<SharedClassAssignmentDetail | null>;
-  findActiveByTeacherIdentity(identity: string, at: Date): Promise<SharedClassAssignmentDetail[]>;
+  findActiveByTeacherIdentity(identity: string, cycle?: { year: number; term: number }): Promise<SharedClassAssignmentDetail[]>;
   create(data: SharedClassAssignmentData): Promise<SharedClassAssignmentDetail>;
   update(id: string, data: Partial<SharedClassAssignmentData>): Promise<SharedClassAssignmentDetail>;
   delete(id: string): Promise<boolean>;
