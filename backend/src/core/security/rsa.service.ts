@@ -48,6 +48,13 @@ export class RSAService {
         }
     }
 
+    decryptPasswordOrPlain(value: string): string {
+        const trimmed = value.trim();
+        const looksEncrypted = trimmed.length >= 80 && /^[A-Za-z0-9+/=]+$/.test(trimmed);
+        if (!looksEncrypted) return value;
+        return this.decryptPassword(trimmed);
+    }
+
     /**
      * Verify that the RSA service is properly configured
      */

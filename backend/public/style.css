@@ -45,7 +45,7 @@ main {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   margin-bottom: 16px;
 }
@@ -112,6 +112,13 @@ main {
   align-items: end;
 }
 
+.admin-form {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.4fr) minmax(220px, 1fr) repeat(2, minmax(170px, 0.75fr));
+  gap: 14px;
+  align-items: end;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -120,7 +127,8 @@ label {
   font-weight: 700;
 }
 
-input {
+input,
+select {
   width: 100%;
   height: 42px;
   border: 1px solid #cbd5e1;
@@ -131,9 +139,39 @@ input {
   font: inherit;
 }
 
-input:focus {
+input:focus,
+select:focus {
   outline: 2px solid rgba(15, 118, 110, 0.18);
   border-color: #0f766e;
+}
+
+.check-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+}
+
+.check-field input {
+  width: 18px;
+  height: 18px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  color: #065f46;
+  background: #d1fae5;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.status-pill.inactive {
+  color: #475569;
+  background: #e2e8f0;
 }
 
 button {
@@ -266,7 +304,8 @@ small,
 @media (max-width: 980px) {
   .stats-grid,
   .grid,
-  .beacon-form {
+  .beacon-form,
+  .admin-form {
     grid-template-columns: 1fr;
   }
 

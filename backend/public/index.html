@@ -29,6 +29,10 @@
         <span class="stat-label">Registros BLE</span>
         <strong id="stat-attendance">0</strong>
       </article>
+      <article class="stat">
+        <span class="stat-label">Sustituciones activas</span>
+        <strong id="stat-substitutions">0</strong>
+      </article>
     </section>
 
     <section class="panel">
@@ -52,6 +56,51 @@
         <div class="form-actions">
           <button type="submit" id="btn-submit">Guardar</button>
           <button type="button" id="btn-cancel" class="secondary" hidden>Cancelar</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2 id="substitution-form-title">Asignar profesor sustituto</h2>
+          <p>El sustituto verá la materia del titular; la asistencia local quedará registrada contra el titular.</p>
+        </div>
+      </div>
+
+      <form id="substitution-form" autocomplete="off" class="admin-form">
+        <input type="hidden" id="substitution-id">
+        <label>
+          <span>Materia / Grupo titular</span>
+          <select id="substitution-group" required>
+            <option value="">Cargando grupos...</option>
+          </select>
+        </label>
+        <label>
+          <span>Profesor sustituto</span>
+          <select id="substitution-professor" required>
+            <option value="">Cargando profesores...</option>
+          </select>
+        </label>
+        <label>
+          <span>Desde</span>
+          <input type="datetime-local" id="substitution-starts">
+        </label>
+        <label>
+          <span>Hasta</span>
+          <input type="datetime-local" id="substitution-ends">
+        </label>
+        <label>
+          <span>Notas</span>
+          <input type="text" id="substitution-notes" placeholder="Motivo o comentario">
+        </label>
+        <label class="check-field">
+          <input type="checkbox" id="substitution-active" checked>
+          <span>Activa</span>
+        </label>
+        <div class="form-actions">
+          <button type="submit" id="btn-substitution-submit">Guardar</button>
+          <button type="button" id="btn-substitution-cancel" class="secondary" hidden>Cancelar</button>
         </div>
       </form>
     </section>
@@ -106,6 +155,32 @@
           </table>
         </div>
       </article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2>Sustituciones registradas</h2>
+          <p>Asignaciones activas o programadas para profesores sustitutos.</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Materia / Grupo</th>
+              <th>Titular</th>
+              <th>Sustituto</th>
+              <th>Vigencia</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="substitutions-body">
+            <tr><td colspan="6" class="empty">Cargando...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
   </main>
 

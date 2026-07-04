@@ -2,32 +2,18 @@ import 'package:dartz/dartz.dart';
 import 'package:dio/dio.dart';
 
 import '../core/constants/api_constants.dart';
-import '../core/network/uat_dio_client.dart';
 import '../core/utils/utils.dart';
-import '../data/datasources/uat_local_datasource.dart';
-import '../data/datasources/uat_remote_datasource.dart';
-import '../data/repositories/uat_repository_impl.dart';
 import '../shared/models/grupo.dart';
 import '../shared/models/profesor.dart';
 import '../shared/models/sync_status.dart';
-import 'asistencia_local_service.dart';
-import 'auth_storage_service.dart';
 
 class ApiService {
-  late final Dio _dio;
   late final Dio _presenceDio;
-  late final UatRepositoryImpl _uatRepository;
-  final AuthStorageService _authStorage = AuthStorageService();
-  final AsistenciaLocalService _asistenciaLocal = AsistenciaLocalService();
 
   /// Callback que se dispara cuando el servidor retorna 401.
   void Function()? onSessionExpired;
 
   ApiService({this.onSessionExpired}) {
-    _dio = UatDioClient.create(
-      authStorage: _authStorage,
-      onSessionExpired: () => onSessionExpired?.call(),
-    );
     _presenceDio = Dio(
       BaseOptions(
         baseUrl: ApiConstants.presenceApiBaseUrl,
@@ -47,11 +33,14 @@ class ApiService {
       ),
     );
 
-    _uatRepository = UatRepositoryImpl(
-      remote: UatRemoteDataSource(_dio),
-      local: UatLocalDataSource(
-        authStorage: _authStorage,
-        asistenciaLocal: _asistenciaLocal,
+    _presenceDio.interceptors.add(
+      InterceptorsWrapper(
+        onError: (DioException error, ErrorInterceptorHandler handler) {
+          if (error.response?.statusCode == 401) {
+            onSessionExpired?.call();
+          }
+          handler.next(error);
+        },
       ),
     );
   }
@@ -73,21 +62,14 @@ class ApiService {
     required String password,
   }) async {
     try {
-      Logger.info('Intentando login UAT para: $email');
+      Logger.info('Intentando login contra backend principal para: $email');
 
-      final login = await _uatRepository.iniciarSesion(
-        email: email,
-        password: password,
+      final response = await _presenceDio.post(
+        ApiConstants.login,
+        data: {'institutionalEmail': email, 'encryptedPassword': password},
       );
 
-      return Right(
-        LoginResponse(
-          message: login.message,
-          profesor: login.profesor,
-          token: login.sessionId,
-          needsSync: false,
-        ),
-      );
+      return Right(LoginResponse.fromJson(response.data));
     } on DioException catch (e) {
       final errorMessage = _handleDioError(e);
       Logger.error('Error de conexion en login: $errorMessage', e);
@@ -113,19 +95,20 @@ class ApiService {
   >
   getGruposProfesor(String token) async {
     try {
-      Logger.info('Obteniendo clases del profesor via backend principal');
+      Logger.info('Obteniendo clases del profesor desde backend principal');
 
-      final grupos = await _uatRepository.sincronizarDatos(sessionId: token);
-      final classrooms = grupos
-          .map((grupo) => grupo.classroom.trim())
-          .where((classroom) => classroom.isNotEmpty)
-          .toSet()
-          .toList();
-
-      final beaconsResult = await resolveClassroomBeacons(
-        classrooms: classrooms,
+      final response = await _presenceDio.get(
+        ApiConstants.classes,
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
-      final beacons = beaconsResult.getOrElse(() => const []);
+      final data = response.data['data'] as List<dynamic>? ?? [];
+      final beaconsData = response.data['beacons'] as List<dynamic>? ?? [];
+      final grupos = data
+          .map((item) => Grupo.fromJson(Map<String, dynamic>.from(item as Map)))
+          .toList();
+      final beacons = beaconsData
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
 
       Logger.info(
         'Clases obtenidas: ${grupos.length}, Beacons: ${beacons.length}',
@@ -149,9 +132,18 @@ class ApiService {
     required String token,
   }) async {
     try {
-      Logger.info('Sincronizando datos UAT via backend principal: $email');
-      final grupos = await _uatRepository.sincronizarDatos(sessionId: token);
-      return Right('${grupos.length} grupos sincronizados');
+      Logger.info('Sincronizando datos desde backend principal: $email');
+      final response = await _presenceDio.post(
+        ApiConstants.sync,
+        data: {
+          'institutionalEmail': email,
+          'encryptedPassword': encryptedPassword,
+        },
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      return Right(
+        response.data['message']?.toString() ?? 'Sincronización iniciada',
+      );
     } on DioException catch (e) {
       final errorMessage = _handleDioError(e);
       Logger.error('Error de conexion en sincronizacion: $errorMessage', e);
@@ -202,14 +194,22 @@ class ApiService {
     bool forceUpload = false,
   }) async {
     try {
-      final response = await _uatRepository.guardarAsistenciaDirecta(
-        sessionId: token,
-        groupId: groupId ?? code,
-        date: date,
-        attendances: attendances,
+      final response = await _presenceDio.post(
+        ApiConstants.attendance,
+        data: {
+          'code': code,
+          'groupLetter': groupLetter,
+          'period': period,
+          'date':
+              '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
+          'encryptedPassword': encryptedPassword,
+          'forceUpload': forceUpload,
+          'attendances': _normalizeAttendancesForBackend(attendances),
+        },
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
 
-      return Right(response);
+      return Right(Map<String, dynamic>.from(response.data as Map));
     } on DioException catch (e) {
       final errorMessage = _handleDioError(e);
       Logger.error('Error de conexion subiendo asistencia: $errorMessage', e);
@@ -218,6 +218,28 @@ class ApiService {
       Logger.error('Error inesperado subiendo asistencia', e, stackTrace);
       return Left(_cleanException(e));
     }
+  }
+
+  List<Map<String, dynamic>> _normalizeAttendancesForBackend(
+    List<Map<String, dynamic>> attendances,
+  ) {
+    return attendances
+        .map((attendance) {
+          final rawStatus = attendance['status'];
+          final present = attendance['sn_asistencia'] == true;
+          return {
+            'studentId':
+                attendance['studentId']?.toString() ??
+                attendance['id']?.toString() ??
+                attendance['id_alumno']?.toString(),
+            'status': rawStatus?.toString() ?? (present ? 'PRESENT' : 'ABSENT'),
+          };
+        })
+        .where((attendance) {
+          final studentId = attendance['studentId']?.toString();
+          return studentId != null && studentId.isNotEmpty;
+        })
+        .toList();
   }
 
   Future<Map<String, bool>> checkSyncedRecords({

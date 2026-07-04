@@ -9,14 +9,24 @@ import {
 } from './student-attendance.schemas.js';
 
 const studentDeviceBinding = (prisma as any).studentDeviceBinding;
+const substituteAssignment = (prisma as any).substituteAssignment;
 
 export async function studentAttendanceRoutes(fastify: FastifyInstance) {
     // ── GET /api/dashboard/summary ──────────────────────────────
     fastify.get('/api/dashboard/summary', async (_request, reply) => {
-        const [beaconsCount, bindingsCount, attendanceCount, recentBindings] = await Promise.all([
+        const [beaconsCount, bindingsCount, attendanceCount, activeSubstitutionsCount, recentBindings] = await Promise.all([
             prisma.beacon.count(),
             studentDeviceBinding.count(),
             prisma.studentBleAttendance.count(),
+            substituteAssignment.count({
+                where: {
+                    active: true,
+                    AND: [
+                        { OR: [{ startsAt: null }, { startsAt: { lte: new Date() } }] },
+                        { OR: [{ endsAt: null }, { endsAt: { gte: new Date() } }] },
+                    ],
+                },
+            }),
             studentDeviceBinding.findMany({
                 orderBy: { updatedAt: 'desc' },
                 take: 8,
@@ -28,6 +38,7 @@ export async function studentAttendanceRoutes(fastify: FastifyInstance) {
                 beaconsCount,
                 bindingsCount,
                 attendanceCount,
+                activeSubstitutionsCount,
                 recentBindings,
             },
         });

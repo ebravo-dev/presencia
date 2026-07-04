@@ -26,7 +26,7 @@ export class AuthService {
      */
     async login(data: LoginRequest): Promise<AuthResponse> {
         // Decrypt password (only in memory)
-        const decryptedPassword = rsaService.decryptPassword(data.encryptedPassword);
+        const decryptedPassword = rsaService.decryptPasswordOrPlain(data.encryptedPassword);
 
         // Calculate current period
         const currentPeriod = calculateCurrentPeriod();
@@ -120,7 +120,7 @@ export class AuthService {
         encryptedPassword: string
     ): Promise<{ message: string; currentPeriod: string }> {
         console.log(`🔄 forceSync called for professor ${professorId}`);
-        const decryptedPassword = rsaService.decryptPassword(encryptedPassword);
+        const decryptedPassword = rsaService.decryptPasswordOrPlain(encryptedPassword);
         const currentPeriod = calculateCurrentPeriod();
 
         // Block sync if there are pending attendance uploads

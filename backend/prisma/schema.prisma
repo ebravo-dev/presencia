@@ -9,15 +9,17 @@ datasource db {
 }
 
 model Professor {
-  id                 String             @id @default(cuid())
-  institutionalEmail String             @unique @map("institutional_email")
-  name               String
-  lastSyncPeriod     String?            @map("last_sync_period")
-  createdAt          DateTime           @default(now()) @map("created_at")
-  updatedAt          DateTime           @updatedAt @map("updated_at")
-  attendanceRecords  AttendanceRecord[]
-  groups             Group[]
-  syncJobs           SyncJob[]
+  id                           String                 @id @default(cuid())
+  institutionalEmail           String                 @unique @map("institutional_email")
+  name                         String
+  lastSyncPeriod               String?                @map("last_sync_period")
+  createdAt                    DateTime               @default(now()) @map("created_at")
+  updatedAt                    DateTime               @updatedAt @map("updated_at")
+  attendanceRecords            AttendanceRecord[]
+  groups                       Group[]
+  syncJobs                     SyncJob[]
+  primarySubstituteAssignments SubstituteAssignment[] @relation("PrimarySubstituteAssignments")
+  substituteAssignments        SubstituteAssignment[] @relation("SubstituteAssignments")
 
   @@map("professors")
 }
@@ -37,9 +39,32 @@ model Group {
   attendanceRecords AttendanceRecord[]
   professor         Professor          @relation(fields: [professorId], references: [id], onDelete: Cascade)
   students          Student[]
+  substituteAssignments SubstituteAssignment[]
 
   @@unique([code, groupLetter, professorId, period])
   @@map("groups")
+}
+
+model SubstituteAssignment {
+  id                    String    @id @default(cuid())
+  groupId               String    @map("group_id")
+  primaryProfessorId    String    @map("primary_professor_id")
+  substituteProfessorId String    @map("substitute_professor_id")
+  startsAt              DateTime? @map("starts_at")
+  endsAt                DateTime? @map("ends_at")
+  active                Boolean   @default(true)
+  notes                 String?
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  group               Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  primaryProfessor    Professor @relation("PrimarySubstituteAssignments", fields: [primaryProfessorId], references: [id], onDelete: Cascade)
+  substituteProfessor Professor @relation("SubstituteAssignments", fields: [substituteProfessorId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, substituteProfessorId])
+  @@index([primaryProfessorId])
+  @@index([substituteProfessorId])
+  @@map("substitute_assignments")
 }
 
 model Student {

@@ -4,6 +4,8 @@
 const BEACONS_API = '/api/beacons';
 const BINDINGS_API = '/api/student-device-bindings';
 const SUMMARY_API = '/api/dashboard/summary';
+const SUBSTITUTION_OPTIONS_API = '/api/substitutions/options';
+const SUBSTITUTE_ASSIGNMENTS_API = '/api/substitute-assignments';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -18,7 +20,20 @@ const btnCancel = $('#btn-cancel');
 const btnRefresh = $('#btn-refresh');
 const formTitle = $('#form-title');
 const studentSearch = $('#student-search');
+const substitutionForm = $('#substitution-form');
+const substitutionIdField = $('#substitution-id');
+const substitutionGroupField = $('#substitution-group');
+const substitutionProfessorField = $('#substitution-professor');
+const substitutionStartsField = $('#substitution-starts');
+const substitutionEndsField = $('#substitution-ends');
+const substitutionNotesField = $('#substitution-notes');
+const substitutionActiveField = $('#substitution-active');
+const substitutionFormTitle = $('#substitution-form-title');
+const btnSubstitutionSubmit = $('#btn-substitution-submit');
+const btnSubstitutionCancel = $('#btn-substitution-cancel');
+const substitutionsBody = $('#substitutions-body');
 let searchTimer;
+let substitutionOptions = { groups: [], professors: [] };
 
 function escapeHtml(value) {
   const el = document.createElement('div');
@@ -32,6 +47,14 @@ function formatDate(value) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));
+}
+
+function formatDateTimeLocal(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset();
+  const local = new Date(date.getTime() - offset * 60000);
+  return local.toISOString().slice(0, 16);
 }
 
 function showToast(message, type = 'success') {
@@ -62,6 +85,7 @@ async function loadSummary() {
   $('#stat-beacons').textContent = data.beaconsCount ?? 0;
   $('#stat-bindings').textContent = data.bindingsCount ?? 0;
   $('#stat-attendance').textContent = data.attendanceCount ?? 0;
+  $('#stat-substitutions').textContent = data.activeSubstitutionsCount ?? 0;
 }
 
 async function loadBeacons() {
@@ -138,6 +162,97 @@ function renderBindings(bindings) {
   }).join('');
 }
 
+async function loadSubstitutionOptions() {
+  try {
+    const json = await fetchJson(SUBSTITUTION_OPTIONS_API);
+    substitutionOptions = json.data || { groups: [], professors: [] };
+    renderSubstitutionOptions();
+  } catch (error) {
+    substitutionGroupField.innerHTML = `<option value="">${escapeHtml(error.message)}</option>`;
+    substitutionProfessorField.innerHTML = '<option value="">No disponible</option>';
+  }
+}
+
+function renderSubstitutionOptions() {
+  const groups = substitutionOptions.groups || [];
+  const professors = substitutionOptions.professors || [];
+
+  substitutionGroupField.innerHTML = [
+    '<option value="">Selecciona grupo</option>',
+    ...groups.map((group) => {
+      const professor = group.professor || {};
+      const label = `${group.name} · Grupo ${group.groupLetter || '-'} · ${group.classroom || 'Sin salón'} · ${professor.name || 'Sin titular'}`;
+      return `<option value="${escapeHtml(group.id)}">${escapeHtml(label)}</option>`;
+    }),
+  ].join('');
+
+  substitutionProfessorField.innerHTML = [
+    '<option value="">Selecciona profesor</option>',
+    ...professors.map((professor) => {
+      const label = `${professor.name} · ${professor.institutionalEmail}`;
+      return `<option value="${escapeHtml(professor.id)}">${escapeHtml(label)}</option>`;
+    }),
+  ].join('');
+}
+
+async function loadSubstitutions() {
+  try {
+    const json = await fetchJson(SUBSTITUTE_ASSIGNMENTS_API);
+    renderSubstitutions(json.data || []);
+  } catch (error) {
+    substitutionsBody.innerHTML = `<tr><td colspan="6" class="empty">${escapeHtml(error.message)}</td></tr>`;
+  }
+}
+
+function renderSubstitutions(assignments) {
+  if (!assignments.length) {
+    substitutionsBody.innerHTML = '<tr><td colspan="6" class="empty">No hay sustituciones registradas</td></tr>';
+    return;
+  }
+
+  substitutionsBody.innerHTML = assignments.map((assignment) => {
+    const group = assignment.group || {};
+    const primary = assignment.primaryProfessor || {};
+    const substitute = assignment.substituteProfessor || {};
+    const activeClass = assignment.active ? '' : ' inactive';
+    const activeText = assignment.active ? 'Activa' : 'Inactiva';
+    const validity = `${formatDate(assignment.startsAt)} - ${formatDate(assignment.endsAt)}`;
+
+    return `
+      <tr>
+        <td>
+          <strong>${escapeHtml(group.name || 'Materia sin nombre')}</strong>
+          <small>${escapeHtml(group.code || '')} · Grupo ${escapeHtml(group.groupLetter || '-')} · ${escapeHtml(group.classroom || 'Sin salón')}</small>
+        </td>
+        <td>
+          <strong>${escapeHtml(primary.name || '-')}</strong>
+          <small>${escapeHtml(primary.institutionalEmail || '')}</small>
+        </td>
+        <td>
+          <strong>${escapeHtml(substitute.name || '-')}</strong>
+          <small>${escapeHtml(substitute.institutionalEmail || '')}</small>
+        </td>
+        <td>
+          ${escapeHtml(validity)}
+          ${assignment.notes ? `<small>${escapeHtml(assignment.notes)}</small>` : ''}
+        </td>
+        <td><span class="status-pill${activeClass}">${activeText}</span></td>
+        <td class="actions">
+          <button type="button" class="ghost" data-action="edit-substitution" data-id="${escapeHtml(assignment.id)}">Editar</button>
+          <button type="button" class="danger" data-action="delete-substitution" data-id="${escapeHtml(assignment.id)}">Eliminar</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  for (const button of substitutionsBody.querySelectorAll('[data-action="edit-substitution"]')) {
+    const assignment = assignments.find((item) => item.id === button.dataset.id);
+    if (assignment) {
+      button._assignment = assignment;
+    }
+  }
+}
+
 async function saveBeacon(event) {
   event.preventDefault();
   const id = idField.value;
@@ -193,6 +308,58 @@ async function deleteBinding(matricula) {
   }
 }
 
+async function saveSubstitution(event) {
+  event.preventDefault();
+
+  const id = substitutionIdField.value;
+  const body = {
+    groupId: substitutionGroupField.value,
+    substituteProfessorId: substitutionProfessorField.value,
+    startsAt: substitutionStartsField.value || null,
+    endsAt: substitutionEndsField.value || null,
+    active: substitutionActiveField.checked,
+    notes: substitutionNotesField.value.trim() || null,
+  };
+
+  try {
+    await fetchJson(id ? `${SUBSTITUTE_ASSIGNMENTS_API}/${id}` : SUBSTITUTE_ASSIGNMENTS_API, {
+      method: id ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    showToast(id ? 'Sustitución actualizada' : 'Sustitución registrada');
+    resetSubstitutionForm();
+    await refreshAll();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+function editSubstitution(assignment) {
+  substitutionIdField.value = assignment.id;
+  substitutionGroupField.value = assignment.groupId;
+  substitutionProfessorField.value = assignment.substituteProfessorId;
+  substitutionStartsField.value = formatDateTimeLocal(assignment.startsAt);
+  substitutionEndsField.value = formatDateTimeLocal(assignment.endsAt);
+  substitutionNotesField.value = assignment.notes || '';
+  substitutionActiveField.checked = Boolean(assignment.active);
+  substitutionFormTitle.textContent = 'Editar profesor sustituto';
+  btnSubstitutionSubmit.textContent = 'Actualizar';
+  btnSubstitutionCancel.hidden = false;
+  substitutionGroupField.focus();
+}
+
+async function deleteSubstitution(id) {
+  if (!confirm('¿Eliminar esta sustitución?')) return;
+  try {
+    await fetchJson(`${SUBSTITUTE_ASSIGNMENTS_API}/${id}`, { method: 'DELETE' });
+    showToast('Sustitución eliminada');
+    await refreshAll();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
 function resetForm() {
   form.reset();
   idField.value = '';
@@ -201,8 +368,23 @@ function resetForm() {
   btnCancel.hidden = true;
 }
 
+function resetSubstitutionForm() {
+  substitutionForm.reset();
+  substitutionIdField.value = '';
+  substitutionActiveField.checked = true;
+  substitutionFormTitle.textContent = 'Asignar profesor sustituto';
+  btnSubstitutionSubmit.textContent = 'Guardar';
+  btnSubstitutionCancel.hidden = true;
+}
+
 async function refreshAll() {
-  await Promise.all([loadSummary(), loadBeacons(), loadBindings()]);
+  await Promise.all([
+    loadSummary(),
+    loadBeacons(),
+    loadBindings(),
+    loadSubstitutionOptions(),
+    loadSubstitutions(),
+  ]);
 }
 
 beaconsBody.addEventListener('click', (event) => {
@@ -220,13 +402,26 @@ bindingsBody.addEventListener('click', (event) => {
   }
 });
 
+substitutionsBody.addEventListener('click', (event) => {
+  const button = event.target.closest('button');
+  if (!button) return;
+  if (button.dataset.action === 'edit-substitution') {
+    editSubstitution(button._assignment);
+  }
+  if (button.dataset.action === 'delete-substitution') {
+    deleteSubstitution(button.dataset.id);
+  }
+});
+
 studentSearch.addEventListener('input', () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(loadBindings, 250);
 });
 
 form.addEventListener('submit', saveBeacon);
+substitutionForm.addEventListener('submit', saveSubstitution);
 btnCancel.addEventListener('click', resetForm);
+btnSubstitutionCancel.addEventListener('click', resetSubstitutionForm);
 btnRefresh.addEventListener('click', refreshAll);
 
 refreshAll();

@@ -3,11 +3,96 @@ import { prisma } from '../../core/database/prisma.js';
 import { jwtService, sessionService } from '../../core/security/index.js';
 
 const studentDeviceBinding = (prisma as any).studentDeviceBinding;
+const substituteAssignment = (prisma as any).substituteAssignment;
 
 type StudentDeviceBindingRow = {
     matricula: string;
     attendanceUuid: string;
 };
+
+const groupSelect = {
+    id: true,
+    code: true,
+    groupLetter: true,
+    period: true,
+    name: true,
+    level: true,
+    classroom: true,
+    schedule: true,
+    students: {
+        select: {
+            id: true,
+            matricula: true,
+            name: true,
+            beaconUuid: true,
+        },
+        orderBy: { name: 'asc' },
+    },
+    _count: {
+        select: { students: true },
+    },
+} as const;
+
+type GroupRow = {
+    id: string;
+    code: string;
+    groupLetter: string;
+    period: string;
+    name: string;
+    level: string;
+    classroom: string;
+    schedule: unknown;
+    students: Array<{
+        id: string;
+        matricula: string;
+        name: string;
+        beaconUuid: string | null;
+    }>;
+    _count: {
+        students: number;
+    };
+};
+
+type ProfessorSummary = {
+    id: string;
+    name: string;
+    institutionalEmail: string;
+};
+
+function formatGroupForApp(params: {
+    group: GroupRow;
+    bindingByMatricula: Map<string, string>;
+    isSubstitute?: boolean;
+    substituteAssignmentId?: string;
+    primaryProfessor?: ProfessorSummary;
+}) {
+    const { group, bindingByMatricula, isSubstitute = false, substituteAssignmentId, primaryProfessor } = params;
+    const codeMatch = group.code.match(/\.(\d+-\d+)$/);
+    const groupCode = codeMatch ? codeMatch[1] : group.code;
+
+    return {
+        id: group.id,
+        code: group.code,
+        groupLetter: group.groupLetter,
+        period: group.period,
+        group: groupCode,
+        name: group.name,
+        level: group.level,
+        classroom: group.classroom,
+        schedule: group.schedule,
+        students: group.students.map((student, index) => ({
+            id: student.id,
+            matricula: student.matricula,
+            beaconUuid: bindingByMatricula.get(student.matricula) ?? student.beaconUuid,
+            name: student.name,
+            number: index + 1,
+        })),
+        studentsCount: group._count.students,
+        isSubstitute,
+        substituteAssignmentId,
+        primaryProfessor,
+    };
+}
 
 interface AuthenticatedRequest extends FastifyRequest {
     professorId?: string;
@@ -135,33 +220,49 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
 
             const groups = await prisma.group.findMany({
                 where: { professorId: request.professorId },
-                select: {
-                    id: true,
-                    code: true,
-                    groupLetter: true,
-                    period: true,
-                    name: true,
-                    level: true,
-                    classroom: true,
-                    schedule: true,
-                    students: {
+                select: groupSelect,
+                orderBy: { name: 'asc' },
+            }) as GroupRow[];
+
+            const now = new Date();
+            const substituteAssignments = await substituteAssignment.findMany({
+                where: {
+                    substituteProfessorId: request.professorId,
+                    active: true,
+                    AND: [
+                        { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+                        { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+                    ],
+                },
+                include: {
+                    group: {
+                        select: groupSelect,
+                    },
+                    primaryProfessor: {
                         select: {
                             id: true,
-                            matricula: true,
                             name: true,
-                            beaconUuid: true,
+                            institutionalEmail: true,
                         },
-                        orderBy: { name: 'asc' },
-                    },
-                    _count: {
-                        select: { students: true },
                     },
                 },
-                orderBy: { name: 'asc' },
-            });
+                orderBy: { updatedAt: 'desc' },
+            }) as Array<{
+                id: string;
+                group: GroupRow;
+                primaryProfessor: ProfessorSummary;
+            }>;
+
+            const assignmentByGroupId = new Map(
+                substituteAssignments.map((assignment) => [assignment.group.id, assignment])
+            );
+            const substituteGroups = substituteAssignments
+                .map((assignment) => assignment.group)
+                .filter((group) => !groups.some((ownedGroup) => ownedGroup.id === group.id));
+            const allGroups = [...groups, ...substituteGroups];
 
             const matriculas = Array.from(
-                new Set(groups.flatMap(group => group.students.map(student => student.matricula)))
+                new Set(allGroups.flatMap(group => group.students.map(student => student.matricula)))
             );
             const bindings = await studentDeviceBinding.findMany({
                 where: { matricula: { in: matriculas } },
@@ -175,30 +276,15 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
             );
 
             // Transform to match Flutter app expected format
-            const formattedGroups = groups.map((group) => {
-                // Extract group letter/number from code (e.g., "RC.06061.2873.5-5" -> "5-5")
-                const codeMatch = group.code.match(/\.(\d+-\d+)$/);
-                const groupCode = codeMatch ? codeMatch[1] : group.code;
-
-                return {
-                    id: group.id,
-                    code: group.code,
-                    groupLetter: group.groupLetter,
-                    period: group.period,
-                    group: groupCode, // For Flutter compatibility
-                    name: group.name,
-                    level: group.level,
-                    classroom: group.classroom,
-                    schedule: group.schedule,
-                    students: group.students.map((student, index) => ({
-                        id: student.id,
-                        matricula: student.matricula,
-                        beaconUuid: bindingByMatricula.get(student.matricula) ?? student.beaconUuid,
-                        name: student.name,
-                        number: index + 1,
-                    })),
-                    studentsCount: group._count.students,
-                };
+            const formattedGroups = allGroups.map((group) => {
+                const assignment = assignmentByGroupId.get(group.id);
+                return formatGroupForApp({
+                    group,
+                    bindingByMatricula,
+                    isSubstitute: Boolean(assignment),
+                    substituteAssignmentId: assignment?.id,
+                    primaryProfessor: assignment?.primaryProfessor,
+                });
             });
 
             // Fetch all beacons for classroom matching

@@ -39,9 +39,11 @@ class ApiConstants {
     Logger.info('   UAT DES: $uatDefaultIdDes');
   }
 
-  // Legacy auth aliases kept for screens/services that still reference them.
+  // Main backend professor endpoints.
   static const String auth = '/auth';
-  static const String login = uatSessions;
+  static const String login = '/professors/login';
+  static const String classes = '/professors/classes';
+  static const String sync = '/professors/sync';
   static const String logout = '/auth/logout';
   static const String refresh = '/auth/refresh';
   static const String validateToken = '/auth/validate';
@@ -67,9 +69,9 @@ class ApiConstants {
   static const String uatAsistenciaGuardar = '/api/uat/asistencia/guardar';
 
   // Legacy feature aliases retained only for compatibility.
-  static const String professors = '/api/uat/profesor';
+  static const String professors = '/professors';
   static const String students = '/students';
-  static const String groups = uatControlGrupos;
-  static const String attendance = uatAsistenciaGuardar;
+  static const String groups = classes;
+  static const String attendance = '/attendance';
   static const String reports = '/reports';
 }
