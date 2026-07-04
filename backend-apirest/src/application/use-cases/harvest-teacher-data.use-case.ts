@@ -4,7 +4,7 @@ import type { ICoordinationRepository } from '../../domain/repositories/coordina
 import type { IGroupAssignmentRepository } from '../../domain/repositories/group-assignment.repository.js';
 import type { ISubjectRepository } from '../../domain/repositories/subject.repository.js';
 import type { ITeacherRepository } from '../../domain/repositories/teacher.repository.js';
-import type { UatCicloEscolarItem, UatDesItem, UatNivelEducativoItem } from '../../domain/types/uat.interfaces.js';
+import type { JsonRecord, UatCicloEscolarItem, UatDesItem, UatNivelEducativoItem } from '../../domain/types/uat.interfaces.js';
 import type { UatService } from '../services/uat.service.js';
 import { UatTeacherDataMapper } from '../mappers/uat-teacher-data.mapper.js';
 
@@ -109,7 +109,10 @@ export class HarvestTeacherDataUseCase {
 
       for (const campus of campuses) {
         const items = (await this.uatService.getDesPorSesion(sessionId, level.Id_Nivel_Educativo, campus.Id_CU)).data;
-        for (const item of items) coordinations.set(item.Id_DES, { des: item, level });
+        for (const item of items) {
+          const normalized = normalizeDesItem(item);
+          if (normalized) coordinations.set(normalized.Id_DES, { des: normalized, level });
+        }
       }
     }
 
@@ -118,11 +121,44 @@ export class HarvestTeacherDataUseCase {
 }
 
 function toCoordination(item: UatDesItem): Coordination {
+  const name =
+    readString(item, ['Txt_DES', 'txt_des', 'DES', 'Txt_Nombre', 'Nombre', 'Txt_Nombre_Corto']) ??
+    `Coordinacion ${item.Id_DES}`;
+
   return {
     externalId: String(item.Id_DES),
-    name: item.Txt_DES.trim() || `Coordinacion ${item.Id_DES}`,
-    shortName: item.Txt_Nombre_Corto?.trim() || null,
+    name,
+    shortName: readString(item, ['Txt_Nombre_Corto', 'txt_nombre_corto', 'Nombre_Corto', 'shortName']),
   };
+}
+
+function normalizeDesItem(item: UatDesItem): UatDesItem | null {
+  const id = readNumber(item, ['Id_DES', 'Id_Des', 'id_des', 'idDes']);
+  if (id == null) return null;
+  return { ...item, Id_DES: id };
+}
+
+function readString(record: JsonRecord, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' || typeof value === 'number') {
+      const normalized = String(value).trim();
+      if (normalized) return normalized;
+    }
+  }
+  return null;
+}
+
+function readNumber(record: JsonRecord, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+      const parsed = Number(value.trim());
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return null;
 }
 
 function selectHarvestCycles(cycles: UatCicloEscolarItem[]): UatCicloEscolarItem[] {

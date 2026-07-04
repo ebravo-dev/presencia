@@ -21,7 +21,9 @@ export class UatTeacherDataMapper {
     schedule?: UatHorarioItem;
   }): MappedTeacherGroup {
     const coordinationExternalId = String(input.des.Id_DES);
-    const coordinationName = clean(input.des.Txt_DES) ?? `Coordinacion ${coordinationExternalId}`;
+    const coordinationName =
+      readString(input.des, ['Txt_DES', 'txt_des', 'DES', 'Txt_Nombre', 'Nombre', 'Txt_Nombre_Corto']) ??
+      `Coordinacion ${coordinationExternalId}`;
     const subjectName = readString(input.raw, ['Txt_Materia', 'Materia', 'txt_materia']) ?? 'Materia sin nombre';
     const sourceSubjectId = readString(input.raw, [
       'Id_Materia',
@@ -41,7 +43,7 @@ export class UatTeacherDataMapper {
       coordination: {
         externalId: coordinationExternalId,
         name: coordinationName,
-        shortName: clean(input.des.Txt_Nombre_Corto),
+        shortName: readString(input.des, ['Txt_Nombre_Corto', 'txt_nombre_corto', 'Nombre_Corto', 'shortName']),
       },
       subject: {
         externalId: subjectExternalId,
@@ -109,11 +111,6 @@ function readString(record: JsonRecord, keys: string[]): string | null {
     }
   }
   return null;
-}
-
-function clean(value: string | undefined): string | null {
-  const normalized = value?.trim();
-  return normalized ? normalized : null;
 }
 
 function cleanNullable(value: string | null | undefined): string | null {
