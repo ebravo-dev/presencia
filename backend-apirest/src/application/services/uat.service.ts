@@ -41,6 +41,7 @@ export class UatService {
     const now = new Date();
     const session: StoredUatSession = {
       id: randomUUID(),
+      username: credentials.username.trim().toLowerCase(),
       client,
       login,
       createdAt: now,

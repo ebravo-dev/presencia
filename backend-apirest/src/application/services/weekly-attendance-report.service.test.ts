@@ -69,6 +69,7 @@ describe('WeeklyAttendanceReportService', () => {
         assignmentDetail({ id: 'assignment-1', cycle: '2026 - 1 PRIMAVERA', subjectName: 'Calculo' }),
         assignmentDetail({ id: 'assignment-2', cycle: '2025-3', subjectName: 'Algebra' }),
       ],
+      findById: async () => null,
       upsert: async () => undefined,
       count: async () => 2,
     } as IGroupAssignmentRepository;
@@ -97,6 +98,7 @@ describe('WeeklyAttendanceReportService', () => {
         assignmentDetail({ id: 'assignment-1', cycle: '2026-2', subjectName: 'Calculo de verano' }),
         assignmentDetail({ id: 'assignment-2', cycle: '2026-3', subjectName: 'Calculo de otono' }),
       ],
+      findById: async () => null,
       upsert: async () => undefined,
       count: async () => 2,
     } as IGroupAssignmentRepository;

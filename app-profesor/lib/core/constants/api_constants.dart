@@ -60,6 +60,8 @@ class ApiConstants {
   static const String uatCatalogoCiclos = '/api/uat/catalogos/ciclos-escolares';
   static const String uatControlGrupos =
       '/api/uat/profesor/control-asistencia/grupos';
+  static const String uatSharedClasses =
+      '/api/uat/profesor/clases-compartidas';
   static const String uatControlSemanas =
       '/api/uat/profesor/control-asistencia/semanas';
   static const String uatControlAsistenciaGrupo =

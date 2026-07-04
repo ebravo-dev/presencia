@@ -1,14 +1,24 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { CoordinationService } from '../../../application/services/coordination.service.js';
 import type { WeeklyAttendanceReportService } from '../../../application/services/weekly-attendance-report.service.js';
+import type { SharedClassService, SharedClassInput } from '../../../application/services/shared-class.service.js';
 import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
-import { parseCoordinationPayload, teacherListQuerySchema, teacherParamsSchema, weeklyReportQuerySchema } from '../schemas/coordination.schemas.js';
+import {
+  parseCoordinationPayload,
+  sharedClassBodySchema,
+  sharedClassParamsSchema,
+  sharedClassUpdateBodySchema,
+  teacherListQuerySchema,
+  teacherParamsSchema,
+  weeklyReportQuerySchema,
+} from '../schemas/coordination.schemas.js';
 
 export class CoordinationController {
   constructor(
     private readonly coordinationService: CoordinationService,
     private readonly weeklyAttendanceReport: WeeklyAttendanceReportService,
     private readonly attendanceBackendClient: AttendanceBackendClient,
+    private readonly sharedClassService: SharedClassService,
   ) {}
 
   overview = async (_request: FastifyRequest, reply: FastifyReply) => {
@@ -61,6 +71,31 @@ export class CoordinationController {
 
   deleteStudentDeviceBinding = async (request: FastifyRequest<{ Params: { matricula: string } }>, reply: FastifyReply) => {
     await this.attendanceBackendClient.deleteStudentDeviceBinding(request.params.matricula);
+    return reply.code(204).send();
+  };
+
+  sharedClassOptions = async (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.send(await this.sharedClassService.listOptions());
+  };
+
+  sharedClasses = async (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.send(await this.sharedClassService.list());
+  };
+
+  createSharedClass = async (request: FastifyRequest, reply: FastifyReply) => {
+    const input = parseCoordinationPayload(sharedClassBodySchema, request.body) as SharedClassInput;
+    return reply.code(201).send(await this.sharedClassService.create(input));
+  };
+
+  updateSharedClass = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = parseCoordinationPayload(sharedClassParamsSchema, request.params);
+    const input = parseCoordinationPayload(sharedClassUpdateBodySchema, request.body) as Partial<SharedClassInput>;
+    return reply.send(await this.sharedClassService.update(id, input));
+  };
+
+  deleteSharedClass = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = parseCoordinationPayload(sharedClassParamsSchema, request.params);
+    await this.sharedClassService.delete(id);
     return reply.code(204).send();
   };
 

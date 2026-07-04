@@ -15,9 +15,18 @@ class Grupo extends Equatable {
   final String name; // Subject name from API
   final String? level;
   final List<Alumno> students;
+  @JsonKey(fromJson: _scheduleFromJson, toJson: _scheduleToJson)
   final Map<String, String?>? schedule;
   @JsonKey(defaultValue: 0)
   final int studentsCount;
+  @JsonKey(defaultValue: 'OFFICIAL')
+  final String source;
+  @JsonKey(defaultValue: false)
+  final bool isShared;
+  @JsonKey(defaultValue: false)
+  final bool isSubstitute;
+  final String? sharedAssignmentId;
+  final Map<String, dynamic>? primaryProfessor;
 
   const Grupo({
     required this.id,
@@ -31,6 +40,11 @@ class Grupo extends Equatable {
     required this.students,
     this.schedule,
     this.studentsCount = 0,
+    this.source = 'OFFICIAL',
+    this.isShared = false,
+    this.isSubstitute = false,
+    this.sharedAssignmentId,
+    this.primaryProfessor,
   });
 
   factory Grupo.fromJson(Map<String, dynamic> json) => _$GrupoFromJson(json);
@@ -50,6 +64,11 @@ class Grupo extends Equatable {
     students,
     schedule,
     studentsCount,
+    source,
+    isShared,
+    isSubstitute,
+    sharedAssignmentId,
+    primaryProfessor,
   ];
 
   // Compatibility getters
@@ -58,6 +77,29 @@ class Grupo extends Equatable {
   int get totalAlumnos => students.isNotEmpty ? students.length : studentsCount;
   String get infoCompleta => '$name - Grupo $group';
   String get aula => classroom;
+  bool get esCompartida => isShared || isSubstitute || source == 'SHARED';
+  String? get profesorTitular => primaryProfessor?['name']?.toString();
+
+  Grupo copyWith({List<Alumno>? students, int? studentsCount}) {
+    return Grupo(
+      id: id,
+      code: code,
+      groupLetter: groupLetter,
+      period: period,
+      group: group,
+      classroom: classroom,
+      name: name,
+      level: level,
+      students: students ?? this.students,
+      schedule: schedule,
+      studentsCount: studentsCount ?? this.studentsCount,
+      source: source,
+      isShared: isShared,
+      isSubstitute: isSubstitute,
+      sharedAssignmentId: sharedAssignmentId,
+      primaryProfessor: primaryProfessor,
+    );
+  }
 
   /// Extrae solo la letra del grupo del string `group` (ej: "RC.06061.2873.5-5-M" -> "M")
   /// Usar `groupLetter` (campo del servidor) cuando esté disponible.
@@ -224,4 +266,28 @@ class Grupo extends Equatable {
     weekdays.sort();
     return weekdays;
   }
+}
+
+Map<String, String?>? _scheduleFromJson(Object? value) {
+  if (value is! Map) return null;
+  return value.map((key, rawValue) => MapEntry(key.toString(), _scheduleValue(rawValue)));
+}
+
+Map<String, String?>? _scheduleToJson(Map<String, String?>? value) => value;
+
+String? _scheduleValue(Object? value) {
+  if (value == null) return null;
+  if (value is String) return value;
+  if (value is! List) return value.toString();
+
+  final slots = value.map((slot) {
+    if (slot is String) return slot.trim();
+    if (slot is! Map) return '';
+    final raw = slot['raw']?.toString().trim();
+    if (raw != null && raw.isNotEmpty) return raw;
+    final start = slot['startTime']?.toString();
+    final end = slot['endTime']?.toString();
+    return start != null && end != null ? '$start-$end' : '';
+  }).where((slot) => slot.isNotEmpty).toList();
+  return slots.isEmpty ? null : slots.join('; ');
 }

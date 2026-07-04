@@ -18,10 +18,13 @@ Grupo _$GrupoFromJson(Map<String, dynamic> json) => Grupo(
       students: (json['students'] as List<dynamic>)
           .map((e) => Alumno.fromJson(e as Map<String, dynamic>))
           .toList(),
-      schedule: (json['schedule'] as Map<String, dynamic>?)?.map(
-        (k, e) => MapEntry(k, e as String?),
-      ),
+      schedule: _scheduleFromJson(json['schedule']),
       studentsCount: (json['studentsCount'] as num?)?.toInt() ?? 0,
+      source: json['source'] as String? ?? 'OFFICIAL',
+      isShared: json['isShared'] as bool? ?? false,
+      isSubstitute: json['isSubstitute'] as bool? ?? false,
+      sharedAssignmentId: json['sharedAssignmentId'] as String?,
+      primaryProfessor: json['primaryProfessor'] as Map<String, dynamic>?,
     );
 
 Map<String, dynamic> _$GrupoToJson(Grupo instance) => <String, dynamic>{
@@ -34,6 +37,11 @@ Map<String, dynamic> _$GrupoToJson(Grupo instance) => <String, dynamic>{
       'name': instance.name,
       'level': instance.level,
       'students': instance.students,
-      'schedule': instance.schedule,
+      'schedule': _scheduleToJson(instance.schedule),
       'studentsCount': instance.studentsCount,
+      'source': instance.source,
+      'isShared': instance.isShared,
+      'isSubstitute': instance.isSubstitute,
+      'sharedAssignmentId': instance.sharedAssignmentId,
+      'primaryProfessor': instance.primaryProfessor,
     };

@@ -253,7 +253,37 @@ class ApiService {
         );
       }
 
-      Logger.info('Clases UAT obtenidas: ${grupos.length}');
+      var sharedGroups = <Grupo>[];
+      try {
+        final sharedResponse = await _presenceDio.get(
+          ApiConstants.uatSharedClasses,
+          options: requestOptions,
+        );
+        sharedGroups = _dataList(sharedResponse.data)
+            .map((item) => Grupo.fromJson(_asMap(item)))
+            .toList();
+      } on DioException catch (error) {
+        Logger.error('No se pudieron cargar las clases compartidas', error);
+      }
+      for (final sharedGroup in sharedGroups) {
+        final idGrupo = int.tryParse(sharedGroup.id);
+        final students = idGrupo == null
+            ? const <Alumno>[]
+            : await _loadAlumnosForGroup(
+                sessionId: sessionId,
+                idGrupo: idGrupo,
+              );
+        grupos.add(
+          sharedGroup.copyWith(
+            students: students,
+            studentsCount: students.length,
+          ),
+        );
+      }
+
+      Logger.info(
+        'Clases obtenidas: ${gruposPortal.length} oficiales y ${sharedGroups.length} compartidas',
+      );
       return Right((grupos: grupos, beacons: const <Map<String, dynamic>>[]));
     } on DioException catch (e) {
       final errorMessage = _handleDioError(e);

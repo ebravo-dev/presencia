@@ -52,15 +52,43 @@ export class PrismaGroupAssignmentRepository implements IGroupAssignmentReposito
       include: detailInclude,
       orderBy: [{ schoolCycleExternalId: 'desc' }, { subject: { name: 'asc' } }],
     });
-    return records.map((record) => ({
-      ...record,
-      schedule: (record.schedule ?? emptySchedule()) as unknown as WeeklySchedule,
-    }));
+    return records.map(toDetail);
+  }
+
+  async findById(id: string): Promise<GroupAssignmentDetail | null> {
+    const record = await this.prisma.groupAssignment.findUnique({ where: { id }, include: detailInclude });
+    return record ? toDetail(record) : null;
   }
 
   count(): Promise<number> {
     return this.prisma.groupAssignment.count();
   }
+}
+
+function toDetail(record: Parameters<typeof normalizeDetail>[0]): GroupAssignmentDetail {
+  return normalizeDetail(record);
+}
+
+function normalizeDetail(record: {
+  id: string;
+  externalGroupId: string;
+  groupCode: string | null;
+  schoolCycleExternalId: string;
+  schoolCycleName: string | null;
+  classroom: string | null;
+  educationLevel: string | null;
+  period: string | null;
+  schedule: unknown;
+  firstSeenAt: Date;
+  lastSeenAt: Date;
+  teacher: GroupAssignmentDetail['teacher'];
+  subject: GroupAssignmentDetail['subject'];
+  coordination: GroupAssignmentDetail['coordination'];
+}): GroupAssignmentDetail {
+  return {
+    ...record,
+    schedule: (record.schedule ?? emptySchedule()) as WeeklySchedule,
+  };
 }
 
 function emptySchedule(): WeeklySchedule {

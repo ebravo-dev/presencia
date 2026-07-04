@@ -275,6 +275,7 @@ function makeRepositories() {
     upsert: async (group: Group) => {
       groups.push(group);
     },
+    findById: async () => null,
     findByTeacherId: async () => [],
     count: async () => groups.length,
   };

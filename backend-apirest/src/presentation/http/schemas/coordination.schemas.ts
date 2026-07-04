@@ -20,6 +20,20 @@ export const weeklyReportQuerySchema = z.object({
   ),
 }).strict();
 
+const optionalDateTimeSchema = z.string().datetime().nullable().optional();
+
+export const sharedClassBodySchema = z.object({
+  sourceAssignmentId: z.string().trim().min(1),
+  assignedTeacherId: z.string().trim().min(1),
+  startsAt: optionalDateTimeSchema,
+  endsAt: optionalDateTimeSchema,
+  active: z.boolean().optional(),
+  notes: z.string().trim().max(500).nullable().optional(),
+}).strict();
+
+export const sharedClassUpdateBodySchema = sharedClassBodySchema.partial();
+export const sharedClassParamsSchema = z.object({ id: z.string().trim().min(1) }).strict();
+
 export function parseCoordinationPayload<TSchema extends z.ZodTypeAny>(
   schema: TSchema,
   value: unknown,

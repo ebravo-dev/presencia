@@ -80,8 +80,11 @@ export interface StudentDeviceBinding {
 
 export interface ProfessorOption {
   id: string;
+  externalId?: string;
+  institutionalCode?: string | null;
   name: string;
-  institutionalEmail: string;
+  institutionalEmail?: string;
+  email?: string | null;
 }
 
 export interface GroupOption {
@@ -108,6 +111,20 @@ export interface SubstituteAssignment {
   group: Omit<GroupOption, 'professor'> & { schedule: unknown };
   primaryProfessor: ProfessorOption;
   substituteProfessor: ProfessorOption;
+}
+
+export interface SharedClassAssignment {
+  id: string;
+  sourceAssignmentId: string;
+  assignedTeacherId: string;
+  startsAt: string | null;
+  endsAt: string | null;
+  active: boolean;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  sourceAssignment: Assignment;
+  assignedTeacher: ProfessorOption;
 }
 
 export interface InfrastructureSummaryResponse {

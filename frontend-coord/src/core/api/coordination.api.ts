@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Beacon, CoordinatorUser, GroupOption, InfrastructureSummaryResponse, OverviewResponse, ProfessorOption, StudentDeviceBinding, SubstituteAssignment, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
+import type { Assignment, Beacon, CoordinatorUser, GroupOption, InfrastructureSummaryResponse, OverviewResponse, ProfessorOption, SharedClassAssignment, StudentDeviceBinding, SubstituteAssignment, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
 
 export const coordinationApi = {
   login: async (input: { email: string; password: string }) => (await api.post<{ data: { user: CoordinatorUser; expiresAt: string } }>('/coordinacion/auth/login', input)).data,
@@ -21,4 +21,9 @@ export const coordinationApi = {
   createSubstituteAssignment: async (input: { groupId: string; substituteProfessorId: string; startsAt?: string | null; endsAt?: string | null; active?: boolean; notes?: string | null }) => (await api.post<{ data: SubstituteAssignment }>('/coordinacion/infraestructura/sustituciones', input)).data,
   updateSubstituteAssignment: async (id: string, input: Partial<{ groupId: string; substituteProfessorId: string; startsAt: string | null; endsAt: string | null; active: boolean; notes: string | null }>) => (await api.put<{ data: SubstituteAssignment }>(`/coordinacion/infraestructura/sustituciones/${id}`, input)).data,
   deleteSubstituteAssignment: async (id: string) => { await api.delete(`/coordinacion/infraestructura/sustituciones/${id}`); },
+  sharedClassOptions: async () => (await api.get<{ data: { teachers: ProfessorOption[]; assignments: Assignment[] } }>('/coordinacion/clases-compartidas/opciones')).data,
+  sharedClasses: async () => (await api.get<{ data: SharedClassAssignment[] }>('/coordinacion/clases-compartidas')).data,
+  createSharedClass: async (input: { sourceAssignmentId: string; assignedTeacherId: string; startsAt?: string | null; endsAt?: string | null; active?: boolean; notes?: string | null }) => (await api.post<{ data: SharedClassAssignment }>('/coordinacion/clases-compartidas', input)).data,
+  updateSharedClass: async (id: string, input: Partial<{ sourceAssignmentId: string; assignedTeacherId: string; startsAt: string | null; endsAt: string | null; active: boolean; notes: string | null }>) => (await api.put<{ data: SharedClassAssignment }>(`/coordinacion/clases-compartidas/${id}`, input)).data,
+  deleteSharedClass: async (id: string) => { await api.delete(`/coordinacion/clases-compartidas/${id}`); },
 };

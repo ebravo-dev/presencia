@@ -33,6 +33,7 @@ model Teacher {
   updatedAt           DateTime  @updatedAt
 
   assignments GroupAssignment[]
+  sharedClassAssignments SharedClassAssignment[] @relation("SharedClassAssignee")
 
   @@index([name])
   @@index([institutionalCode])
@@ -73,10 +74,30 @@ model GroupAssignment {
   teacher      Teacher      @relation(fields: [teacherId], references: [id], onDelete: Restrict)
   subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Restrict)
   coordination Coordination @relation(fields: [coordinationId], references: [id], onDelete: Restrict)
+  sharedAssignments SharedClassAssignment[]
 
   @@index([teacherId])
   @@index([subjectId])
   @@index([coordinationId, schoolCycleExternalId])
+}
+
+model SharedClassAssignment {
+  id                 String    @id @default(cuid())
+  sourceAssignmentId String
+  assignedTeacherId  String
+  startsAt           DateTime?
+  endsAt             DateTime?
+  active             Boolean   @default(true)
+  notes              String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  sourceAssignment GroupAssignment @relation(fields: [sourceAssignmentId], references: [id], onDelete: Cascade)
+  assignedTeacher  Teacher         @relation("SharedClassAssignee", fields: [assignedTeacherId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceAssignmentId, assignedTeacherId])
+  @@index([assignedTeacherId, active])
+  @@index([sourceAssignmentId])
 }
 
 model CoordinatorUser {
