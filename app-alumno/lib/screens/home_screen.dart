@@ -73,18 +73,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _advState = widget.bleService.currentState;
     _sessionState = widget.attendanceSession.currentState;
     _statusText = _textForSession(_sessionState);
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        widget.attendanceSession.start();
-      }
-    });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      widget.attendanceSession.start();
+    if (state == AppLifecycleState.paused && _isActive) {
+      widget.bleService.stopAdvertising();
     }
   }
 
@@ -200,9 +194,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _toggleAttendance() async {
     if (_isActive || _isChecking) {
-      await widget.attendanceSession.stop();
+      await widget.bleService.stopAdvertising();
     } else {
-      await widget.attendanceSession.start();
+      await widget.bleService.startAdvertising(
+        uuid: widget.storage.attendanceUuid,
+      );
     }
   }
 
@@ -258,7 +254,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   String get _helpTitle {
     if (_isConfirmed) return 'Listo';
-    if (_isActive) return 'Mantén la app abierta';
+    if (_isActive) return 'Acerca tu celular al profesor';
     if (_isChecking) return 'Validación en curso';
     if (_bluetoothOff) return 'Bluetooth requerido';
     if (_hasError) return 'Permisos necesarios';
@@ -270,7 +266,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return 'Tu asistencia fue registrada por el profesor.';
     }
     if (_isActive) {
-      return 'Cuando el profesor pase lista, este celular podrá ser reconocido automáticamente.';
+      return 'Cuando el profesor escanee alumnos, se conectará a tu celular y verás la confirmación aquí.';
     }
     if (_isChecking) {
       return 'Estamos confirmando tu clase antes de activar la asistencia.';
@@ -281,7 +277,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_hasError) {
       return 'Revisa los permisos de la app y vuelve a activar la asistencia.';
     }
-    return 'Si cambias de celular, un maestro deberá autorizar el nuevo vínculo.';
+    return 'Presiona el botón cuando el profesor pida activar la asistencia.';
   }
 
   IconData get _helpIcon {
@@ -441,12 +437,12 @@ class _PrimaryAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = active
-        ? 'Pausar asistencia'
+        ? 'Detener'
         : checking
         ? 'Cancelar'
         : hasError
         ? 'Reintentar'
-        : 'Activar asistencia';
+        : 'Simular beacon';
     final icon = active
         ? Icons.pause_rounded
         : checking
@@ -456,11 +452,27 @@ class _PrimaryAction extends StatelessWidget {
         : Icons.play_arrow_rounded;
 
     return SizedBox(
-      height: 56,
-      child: FilledButton.icon(
+      height: 96,
+      child: FilledButton(
         onPressed: onPressed,
-        icon: Icon(icon),
-        label: Text(label),
+        style: FilledButton.styleFrom(
+          backgroundColor: active
+              ? const Color(0xFFFF7A70)
+              : const Color(0xFF62D6A2),
+          foregroundColor: const Color(0xFF07110D),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 30),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            ),
+          ],
+        ),
       ),
     );
   }

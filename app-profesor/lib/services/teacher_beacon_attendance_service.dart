@@ -8,7 +8,6 @@ import 'api_service.dart';
 import 'asistencia_local_service.dart';
 import 'auth_storage_service.dart';
 import 'native_altbeacon_channel.dart';
-import 'offline_attendance_queue_service.dart';
 
 class TeacherBeaconAttendanceService {
   static const bool _scanStudentBeaconsAfterRoomEntry = false;
@@ -70,7 +69,6 @@ class TeacherBeaconAttendanceService {
           await _startStudentScan(currentGroup);
         } else {
           _roomEntryHandled = true;
-          await _syncPendingAttendanceToPortal();
         }
       } else {
         await _startRoomScan(currentGroup);
@@ -197,18 +195,6 @@ class TeacherBeaconAttendanceService {
         rssi: detection.rssi,
         distance: detection.distance,
         bluetoothAddress: detection.bluetoothAddress,
-      );
-    }
-
-    await _syncPendingAttendanceToPortal();
-  }
-
-  Future<void> _syncPendingAttendanceToPortal() async {
-    final result = await OfflineAttendanceQueueService().syncPendingNow();
-    if (result.uploaded > 0 || result.failed > 0 || result.skipped > 0) {
-      Logger.info(
-        '[BeaconFlow] Subida al portal tras beacon: '
-        '${result.uploaded} subidas, ${result.failed} fallidas, ${result.skipped} omitidas',
       );
     }
   }

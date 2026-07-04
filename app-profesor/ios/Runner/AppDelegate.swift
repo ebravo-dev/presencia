@@ -4,6 +4,7 @@ import UIKit
 @main
 @objc class AppDelegate: FlutterAppDelegate {
   private let beaconPlugin = IosBeaconPlugin()
+  private let studentAttendanceBlePlugin = StudentAttendanceBlePlugin()
 
   override func application(
     _ application: UIApplication,
@@ -13,6 +14,7 @@ import UIKit
 
     if let controller = window?.rootViewController as? FlutterViewController {
       beaconPlugin.register(with: controller.binaryMessenger)
+      studentAttendanceBlePlugin.register(with: controller.binaryMessenger)
     }
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)

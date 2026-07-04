@@ -10,8 +10,10 @@ import '../../../shared/models/asistencia_registro.dart';
 import '../../../services/asistencia_local_service.dart';
 import '../../../services/api_service.dart';
 import '../../../services/ble_beacon_verification_service.dart';
-import '../../../services/offline_attendance_queue_service.dart';
+import '../../../services/student_attendance_ble_service.dart';
 import '../../../core/theme/uat_colors.dart';
+import '../../../core/permissions/permission_service.dart';
+import '../../../core/utils/utils.dart';
 
 import '../../../services/auth_storage_service.dart';
 
@@ -79,6 +81,15 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   // Servicio de verificación BLE beacon
   final BleBeaconVerificationService _bleBeaconService =
       BleBeaconVerificationService();
+  final StudentAttendanceBleService _studentBeaconService =
+      StudentAttendanceBleService();
+  StreamSubscription<List<StudentAttendanceDetection>>?
+  _studentBeaconSubscription;
+  bool _isStudentBeaconScanning = false;
+  bool _isLoadingStudentBeaconBindings = false;
+  Map<String, String> _studentKeyByBeaconUuid = {};
+  List<String> _studentBeaconScanUuids = [];
+  final Set<String> _detectedStudentBeaconUuids = {};
 
   // Timer para actualizar la hora
   Timer? _timer;
@@ -228,6 +239,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     _neonAnimationController?.dispose();
     _scrollController.dispose();
     _bleBeaconService.dispose();
+    _studentBeaconSubscription?.cancel();
+    _studentBeaconService.stopScanning();
     super.dispose();
   }
 
@@ -1171,7 +1184,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         _motivoEntrada = resultado.motivo;
       });
       await _guardarAsistencia();
-      await OfflineAttendanceQueueService().syncPendingNow();
     }
   }
 
@@ -1642,6 +1654,204 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     return tieneAsistenciaProfesor || tieneAsistenciaAlumnos;
   }
 
+  String _normalizeBeaconUuid(String uuid) {
+    return uuid.replaceAll('-', '').trim().toLowerCase();
+  }
+
+  Future<Map<String, String>> _loadStudentBeaconBindingsForScan() async {
+    final fallback = <String, String>{};
+    _studentBeaconScanUuids = [];
+
+    for (final alumno in widget.grupo.students) {
+      final beaconUuid = alumno.beaconUuid;
+      if (beaconUuid == null || beaconUuid.isEmpty) continue;
+      final normalized = _normalizeBeaconUuid(beaconUuid);
+      if (normalized.isEmpty) continue;
+      fallback[normalized] = _alumnoKey(alumno);
+      _studentBeaconScanUuids.add(beaconUuid);
+    }
+
+    final token = _authStorage.getToken();
+    final code = widget.grupo.code;
+    final groupLetter = widget.grupo.groupLetter;
+    final period = widget.grupo.period;
+    if (token == null ||
+        token.isEmpty ||
+        code == null ||
+        groupLetter == null ||
+        period == null) {
+      return fallback;
+    }
+
+    final result = await _apiService.getStudentBeaconBindings(
+      token: token,
+      code: code,
+      groupLetter: groupLetter,
+      period: period,
+    );
+
+    return result.fold(
+      (error) {
+        Logger.info('[StudentBeaconScan] Usando UUIDs cacheados: $error');
+        return fallback;
+      },
+      (bindings) {
+        final resolved = <String, String>{};
+        final scanUuids = <String>[];
+        final studentKeys = {
+          for (final alumno in widget.grupo.students)
+            if (alumno.id != null) alumno.id!: _alumnoKey(alumno),
+        };
+
+        for (final binding in bindings) {
+          final studentId = binding['studentId']?.toString();
+          final beaconUuid = binding['beaconUuid']?.toString();
+          if (studentId == null ||
+              studentId.isEmpty ||
+              beaconUuid == null ||
+              beaconUuid.isEmpty) {
+            continue;
+          }
+          final studentKey = studentKeys[studentId] ?? studentId;
+          final normalized = _normalizeBeaconUuid(beaconUuid);
+          if (normalized.isEmpty) continue;
+          resolved[normalized] = studentKey;
+          scanUuids.add(beaconUuid);
+        }
+
+        if (resolved.isEmpty) return fallback;
+        _studentBeaconScanUuids = scanUuids;
+        return resolved;
+      },
+    );
+  }
+
+  Future<void> _startStudentBeaconScan() async {
+    if (_isStudentBeaconScanning || _isLoadingStudentBeaconBindings) return;
+
+    if (!_puedeMarcarAsistenciaAlumnos()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se puede pasar lista en este día.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoadingStudentBeaconBindings = true;
+    });
+
+    final granted = await PermissionService.requestBluetoothPermissions();
+    if (!mounted) return;
+
+    if (!granted) {
+      setState(() {
+        _isLoadingStudentBeaconBindings = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Activa los permisos de Bluetooth para detectar alumnos.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final bindings = await _loadStudentBeaconBindingsForScan();
+    if (!mounted) return;
+
+    if (bindings.isEmpty || _studentBeaconScanUuids.isEmpty) {
+      setState(() {
+        _isLoadingStudentBeaconBindings = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay alumnos con UUID vinculado en este grupo.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    await _studentBeaconSubscription?.cancel();
+    _studentKeyByBeaconUuid = bindings;
+    _detectedStudentBeaconUuids.clear();
+    _studentBeaconSubscription = _studentBeaconService.detectionsStream.listen(
+      _handleStudentBeaconDetections,
+    );
+
+    _bleBeaconService.cancelScan();
+    final started = await _studentBeaconService.startScanning(
+      uuids: _studentBeaconScanUuids,
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _isLoadingStudentBeaconBindings = false;
+      _isStudentBeaconScanning = started;
+    });
+
+    if (!started) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo iniciar la detección BLE.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      await _studentBeaconSubscription?.cancel();
+      _studentBeaconSubscription = null;
+    }
+  }
+
+  Future<void> _stopStudentBeaconScan() async {
+    await _studentBeaconSubscription?.cancel();
+    _studentBeaconSubscription = null;
+    await _studentBeaconService.stopScanning();
+    _studentKeyByBeaconUuid = {};
+    _studentBeaconScanUuids = [];
+    if (mounted) {
+      setState(() {
+        _isStudentBeaconScanning = false;
+        _isLoadingStudentBeaconBindings = false;
+      });
+    } else {
+      _isStudentBeaconScanning = false;
+      _isLoadingStudentBeaconBindings = false;
+    }
+  }
+
+  Future<void> _handleStudentBeaconDetections(
+    List<StudentAttendanceDetection> detections,
+  ) async {
+    if (!_isStudentBeaconScanning || detections.isEmpty) return;
+
+    final updates = <String, bool>{};
+
+    for (final detection in detections) {
+      final normalized = _normalizeBeaconUuid(detection.uuid);
+      final studentKey = _studentKeyByBeaconUuid[normalized];
+      if (studentKey == null) continue;
+      if (!_detectedStudentBeaconUuids.add(normalized)) continue;
+      updates[studentKey] = true;
+    }
+
+    if (updates.isEmpty) return;
+
+    if (mounted) {
+      setState(() {
+        _asistencias.addAll(updates);
+      });
+    } else {
+      _asistencias.addAll(updates);
+    }
+
+    await _guardarAsistencia();
+  }
+
   String _getFormattedDate(DateTime dateTime) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -1869,6 +2079,125 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     }
   }
 
+  Widget _buildStudentBeaconScanControls() {
+    final palette = context.uatPalette;
+    final detectedCount = _detectedStudentBeaconUuids.length;
+    final linkedCount = _studentKeyByBeaconUuid.isNotEmpty
+        ? _studentKeyByBeaconUuid.length
+        : widget.grupo.students
+              .where((alumno) => alumno.beaconUuid?.isNotEmpty ?? false)
+              .length;
+    final canScan = _puedeMarcarAsistenciaAlumnos();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _isStudentBeaconScanning
+              ? widget.gradientColors[0].withOpacity(0.45)
+              : palette.border,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: palette.shadow,
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: widget.gradientColors[0].withOpacity(0.14),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              _isStudentBeaconScanning
+                  ? Icons.bluetooth_searching_rounded
+                  : Icons.bluetooth_connected_rounded,
+              color: widget.gradientColors[0],
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _isStudentBeaconScanning
+                      ? 'Detectando alumnos'
+                      : 'Beacons de alumnos',
+                  style: TextStyle(
+                    color: palette.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _isStudentBeaconScanning
+                      ? '$detectedCount detectados de $linkedCount vinculados'
+                      : '$linkedCount alumnos con UUID vinculado',
+                  style: TextStyle(
+                    color: palette.textSecondary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          if (_isLoadingStudentBeaconBindings)
+            SizedBox(
+              width: 34,
+              height: 34,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  widget.gradientColors[0],
+                ),
+              ),
+            )
+          else
+            FilledButton.icon(
+              onPressed: canScan
+                  ? (_isStudentBeaconScanning
+                        ? _stopStudentBeaconScan
+                        : _startStudentBeaconScan)
+                  : null,
+              icon: Icon(
+                _isStudentBeaconScanning
+                    ? Icons.stop_rounded
+                    : Icons.sensors_rounded,
+                size: 18,
+              ),
+              label: Text(_isStudentBeaconScanning ? 'Parar' : 'Escanear'),
+              style: FilledButton.styleFrom(
+                backgroundColor: _isStudentBeaconScanning
+                    ? Colors.red.shade600
+                    : widget.gradientColors[0],
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAlumnosContent() {
     final palette = context.uatPalette;
 
@@ -1906,9 +2235,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           const SizedBox(height: 12),
         ],
         // Botón de pasar lista con Bluetooth
-        // NOTA: Botón temporalmente oculto - código preservado para uso futuro
-        // _buildPassListBTButton(),
-        // const SizedBox(height: 12),
+        _buildStudentBeaconScanControls(),
+        const SizedBox(height: 12),
         // Lista de alumnos
         Container(
           decoration: BoxDecoration(

@@ -7,5 +7,6 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         AltBeaconPlugin(this).register(flutterEngine.dartExecutor.binaryMessenger)
+        StudentAttendanceBlePlugin(this).register(flutterEngine.dartExecutor.binaryMessenger)
     }
 }

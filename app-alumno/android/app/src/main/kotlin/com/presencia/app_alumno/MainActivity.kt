@@ -41,6 +41,11 @@ class MainActivity : FlutterActivity() {
                 flutterChannel?.invokeMethod("onAdvertisingStateChanged", advertising)
             }
         }
+        BleAdvertiserService.onAttendanceConfirmed = { message ->
+            mainHandler.post {
+                flutterChannel?.invokeMethod("onAttendanceConfirmed", message)
+            }
+        }
 
         AltBeaconScannerPlugin(this).register(flutterEngine.dartExecutor.binaryMessenger)
 

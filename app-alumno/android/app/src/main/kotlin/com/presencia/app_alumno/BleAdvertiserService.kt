@@ -5,7 +5,16 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattServer
+import android.bluetooth.BluetoothGattServerCallback
+import android.bluetooth.BluetoothGattService
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.AdvertiseCallback
+import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
 import android.content.Context
 import android.content.Intent
@@ -13,11 +22,10 @@ import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.ParcelUuid
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import org.altbeacon.beacon.Beacon
-import org.altbeacon.beacon.BeaconParser
-import org.altbeacon.beacon.BeaconTransmitter
+import java.util.UUID
 
 class BleAdvertiserService : Service() {
 
@@ -39,25 +47,85 @@ class BleAdvertiserService : Service() {
         private const val DEFAULT_MAJOR = 1
         private const val DEFAULT_MINOR = 1
         private const val DEFAULT_MEASURED_POWER = -59
+        private val SERVICE_UUID: UUID = UUID.fromString("9f5f7f86-8e67-4f12-a8a5-b7f6f4f7b2c1")
+        private val ATTENDANCE_UUID_CHAR: UUID = UUID.fromString("9f5f7f86-8e67-4f12-a8a5-b7f6f4f7b2c2")
+        private val CONFIRMATION_CHAR: UUID = UUID.fromString("9f5f7f86-8e67-4f12-a8a5-b7f6f4f7b2c3")
 
         @Volatile
         var onAdvertisingStateChanged: ((Boolean) -> Unit)? = null
+
+        @Volatile
+        var onAttendanceConfirmed: ((String) -> Unit)? = null
     }
 
-    private var beaconTransmitter: BeaconTransmitter? = null
+    private var gattServer: BluetoothGattServer? = null
     private var prefs: SharedPreferences? = null
+    private var activeUuid: String? = null
+    private val advertiser by lazy {
+        (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager)
+            .adapter
+            .bluetoothLeAdvertiser
+    }
 
     private val advertiseCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
-            Log.i(TAG, "Student iBeacon advertising started")
+            Log.i(TAG, "Student attendance peripheral started")
             updateNotification("Asistencia activa")
             onAdvertisingStateChanged?.invoke(true)
         }
 
         override fun onStartFailure(errorCode: Int) {
-            Log.e(TAG, "Student iBeacon advertising failed: $errorCode")
+            Log.e(TAG, "Student attendance peripheral failed: $errorCode")
             onAdvertisingStateChanged?.invoke(false)
             stopSelf()
+        }
+    }
+
+    private val gattCallback = object : BluetoothGattServerCallback() {
+        override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
+            if (newState == BluetoothProfile.STATE_CONNECTED) {
+                Log.i(TAG, "Professor connected: ${device.address}")
+            }
+        }
+
+        override fun onCharacteristicReadRequest(
+            device: BluetoothDevice,
+            requestId: Int,
+            offset: Int,
+            characteristic: BluetoothGattCharacteristic,
+        ) {
+            if (characteristic.uuid != ATTENDANCE_UUID_CHAR) {
+                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, offset, null)
+                return
+            }
+            val bytes = activeUuid.orEmpty().toByteArray(Charsets.UTF_8)
+            gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, bytes)
+        }
+
+        override fun onCharacteristicWriteRequest(
+            device: BluetoothDevice,
+            requestId: Int,
+            characteristic: BluetoothGattCharacteristic,
+            preparedWrite: Boolean,
+            responseNeeded: Boolean,
+            offset: Int,
+            value: ByteArray,
+        ) {
+            if (characteristic.uuid == CONFIRMATION_CHAR) {
+                val message = value.toString(Charsets.UTF_8).ifBlank { "CONFIRMED" }
+                Log.i(TAG, "Attendance confirmed by professor: $message")
+                onAttendanceConfirmed?.invoke(message)
+                updateNotification("Asistencia recibida")
+                if (responseNeeded) {
+                    gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
+                }
+                stopAdvertising()
+                stopSelf()
+                return
+            }
+            if (responseNeeded) {
+                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, offset, null)
+            }
         }
     }
 
@@ -104,42 +172,66 @@ class BleAdvertiserService : Service() {
             return
         }
 
-        val support = BeaconTransmitter.checkTransmissionSupported(this)
-        if (support != BeaconTransmitter.SUPPORTED) {
-            Log.e(TAG, "Beacon transmission unsupported: $support")
+        val bleAdvertiser = advertiser
+        if (bleAdvertiser == null) {
+            Log.e(TAG, "BLE advertising unsupported")
             onAdvertisingStateChanged?.invoke(false)
             stopSelf()
             return
         }
 
         stopAdvertising()
+        activeUuid = uuid
 
-        val parser = BeaconParser()
-            .setBeaconLayout("m:2-3=0215,i:4-19,i:20-21,i:22-23,p:24-24")
-        val beacon = Beacon.Builder()
-            .setId1(uuid)
-            .setId2(major.toString())
-            .setId3(minor.toString())
-            .setManufacturer(0x004C)
-            .setTxPower(measuredPower)
-            .build()
-
-        beaconTransmitter = BeaconTransmitter(applicationContext, parser).apply {
-            advertiseMode = AdvertiseSettings.ADVERTISE_MODE_BALANCED
-            advertiseTxPowerLevel = AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM
-            startAdvertising(beacon, advertiseCallback)
+        val manager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val server = manager.openGattServer(this, gattCallback)
+        if (server == null) {
+            Log.e(TAG, "Could not open GATT server")
+            onAdvertisingStateChanged?.invoke(false)
+            stopSelf()
+            return
         }
+        server.addService(
+            BluetoothGattService(SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY).apply {
+                addCharacteristic(
+                    BluetoothGattCharacteristic(
+                        ATTENDANCE_UUID_CHAR,
+                        BluetoothGattCharacteristic.PROPERTY_READ,
+                        BluetoothGattCharacteristic.PERMISSION_READ,
+                    )
+                )
+                addCharacteristic(
+                    BluetoothGattCharacteristic(
+                        CONFIRMATION_CHAR,
+                        BluetoothGattCharacteristic.PROPERTY_WRITE,
+                        BluetoothGattCharacteristic.PERMISSION_WRITE,
+                    )
+                )
+            }
+        )
+        gattServer = server
+
+        val settings = AdvertiseSettings.Builder()
+            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+            .setConnectable(true)
+            .build()
+        val data = AdvertiseData.Builder()
+            .addServiceUuid(ParcelUuid(SERVICE_UUID))
+            .setIncludeDeviceName(false)
+            .build()
+        bleAdvertiser.startAdvertising(settings, data, advertiseCallback)
     }
 
     private fun stopAdvertising() {
         try {
-            if (beaconTransmitter?.isStarted == true) {
-                beaconTransmitter?.stopAdvertising()
-            }
+            advertiser?.stopAdvertising(advertiseCallback)
         } catch (error: Exception) {
-            Log.w(TAG, "Error stopping beacon advertising: ${error.message}")
+            Log.w(TAG, "Error stopping attendance advertising: ${error.message}")
         }
-        beaconTransmitter = null
+        gattServer?.close()
+        gattServer = null
+        activeUuid = null
         onAdvertisingStateChanged?.invoke(false)
     }
 

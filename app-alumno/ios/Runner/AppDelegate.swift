@@ -8,6 +8,9 @@ import UIKit
   private let advertiserChannelName = "com.presencia.alumno/ble_advertiser"
   private let scannerMethodChannelName = "com.presencia/altbeacon"
   private let scannerEventChannelName = "com.presencia/altbeacon_events"
+  private let attendanceServiceUuid = CBUUID(string: "9f5f7f86-8e67-4f12-a8a5-b7f6f4f7b2c1")
+  private let attendanceUuidCharacteristicUuid = CBUUID(string: "9f5f7f86-8e67-4f12-a8a5-b7f6f4f7b2c2")
+  private let confirmationCharacteristicUuid = CBUUID(string: "9f5f7f86-8e67-4f12-a8a5-b7f6f4f7b2c3")
 
   private var advertiserChannel: FlutterMethodChannel?
   private var scannerEventSink: FlutterEventSink?
@@ -15,6 +18,7 @@ import UIKit
   private var peripheralManager: CBPeripheralManager?
   private var pendingAdvertisementData: [String: Any]?
   private var isAdvertising = false
+  private var activeAttendanceUuid: String?
 
   private var locationManager: CLLocationManager?
   private var activeConstraints: [String: CLBeaconIdentityConstraint] = [:]
@@ -171,20 +175,43 @@ import UIKit
 
   private func startBeacon(uuid: UUID, major: UInt16, minor: UInt16, measuredPower: Int8) {
     configurePeripheralManager()
-    pendingAdvertisementData = buildIBeaconAdvertisement(
-      uuid: uuid,
-      major: major,
-      minor: minor,
-      measuredPower: measuredPower
-    )
+    activeAttendanceUuid = uuid.uuidString
+    configureAttendanceGattService()
+    pendingAdvertisementData = [
+      CBAdvertisementDataServiceUUIDsKey: [attendanceServiceUuid],
+      CBAdvertisementDataLocalNameKey: "Presencia"
+    ]
     triggerAdvertisingIfPossible()
   }
 
   private func stopBeacon() {
     peripheralManager?.stopAdvertising()
+    peripheralManager?.removeAllServices()
     pendingAdvertisementData = nil
+    activeAttendanceUuid = nil
     isAdvertising = false
     advertiserChannel?.invokeMethod("onAdvertisingStateChanged", arguments: false)
+  }
+
+  private func configureAttendanceGattService() {
+    guard let manager = peripheralManager else { return }
+    manager.removeAllServices()
+
+    let uuidCharacteristic = CBMutableCharacteristic(
+      type: attendanceUuidCharacteristicUuid,
+      properties: [.read],
+      value: nil,
+      permissions: [.readable]
+    )
+    let confirmationCharacteristic = CBMutableCharacteristic(
+      type: confirmationCharacteristicUuid,
+      properties: [.write],
+      value: nil,
+      permissions: [.writeable]
+    )
+    let service = CBMutableService(type: attendanceServiceUuid, primary: true)
+    service.characteristics = [uuidCharacteristic, confirmationCharacteristic]
+    manager.add(service)
   }
 
   private func triggerAdvertisingIfPossible() {
@@ -368,6 +395,9 @@ extension AppDelegate: CBPeripheralManagerDelegate {
     switch peripheral.state {
     case .poweredOn:
       state = "poweredOn"
+      if activeAttendanceUuid != nil {
+        configureAttendanceGattService()
+      }
       triggerAdvertisingIfPossible()
     case .poweredOff:
       state = "poweredOff"
@@ -392,6 +422,31 @@ extension AppDelegate: CBPeripheralManagerDelegate {
       pendingAdvertisementData = nil
     }
     advertiserChannel?.invokeMethod("onAdvertisingStateChanged", arguments: isAdvertising)
+  }
+
+  func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
+    guard request.characteristic.uuid == attendanceUuidCharacteristicUuid,
+          let uuid = activeAttendanceUuid,
+          let value = uuid.data(using: .utf8)
+    else {
+      peripheral.respond(to: request, withResult: .attributeNotFound)
+      return
+    }
+    request.value = value
+    peripheral.respond(to: request, withResult: .success)
+  }
+
+  func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
+    for request in requests {
+      guard request.characteristic.uuid == confirmationCharacteristicUuid else {
+        peripheral.respond(to: request, withResult: .attributeNotFound)
+        continue
+      }
+      let message = request.value.flatMap { String(data: $0, encoding: .utf8) } ?? "CONFIRMED"
+      advertiserChannel?.invokeMethod("onAttendanceConfirmed", arguments: message)
+      peripheral.respond(to: request, withResult: .success)
+      stopBeacon()
+    }
   }
 }
 

@@ -6,8 +6,9 @@ import 'package:flutter/services.dart';
 enum AdvertiserState { idle, advertising, bluetoothOff, error }
 
 /// BLE Advertiser service that routes through native MethodChannel.
-/// The student app acts as an iBeacon transmitter. The professor app detects
-/// the stable student UUID and uploads the attendance detection.
+/// The student app exposes a local BLE peripheral that the professor connects
+/// to in order to confirm attendance without requiring internet on the student
+/// device.
 class BleAdvertiserService {
   static const _channel = MethodChannel('com.presencia.alumno/ble_advertiser');
 
