@@ -39,6 +39,10 @@ Asigna el dominio web a `frontend-coord`, puerto `8080`. Si otras aplicaciones
 consumen directamente la API, asigna tambien su dominio a `backend-apirest`,
 puerto `3100`.
 
+Ambos contenedores se conectan a la red externa `dokploy-network`, necesaria
+para que Traefik enrute los dominios y para alcanzar servicios administrados
+por Dokploy, como PostgreSQL, mediante su hostname interno.
+
 Copia las variables de `.env.example` al apartado Environment de Dokploy. Para
 el primer coordinador usa:
 

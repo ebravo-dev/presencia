@@ -33,6 +33,10 @@ El dominio del panel se asigna a `frontend-coord:8080`. Este reenvia `/api` a
 en el mismo origen. La API puede tener ademas un dominio propio para los otros
 clientes.
 
+Los dos servicios tambien se conectan a la red externa `dokploy-network` para
+que Traefik y los servicios administrados de Dokploy, incluido PostgreSQL,
+puedan alcanzarlos por sus hostnames internos.
+
 Variables recomendadas:
 
 ```env

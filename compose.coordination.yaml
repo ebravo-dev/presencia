@@ -33,6 +33,7 @@ services:
       retries: 3
     networks:
       - coordination
+      - dokploy-network
 
   frontend-coord:
     build:
@@ -48,7 +49,10 @@ services:
       - "8080"
     networks:
       - coordination
+      - dokploy-network
 
 networks:
   coordination:
     driver: bridge
+  dokploy-network:
+    external: true
