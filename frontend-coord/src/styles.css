@@ -7,5 +7,7 @@ button, input, select { font: inherit; }
 ::selection { background: #c8102e; color: white; }
 .field { width: 100%; border: 1px solid #cbd5e1; border-radius: .65rem; background: white; padding: .7rem .85rem; color: #111; outline: none; transition: border-color .15s, box-shadow .15s; }
 .field:focus { border-color: #c8102e; box-shadow: 0 0 0 3px rgb(200 16 46 / .12); }
+.field-leading-icon { padding-left: 2.65rem !important; }
+.field-both-icons { padding-left: 2.65rem !important; padding-right: 3rem !important; }
 .label { display: block; margin-bottom: .4rem; font-size: .78rem; font-weight: 700; color: #334155; }
 @media print { aside, header, .no-print { display: none !important; } .lg\:pl-72 { padding-left: 0 !important; } main { padding: 0 !important; } }

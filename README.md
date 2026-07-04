@@ -9,7 +9,8 @@ presencia/
 |- app-alumno/
 |- app-profesor/
 |- backend/
-`- backend-apirest/
+|- backend-apirest/
+`- frontend-coord/
 ```
 
 ## backend-apirest
@@ -19,31 +20,41 @@ UAT. No reemplaza al sistema escolar original; consume por HTTP la API/sitio de
 `https://administracionescolar.uat.edu.mx` usando sesion ASP.NET basada en
 cookies.
 
-## Despliegue en Dokploy
+## Despliegue de coordinacion en Dokploy
 
-Este servicio debe desplegarse de forma aislada, apuntando a la carpeta
-`backend-apirest`.
+El archivo `compose.coordination.yaml` levanta dos contenedores independientes:
+
+- `backend-apirest`: API, migraciones Prisma y provision de coordinadores.
+- `frontend-coord`: Nginx con la SPA y proxy interno de `/api`.
 
 Configuracion recomendada:
 
 ```txt
-Build Type: Dockerfile
-Root Directory / Base Directory: backend-apirest
-Dockerfile Path: Dockerfile
-Internal Port: 3100
-Public Domain: https://backendapirest.149828.xyz
+Build Type: Docker Compose
+Compose Path: compose.coordination.yaml
+Root Directory / Base Directory: raiz del repositorio
 ```
 
-Alternativa valida:
+Asigna el dominio web a `frontend-coord`, puerto `8080`. Si otras aplicaciones
+consumen directamente la API, asigna tambien su dominio a `backend-apirest`,
+puerto `3100`.
 
-```txt
-Build Type: Nixpacks
-Root Directory / Base Directory: backend-apirest
-Internal Port: 3100
+Ambos contenedores se conectan a la red externa `dokploy-network`, necesaria
+para que Traefik enrute los dominios y para alcanzar servicios administrados
+por Dokploy, como PostgreSQL, mediante su hostname interno.
+
+Copia las variables de `.env.example` al apartado Environment de Dokploy. Para
+el primer coordinador usa:
+
+```env
+COORDINATOR_EMAIL=coordinacion@uat.edu.mx
+COORDINATOR_NAME=Coordinacion Academica
+COORDINATOR_PASSWORD=una-clave-segura-de-al-menos-12-caracteres
 ```
 
-Si Dokploy intenta construir la raiz del repositorio, Nixpacks fallara porque
-el repo contiene varias aplicaciones.
+Para varios coordinadores usa `COORDINATORS_JSON`; cada despliegue realiza UPSERT
+por correo, por lo que permite agregar usuarios o rotar contraseñas sin
+duplicados.
 
 ## Integraciones
 

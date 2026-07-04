@@ -14,7 +14,10 @@ const envSchema = z.object({
     .transform((value) => value.replace(/\/+$/, '')),
   UAT_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   UAT_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(45),
-  DATABASE_URL: z.string().min(1).default('file:./coordination.db'),
+  DATABASE_URL: z
+    .string()
+    .min(1)
+    .default('postgresql://postgres:postgres@localhost:5432/presencia_coordination?schema=public'),
   COORDINATION_JWT_SECRET: z.string().min(32).default('development-coordination-jwt-secret-change-me'),
   COORDINATION_WEB_ORIGIN: z.string().url().default('http://localhost:5173'),
   COORDINATION_COOKIE_SECURE: z.preprocess(

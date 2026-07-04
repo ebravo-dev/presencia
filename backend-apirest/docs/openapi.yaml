@@ -302,6 +302,7 @@ paths:
   /api/coordinacion/resumen:
     get:
       tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
       summary: Resumen del grafo academico recolectado
       responses:
         "200":
@@ -328,6 +329,7 @@ paths:
   /api/coordinacion/coordinaciones:
     get:
       tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
       summary: Lista coordinaciones academicas
       responses:
         "200":
@@ -339,6 +341,7 @@ paths:
   /api/coordinacion/profesores:
     get:
       tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
       summary: Lista profesores recolectados
       parameters:
         - name: coordinationId
@@ -365,6 +368,7 @@ paths:
   /api/coordinacion/profesores/{teacherId}/asignaciones:
     get:
       tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
       summary: Detalle y asignaciones de un profesor
       parameters:
         - name: teacherId
@@ -380,7 +384,69 @@ paths:
                 $ref: "#/components/schemas/TeacherAssignmentsResponse"
         "404":
           $ref: "#/components/responses/Error"
+  /api/coordinacion/auth/login:
+    post:
+      tags: [Coordinacion]
+      summary: Inicia una sesión administrativa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password, minLength: 8 }
+      responses:
+        "200":
+          description: Sesión creada; emite cookie HttpOnly coord_session
+        "401": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/coordinacion/auth/me:
+    get:
+      tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
+      summary: Obtiene el coordinador autenticado
+      responses:
+        "200": { description: Perfil de coordinación }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/coordinacion/auth/logout:
+    post:
+      tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
+      summary: Revoca la sesión administrativa
+      responses:
+        "204": { description: Sesión revocada }
+  /api/coordinacion/reportes/asistencia-semanal:
+    get:
+      tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
+      summary: Reporte de cumplimiento docente de lunes a jueves
+      parameters:
+        - name: teacherId
+          in: query
+          required: true
+          schema: { type: string }
+        - name: weekStart
+          in: query
+          required: true
+          description: Fecha del lunes en formato YYYY-MM-DD
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Matriz semanal con estados TAKEN, MISSING, FUTURE, NOT_SCHEDULED o UNKNOWN_SCHEDULE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WeeklyAttendanceReport" }
+        "400": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
 components:
+  securitySchemes:
+    CoordinatorCookie:
+      type: apiKey
+      in: cookie
+      name: coord_session
   parameters:
     UatSessionHeader:
       name: X-UAT-Session-Id
@@ -790,6 +856,29 @@ components:
       required: [generatedAt]
       properties:
         generatedAt: { type: string, format: date-time }
+    WeeklyAttendanceReport:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [availability, teacher, week, summary, rows]
+          properties:
+            availability: { type: string, enum: [READY, NOT_SYNCED, IDENTITY_UNAVAILABLE] }
+            teacher: { type: object, additionalProperties: true }
+            week: { type: object, additionalProperties: true }
+            summary: { type: object, additionalProperties: true }
+            rows:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+        meta:
+          type: object
+          required: [generatedAt, timezone]
+          properties:
+            generatedAt: { type: string, format: date-time }
+            timezone: { type: string, example: America/Mexico_City }
     ErrorResponse:
       type: object
       required: [error, message]

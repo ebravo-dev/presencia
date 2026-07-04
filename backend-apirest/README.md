@@ -19,15 +19,23 @@ Por defecto escucha en `http://localhost:3100`.
 
 ## Despliegue en Dokploy
 
-Este servicio debe desplegarse como contenedor independiente del monorepo.
+El despliegue recomendado crea la API y el frontend en contenedores separados.
 En Dokploy configura:
 
 ```txt
-Root Directory / Base Directory: backend-apirest
-Dockerfile: Dockerfile
-Puerto interno: 3100
-Dominio publico: https://backendapirest.149828.xyz
+Root Directory / Base Directory: raiz del repositorio
+Build Type: Docker Compose
+Compose Path: compose.coordination.yaml
 ```
+
+El dominio del panel se asigna a `frontend-coord:8080`. Este reenvia `/api` a
+`backend-apirest:3100` por la red privada, conservando las cookies `HttpOnly`
+en el mismo origen. La API puede tener ademas un dominio propio para los otros
+clientes.
+
+Los dos servicios tambien se conectan a la red externa `dokploy-network` para
+que Traefik y los servicios administrados de Dokploy, incluido PostgreSQL,
+puedan alcanzarlos por sus hostnames internos.
 
 Variables recomendadas:
 
@@ -38,12 +46,38 @@ PORT=3100
 UAT_BASE_URL=https://administracionescolar.uat.edu.mx
 UAT_HTTP_TIMEOUT_MS=30000
 UAT_SESSION_TTL_MINUTES=45
-DATABASE_URL=file:./coordination.db
+DATABASE_URL=postgresql://usuario:password@postgres:5432/presencia_coordination?schema=public
+DATABASE_MIGRATION_MAX_ATTEMPTS=10
+DATABASE_MIGRATION_RETRY_MS=3000
+COORDINATION_JWT_SECRET=cambia-este-secreto-de-al-menos-32-caracteres
+COORDINATION_WEB_ORIGIN=https://tu-dominio.example
+COORDINATION_COOKIE_SECURE=true
+ATTENDANCE_BACKEND_URL=http://backend:3000
+ATTENDANCE_BACKEND_SERVICE_TOKEN=token-interno-compartido-de-al-menos-32-caracteres
+COORDINATOR_EMAIL=coordinacion@uat.edu.mx
+COORDINATOR_NAME=Coordinacion Academica
+COORDINATOR_PASSWORD=una-clave-segura-de-al-menos-12-caracteres
+# Alternativa para varias cuentas:
+COORDINATORS_JSON=[{"email":"coord1@uat.edu.mx","name":"Coordinador Uno","password":"clave-segura-123"}]
 ```
 
-El archivo `.dockerignore` esta pensado para que el contexto sea solo
-`backend-apirest`; asi no se suben ni se construyen `app-profesor`,
-`app-alumno` ni el backend legacy.
+En `DATABASE_URL` usa el hostname interno del servicio PostgreSQL de Dokploy;
+`localhost` apuntaria al propio contenedor de la API. Si PostgreSQL es externo,
+agrega los parametros SSL exigidos por el proveedor.
+
+Al iniciar cada revision, el contenedor realiza en orden:
+
+1. `prisma migrate deploy`, con reintentos mientras PostgreSQL arranca.
+2. UPSERT idempotente de las cuentas definidas en `COORDINATORS_JSON` o en las
+   tres variables `COORDINATOR_*`.
+3. Inicio de `backend-apirest` en el puerto configurado.
+
+Si una migracion falla o las credenciales de coordinacion estan incompletas, el
+contenedor termina con error y Dokploy conserva los logs del motivo; no inicia
+la API sobre un esquema incompleto.
+
+Los archivos `.dockerignore` evitan enviar dependencias, builds y secretos al
+daemon de Docker.
 
 ## Flujo principal
 
@@ -128,6 +162,10 @@ GET    /api/coordinacion/resumen
 GET    /api/coordinacion/coordinaciones
 GET    /api/coordinacion/profesores
 GET    /api/coordinacion/profesores/:teacherId/asignaciones
+POST   /api/coordinacion/auth/login
+GET    /api/coordinacion/auth/me
+POST   /api/coordinacion/auth/logout
+GET    /api/coordinacion/reportes/asistencia-semanal
 ```
 
 ## Arquitectura
@@ -149,12 +187,45 @@ reutiliza el cliente UAT y sus cookies, descubre ciclos/DES y acumula profesores
 materias y grupos mediante `upsert` en Prisma. Un fallo de portal o persistencia
 solo produce un log estructurado y no invalida la sesion del profesor.
 
-Inicializa la base local y genera el cliente:
+Configura `DATABASE_URL` con la conexion PostgreSQL. Para desarrollo, crea o
+actualiza el esquema y genera el cliente con:
 
 ```bash
 npm run prisma:generate
 npm run prisma:migrate
 ```
+
+En produccion aplica exclusivamente las migraciones versionadas:
+
+```bash
+npm run prisma:generate
+npm run prisma:deploy
+```
+
+La imagen de `backend-apirest` ejecuta las migraciones y el aprovisionamiento
+opcional de coordinadores automaticamente antes de iniciar la API.
+
+Provisiona o rota una cuenta de coordinación sin guardar su contraseña en el
+frontend:
+
+```powershell
+$env:COORDINATOR_EMAIL="coordinacion@uat.edu.mx"
+$env:COORDINATOR_NAME="Coordinación Académica"
+$env:COORDINATOR_PASSWORD="una-clave-segura-de-12-caracteres"
+npm run coordinator:create
+```
+
+Para varias cuentas define `COORDINATORS_JSON` como un arreglo de objetos con
+`email`, `name` y `password`, y ejecuta el mismo comando. Omitir una cuenta del
+arreglo no la elimina ni la deshabilita automaticamente.
+
+Desde la terminal del contenedor en Dokploy se puede repetir el aprovisionamiento
+con `npm run coordinator:create:production`; toma las variables actuales del
+servicio y nunca imprime las contraseñas.
+
+La SPA vive en `frontend-coord`. En desarrollo usa Vite y proxy a `:3100`; en
+producción se sirve desde el contenedor independiente `frontend-coord` bajo
+`/coordinacion`.
 
 El listado admite `coordinationId`, `search`, `page` y `pageSize` (maximo 100).
 Los contratos completos se encuentran en `docs/openapi.yaml`.
