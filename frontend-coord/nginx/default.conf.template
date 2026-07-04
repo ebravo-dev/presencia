@@ -1,10 +1,17 @@
 server {
   listen 8080;
   server_name _;
+  absolute_redirect off;
+  port_in_redirect off;
+  server_name_in_redirect off;
   root /usr/share/nginx/html;
 
   location = / {
     return 302 /coordinacion/;
+  }
+
+  location = /coordinacion {
+    return 308 /coordinacion/;
   }
 
   location /coordinacion/ {
