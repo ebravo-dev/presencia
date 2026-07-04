@@ -24,6 +24,9 @@ const envSchema = z.object({
 
     // Internal backend-apirest bridge
     BACKEND_API_REST_URL: z.string().url().default('http://localhost:3100'),
+
+    // Shared internal API token for backend-apirest coordination calls
+    INTERNAL_API_TOKEN: z.string().min(32).default('development-internal-service-token-change-me'),
 });
 
 export type Env = z.infer<typeof envSchema>;

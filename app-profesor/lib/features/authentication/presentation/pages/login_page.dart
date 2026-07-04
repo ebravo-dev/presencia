@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/uat_colors.dart';
@@ -14,8 +15,6 @@ class LoginPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(profesorAuthProvider);
-    final size = MediaQuery.of(context).size;
-    final isWideScreen = size.width > 768;
 
     // Listen to auth state changes and navigate
     ref.listen<ProfesorAuthState>(profesorAuthProvider, (previous, next) {
@@ -24,12 +23,30 @@ class LoginPage extends ConsumerWidget {
       }
     });
 
-    return Scaffold(
-      backgroundColor: UATColors.surface,
-      body: SafeArea(
-        child: isWideScreen
-            ? _buildWideLayout(context, authState)
-            : _buildNarrowLayout(context, authState),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: UATColors.surface,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+        systemNavigationBarColor: UATColors.surface,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+      child: Theme(
+        data: UATTheme.lightTheme,
+        child: Builder(
+          builder: (loginContext) {
+            final isWideScreen = MediaQuery.sizeOf(loginContext).width > 768;
+
+            return Scaffold(
+              backgroundColor: UATColors.surface,
+              body: SafeArea(
+                child: isWideScreen
+                    ? _buildWideLayout(loginContext, authState)
+                    : _buildNarrowLayout(loginContext, authState),
+              ),
+            );
+          },
+        ),
       ),
     );
   }

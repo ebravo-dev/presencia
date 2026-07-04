@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/models/asistencia_registro.dart';
 import '../../../shared/models/grupo.dart';
+import '../../../core/theme/uat_colors.dart';
 import '../../../services/asistencia_local_service.dart';
 import '../../../services/api_service.dart';
 import '../../../services/auth_storage_service.dart';
@@ -147,35 +148,41 @@ class _AsistenciasPendientesPageState
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => Dialog(
-        backgroundColor: const Color(0xFF2C2C2E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(
-                width: 50,
-                height: 50,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Sincronizando asistencias...',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+      builder: (context) {
+        final palette = context.uatPalette;
+
+        return Dialog(
+          backgroundColor: palette.surfaceElevated,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
           ),
-        ),
-      ),
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 50,
+                  height: 50,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Sincronizando asistencias...',
+                  style: TextStyle(
+                    color: palette.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
 
     bool allSuccess = true;
@@ -434,25 +441,38 @@ class _AsistenciasPendientesPageState
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.uatPalette;
+    final isLightMode = context.isUatLightMode;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: palette.appBackground,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          icon: Icon(Icons.arrow_back_ios, color: palette.textPrimary),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Asistencias Pendientes',
           style: TextStyle(
-            color: Colors.white,
+            color: palette.textPrimary,
             fontSize: 18,
             fontWeight: FontWeight.w600,
           ),
         ),
-        systemOverlayStyle: SystemUiOverlayStyle.light,
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: isLightMode
+              ? Brightness.dark
+              : Brightness.light,
+          statusBarBrightness: isLightMode ? Brightness.light : Brightness.dark,
+          systemNavigationBarColor: palette.appBackground,
+          systemNavigationBarIconBrightness: isLightMode
+              ? Brightness.dark
+              : Brightness.light,
+        ),
       ),
       body: _isLoading
           ? const Center(
@@ -584,6 +604,8 @@ class _AsistenciasPendientesPageState
   }
 
   Widget _buildEmptyState() {
+    final palette = context.uatPalette;
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -598,18 +620,18 @@ class _AsistenciasPendientesPageState
             child: const Icon(Icons.cloud_done, size: 60, color: Colors.green),
           ),
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'Todo sincronizado',
             style: TextStyle(
-              color: Colors.white,
+              color: palette.textPrimary,
               fontSize: 22,
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'No hay asistencias pendientes de subir',
-            style: TextStyle(color: Colors.white60, fontSize: 14),
+            style: TextStyle(color: palette.textSecondary, fontSize: 14),
           ),
         ],
       ),
@@ -617,6 +639,7 @@ class _AsistenciasPendientesPageState
   }
 
   Widget _buildAsistenciaCard(AsistenciaRegistro registro, bool esClaseActual) {
+    final palette = context.uatPalette;
     final tieneEntrada = registro.horaEntrada != null;
     final tieneSalida = registro.horaSalida != null;
     final alumnosPresentes = registro.asistenciasAlumnos.values
@@ -637,14 +660,14 @@ class _AsistenciasPendientesPageState
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1E),
+        color: palette.surface,
         borderRadius: BorderRadius.circular(16),
         border: esClaseActual
             ? Border.all(color: colorPrincipal.withOpacity(0.5), width: 1.5)
             : null,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: palette.shadow,
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -658,7 +681,7 @@ class _AsistenciasPendientesPageState
             decoration: BoxDecoration(
               color: esClaseActual
                   ? colorPrincipal.withOpacity(0.15)
-                  : Colors.white.withOpacity(0.05),
+                  : palette.surfaceMuted,
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(16),
                 topRight: Radius.circular(16),
@@ -672,12 +695,12 @@ class _AsistenciasPendientesPageState
                   decoration: BoxDecoration(
                     color: esClaseActual
                         ? colorPrincipal.withOpacity(0.2)
-                        : Colors.white.withOpacity(0.1),
+                        : palette.surfaceMuted,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     Icons.class_,
-                    color: esClaseActual ? colorPrincipal : Colors.white60,
+                    color: esClaseActual ? colorPrincipal : palette.iconMuted,
                     size: 20,
                   ),
                 ),
@@ -688,8 +711,8 @@ class _AsistenciasPendientesPageState
                     children: [
                       Text(
                         registro.nombreClase ?? 'Sin nombre',
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: palette.textPrimary,
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                         ),
@@ -701,23 +724,23 @@ class _AsistenciasPendientesPageState
                         children: [
                           Text(
                             'Grupo $letraGrupo',
-                            style: const TextStyle(
-                              color: Colors.white70,
+                            style: TextStyle(
+                              color: palette.textSecondary,
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
-                          const Text(
+                          Text(
                             ' • ',
                             style: TextStyle(
-                              color: Colors.white60,
+                              color: palette.textTertiary,
                               fontSize: 12,
                             ),
                           ),
                           Text(
                             _formatearFecha(registro.fecha),
-                            style: const TextStyle(
-                              color: Colors.white60,
+                            style: TextStyle(
+                              color: palette.textTertiary,
                               fontSize: 12,
                             ),
                           ),
@@ -756,20 +779,24 @@ class _AsistenciasPendientesPageState
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
+                    color: palette.surfaceMuted,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
                         children: [
-                          Icon(Icons.person, color: Colors.white70, size: 16),
-                          SizedBox(width: 6),
+                          Icon(
+                            Icons.person,
+                            color: palette.textSecondary,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
                           Text(
                             'MI ASISTENCIA',
                             style: TextStyle(
-                              color: Colors.white70,
+                              color: palette.textSecondary,
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 0.5,
@@ -809,20 +836,24 @@ class _AsistenciasPendientesPageState
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
+                    color: palette.surfaceMuted,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
                         children: [
-                          Icon(Icons.group, color: Colors.white70, size: 16),
-                          SizedBox(width: 6),
+                          Icon(
+                            Icons.group,
+                            color: palette.textSecondary,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
                           Text(
                             'ASISTENCIA ALUMNOS',
                             style: TextStyle(
-                              color: Colors.white70,
+                              color: palette.textSecondary,
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 0.5,
@@ -847,8 +878,8 @@ class _AsistenciasPendientesPageState
                                 const SizedBox(width: 6),
                                 Text(
                                   '$alumnosPresentes presentes',
-                                  style: const TextStyle(
-                                    color: Colors.white,
+                                  style: TextStyle(
+                                    color: palette.textPrimary,
                                     fontSize: 13,
                                     fontWeight: FontWeight.w500,
                                   ),
@@ -858,8 +889,8 @@ class _AsistenciasPendientesPageState
                           ),
                           Text(
                             '$alumnosPresentes/$totalAlumnos',
-                            style: const TextStyle(
-                              color: Colors.white60,
+                            style: TextStyle(
+                              color: palette.textSecondary,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
@@ -883,6 +914,8 @@ class _AsistenciasPendientesPageState
     IconData icon,
     Color color,
   ) {
+    final palette = context.uatPalette;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
@@ -908,8 +941,8 @@ class _AsistenciasPendientesPageState
               ),
               Text(
                 hora,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: palette.textPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),

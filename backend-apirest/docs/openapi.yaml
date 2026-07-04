@@ -299,6 +299,72 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GuardaAsistenciasResponse"
+  /api/coordinacion/resumen:
+    get:
+      tags: [Coordinacion]
+      summary: Resumen del grafo academico recolectado
+      responses:
+        "200":
+          description: Conteos y coordinaciones acumulados localmente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoordinationOverviewResponse"
+  /api/coordinacion/coordinaciones:
+    get:
+      tags: [Coordinacion]
+      summary: Lista coordinaciones academicas
+      responses:
+        "200":
+          description: Coordinaciones con conteos de relaciones
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoordinationListResponse"
+  /api/coordinacion/profesores:
+    get:
+      tags: [Coordinacion]
+      summary: Lista profesores recolectados
+      parameters:
+        - name: coordinationId
+          in: query
+          schema: { type: string }
+        - name: search
+          in: query
+          schema: { type: string, minLength: 1, maxLength: 100 }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        "200":
+          description: Pagina de profesores normalizados
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeacherListResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+  /api/coordinacion/profesores/{teacherId}/asignaciones:
+    get:
+      tags: [Coordinacion]
+      summary: Detalle y asignaciones de un profesor
+      parameters:
+        - name: teacherId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Profesor con materias, grupos, ciclos y coordinaciones
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeacherAssignmentsResponse"
+        "404":
+          $ref: "#/components/responses/Error"
 components:
   parameters:
     UatSessionHeader:
@@ -563,6 +629,120 @@ components:
         fetchedAt:
           type: string
           format: date-time
+    CoordinationSummary:
+      type: object
+      required: [id, externalId, name, shortName, teacherCount, subjectCount, assignmentCount]
+      properties:
+        id: { type: string }
+        externalId: { type: string }
+        name: { type: string }
+        shortName: { type: string, nullable: true }
+        teacherCount: { type: integer }
+        subjectCount: { type: integer }
+        assignmentCount: { type: integer }
+    TeacherSummary:
+      type: object
+      required: [id, externalId, institutionalCode, name, email, lastAuthenticatedAt, lastHarvestedAt, assignmentCount, subjectCount, coordinations]
+      properties:
+        id: { type: string }
+        externalId: { type: string }
+        institutionalCode: { type: string, nullable: true }
+        name: { type: string }
+        email: { type: string, nullable: true }
+        lastAuthenticatedAt: { type: string, format: date-time }
+        lastHarvestedAt: { type: string, format: date-time, nullable: true }
+        assignmentCount: { type: integer }
+        subjectCount: { type: integer }
+        coordinations:
+          type: array
+          items:
+            type: object
+            required: [id, externalId, name]
+            properties:
+              id: { type: string }
+              externalId: { type: string }
+              name: { type: string }
+    GroupAssignment:
+      type: object
+      required: [id, externalGroupId, groupCode, schoolCycleExternalId, schoolCycleName, firstSeenAt, lastSeenAt, teacher, subject, coordination]
+      properties:
+        id: { type: string }
+        externalGroupId: { type: string }
+        groupCode: { type: string, nullable: true }
+        schoolCycleExternalId: { type: string }
+        schoolCycleName: { type: string, nullable: true }
+        firstSeenAt: { type: string, format: date-time }
+        lastSeenAt: { type: string, format: date-time }
+        teacher:
+          type: object
+          additionalProperties: true
+        subject:
+          type: object
+          additionalProperties: true
+        coordination:
+          type: object
+          additionalProperties: true
+    CoordinationOverviewResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [counts, coordinations]
+          properties:
+            counts:
+              type: object
+              required: [teachers, subjects, coordinations, assignments]
+              properties:
+                teachers: { type: integer }
+                subjects: { type: integer }
+                coordinations: { type: integer }
+                assignments: { type: integer }
+            coordinations:
+              type: array
+              items: { $ref: "#/components/schemas/CoordinationSummary" }
+        meta: { $ref: "#/components/schemas/GeneratedMeta" }
+    CoordinationListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/CoordinationSummary" }
+        meta: { $ref: "#/components/schemas/GeneratedMeta" }
+    TeacherListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/TeacherSummary" }
+        meta:
+          type: object
+          required: [page, pageSize, total, totalPages]
+          properties:
+            page: { type: integer }
+            pageSize: { type: integer }
+            total: { type: integer }
+            totalPages: { type: integer }
+    TeacherAssignmentsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [teacher, assignments]
+          properties:
+            teacher: { $ref: "#/components/schemas/TeacherSummary" }
+            assignments:
+              type: array
+              items: { $ref: "#/components/schemas/GroupAssignment" }
+        meta: { $ref: "#/components/schemas/GeneratedMeta" }
+    GeneratedMeta:
+      type: object
+      required: [generatedAt]
+      properties:
+        generatedAt: { type: string, format: date-time }
     ErrorResponse:
       type: object
       required: [error, message]

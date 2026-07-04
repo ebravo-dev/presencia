@@ -14,6 +14,7 @@ import { studentAttendanceRoutes } from './modules/student-attendance/index.js';
 import { beaconsRoutes } from './modules/beacons/index.js';
 import { uatProxyRoutes } from './modules/uat-proxy/index.js';
 import { substitutionsRoutes } from './modules/substitutions/index.js';
+import { internalCoordinationRoutes } from './modules/internal-coordination/index.js';
 import fastifyStatic from '@fastify/static';
 import path from 'path';
 
@@ -101,6 +102,7 @@ async function registerRoutes(): Promise<void> {
     await fastify.register(studentAttendanceRoutes);
     await fastify.register(beaconsRoutes);
     await fastify.register(substitutionsRoutes);
+    await fastify.register(internalCoordinationRoutes);
 
     // Serve admin panel static files
     await fastify.register(fastifyStatic, {

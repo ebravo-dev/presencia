@@ -5,12 +5,12 @@ import 'package:table_calendar/table_calendar.dart';
 
 import '../../../services/asistencia_local_service.dart';
 import '../../../shared/models/asistencia_registro.dart';
+import '../../../core/theme/uat_colors.dart';
 import '../../../core/utils/utils.dart';
 import '../../../services/api_service.dart';
 import '../../../services/auth_storage_service.dart';
 import '../../../services/sync_service.dart';
 import '../../../shared/models/grupo.dart';
-import '../../../core/theme/uat_colors.dart';
 import 'grupo_detail_page.dart';
 
 class UploadManagementPage extends StatefulWidget {
@@ -527,6 +527,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     return ValueListenableBuilder<List<_SyncStepData>>(
       valueListenable: _stepsNotifier,
       builder: (context, steps, _) {
+        final palette = context.uatPalette;
         final allCompleted = steps.every(
           (s) => s.status == _StepStatus.completed,
         );
@@ -1520,8 +1521,8 @@ class _CalendarModalState extends State<_CalendarModal> {
                 child: ElevatedButton(
                   onPressed: () => Navigator.of(context).pop(),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey.shade800,
-                    foregroundColor: Colors.white,
+                    backgroundColor: palette.surfaceMuted,
+                    foregroundColor: palette.textPrimary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -1585,6 +1586,8 @@ class _CalendarModalState extends State<_CalendarModal> {
   }
 
   Widget _buildLegendItem(Color color, String label) {
+    final palette = context.uatPalette;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1596,7 +1599,7 @@ class _CalendarModalState extends State<_CalendarModal> {
         const SizedBox(width: 8),
         Text(
           label,
-          style: TextStyle(color: Colors.grey.shade300, fontSize: 14),
+          style: TextStyle(color: palette.textSecondary, fontSize: 14),
         ),
       ],
     );
@@ -1624,7 +1627,6 @@ class _PendingDetailsModal extends StatefulWidget {
 }
 
 class _PendingDetailsModalState extends State<_PendingDetailsModal> {
-  final Set<int> _expandedIndices = {};
   late List<AsistenciaRegistro> _localPendientes;
 
   // Gradientes (igual que en grupos_page)
@@ -1692,10 +1694,6 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
     return '$diaSemana $fechaStr';
   }
 
-  String _resolveStudentName(String key) {
-    return widget.studentNames[key] ?? key;
-  }
-
   /// Returns (className, groupMeta) where groupMeta is "Grupo K · Salón 301"
   (String, String?) _resolveGrupoMeta(AsistenciaRegistro registro) {
     final grupo = widget.grupoMap[registro.grupoId];
@@ -1710,11 +1708,13 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.uatPalette;
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.75,
-      decoration: const BoxDecoration(
-        color: Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.only(
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(20),
           topRight: Radius.circular(20),
         ),
@@ -1727,17 +1727,17 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.grey.shade600,
+              color: palette.textTertiary,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           // Title
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
             child: Text(
               'Asistencias Pendientes',
               style: TextStyle(
-                color: Colors.white,
+                color: palette.textPrimary,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
@@ -1747,25 +1747,24 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
             padding: const EdgeInsets.only(bottom: 12),
             child: Text(
               '${widget.pendientes.length} registro${widget.pendientes.length == 1 ? '' : 's'}',
-              style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+              style: TextStyle(color: palette.textSecondary, fontSize: 14),
             ),
           ),
-          const Divider(color: Color(0xFF3A3A3C), height: 1),
+          Divider(color: palette.border, height: 1),
           // List
           Expanded(
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(vertical: 8),
               itemCount: _localPendientes.length,
-              separatorBuilder: (_, __) => const Divider(
-                color: Color(0xFF3A3A3C),
+              separatorBuilder: (_, __) => Divider(
+                color: palette.border,
                 height: 1,
                 indent: 16,
                 endIndent: 16,
               ),
               itemBuilder: (context, index) {
                 final registro = _localPendientes[index];
-                final isExpanded = _expandedIndices.contains(index);
-                return _buildRegistroTile(registro, index, isExpanded);
+                return _buildRegistroTile(registro);
               },
             ),
           ),
@@ -1778,8 +1777,8 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
               child: ElevatedButton(
                 onPressed: () => Navigator.of(context).pop(),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.grey.shade800,
-                  foregroundColor: Colors.white,
+                  backgroundColor: palette.surfaceMuted,
+                  foregroundColor: palette.textPrimary,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -1808,304 +1807,131 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
     );
   }
 
-  Widget _buildRegistroTile(
-    AsistenciaRegistro registro,
-    int index,
-    bool isExpanded,
-  ) {
+  Widget _buildRegistroTile(AsistenciaRegistro registro) {
     final changed = _changedEntries(registro);
     final total = changed.length;
     final (className, grupoMeta) = _resolveGrupoMeta(registro);
+    final palette = context.uatPalette;
 
-    return Column(
-      children: [
-        // Header row (tappable)
-        InkWell(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            setState(() {
-              if (isExpanded) {
-                _expandedIndices.remove(index);
-              } else {
-                _expandedIndices.add(index);
-              }
-            });
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Row(
-              children: [
-                // Orange dot
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: const BoxDecoration(
-                    color: Colors.orange,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                // Date + group info
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _formatFecha(registro.fecha),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        className,
-                        style: TextStyle(
-                          color: Colors.grey.shade400,
-                          fontSize: 13,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (grupoMeta != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          grupoMeta,
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 12,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Changed count chip
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    total == 1 ? '$total cambio' : '$total cambios',
-                    style: TextStyle(
-                      color: Colors.orange.shade400,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Expand arrow
-                AnimatedRotation(
-                  turns: isExpanded ? 0.5 : 0,
-                  duration: const Duration(milliseconds: 200),
-                  child: Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    color: Colors.grey.shade400,
-                    size: 24,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        // Expandable details
-        AnimatedCrossFade(
-          alignment: Alignment.topCenter,
-          firstChild: const SizedBox(width: double.infinity, height: 0),
-          secondChild: SizedBox(
-            width: double.infinity,
-            child: Column(
-              children: [
-                _buildStudentList(registro),
-                _buildActionButtons(registro, index),
-              ],
-            ),
-          ),
-          crossFadeState: isExpanded
-              ? CrossFadeState.showSecond
-              : CrossFadeState.showFirst,
-          duration: const Duration(milliseconds: 200),
-        ),
-      ],
-    );
-  }
-
-  /// Botones de "Eliminar" y "Mostrar en pantalla" debajo de cada registro expandido
-  Widget _buildActionButtons(AsistenciaRegistro registro, int index) {
-    final grupoColors = _getColoresParaGrupo(registro.grupoId);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(38, 0, 16, 12),
-      child: Row(
-        children: [
-          // Botón Eliminar
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _showDeleteConfirmation(registro, index),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: Colors.red.withOpacity(0.25),
-                    width: 0.5,
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.delete_outline_rounded,
-                      color: Colors.red.shade400,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Eliminar',
-                      style: TextStyle(
-                        color: Colors.red.shade400,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _openRegistroDetail(registro),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              // Orange dot
+              Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  color: Colors.orange,
+                  shape: BoxShape.circle,
                 ),
               ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          // Botón Mostrar en pantalla
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _navigateToGrupoDetail(registro),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: grupoColors[0].withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: grupoColors[0].withOpacity(0.25),
-                    width: 0.5,
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+              const SizedBox(width: 12),
+              // Date + group info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.open_in_new_rounded,
-                      color: grupoColors[0],
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
                     Text(
-                      'Mostrar en pantalla',
+                      _formatFecha(registro.fecha),
                       style: TextStyle(
-                        color: grupoColors[0],
-                        fontSize: 12,
+                        color: palette.textPrimary,
+                        fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
-                      maxLines: 1,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      className,
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 13,
+                      ),
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (grupoMeta != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        grupoMeta,
+                        style: TextStyle(
+                          color: palette.textTertiary,
+                          fontSize: 12,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ],
                 ),
               ),
-            ),
+              const SizedBox(width: 8),
+              // Changed count chip
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  total == 1 ? '$total cambio' : '$total cambios',
+                  style: TextStyle(
+                    color: Colors.orange.shade400,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: palette.iconMuted,
+                size: 24,
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  /// Muestra un diálogo de confirmación antes de eliminar
-  void _showDeleteConfirmation(AsistenciaRegistro registro, int index) {
-    final (className, _) = _resolveGrupoMeta(registro);
-    HapticFeedback.mediumImpact();
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        final palette = dialogContext.uatPalette;
-
-        return AlertDialog(
-          backgroundColor: palette.surfaceElevated,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Text(
-            '¿Eliminar registro?',
-            style: TextStyle(
-              color: palette.textPrimary,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          content: Text(
-            'Se eliminará el registro de asistencia de "$className" del día ${_formatFecha(registro.fecha)}.\n\nEsta acción no se puede deshacer.',
-            style: TextStyle(color: palette.textSecondary, fontSize: 14),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(
-                'Cancelar',
-                style: TextStyle(
-                  color: palette.textSecondary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () async {
-                Navigator.of(dialogContext).pop();
-                await widget.onDelete(registro.id);
-                if (mounted) {
-                  HapticFeedback.heavyImpact();
-                  setState(() {
-                    _localPendientes.removeAt(index);
-                    _expandedIndices.remove(index);
-                    // Recalcular índices expandidos que estén por encima del eliminado
-                    final adjusted = <int>{};
-                    for (final i in _expandedIndices) {
-                      if (i > index) {
-                        adjusted.add(i - 1);
-                      } else {
-                        adjusted.add(i);
-                      }
-                    }
-                    _expandedIndices
-                      ..clear()
-                      ..addAll(adjusted);
-                  });
-                  // Si ya no quedan registros, cerrar el modal
-                  if (_localPendientes.isEmpty) {
-                    Navigator.of(context).pop();
-                  }
-                }
-              },
-              child: Text(
-                'Eliminar',
-                style: TextStyle(
-                  color: Colors.red.shade400,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+  Future<void> _openRegistroDetail(AsistenciaRegistro registro) async {
+    HapticFeedback.selectionClick();
+    final (className, grupoMeta) = _resolveGrupoMeta(registro);
+    final result = await Navigator.of(context).push<_PendingDetailAction>(
+      MaterialPageRoute(
+        builder: (_) => _PendingRegistroDetailPage(
+          registro: registro,
+          className: className,
+          grupoMeta: grupoMeta,
+          changedEntries: _changedEntries(registro),
+          studentNames: widget.studentNames,
+          accentColor: _getColoresParaGrupo(registro.grupoId).first,
+        ),
+      ),
     );
+
+    if (!mounted || result == null) return;
+    if (result == _PendingDetailAction.show) {
+      _navigateToGrupoDetail(registro);
+      return;
+    }
+
+    await widget.onDelete(registro.id);
+    if (!mounted) return;
+    setState(() {
+      _localPendientes.removeWhere((item) => item.id == registro.id);
+    });
+    if (_localPendientes.isEmpty && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
   }
 
   /// Navegar a la pantalla de detalle del grupo con la fecha específica
@@ -2152,69 +1978,282 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
       ),
     );
   }
+}
 
-  Widget _buildStudentList(AsistenciaRegistro registro) {
-    // Only show students whose attendance changed vs last synced snapshot
-    final changed = _changedEntries(registro);
-    final hasSnapshot = registro.asistenciasSincronizadas != null;
+enum _PendingDetailAction { delete, show }
 
-    // Sort: present (new) first, then absent
-    final entries = changed.entries.toList()
+class _PendingRegistroDetailPage extends StatelessWidget {
+  final AsistenciaRegistro registro;
+  final String className;
+  final String? grupoMeta;
+  final Map<String, bool> changedEntries;
+  final Map<String, String> studentNames;
+  final Color accentColor;
+
+  const _PendingRegistroDetailPage({
+    required this.registro,
+    required this.className,
+    required this.grupoMeta,
+    required this.changedEntries,
+    required this.studentNames,
+    required this.accentColor,
+  });
+
+  String _studentName(String id) {
+    final name = studentNames[id]?.trim();
+    return name == null || name.isEmpty ? id : name;
+  }
+
+  String _formatDate(DateTime date) {
+    const weekdays = [
+      'Lunes',
+      'Martes',
+      'Miércoles',
+      'Jueves',
+      'Viernes',
+      'Sábado',
+      'Domingo',
+    ];
+    const months = [
+      '',
+      'enero',
+      'febrero',
+      'marzo',
+      'abril',
+      'mayo',
+      'junio',
+      'julio',
+      'agosto',
+      'septiembre',
+      'octubre',
+      'noviembre',
+      'diciembre',
+    ];
+    return '${weekdays[date.weekday - 1]} ${date.day} de ${months[date.month]} de ${date.year}';
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final palette = context.uatPalette;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: palette.surfaceElevated,
+        title: Text(
+          '¿Eliminar registro?',
+          style: TextStyle(color: palette.textPrimary),
+        ),
+        content: Text(
+          'Esta acción eliminará el registro pendiente y no se puede deshacer.',
+          style: TextStyle(color: palette.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red.shade400),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      HapticFeedback.heavyImpact();
+      Navigator.of(context).pop(_PendingDetailAction.delete);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.uatPalette;
+    final entries = changedEntries.entries.toList()
       ..sort((a, b) {
         if (a.value != b.value) return a.value ? -1 : 1;
-        return _resolveStudentName(a.key).compareTo(_resolveStudentName(b.key));
+        return _studentName(a.key).compareTo(_studentName(b.key));
       });
+    final hasSnapshot = registro.asistenciasSincronizadas != null;
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(38, 0, 16, 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2C2C2E),
-        borderRadius: BorderRadius.circular(12),
+    return Scaffold(
+      backgroundColor: palette.appBackground,
+      appBar: AppBar(
+        backgroundColor: palette.appBackground,
+        foregroundColor: palette.textPrimary,
+        elevation: 0,
+        title: const Text('Registro pendiente'),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (hasSnapshot)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                'Cambios desde la última subida:',
-                style: TextStyle(
-                  color: Colors.grey.shade500,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                children: [
+                  Text(
+                    _formatDate(registro.fecha),
+                    style: TextStyle(
+                      color: palette.textPrimary,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    className,
+                    style: TextStyle(
+                      color: palette.textSecondary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (grupoMeta != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      grupoMeta!,
+                      style: TextStyle(
+                        color: palette.textTertiary,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 28),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          hasSnapshot
+                              ? 'Cambios desde la última subida'
+                              : 'Lista marcada',
+                          style: TextStyle(
+                            color: palette.textPrimary,
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '${entries.length}',
+                        style: TextStyle(
+                          color: accentColor,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (entries.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Text(
+                        'No hay cambios de asistencia en este registro.',
+                        style: TextStyle(color: palette.textSecondary),
+                      ),
+                    )
+                  else
+                    ...entries.map(
+                      (entry) => _StudentAttendanceChangeRow(
+                        name: _studentName(entry.key),
+                        present: entry.value,
+                      ),
+                    ),
+                ],
               ),
             ),
-          ...entries.map((entry) {
-            final name = _resolveStudentName(entry.key);
-            final present = entry.value;
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 5),
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              decoration: BoxDecoration(
+                color: palette.surface,
+                border: Border(top: BorderSide(color: palette.border)),
+              ),
               child: Row(
                 children: [
-                  Icon(
-                    present ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                    color: present
-                        ? Colors.green.shade400
-                        : Colors.red.shade400,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      name,
-                      style: TextStyle(
-                        color: present ? Colors.white : Colors.grey.shade500,
-                        fontSize: 14,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _confirmDelete(context),
+                      icon: const Icon(Icons.delete_outline_rounded),
+                      label: const Text('Eliminar'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red.shade400,
+                        side: BorderSide(color: Colors.red.shade400),
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        Navigator.of(context).pop(_PendingDetailAction.show);
+                      },
+                      icon: const Icon(Icons.open_in_new_rounded),
+                      label: const Text('Mostrar'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: accentColor,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(48),
                       ),
                     ),
                   ),
                 ],
               ),
-            );
-          }),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StudentAttendanceChangeRow extends StatelessWidget {
+  final String name;
+  final bool present;
+
+  const _StudentAttendanceChangeRow({
+    required this.name,
+    required this.present,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.uatPalette;
+    final statusColor = present ? Colors.green.shade600 : Colors.red.shade500;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 13),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: palette.border)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            present ? Icons.check_circle_rounded : Icons.cancel_rounded,
+            color: statusColor,
+            size: 21,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              name,
+              style: TextStyle(
+                color: palette.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            present ? 'Presente' : 'Ausente',
+            style: TextStyle(
+              color: statusColor,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );
