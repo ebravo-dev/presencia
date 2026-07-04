@@ -21,6 +21,20 @@ class PermissionService {
     );
   }
 
+  /// Request only the permissions required for the local student BLE handshake.
+  ///
+  /// On iOS, scanning a connectable BLE peripheral by service UUID requires the
+  /// Bluetooth permission, not Location. Location is still requested by the
+  /// classroom iBeacon flow through [requestBluetoothPermissions].
+  static Future<bool> requestStudentAttendanceBlePermissions() async {
+    final permissions = _platformStudentBlePermissions();
+    final statuses = await permissions.request();
+
+    return statuses.values.every(
+      (status) => status == PermissionStatus.granted,
+    );
+  }
+
   /// Check if Bluetooth permissions are granted
   static Future<bool> hasBluetoothPermissions() async {
     final permissions = _platformBluetoothPermissions();
@@ -50,5 +64,21 @@ class PermissionService {
     }
 
     return [Permission.bluetooth, Permission.location];
+  }
+
+  static List<Permission> _platformStudentBlePermissions() {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return [
+        Permission.bluetooth,
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+      ];
+    }
+
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      return [Permission.bluetooth];
+    }
+
+    return [Permission.bluetooth];
   }
 }

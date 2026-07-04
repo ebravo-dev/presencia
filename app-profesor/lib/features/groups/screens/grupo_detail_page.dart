@@ -1743,7 +1743,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       _isLoadingStudentBeaconBindings = true;
     });
 
-    final granted = await PermissionService.requestBluetoothPermissions();
+    final granted =
+        await PermissionService.requestStudentAttendanceBlePermissions();
     if (!mounted) return;
 
     if (!granted) {
@@ -1785,9 +1786,35 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     );
 
     _bleBeaconService.cancelScan();
-    final started = await _studentBeaconService.startScanning(
-      uuids: _studentBeaconScanUuids,
-    );
+    bool started = false;
+    try {
+      started = await _studentBeaconService.startScanning(
+        uuids: _studentBeaconScanUuids,
+      );
+    } on PlatformException catch (error) {
+      Logger.info(
+        '[StudentBeaconScan] No se pudo iniciar BLE: ${error.code} ${error.message}',
+      );
+      if (mounted) {
+        setState(() {
+          _isLoadingStudentBeaconBindings = false;
+          _isStudentBeaconScanning = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error.code == 'BLUETOOTH_OFF'
+                  ? 'Activa Bluetooth para detectar alumnos.'
+                  : 'Activa el permiso de Bluetooth en Configuración.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      await _studentBeaconSubscription?.cancel();
+      _studentBeaconSubscription = null;
+      return;
+    }
     if (!mounted) return;
 
     setState(() {
