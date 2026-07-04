@@ -19,7 +19,7 @@ export interface Assignment {
 export interface OverviewResponse { data: { counts: { teachers: number; subjects: number; coordinations: number; assignments: number }; coordinations: CoordinationSummary[] }; meta: { generatedAt: string } }
 export interface TeachersResponse { data: TeacherSummary[]; meta: { page: number; pageSize: number; total: number; totalPages: number } }
 export interface TeacherAssignmentsResponse { data: { teacher: TeacherSummary; assignments: Assignment[] }; meta: { generatedAt: string } }
-export type ReportCellStatus = 'TAKEN' | 'MISSING' | 'FUTURE' | 'NOT_SCHEDULED' | 'UNKNOWN_SCHEDULE';
+export type ReportCellStatus = 'TAKEN' | 'MISSING' | 'FUTURE' | 'NOT_SCHEDULED' | 'UNKNOWN_SCHEDULE' | 'SOURCE_UNAVAILABLE';
 export type ReportDay = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
 export interface ReportCell { date: string; status: ReportCellStatus; portalSyncStatus: string | null; portalSyncError: string | null }
 export interface ReportRow {
@@ -29,7 +29,7 @@ export interface ReportRow {
 }
 export interface WeeklyReportResponse {
   data: {
-    availability: 'READY' | 'NOT_SYNCED' | 'IDENTITY_UNAVAILABLE';
+    availability: 'READY' | 'NOT_SYNCED' | 'IDENTITY_UNAVAILABLE' | 'ATTENDANCE_SOURCE_UNAVAILABLE';
     teacher: {
       id: string;
       name: string;
@@ -38,7 +38,7 @@ export interface WeeklyReportResponse {
       coordinations?: Array<{ id: string; externalId: string; name: string }>;
     };
     week: { start: string; end: string; isoWeek: number };
-    summary: { scheduled: number; taken: number; missing: number; future: number; unknownSchedule: number; completionRate: number };
+    summary: { scheduled: number; taken: number; missing: number; future: number; unknownSchedule: number; sourceUnavailable?: number; completionRate: number };
     rows: ReportRow[];
   };
   meta: { generatedAt: string; timezone: string };

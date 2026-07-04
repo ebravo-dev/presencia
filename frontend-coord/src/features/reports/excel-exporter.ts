@@ -5,7 +5,7 @@ const days: Array<{ key: ReportDay; label: string }> = [
   { key: 'monday', label: 'Lunes' }, { key: 'tuesday', label: 'Martes' }, { key: 'wednesday', label: 'Miércoles' },
   { key: 'thursday', label: 'Jueves' }, { key: 'friday', label: 'Viernes' }, { key: 'saturday', label: 'Sábado' },
 ];
-const statusLabels: Record<ReportCellStatus, string> = { TAKEN: '✓', MISSING: '✕', FUTURE: '○', NOT_SCHEDULED: '—', UNKNOWN_SCHEDULE: '?' };
+const statusLabels: Record<ReportCellStatus, string> = { TAKEN: '✓', MISSING: '✕', FUTURE: '○', NOT_SCHEDULED: '—', UNKNOWN_SCHEDULE: '?', SOURCE_UNAVAILABLE: '!' };
 
 export async function exportReportExcel(report: WeeklyReportResponse): Promise<void> {
   const workbook = new ExcelJS.Workbook(); workbook.creator = 'Presencia · UAT'; workbook.created = new Date();
@@ -24,7 +24,7 @@ export async function exportReportExcel(report: WeeklyReportResponse): Promise<v
 
 function styleStatusCell(cell: ExcelJS.Cell, status: ReportCellStatus): void {
   cell.alignment = { horizontal: 'center', vertical: 'middle' };
-  cell.font = { bold: true, size: 13, color: { argb: status === 'TAKEN' ? 'FF16A34A' : status === 'MISSING' ? 'FFDC2626' : 'FF64748B' } };
+  cell.font = { bold: true, size: 13, color: { argb: status === 'TAKEN' ? 'FF16A34A' : status === 'MISSING' ? 'FFDC2626' : status === 'SOURCE_UNAVAILABLE' ? 'FFD97706' : 'FF64748B' } };
 }
 function filename(report: WeeklyReportResponse, extension: string) { return `asistencia-${report.data.teacher.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')}-semana-${report.data.week.isoWeek}.${extension}`; }
 function download(blob: Blob, name: string) { const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = name; anchor.click(); URL.revokeObjectURL(url); }

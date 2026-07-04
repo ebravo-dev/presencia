@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import type { IGroupAssignmentRepository } from '../../domain/repositories/group-assignment.repository.js';
 import type { ITeacherRepository } from '../../domain/repositories/teacher.repository.js';
-import type { AttendanceBackendClient } from '../../infrastructure/http/client/attendance-backend.client.js';
+import {
+  AttendanceBackendUnavailableError,
+  type AttendanceBackendClient,
+} from '../../infrastructure/http/client/attendance-backend.client.js';
 import { WeeklyAttendanceReportService } from './weekly-attendance-report.service.js';
 
 const teacher = {
@@ -27,5 +31,51 @@ describe('WeeklyAttendanceReportService', () => {
     const report = await new WeeklyAttendanceReportService(teacherRepository, source).getReport(teacher.id, '2020-01-06');
     expect(report.data.availability).toBe('NOT_SYNCED');
     expect(report.data.rows).toEqual([]);
+  });
+
+  it('usa horarios locales cuando el backend de asistencia no esta disponible', async () => {
+    const source = {
+      getWeeklyAttendance: async () => {
+        throw new AttendanceBackendUnavailableError('No fue posible consultar el backend de asistencia.');
+      },
+    } as unknown as AttendanceBackendClient;
+    const assignments = {
+      findByTeacherId: async () => [{
+        id: 'assignment-1',
+        externalGroupId: '947699',
+        groupCode: 'A',
+        schoolCycleExternalId: '150',
+        schoolCycleName: '2026-1',
+        classroom: 'A1',
+        educationLevel: 'Licenciatura',
+        period: '1',
+        schedule: {
+          monday: [{ raw: '07:00-08:00', startTime: '07:00', endTime: '08:00' }],
+          tuesday: [],
+          wednesday: [],
+          thursday: [],
+          friday: [],
+          saturday: [],
+          sunday: [],
+        },
+        firstSeenAt: new Date(),
+        lastSeenAt: new Date(),
+        teacher: { id: teacher.id, externalId: teacher.externalId, name: teacher.name },
+        subject: { id: 'subject-1', externalId: '12:calculo', code: null, name: 'Calculo' },
+        coordination: { id: 'coordination-1', externalId: '12', name: 'FI' },
+      }],
+      upsert: async () => undefined,
+      count: async () => 1,
+    } as IGroupAssignmentRepository;
+
+    const report = await new WeeklyAttendanceReportService(teacherRepository, source, assignments).getReport(
+      teacher.id,
+      '2020-01-06',
+    );
+
+    expect(report.data.availability).toBe('ATTENDANCE_SOURCE_UNAVAILABLE');
+    expect(report.data.rows).toHaveLength(1);
+    expect(report.data.rows[0]?.cells.monday.status).toBe('SOURCE_UNAVAILABLE');
+    expect(report.data.summary.sourceUnavailable).toBe(1);
   });
 });

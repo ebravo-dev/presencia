@@ -72,7 +72,11 @@ export async function buildApp() {
     env.ATTENDANCE_BACKEND_URL,
     env.ATTENDANCE_BACKEND_SERVICE_TOKEN,
   );
-  const weeklyAttendanceReport = new WeeklyAttendanceReportService(teacherRepository, attendanceBackendClient);
+  const weeklyAttendanceReport = new WeeklyAttendanceReportService(
+    teacherRepository,
+    attendanceBackendClient,
+    groupAssignmentRepository,
+  );
 
   fastify.addHook('onClose', async () => {
     unsubscribeSync();

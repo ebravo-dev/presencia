@@ -45,6 +45,9 @@ export function ReportsPage() {
 
   const exportExcel = async () => { if (report.data) await (await import('./excel-exporter')).exportReportExcel(report.data); };
   const exportPdf = async () => { if (report.data) await (await import('./pdf-exporter')).exportReportPdf(report.data); };
+  const canShowReport = report.data?.data.availability === 'READY' || (
+    report.data?.data.availability === 'ATTENDANCE_SOURCE_UNAVAILABLE' && report.data.data.rows.length > 0
+  );
 
   return (
     <div className="grid min-h-[calc(100vh-7rem)] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition-colors dark:border-[#1f2229] dark:bg-[#1a1d23] xl:grid-cols-[320px_minmax(0,1fr)]">
@@ -163,7 +166,7 @@ export function ReportsPage() {
             <div className="mx-auto max-w-[820px] space-y-4"><Skeleton className="h-24" /><Skeleton className="h-[680px]" /></div>
           ) : report.isError || !report.data ? (
             <EmptyPreview icon={<AlertTriangle size={36} />} title="Fuente de asistencia no disponible" description="No fue posible consultar el backend de asistencia. Intenta nuevamente." />
-          ) : report.data.data.availability !== 'READY' ? (
+          ) : !canShowReport ? (
             <EmptyPreview icon={<Info size={36} />} title="Profesor sin historial sincronizado" description="La identidad todavía no tiene grupos sincronizados desde la aplicación de profesores." />
           ) : (
             <DocumentPreview report={report.data} fallbackTeacher={selectedTeacher} />
@@ -229,6 +232,16 @@ function DocumentPreview({ report, fallbackTeacher }: { report: WeeklyReportResp
           <p><strong>Correo:</strong> {teacher.email || '—'}</p>
         </div>
       </section>
+
+      {report.data.availability === 'ATTENDANCE_SOURCE_UNAVAILABLE' && (
+        <section className="mt-4 flex items-start gap-3 border border-amber-200 bg-amber-50 p-3 text-[10px] leading-4 text-amber-800">
+          <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+          <p>
+            El backend de asistencia no estuvo disponible. Se muestra el horario local recolectado, pero las marcas de
+            asistencia no pudieron verificarse.
+          </p>
+        </section>
+      )}
 
       <section className="mt-5 overflow-hidden border border-slate-300">
         {rows.length === 0 ? (
@@ -296,6 +309,7 @@ function ReportMark({ cell }: { cell?: ReportCell }) {
   if (cell.status === 'TAKEN') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border-2 border-emerald-500 text-emerald-600" title={cell.portalSyncError || 'Asistencia registrada'} aria-label="Asistencia registrada"><Check size={14} strokeWidth={3} /></span>;
   if (cell.status === 'MISSING') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border-2 border-red-400 text-red-500" aria-label="Inasistencia"><X size={14} strokeWidth={3} /></span>;
   if (cell.status === 'FUTURE') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border border-slate-300 text-slate-400" aria-label="Clase futura" title="Clase futura"><Clock3 size={13} /></span>;
+  if (cell.status === 'SOURCE_UNAVAILABLE') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border border-amber-400 text-amber-600" aria-label="Asistencia no disponible" title="Asistencia no disponible"><AlertTriangle size={13} /></span>;
   return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border border-amber-400 font-bold text-amber-600" aria-label="Horario no interpretable" title="Horario no interpretable">?</span>;
 }
 
