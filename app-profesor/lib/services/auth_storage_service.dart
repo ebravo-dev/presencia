@@ -158,7 +158,7 @@ class AuthStorageService {
     try {
       final parts = token.split('.');
       if (parts.length != 3) {
-        Logger.debug('Sesion backend-apirest detectada');
+        Logger.debug('Sesion REST detectada');
         return true;
       }
 

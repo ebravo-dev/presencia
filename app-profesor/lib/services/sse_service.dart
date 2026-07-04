@@ -73,9 +73,9 @@ class SyncEvent {
 
 /// Compatibility shim for the old sync-status UI.
 ///
-/// backend-apirest now performs UAT calls synchronously over REST, so there is
-/// no queue stream to subscribe to. This stream emits a completed event and
-/// lets the existing screen navigate/refresh without opening legacy endpoints.
+/// The main backend now performs UAT orchestration synchronously over REST, so
+/// there is no queue stream to subscribe to. This stream emits a completed
+/// event and lets the existing screen navigate/refresh without legacy workers.
 class SSEService {
   StreamController<SyncEvent>? _controller;
   bool _isConnected = false;
@@ -94,7 +94,7 @@ class SSEService {
           status: 'IN_PROGRESS',
           step: 1,
           totalSteps: 5,
-          message: 'Conectando con backend-apirest...',
+          message: 'Conectando con backend principal...',
         ),
       );
       _controller?.add(
@@ -103,7 +103,7 @@ class SSEService {
           status: 'COMPLETED',
           step: 5,
           totalSteps: 5,
-          message: 'Datos sincronizados desde backend-apirest',
+          message: 'Datos sincronizados desde backend principal',
         ),
       );
       disconnect();

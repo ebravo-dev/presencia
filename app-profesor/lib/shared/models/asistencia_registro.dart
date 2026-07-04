@@ -47,7 +47,7 @@ class AsistenciaRegistro extends HiveObject {
   final String? motivoEntrada; // Reason when beacon was not detected
 
   // ─── Stable server identifiers (no CUIDs) ─────────────────────────────────
-  // These come from the UAT portal via backend-apirest and remain stable.
+  // These come from the UAT portal through the main backend and remain stable.
   @HiveField(14)
   final String? grupoCode; // e.g. "RC.06061.2873.5"
 

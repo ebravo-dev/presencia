@@ -223,7 +223,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     await _authStorage.clearGrupos();
   }
 
-  /// Sincronizar ciclo directamente contra backend-apirest
+  /// Sincronizar ciclo contra el backend principal.
   Future<Either<String, String>> syncGroups(String password) async {
     if (!state.isAuthenticated ||
         state.profesor == null ||
@@ -241,7 +241,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     // Clear local groups before syncing to avoid showing stale data
     await clearGrupos();
 
-    // Usar ApiService para sincronizar directamente contra backend-apirest
+    // Usar ApiService para sincronizar contra el backend principal.
     final result = await _apiService.forceSync(
       email: state.profesor!.institutionalEmail,
       encryptedPassword: encryptedPassword,

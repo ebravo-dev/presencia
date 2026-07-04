@@ -1,7 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../../core/database/prisma.js';
-import { addScrapingJob } from '../../core/queue/queue.config.js';
-import { rsaService } from '../../core/security/index.js';
 
 /**
  * Sync routes - SSE streaming and retry functionality

@@ -311,7 +311,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     ];
 
     // ── Phase 1: Fire ALL HTTP uploads ─────────────────────────────
-    // Each POST registers attendance through backend-apirest.
+    // Each POST registers attendance through the main backend.
     _updateStep(0, _StepStatus.completed);
     _updateStep(1, _StepStatus.inProgress);
 

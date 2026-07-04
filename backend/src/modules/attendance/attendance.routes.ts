@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../../core/database/prisma.js';
 import { jwtService, rsaService, sessionService } from '../../core/security/index.js';
-import { addAttendanceUploadJob } from '../../core/queue/queue.config.js';
 import { AttendanceStatus, PortalSyncStatus, SyncStatus } from '@prisma/client';
+import { uatRestSyncService } from '../uat-rest/index.js';
 import {
     registerAttendanceSchema,
     attendanceHistoryQuerySchema,
@@ -277,9 +277,8 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                     });
                 }
 
-                // Only block if sync is actively in progress (prevents duplicate jobs)
-                // Do NOT block on COMPLETED — the scraper is idempotent and the professor
-                // explicitly triggered this upload, so always re-sync to ensure portal matches.
+                // Only block if sync is actively in progress. Completed records can be
+                // re-synced explicitly so the portal matches the latest local data.
 
                 if (refreshedRecord.portalSyncStatus === PortalSyncStatus.IN_PROGRESS) {
                     return reply.code(409).send({
@@ -345,7 +344,7 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                     },
                 });
 
-                await addAttendanceUploadJob({
+                const uploadResult = await uatRestSyncService.uploadAttendance({
                     professorId: attendanceProfessorId,
                     email: professor.institutionalEmail,
                     password: decryptedPassword,
@@ -362,8 +361,9 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                         date: date,
                         groupId,
                         attendancesCount: attendances.length,
+                        portalProcessedCount: uploadResult.processedCount,
                     },
-                    message: 'Asistencia registrada y en cola para subir',
+                    message: 'Asistencia registrada y subida por backend-apirest',
                 });
             } catch (error) {
                 request.log.error(error);

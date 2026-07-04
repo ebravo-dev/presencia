@@ -2,19 +2,18 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import { env } from './core/config/env.js';
-import { connectDatabase, disconnectDatabase } from './core/database/prisma.js';
-import { closeQueue, getQueueStats, drainStaleJobs } from './core/queue/queue.config.js';
-import { initializeScrapingWorker } from './modules/scraper/index.js';
+import { connectDatabase, disconnectDatabase, prisma } from './core/database/prisma.js';
 import { authRoutes } from './modules/auth/index.js';
 import { professorsRoutes } from './modules/professors/index.js';
 import { groupsRoutes } from './modules/groups/index.js';
-import { attendanceRoutes, initializeAttendanceUploadWorker } from './modules/attendance/index.js';
+import { attendanceRoutes } from './modules/attendance/index.js';
 import { syncRoutes } from './modules/sync/index.js';
 import { studentAttendanceRoutes } from './modules/student-attendance/index.js';
 import { beaconsRoutes } from './modules/beacons/index.js';
 import { uatProxyRoutes } from './modules/uat-proxy/index.js';
 import { substitutionsRoutes } from './modules/substitutions/index.js';
 import { internalCoordinationRoutes } from './modules/internal-coordination/index.js';
+import { sessionService } from './core/security/index.js';
 import fastifyStatic from '@fastify/static';
 import path from 'path';
 
@@ -83,12 +82,10 @@ async function registerPlugins(): Promise<void> {
 async function registerRoutes(): Promise<void> {
     // Health check
     fastify.get('/health', async () => {
-        const queueStats = await getQueueStats();
         return {
             status: 'ok',
             timestamp: new Date().toISOString(),
             environment: env.NODE_ENV,
-            queue: queueStats,
         };
     });
 
@@ -146,8 +143,8 @@ async function gracefulShutdown(signal: string): Promise<void> {
         await fastify.close();
         console.log('✅ Fastify closed');
 
-        await closeQueue();
-        console.log('✅ Queue closed');
+        await sessionService.close();
+        console.log('✅ Session store closed');
 
         await disconnectDatabase();
         console.log('✅ Database disconnected');
@@ -173,25 +170,7 @@ async function start(): Promise<void> {
         await registerPlugins();
         await registerRoutes();
 
-        // Drain stale jobs from Redis (prevents accumulated jobs after downtime)
-        await drainStaleJobs();
-
-        // Initialize scraping worker (optional - may fail in some Docker environments)
-        try {
-            await initializeScrapingWorker();
-            console.log('✅ Scraping worker initialized successfully');
-        } catch (scraperError) {
-            console.error('❌ CRITICAL: Scraping worker FAILED to initialize:', scraperError instanceof Error ? scraperError.message : scraperError);
-            console.error('❌ LOGIN WILL NOT WORK — professors cannot sync classes.');
-        }
-
-        // Initialize attendance upload worker (optional)
-        try {
-            await initializeAttendanceUploadWorker();
-        } catch (attendanceError) {
-            console.warn('⚠️ Attendance worker failed to initialize:', attendanceError instanceof Error ? attendanceError.message : attendanceError);
-            console.warn('⚠️ Server will continue without attendance upload capabilities');
-        }
+        await failStaleSyncState();
 
         // Start server
         await fastify.listen({
@@ -209,6 +188,29 @@ async function start(): Promise<void> {
     } catch (error) {
         console.error('❌ Error starting server:', error);
         process.exit(1);
+    }
+}
+
+async function failStaleSyncState(): Promise<void> {
+    const updatedSyncJobs = await prisma.syncJob.updateMany({
+        where: { status: { in: ['PENDING', 'IN_PROGRESS'] } },
+        data: {
+            status: 'FAILED',
+            error: 'Cancelado: el servidor se reinició',
+            completedAt: new Date(),
+        },
+    });
+
+    const updatedAttendance = await prisma.attendanceRecord.updateMany({
+        where: { portalSyncStatus: { in: ['PENDING', 'IN_PROGRESS'] } },
+        data: {
+            portalSyncStatus: 'FAILED',
+            portalSyncError: 'Cancelado: el servidor se reinició',
+        },
+    });
+
+    if (updatedSyncJobs.count > 0 || updatedAttendance.count > 0) {
+        console.log(`🧹 Limpieza de sincronizaciones: ${updatedSyncJobs.count} sync(s), ${updatedAttendance.count} asistencia(s)`);
     }
 }
 

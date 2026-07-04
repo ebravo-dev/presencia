@@ -124,7 +124,7 @@ class ApiService {
     }
   }
 
-  /// Fuerza la sincronización de grupos desatando el scraping
+  /// Fuerza la sincronizacion de grupos desde el backend principal.
   /// Endpoint: POST /professors/sync
   Future<Either<String, String>> forceSync({
     required String email,

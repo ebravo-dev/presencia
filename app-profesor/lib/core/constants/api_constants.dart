@@ -49,7 +49,7 @@ class ApiConstants {
   static const String validateToken = '/auth/validate';
   static const String me = '/auth/me';
 
-  // backend-apirest UAT endpoints.
+  // UAT endpoints exposed through the main backend proxy.
   static const String uatSessions = '/api/uat/sessions';
   static const String uatHorarios = '/api/uat/profesor/consultas/horarios';
   static const String uatExamenes = '/api/uat/profesor/consultas/examenes';

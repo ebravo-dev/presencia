@@ -1,7 +1,7 @@
 import { prisma } from '../../core/database/prisma.js';
 import { rsaService, jwtService, sessionService } from '../../core/security/index.js';
-import { addScrapingJob } from '../../core/queue/queue.config.js';
 import type { LoginRequest, AuthResponse } from './auth.schemas.js';
+import { uatRestSyncService } from '../uat-rest/index.js';
 
 /**
  * Calculate the current academic period based on date
@@ -20,7 +20,7 @@ export function calculateCurrentPeriod(date: Date = new Date()): string {
 export class AuthService {
     /**
      * Login a professor (creates account if doesn't exist - upsert behavior)
-     * - Validates credentials against UAT portal via scraping
+     * - Validates credentials against UAT through backend-apirest
      * - Creates professor in database if first time
      * - Only triggers scraping if period changed
      */
@@ -39,7 +39,7 @@ export class AuthService {
         const isNewProfessor = !professor;
 
         if (isNewProfessor) {
-            // Create new professor - name will be updated by scraper
+            // Create new professor - name will be updated by backend-apirest sync
             professor = await prisma.professor.create({
                 data: {
                     institutionalEmail: data.institutionalEmail,
@@ -67,7 +67,7 @@ export class AuthService {
             sessionId,
         });
 
-        // Only trigger scraping if professor has NO groups in current period
+        // Only sync if professor has NO groups in current period
         // (first login or new academic period). Returning professors
         // use "Sincronizar Ciclo" button to refresh their classes.
         const shouldSync = hasNoGroups;
@@ -79,11 +79,11 @@ export class AuthService {
                 data: { lastSyncPeriod: currentPeriod },
             });
 
-            // Queue scraping job to fetch groups from UAT
-            await addScrapingJob({
+            await uatRestSyncService.syncProfessor({
                 professorId: prof.id,
                 email: data.institutionalEmail,
                 password: decryptedPassword,
+                currentPeriod,
             });
         }
 
@@ -179,16 +179,16 @@ export class AuthService {
             data: { lastSyncPeriod: currentPeriod },
         });
 
-        console.log(`📤 Queuing scraping job for ${email}`);
-        // Queue scraping job
-        await addScrapingJob({
+        console.log(`📤 Syncing professor through backend-apirest for ${email}`);
+        await uatRestSyncService.syncProfessor({
             professorId,
             email,
             password: decryptedPassword,
+            currentPeriod,
         });
 
         return {
-            message: 'Sincronización iniciada...',
+            message: 'Sincronización completada.',
             currentPeriod,
         };
     }
