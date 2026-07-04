@@ -1262,14 +1262,14 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   }
 
   List<Map<String, dynamic>> _buildAttendancesForUpload() {
-    final studentIdMap = <String, int>{};
+    final studentIdMap = <String, String>{};
     for (final student in widget.grupo.students) {
-      final idAlumno = int.tryParse(student.id ?? '');
-      if (idAlumno != null) {
-        studentIdMap[student.id!] = idAlumno;
-        studentIdMap[student.number.toString()] = idAlumno;
+      final studentId = student.id;
+      if (studentId != null && studentId.isNotEmpty) {
+        studentIdMap[studentId] = studentId;
+        studentIdMap[student.number.toString()] = studentId;
         if (student.matricula != null) {
-          studentIdMap[student.matricula!] = idAlumno;
+          studentIdMap[student.matricula!] = studentId;
         }
       }
     }
@@ -1280,7 +1280,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       if (studentId == null) return;
 
       attendances.add({
-        'id_alumno': studentId,
+        'studentId': studentId,
         'num_pase_lista': 1,
         'num_dia': _selectedDateTime.weekday,
         'sn_asistencia': present,

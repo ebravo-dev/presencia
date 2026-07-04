@@ -246,14 +246,45 @@ class ApiService {
     required String token,
     required List<Map<String, String>> records,
   }) async {
-    return {};
+    final statuses = await checkSyncedRecordsStatus(
+      token: token,
+      records: records,
+    );
+    return statuses.map((key, value) => MapEntry(key, value == 'COMPLETED'));
   }
 
   Future<Map<String, String>> checkSyncedRecordsStatus({
     required String token,
     required List<Map<String, String>> records,
   }) async {
-    return {};
+    if (records.isEmpty) return {};
+
+    try {
+      final response = await _presenceDio.post(
+        '/attendance/check-synced',
+        data: {'records': records},
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+
+      final data = response.data['data'] as List<dynamic>? ?? [];
+      final statuses = <String, String>{};
+      for (final item in data) {
+        final map = Map<String, dynamic>.from(item as Map);
+        final groupId = map['groupId']?.toString();
+        final date = map['date']?.toString();
+        final status = map['status']?.toString();
+        if (groupId == null || date == null || status == null) continue;
+        statuses['${groupId}_$date'] = status;
+      }
+      return statuses;
+    } catch (e, stackTrace) {
+      Logger.error(
+        'Error verificando asistencias sincronizadas',
+        e,
+        stackTrace,
+      );
+      return {};
+    }
   }
 
   String _cleanException(Object error) {

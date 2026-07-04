@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'services/database_service.dart';
 import 'services/auth_storage_service.dart';
 import 'services/asistencia_local_service.dart';
+import 'services/offline_attendance_queue_service.dart';
 import 'core/constants/app_constants.dart';
 import 'core/constants/api_constants.dart';
 import 'core/permissions/permission_service.dart';
@@ -37,6 +38,8 @@ void main() async {
     // Initialize database
     await DatabaseService().init();
     Logger.info('App initialization completed');
+
+    OfflineAttendanceQueueService().start();
 
     // Request Bluetooth permissions at startup.
     PermissionService.requestBluetoothPermissions().then((granted) {
