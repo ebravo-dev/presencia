@@ -287,7 +287,9 @@ npm run seed:shared-class
 ```
 
 El seeder es idempotente y deja la clase sin compartir. La asignacion se realiza
-desde Coordinacion, en la seccion de clases compartidas.
+desde Coordinacion, en la seccion de clases compartidas. Por defecto usa el ciclo
+`2026 - 1 PRIMAVERA` (`Id_Ciclo_Escolar=150`); puede sobrescribirse con
+`SEED_CYCLE_NAME` y `SEED_CYCLE_EXTERNAL_ID`.
 
 ## Script CLI opcional
 
