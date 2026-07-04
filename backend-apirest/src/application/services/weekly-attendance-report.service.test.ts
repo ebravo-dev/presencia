@@ -27,6 +27,30 @@ describe('WeeklyAttendanceReportService', () => {
     expect(report.data.summary.completionRate).toBe(50);
   });
 
+  it('consolida todos los horarios de una materia y grupo en una sola fila', async () => {
+    const source = { getWeeklyAttendance: async () => ({
+      id: 'p1', institutionalEmail: teacher.email, name: teacher.name,
+      groups: [{
+        id: 'g1', code: 'MAT-1', groupLetter: 'A', name: 'Calculo', level: 'Licenciatura', classroom: 'A1', period: '2020-1',
+        schedule: {
+          lunes: '07:00 - 08:00; 09:00 - 10:00',
+          martes: '07:00 - 08:00',
+          viernes: '-; -',
+        },
+        attendanceRecords: [],
+      }],
+    }) } as unknown as AttendanceBackendClient;
+
+    const report = await new WeeklyAttendanceReportService(teacherRepository, source).getReport(teacher.id, '2020-01-06');
+
+    expect(report.data.rows).toHaveLength(1);
+    expect(report.data.rows[0]?.id).toBe('g1');
+    expect(report.data.rows[0]?.rawSchedule).toBe('07:00-08:00 / 09:00-10:00');
+    expect(report.data.rows[0]?.cells.monday.status).toBe('MISSING');
+    expect(report.data.rows[0]?.cells.friday.status).toBe('NOT_SCHEDULED');
+    expect(report.data.summary.scheduled).toBe(2);
+  });
+
   it('devuelve disponibilidad explicita cuando el profesor no se ha sincronizado', async () => {
     const source = { getWeeklyAttendance: async () => null } as unknown as AttendanceBackendClient;
     const report = await new WeeklyAttendanceReportService(teacherRepository, source).getReport(teacher.id, '2020-01-06');

@@ -91,10 +91,14 @@ export function mapWeeklySchedule(item?: UatHorarioItem): WeeklySchedule {
 }
 
 export function parseScheduleSlots(value: string): ScheduleSlot[] {
-  return value.split(/[;\n]+/).map((part) => part.trim()).filter(Boolean).map((raw) => {
+  return value.split(/[;\n]+/).map((part) => part.trim()).filter((part) => part && !isEmptyScheduleMarker(part)).map((raw) => {
     const match = raw.match(/\b(\d{1,2}:\d{2})\s*(?:-|a)\s*(\d{1,2}:\d{2})\b/i);
     return { raw, startTime: match?.[1] ? padTime(match[1]) : null, endTime: match?.[2] ? padTime(match[2]) : null };
   });
+}
+
+function isEmptyScheduleMarker(value: string): boolean {
+  return /^(?:-+|n\/?[ad]|no aplica|sin horario)$/i.test(value.trim());
 }
 
 function padTime(value: string): string {

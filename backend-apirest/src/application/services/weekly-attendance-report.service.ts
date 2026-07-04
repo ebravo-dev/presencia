@@ -90,39 +90,41 @@ function buildRows(
   sourceUnavailable = false,
 ) {
   const schedule = normalizeSchedule(group.schedule);
-  const ranges = new Map<string, NormalizedSlot>();
-  for (const day of DAYS) for (const slot of schedule[day]) ranges.set(slot.key, slot);
-  return [...ranges.values()].map((range) => {
-    const cells = Object.fromEntries(dates.map(({ day, date }) => {
-      const slot = schedule[day].find((candidate) => candidate.key === range.key);
-      return [day, buildCell(date, slot, group.attendanceRecords, sourceUnavailable)];
-    })) as Record<ReportDay, ReturnType<typeof buildCell>>;
+  const slots = DAYS.flatMap((day) => schedule[day]);
+  if (slots.length === 0) return [];
 
-    return {
-      id: `${group.id}:${range.key ?? range.raw}`,
-      groupId: group.id, groupCode: group.groupLetter || group.code, subject: group.name,
-      classroom: group.classroom || null, educationLevel: group.level || null, period: group.period,
-      startTime: range.startTime, endTime: range.endTime, rawSchedule: range.raw,
-      cells,
-      completionRate: completionRateForCells(cells),
-    };
-  });
+  const cells = Object.fromEntries(dates.map(({ day, date }) => [
+    day,
+    buildCell(date, schedule[day], group.attendanceRecords, sourceUnavailable),
+  ])) as Record<ReportDay, ReturnType<typeof buildCell>>;
+  const displaySchedule = scheduleForDisplay(slots);
+
+  return [{
+    id: group.id,
+    groupId: group.id, groupCode: group.groupLetter || group.code, subject: group.name,
+    classroom: group.classroom || null, educationLevel: group.level || null, period: group.period,
+    startTime: displaySchedule.startTime, endTime: displaySchedule.endTime, rawSchedule: displaySchedule.raw,
+    cells,
+    completionRate: completionRateForCells(cells),
+  }];
 }
 
 function buildCell(
   date: string,
-  slot: NormalizedSlot | undefined,
+  slots: NormalizedSlot[],
   records: AttendanceSourceRecord[],
   sourceUnavailable = false,
 ) {
-  if (!slot) return { date, status: 'NOT_SCHEDULED' as CellStatus, portalSyncStatus: null, portalSyncError: null };
+  if (slots.length === 0) return { date, status: 'NOT_SCHEDULED' as CellStatus, portalSyncStatus: null, portalSyncError: null };
   if (sourceUnavailable) {
     return { date, status: 'SOURCE_UNAVAILABLE' as CellStatus, portalSyncStatus: null, portalSyncError: null };
   }
-  if (!slot.startTime || !slot.endTime) return { date, status: 'UNKNOWN_SCHEDULE' as CellStatus, portalSyncStatus: null, portalSyncError: null };
+  const parsedSlots = slots.filter((slot) => slot.startTime && slot.endTime);
+  if (parsedSlots.length === 0) return { date, status: 'UNKNOWN_SCHEDULE' as CellStatus, portalSyncStatus: null, portalSyncError: null };
   const record = records.find((item) => item.date.slice(0, 10) === date);
   if (record) return { date, status: 'TAKEN' as CellStatus, portalSyncStatus: record.portalSyncStatus, portalSyncError: record.portalSyncError };
-  const status: CellStatus = `${date}T${slot.endTime}` < currentLocalDateTime() ? 'MISSING' : 'FUTURE';
+  const lastEndTime = parsedSlots.reduce((latest, slot) => slot.endTime! > latest ? slot.endTime! : latest, '00:00');
+  const status: CellStatus = `${date}T${lastEndTime}` < currentLocalDateTime() ? 'MISSING' : 'FUTURE';
   return { date, status, portalSyncStatus: null, portalSyncError: null };
 }
 
@@ -145,21 +147,27 @@ function normalizeSchedule(value: unknown): Record<ReportDay, NormalizedSlot[]> 
 
 function normalizeDaySlots(value: unknown): NormalizedSlot[] {
   if (typeof value === 'string') {
-    return value.split(/[;\n]+/).map((item) => item.trim()).filter(Boolean).map(toNormalizedSlot);
+    return uniqueSlots(value.split(/[;\n]+/)
+      .map((item) => item.trim())
+      .filter((item) => item && !isEmptyScheduleMarker(item))
+      .map(toNormalizedSlot));
   }
 
   if (Array.isArray(value)) {
-    return value.map((item) => {
-      if (typeof item === 'string') return toNormalizedSlot(item);
+    return uniqueSlots(value.map((item) => {
+      if (typeof item === 'string') {
+        const raw = item.trim();
+        return raw && !isEmptyScheduleMarker(raw) ? toNormalizedSlot(raw) : null;
+      }
       if (typeof item !== 'object' || item === null) return null;
 
       const record = item as Partial<ScheduleSlot>;
       const startTime = record.startTime ? padTime(record.startTime) : null;
       const endTime = record.endTime ? padTime(record.endTime) : null;
       const raw = record.raw?.trim() || (startTime && endTime ? `${startTime}-${endTime}` : null);
-      if (!raw) return null;
+      if (!raw || isEmptyScheduleMarker(raw)) return null;
       return { raw, startTime, endTime, key: startTime && endTime ? `${startTime}-${endTime}` : `unknown:${raw}` };
-    }).filter((item): item is NormalizedSlot => item !== null);
+    }).filter((item): item is NormalizedSlot => item !== null));
   }
 
   return [];
@@ -170,6 +178,27 @@ function toNormalizedSlot(item: string): NormalizedSlot {
   const startTime = match?.[1] ? padTime(match[1]) : null;
   const endTime = match?.[2] ? padTime(match[2]) : null;
   return { raw: item, startTime, endTime, key: startTime && endTime ? `${startTime}-${endTime}` : `unknown:${item}` };
+}
+
+function uniqueSlots(slots: NormalizedSlot[]): NormalizedSlot[] {
+  return [...new Map(slots.map((slot) => [slot.key, slot])).values()];
+}
+
+function isEmptyScheduleMarker(value: string): boolean {
+  return /^(?:-+|n\/?[ad]|no aplica|sin horario)$/i.test(value.trim());
+}
+
+function scheduleForDisplay(slots: NormalizedSlot[]): Pick<NormalizedSlot, 'raw' | 'startTime' | 'endTime'> {
+  const unique = uniqueSlots(slots);
+  const parsed = unique.filter((slot) => slot.startTime && slot.endTime);
+  if (parsed.length === 1 && unique.length === 1) return parsed[0]!;
+
+  const displaySlots = parsed.length > 0 ? parsed : unique;
+  return {
+    raw: displaySlots.map((slot) => slot.startTime && slot.endTime ? `${slot.startTime}-${slot.endTime}` : slot.raw).join(' / '),
+    startTime: parsed.reduce<string | null>((earliest, slot) => !earliest || slot.startTime! < earliest ? slot.startTime! : earliest, null),
+    endTime: null,
+  };
 }
 
 function toLocalReportGroup(assignment: GroupAssignmentDetail): ReportSourceGroup {
