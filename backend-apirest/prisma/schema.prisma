@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -15,17 +15,17 @@ model Coordination {
   firstSeenAt DateTime @default(now())
   lastSeenAt  DateTime @updatedAt
 
-  subjects   Subject[]
+  subjects    Subject[]
   assignments GroupAssignment[]
 
   @@index([name])
 }
 
 model Teacher {
-  id                 String    @id @default(cuid())
-  externalId         String    @unique
-  institutionalCode  String?
-  name               String
+  id                  String    @id @default(cuid())
+  externalId          String    @unique
+  institutionalCode   String?
+  name                String
   email               String?
   lastAuthenticatedAt DateTime
   lastHarvestedAt     DateTime?
@@ -47,28 +47,28 @@ model Subject {
   firstSeenAt    DateTime @default(now())
   lastSeenAt     DateTime @updatedAt
 
-  coordination Coordination @relation(fields: [coordinationId], references: [id], onDelete: Restrict)
+  coordination Coordination      @relation(fields: [coordinationId], references: [id], onDelete: Restrict)
   assignments  GroupAssignment[]
 
   @@index([coordinationId, name])
 }
 
 model GroupAssignment {
-  id                     String   @id @default(cuid())
-  externalGroupId        String   @unique
-  groupCode               String?
-  schoolCycleExternalId   String
-  schoolCycleName         String?
-  classroom               String?
-  educationLevel          String?
-  period                   String?
-  schedule                 Json?
-  rawPayload              Json?
-  teacherId               String
-  subjectId               String
-  coordinationId          String
-  firstSeenAt              DateTime @default(now())
-  lastSeenAt               DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  externalGroupId       String   @unique
+  groupCode             String?
+  schoolCycleExternalId String
+  schoolCycleName       String?
+  classroom             String?
+  educationLevel        String?
+  period                String?
+  schedule              Json?
+  rawPayload            Json?
+  teacherId             String
+  subjectId             String
+  coordinationId        String
+  firstSeenAt           DateTime @default(now())
+  lastSeenAt            DateTime @updatedAt
 
   teacher      Teacher      @relation(fields: [teacherId], references: [id], onDelete: Restrict)
   subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Restrict)
@@ -80,14 +80,14 @@ model GroupAssignment {
 }
 
 model CoordinatorUser {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String    @id @default(cuid())
+  email        String    @unique
   name         String
   passwordHash String
-  role         String   @default("COORDINATOR")
+  role         String    @default("COORDINATOR")
   disabledAt   DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   sessions CoordinatorSession[]
 }

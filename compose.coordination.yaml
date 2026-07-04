@@ -1,0 +1,54 @@
+services:
+  backend-apirest:
+    build:
+      context: ./backend-apirest
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3100
+      UAT_BASE_URL: ${UAT_BASE_URL:-https://administracionescolar.uat.edu.mx}
+      UAT_HTTP_TIMEOUT_MS: ${UAT_HTTP_TIMEOUT_MS:-30000}
+      UAT_SESSION_TTL_MINUTES: ${UAT_SESSION_TTL_MINUTES:-45}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL es requerida}
+      DATABASE_MIGRATION_MAX_ATTEMPTS: ${DATABASE_MIGRATION_MAX_ATTEMPTS:-10}
+      DATABASE_MIGRATION_RETRY_MS: ${DATABASE_MIGRATION_RETRY_MS:-3000}
+      COORDINATION_JWT_SECRET: ${COORDINATION_JWT_SECRET:?COORDINATION_JWT_SECRET es requerida}
+      COORDINATION_WEB_ORIGIN: ${COORDINATION_WEB_ORIGIN:?COORDINATION_WEB_ORIGIN es requerida}
+      COORDINATION_COOKIE_SECURE: ${COORDINATION_COOKIE_SECURE:-true}
+      ATTENDANCE_BACKEND_URL: ${ATTENDANCE_BACKEND_URL:?ATTENDANCE_BACKEND_URL es requerida}
+      ATTENDANCE_BACKEND_SERVICE_TOKEN: ${ATTENDANCE_BACKEND_SERVICE_TOKEN:?ATTENDANCE_BACKEND_SERVICE_TOKEN es requerido}
+      COORDINATORS_JSON: ${COORDINATORS_JSON:-}
+      COORDINATOR_EMAIL: ${COORDINATOR_EMAIL:-}
+      COORDINATOR_NAME: ${COORDINATOR_NAME:-}
+      COORDINATOR_PASSWORD: ${COORDINATOR_PASSWORD:-}
+    expose:
+      - "3100"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3100/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    networks:
+      - coordination
+
+  frontend-coord:
+    build:
+      context: ./frontend-coord
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      BACKEND_API_UPSTREAM: backend-apirest:3100
+    depends_on:
+      backend-apirest:
+        condition: service_healthy
+    expose:
+      - "8080"
+    networks:
+      - coordination
+
+networks:
+  coordination:
+    driver: bridge

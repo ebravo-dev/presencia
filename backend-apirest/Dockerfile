@@ -2,18 +2,25 @@
 
 FROM node:20-slim AS deps
 
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates openssl && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY package*.json ./
+COPY prisma ./prisma
 RUN npm ci
+RUN npm run prisma:generate
 
 FROM deps AS builder
 
 COPY tsconfig.json ./
 COPY src ./src
+COPY prisma ./prisma
 RUN npm run build
 
 FROM node:20-slim AS production
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates openssl && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
@@ -25,9 +32,12 @@ ENV NODE_ENV=production \
 WORKDIR /app
 
 COPY package*.json ./
+COPY prisma ./prisma
 RUN npm ci --omit=dev && npm cache clean --force
+RUN npm run prisma:generate
 
 COPY --from=builder /app/dist ./dist
+COPY prisma ./prisma
 
 EXPOSE 3100
 
@@ -36,4 +46,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 
 USER node
 
-CMD ["node", "dist/app.js"]
+CMD ["node", "dist/scripts/start-production.js"]
