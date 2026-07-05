@@ -50,9 +50,8 @@ export async function exportReportPdf(report: AttendanceReportResponse): Promise
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.text(`Nombre: ${report.data.teacher.name}`, 18, 50);
-  doc.text(`No. empleado: ${report.data.teacher.institutionalCode || '—'}`, 18, 55);
   doc.text(`Coordinación: ${report.data.teacher.coordinations?.[0]?.name || 'Coordinación Académica'}`, 108, 50);
-  doc.text(`Correo: ${report.data.teacher.email || '—'}`, 108, 55);
+  doc.text(`Correo: ${report.data.teacher.email || '—'}`, 18, 55);
 
   autoTable(doc, {
     startY: 63,
@@ -137,9 +136,8 @@ async function exportRangeReportPdf(report: RangeReportResponse): Promise<void> 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.text(`Nombre: ${report.data.teacher.name}`, 18, 50);
-  doc.text(`No. empleado: ${report.data.teacher.institutionalCode || '-'}`, 18, 55);
   doc.text(`Coordinacion: ${report.data.teacher.coordinations?.[0]?.name || 'Coordinacion Academica'}`, 108, 50);
-  doc.text(`Correo: ${report.data.teacher.email || '-'}`, 108, 55);
+  doc.text(`Correo: ${report.data.teacher.email || '-'}`, 18, 55);
 
   autoTable(doc, {
     startY: 63,

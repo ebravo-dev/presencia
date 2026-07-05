@@ -15,6 +15,7 @@ import {
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { coordinationApi } from '@/core/api/coordination.api';
 import type { Assignment, ScheduleDay, ScheduleSlot } from '@/core/api/types';
+import { SharedClassManagement } from '@/features/shared-classes/shared-class-management';
 import { Badge, Button, Card, EmptyState, Skeleton, cn } from '@/shared/components/ui';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 
@@ -70,17 +71,25 @@ export function AllocationPage() {
 
   const options = useMemo(() => {
     const items = detail.data?.data.assignments ?? [];
+    const cycles = [...new Set(items.map((item) => item.schoolCycleName || item.schoolCycleExternalId).filter(isNonEmptyString))]
+      .sort(compareAcademicCycles);
     return {
-      cycles: [...new Set(items.map((item) => item.schoolCycleName || item.schoolCycleExternalId))],
+      cycles,
       levels: [...new Set(items.map((item) => item.educationLevel).filter(Boolean))] as string[],
     };
   }, [detail.data]);
+
+  useEffect(() => {
+    if (!detail.data) return;
+    setCycle((current) => (current && options.cycles.includes(current) ? current : options.cycles[0] ?? ''));
+  }, [detail.data, options.cycles]);
 
   const assignments = useMemo(() => {
     return (detail.data?.data.assignments ?? [])
       .filter(
         (item) =>
-          (!cycle || (item.schoolCycleName || item.schoolCycleExternalId) === cycle) &&
+          Boolean(cycle) &&
+          (item.schoolCycleName || item.schoolCycleExternalId) === cycle &&
           (!level || item.educationLevel === level),
       )
       .sort((a, b) => {
@@ -95,13 +104,13 @@ export function AllocationPage() {
       <Card className="flex min-h-[640px] flex-col overflow-hidden">
         <div className="border-b border-slate-200 p-4 dark:border-[#2e3138]">
           <label className="relative block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
-              className="field pl-10"
+              className="field field-leading-icon"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Nombre o matricula"
-              aria-label="Buscar profesor"
+              placeholder="Buscar por nombre"
+              aria-label="Buscar profesor por nombre"
             />
           </label>
           <select
@@ -131,7 +140,7 @@ export function AllocationPage() {
               <EmptyState
                 icon={<Users />}
                 title="Sin resultados"
-                description="Prueba con otro nombre, matricula o coordinacion."
+                description="Prueba con otro nombre o coordinacion."
               />
             </div>
           ) : (
@@ -250,10 +259,15 @@ export function AllocationPage() {
 
             <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-[#2e3138] dark:bg-[#1a1d23]">
               <Filter size={17} className="text-slate-400" />
-              <select className="field w-auto min-w-48" value={cycle} onChange={(event) => setCycle(event.target.value)}>
-                <option value="">Todos los ciclos</option>
+              <select
+                className="field w-auto min-w-48"
+                value={cycle}
+                onChange={(event) => setCycle(event.target.value)}
+                disabled={options.cycles.length === 0}
+              >
+                {options.cycles.length === 0 ? <option value="">Sin ciclos</option> : null}
                 {options.cycles.map((item) => (
-                  <option key={item}>{item}</option>
+                  <option key={item} value={item}>{item}</option>
                 ))}
               </select>
               <select className="field w-auto min-w-48" value={level} onChange={(event) => setLevel(event.target.value)}>
@@ -278,6 +292,8 @@ export function AllocationPage() {
                 ))}
               </div>
             )}
+
+            <SharedClassManagement sourceTeacherId={selectedId} />
           </div>
         )}
       </section>
@@ -381,6 +397,20 @@ function cleanSubjectName(subject: Assignment['subject']) {
     code: subject.code || match?.[1] || null,
     name: match?.[2] || rawName,
   };
+}
+
+function isNonEmptyString(value: string | null | undefined): value is string {
+  return Boolean(value?.trim());
+}
+
+function compareAcademicCycles(a: string, b: string) {
+  return academicCycleValue(b) - academicCycleValue(a);
+}
+
+function academicCycleValue(value: string) {
+  const match = value.match(/(\d{4})\s*[- ]\s*(\d)/);
+  if (!match) return 0;
+  return Number(match[1]) * 10 + Number(match[2]);
 }
 
 function formatSlots(slots: ScheduleSlot[]): string {

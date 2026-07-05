@@ -286,7 +286,6 @@ function DocumentPreview({ report, fallbackTeacher }: { report: AttendanceReport
         <div className="mt-3 grid grid-cols-2 gap-x-8 gap-y-2 text-[10px]">
           <p><strong>Nombre:</strong> {teacher.name}</p>
           <p><strong>Coordinación:</strong> {coordination}</p>
-          <p><strong>No. empleado:</strong> {teacher.institutionalCode || '—'}</p>
           <p><strong>Correo:</strong> {teacher.email || '—'}</p>
         </div>
       </section>

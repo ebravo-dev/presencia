@@ -12,9 +12,7 @@ import '../../../../shared/models/grupo.dart';
 import '../../../../services/asistencia_local_service.dart';
 import '../../../../services/api_service.dart';
 import '../../../../services/auth_storage_service.dart';
-import '../../../../services/native_altbeacon_channel.dart';
 import '../../../../services/teacher_beacon_attendance_service.dart';
-import '../../../../core/permissions/permission_service.dart';
 import '../../authentication/providers/profesor_auth_provider.dart';
 import 'grupo_detail_page.dart';
 import 'upload_management_page.dart';
@@ -29,12 +27,11 @@ class GruposPage extends ConsumerStatefulWidget {
 class _GruposPageState extends ConsumerState<GruposPage>
     with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
-  bool _isExpanded = false; // Control de expansiÃ³n de tarjetas
-  bool _showTitle = true; // Control de visibilidad del tÃ­tulo
+  bool _isExpanded = false; // Control de expansión de tarjetas
+  bool _showTitle = true; // Control de visibilidad del título
   late AnimationController _pulseController;
-  int? _selectedCardIndex; // Ãndice de la tarjeta seleccionada para navegaciÃ³n
-  Timer? _titleVisibilityTimer; // Controla el retraso para esconder el tÃ­tulo
-  bool get _showDeveloperDiagnostics => false;
+  int? _selectedCardIndex; // Índice de la tarjeta seleccionada para navegación
+  Timer? _titleVisibilityTimer; // Controla el retraso para esconder el título
 
   static const List<List<Color>> _cardGradients = [
     [Color(0xFF8B5CF6), Color(0xFF7C3AED)],
@@ -58,13 +55,13 @@ class _GruposPageState extends ConsumerState<GruposPage>
   void initState() {
     super.initState();
 
-    // AnimaciÃ³n pulsante para el indicador de clase actual
+    // Animación pulsante para el indicador de clase actual
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
 
-    // Listener para animar el tÃ­tulo basado en scroll
+    // Listener para animar el título basado en scroll
     _scrollController.addListener(_handleScroll);
 
     // Configurar status bar transparente; el brillo se controla desde el tema.
@@ -206,7 +203,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
     }
   }
 
-  // Obtener el prÃ³ximo DateTime de inicio para un conjunto de weekdays y horario
+  // Obtener el próximo DateTime de inicio para un conjunto de weekdays y horario
   DateTime _getNextStartForSchedule(
     DateTime now,
     List<int> weekdays,
@@ -215,7 +212,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
     int finHour,
     int finMinute,
   ) {
-    // Buscar hasta 14 dÃ­as por seguridad
+    // Buscar hasta 14 días por seguridad
     for (var add = 0; add < 14; add++) {
       final candidateDay = now.add(Duration(days: add));
       if (weekdays.contains(candidateDay.weekday)) {
@@ -235,16 +232,16 @@ class _GruposPageState extends ConsumerState<GruposPage>
         );
         final ventanaFin = candidateEnd.add(const Duration(minutes: 10));
 
-        // Si el inicio estÃ¡ en el futuro, lo retornamos
+        // Si el inicio está en el futuro, lo retornamos
         if (candidateStart.isAfter(now)) return candidateStart;
 
         // Si estamos dentro de la ventana (inicio <= now <= ventanaFin), considerar el inicio de hoy
         if (!now.isAfter(ventanaFin)) return candidateStart;
-        // Si ya pasÃ³ la ventana, continuar buscando la siguiente ocurrencia
+        // Si ya pasó la ventana, continuar buscando la siguiente ocurrencia
       }
     }
 
-    // Fallback: devolver dentro de la prÃ³xima semana el primer dÃ­a coincidente
+    // Fallback: devolver dentro de la próxima semana el primer día coincidente
     for (var add = 1; add <= 7; add++) {
       final candidateDay = now.add(Duration(days: add));
       if (weekdays.contains(candidateDay.weekday)) {
@@ -262,11 +259,11 @@ class _GruposPageState extends ConsumerState<GruposPage>
     return now;
   }
 
-  // Ordenar grupos por proximidad a la prÃ³xima ocurrencia real (considerando dÃ­as de la semana)
+  // Ordenar grupos por proximidad a la próxima ocurrencia real (considerando días de la semana)
   List<MapEntry<Grupo, int>> _sortGruposByProximity(List<Grupo> grupos) {
     final now = DateTime.now();
 
-    // Crear lista de entradas con grupo y su Ã­ndice original
+    // Crear lista de entradas con grupo y su índice original
     final gruposWithIndex = grupos
         .asMap()
         .entries
@@ -277,7 +274,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
       final grupoA = a.key;
       final grupoB = b.key;
 
-      // Obtener horarios y dÃ­as desde el schedule real del grupo
+      // Obtener horarios y días desde el schedule real del grupo
       final horarioA = grupoA.horarioValido ?? '00:00-00:00';
       final horarioB = grupoB.horarioValido ?? '00:00-00:00';
       final weekdaysA = grupoA.weekdaysConHorarioValido;
@@ -320,7 +317,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
       return diffA.compareTo(diffB);
     });
 
-    // Revertir para que la mÃ¡s prÃ³xima estÃ© al final (arriba en el stack)
+    // Revertir para que la más próxima esté al final (arriba en el stack)
     return gruposWithIndex.reversed.toList();
   }
 
@@ -330,7 +327,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
     await ref.read(profesorAuthProvider.notifier).refreshGrupos();
     // Forzar reordenamiento con setState
     if (mounted) setState(() {});
-    // PequeÃ±a pausa para animaciÃ³n
+    // Pequeña pausa para animación
     await Future.delayed(const Duration(milliseconds: 300));
   }
 
@@ -415,7 +412,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
               right: 12,
               child: Row(
                 children: [
-                  // BotÃ³n de expandir/colapsar
+                  // Botón de expandir/colapsar
                   ClipRRect(
                     borderRadius: BorderRadius.circular(22),
                     child: BackdropFilter(
@@ -467,7 +464,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // BotÃ³n de subida de asistencias
+                            // Botón de subida de asistencias
                             GestureDetector(
                               onTap: () {
                                 HapticFeedback.lightImpact();
@@ -492,7 +489,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                 ),
                               ),
                             ),
-                            // BotÃ³n de mÃ¡s opciones
+                            // Botón de más opciones
                             GestureDetector(
                               onTap: () {
                                 HapticFeedback.lightImpact();
@@ -924,12 +921,12 @@ class _GruposPageState extends ConsumerState<GruposPage>
             ),
             const SizedBox(height: 12),
             Text(
-              'Si iniciaste sincronizaciÃ³n, revisa el progreso abajo.',
+              'Si iniciaste sincronización, revisa el progreso abajo.',
               style: TextStyle(fontSize: 16, color: palette.textSecondary),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
-            // BotÃ³n revisar sincronizaciÃ³n
+            // Botón revisar sincronización
             TextButton.icon(
               onPressed: () {
                 HapticFeedback.lightImpact();
@@ -937,7 +934,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
               },
               icon: const Icon(Icons.cloud_sync, color: Colors.blueAccent),
               label: const Text(
-                'Revisar sincronizaciÃ³n',
+                'Revisar sincronización',
                 style: TextStyle(
                   color: Colors.blueAccent,
                   fontSize: 16,
@@ -964,7 +961,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
     // Altura visible de cada tarjeta empalmada (como en Wallet)
     final cardPeekHeight = _isExpanded
         ? 180.0 // Modo expandido: mostrar hasta los valores de grupo y cantidad de estudiantes
-        : 60.0; // Modo normal: suficiente para mostrar horario y dÃ­as
+        : 60.0; // Modo normal: suficiente para mostrar horario y días
     const cardHeight = 200.0;
 
     // Calcular altura total del contenido
@@ -997,16 +994,16 @@ class _GruposPageState extends ConsumerState<GruposPage>
               child: Stack(
                 clipBehavior: Clip.none,
                 children: gruposWithIndex.asMap().entries.map((entry) {
-                  final stackIndex = entry.key; // PosiciÃ³n en el stack
+                  final stackIndex = entry.key; // Posición en el stack
                   final grupoEntry = entry.value;
                   final grupo = grupoEntry.key;
                   final originalIndex =
-                      grupoEntry.value; // Ãndice original para horarios
-                  // La Ãºltima tarjeta (la que estÃ¡ al frente) es la clase actual
+                      grupoEntry.value; // Índice original para horarios
+                  // La última tarjeta (la que está al frente) es la clase actual
                   final isCurrentClass =
                       stackIndex == gruposWithIndex.length - 1;
 
-                  // Calcular posiciÃ³n: si hay una tarjeta seleccionada y esta estÃ¡ debajo,
+                  // Calcular posición: si hay una tarjeta seleccionada y esta está debajo,
                   // desplazarla hacia abajo
                   double topPosition = stackIndex * cardPeekHeight;
                   if (_selectedCardIndex != null &&
@@ -1035,7 +1032,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 }).toList(),
               ),
             ),
-            // Indicador sutil de prÃ³xima clase por atender
+            // Indicador sutil de próxima clase por atender
             const SizedBox(height: 12),
             Column(
               children: [
@@ -1046,7 +1043,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'PrÃ³xima por atender',
+                  'Próxima por atender',
                   style: TextStyle(
                     color: context.uatPalette.textTertiary,
                     fontSize: 12,
@@ -1069,7 +1066,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
     bool isCurrentClass,
     List<Grupo> todosLosGrupos,
   ) {
-    // Obtiene los colores desde la configuraciÃ³n compartida para mantener coherencia visual
+    // Obtiene los colores desde la configuración compartida para mantener coherencia visual
     final gradientColors = _gradientForCard(originalIndex);
     final accentColor = _accentForCard(originalIndex);
 
@@ -1116,15 +1113,15 @@ class _GruposPageState extends ConsumerState<GruposPage>
                     onTap: () async {
                       HapticFeedback.lightImpact();
 
-                      // Establecer la tarjeta seleccionada y animar las demÃ¡s hacia abajo
+                      // Establecer la tarjeta seleccionada y animar las demás hacia abajo
                       setState(() {
                         _selectedCardIndex = stackIndex;
                       });
 
-                      // Esperar a que se complete la animaciÃ³n de desplazamiento
+                      // Esperar a que se complete la animación de desplazamiento
                       await Future.delayed(const Duration(milliseconds: 300));
 
-                      // Navegar a la pÃ¡gina de detalles
+                      // Navegar a la página de detalles
                       await Navigator.of(context).push(
                         PageRouteBuilder(
                           pageBuilder:
@@ -1162,7 +1159,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                       // antes de restaurar las tarjetas de abajo
                       await Future.delayed(const Duration(milliseconds: 350));
 
-                      // Al regresar, limpiar la selecciÃ³n para que las tarjetas vuelvan
+                      // Al regresar, limpiar la selección para que las tarjetas vuelvan
                       if (mounted) {
                         setState(() {
                           _selectedCardIndex = null;
@@ -1295,15 +1292,15 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                   ),
                                 ],
                               ),
-                              // DÃ­as flotando abajo a la derecha
+                              // Días flotando abajo a la derecha
                             ],
                           ),
 
                           const SizedBox(height: 12),
 
-                          // Nombre de la materia con altura mÃ­nima fija para consistencia
+                          // Nombre de la materia con altura mínima fija para consistencia
                           SizedBox(
-                            height: 56, // Espacio para 2 lÃ­neas
+                            height: 56, // Espacio para 2 líneas
                             child: Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
@@ -1325,7 +1322,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
 
                           const SizedBox(height: 16),
 
-                          // Info del grupo - posiciÃ³n fija
+                          // Info del grupo - posición fija
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -1456,7 +1453,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Se descargarÃ¡n tus clases actualizadas del portal UAT.',
+                    'Se descargarán tus clases actualizadas del portal UAT.',
                     style: TextStyle(
                       fontSize: 14,
                       color: palette.textSecondary,
@@ -1481,7 +1478,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Las asistencias no subidas y los datos locales serÃ¡n reemplazados con la informaciÃ³n actualizada del portal.',
+                            'Las asistencias no subidas y los datos locales serán reemplazados con la información actualizada del portal.',
                             style: TextStyle(
                               fontSize: 13,
                               color: Colors.orange,
@@ -1496,7 +1493,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                     const CircularProgressIndicator(color: Colors.blueAccent),
                     const SizedBox(height: 8),
                     Text(
-                      'Solicitando sincronizaciÃ³n...',
+                      'Solicitando sincronización...',
                       style: TextStyle(
                         color: palette.textSecondary,
                         fontSize: 12,
@@ -1537,7 +1534,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                   ),
                                 ),
                             (message) {
-                              // Navegar a pantalla de estado de sincronizaciÃ³n
+                              // Navegar a pantalla de estado de sincronización
                               context.push('/sync-status');
                             },
                           );
@@ -1590,7 +1587,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Ingresa tu contraseÃ±a de la UAT para descargar tus clases actualizadas.',
+                    'Ingresa tu contraseña de la UAT para descargar tus clases actualizadas.',
                     style: TextStyle(
                       fontSize: 14,
                       color: palette.textSecondary,
@@ -1615,7 +1612,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Las asistencias no subidas y los datos locales serÃ¡n reemplazados con la informaciÃ³n actualizada del portal.',
+                            'Las asistencias no subidas y los datos locales serán reemplazados con la información actualizada del portal.',
                             style: TextStyle(
                               fontSize: 13,
                               color: Colors.orange,
@@ -1633,7 +1630,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                       obscureText: obscureText,
                       style: TextStyle(color: palette.textPrimary),
                       decoration: InputDecoration(
-                        hintText: 'ContraseÃ±a UAT',
+                        hintText: 'Contraseña UAT',
                         hintStyle: TextStyle(color: palette.textTertiary),
                         filled: true,
                         fillColor: palette.surface,
@@ -1665,7 +1662,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Ingresa tu contraseÃ±a';
+                          return 'Ingresa tu contraseña';
                         }
                         return null;
                       },
@@ -1676,7 +1673,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                     const CircularProgressIndicator(color: Colors.blueAccent),
                     const SizedBox(height: 8),
                     Text(
-                      'Solicitando sincronizaciÃ³n...',
+                      'Solicitando sincronización...',
                       style: TextStyle(
                         color: palette.textSecondary,
                         fontSize: 12,
@@ -1847,7 +1844,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                             color: Colors.orange,
                           ),
                           title: Text(
-                            'Borrar CachÃ© de Asistencias',
+                            'Borrar Caché de Asistencias',
                             style: TextStyle(color: palette.textPrimary),
                           ),
                           subtitle: Text(
@@ -1900,7 +1897,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                         ListTile(
                           leading: const Icon(Icons.logout, color: Colors.red),
                           title: const Text(
-                            'Cerrar SesiÃ³n',
+                            'Cerrar Sesión',
                             style: TextStyle(color: Colors.red),
                           ),
                           onTap: () {
@@ -1938,13 +1935,13 @@ class _GruposPageState extends ConsumerState<GruposPage>
               const Icon(Icons.logout_rounded, color: Colors.red),
               const SizedBox(width: 12),
               Text(
-                'Cerrar SesiÃ³n',
+                'Cerrar Sesión',
                 style: TextStyle(color: palette.textPrimary),
               ),
             ],
           ),
           content: Text(
-            'Â¿EstÃ¡s seguro de que quieres cerrar sesiÃ³n?',
+            '¿Estás seguro de que quieres cerrar sesión?',
             style: TextStyle(fontSize: 16, color: palette.textSecondary),
           ),
           actions: [
@@ -1964,7 +1961,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Cerrar SesiÃ³n'),
+              child: const Text('Cerrar Sesión'),
             ),
           ],
         );
@@ -1988,13 +1985,13 @@ class _GruposPageState extends ConsumerState<GruposPage>
               const Icon(Icons.delete_sweep, color: Colors.orange),
               const SizedBox(width: 12),
               Text(
-                'Borrar CachÃ©',
+                'Borrar Caché',
                 style: TextStyle(color: palette.textPrimary),
               ),
             ],
           ),
           content: Text(
-            'Â¿EstÃ¡s seguro de que quieres eliminar todas las asistencias guardadas localmente?\n\nEsto solo afecta las asistencias no sincronizadas.',
+            '¿Estás seguro de que quieres eliminar todas las asistencias guardadas localmente?\n\nEsto solo afecta las asistencias no sincronizadas.',
             style: TextStyle(fontSize: 16, color: palette.textSecondary),
           ),
           actions: [
@@ -2014,7 +2011,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 backgroundColor: Colors.orange,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Borrar CachÃ©'),
+              child: const Text('Borrar Caché'),
             ),
           ],
         );
@@ -2030,7 +2027,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('CachÃ© de asistencias eliminado correctamente'),
+            content: Text('Caché de asistencias eliminado correctamente'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
             duration: Duration(seconds: 2),
@@ -2041,7 +2038,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al limpiar cachÃ©: $e'),
+            content: Text('Error al limpiar caché: $e'),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 3),

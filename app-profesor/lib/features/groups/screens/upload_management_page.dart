@@ -2168,10 +2168,7 @@ class _PendingRegistroDetailPage extends StatelessWidget {
             ),
             Container(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-              decoration: BoxDecoration(
-                color: palette.surface,
-                border: Border(top: BorderSide(color: palette.border)),
-              ),
+              decoration: BoxDecoration(color: palette.appBackground),
               child: Row(
                 children: [
                   Expanded(
