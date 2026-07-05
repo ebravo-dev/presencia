@@ -422,7 +422,7 @@ paths:
     get:
       tags: [Coordinacion]
       security: [{ CoordinatorCookie: [] }]
-      summary: Reporte de cumplimiento docente de lunes a jueves
+      summary: Reporte de cumplimiento docente de lunes a sabado
       parameters:
         - name: teacherId
           in: query
@@ -441,11 +441,49 @@ paths:
               schema: { $ref: "#/components/schemas/WeeklyAttendanceReport" }
         "400": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /api/coordinacion/reportes/asistencia-rango:
+    get:
+      tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
+      summary: Reporte agregado por materia para un rango de fechas
+      parameters:
+        - name: teacherId
+          in: query
+          required: true
+          schema: { type: string }
+        - name: startDate
+          in: query
+          required: true
+          description: Fecha inicial en formato YYYY-MM-DD
+          schema: { type: string, format: date }
+        - name: endDate
+          in: query
+          required: true
+          description: Fecha final en formato YYYY-MM-DD
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Resumen por materia con dias programados, reportados y porcentaje
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RangeAttendanceReport" }
+        "400": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /api/uat/profesor/clases-compartidas:
     get:
       summary: Lista las clases no oficiales vigentes del profesor autenticado
       parameters:
         - $ref: "#/components/parameters/UatSessionHeader"
+        - name: year
+          in: query
+          required: false
+          description: Anio del ciclo escolar compartido. Debe enviarse junto con term.
+          schema: { type: integer, minimum: 2000, maximum: 2100, example: 2026 }
+        - name: term
+          in: query
+          required: false
+          description: Parte del anio escolar. 1=Primavera, 2=Verano, 3=Otono.
+          schema: { type: integer, minimum: 1, maximum: 3, example: 1 }
       responses:
         "200":
           description: Clases compartidas listas para integrarse con la carga oficial
@@ -844,12 +882,12 @@ components:
           additionalProperties: true
     SharedClassInput:
       type: object
-      required: [sourceAssignmentId, assignedTeacherId]
+      required: [sourceAssignmentId, assignedTeacherId, schoolCycleYear, schoolCycleTerm]
       properties:
         sourceAssignmentId: { type: string }
         assignedTeacherId: { type: string }
-        startsAt: { type: string, format: date-time, nullable: true }
-        endsAt: { type: string, format: date-time, nullable: true }
+        schoolCycleYear: { type: integer, minimum: 2000, maximum: 2100, example: 2026 }
+        schoolCycleTerm: { type: integer, minimum: 1, maximum: 3, example: 1 }
         active: { type: boolean, default: true }
         notes: { type: string, nullable: true, maxLength: 500 }
     SharedClassAssignment:
@@ -870,8 +908,8 @@ components:
       properties:
         sourceAssignmentId: { type: string }
         assignedTeacherId: { type: string }
-        startsAt: { type: string, format: date-time, nullable: true }
-        endsAt: { type: string, format: date-time, nullable: true }
+        schoolCycleYear: { type: integer, minimum: 2000, maximum: 2100 }
+        schoolCycleTerm: { type: integer, minimum: 1, maximum: 3 }
         active: { type: boolean }
         notes: { type: string, nullable: true, maxLength: 500 }
     ProfessorSharedClass:
@@ -892,6 +930,12 @@ components:
         source: { type: string, enum: [SHARED] }
         isShared: { type: boolean, enum: [true] }
         sharedAssignmentId: { type: string }
+        sharedCycle:
+          type: object
+          required: [year, term]
+          properties:
+            year: { type: integer }
+            term: { type: integer }
         primaryProfessor: { type: object, additionalProperties: true }
     ProfessorSharedClassesResponse:
       type: object
@@ -1003,7 +1047,7 @@ components:
           type: object
           required: [availability, teacher, week, summary, rows]
           properties:
-            availability: { type: string, enum: [READY, NOT_SYNCED, IDENTITY_UNAVAILABLE] }
+            availability: { type: string, enum: [READY, NOT_SYNCED, IDENTITY_UNAVAILABLE, ATTENDANCE_SOURCE_UNAVAILABLE] }
             teacher: { type: object, additionalProperties: true }
             week: { type: object, additionalProperties: true }
             summary: { type: object, additionalProperties: true }
@@ -1012,6 +1056,54 @@ components:
               items:
                 type: object
                 additionalProperties: true
+        meta:
+          type: object
+          required: [generatedAt, timezone]
+          properties:
+            generatedAt: { type: string, format: date-time }
+            timezone: { type: string, example: America/Mexico_City }
+    RangeAttendanceReport:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [mode, availability, teacher, range, summary, rows]
+          properties:
+            mode: { type: string, enum: [range] }
+            availability: { type: string, enum: [READY, NOT_SYNCED, IDENTITY_UNAVAILABLE, ATTENDANCE_SOURCE_UNAVAILABLE] }
+            teacher: { type: object, additionalProperties: true }
+            range:
+              type: object
+              required: [start, end]
+              properties:
+                start: { type: string, format: date }
+                end: { type: string, format: date }
+            summary:
+              type: object
+              required: [scheduledClassDays, reportedClassDays, missingClassDays, attendanceRate]
+              properties:
+                scheduledClassDays: { type: integer }
+                reportedClassDays: { type: integer }
+                missingClassDays: { type: integer }
+                attendanceRate: { type: number, format: float }
+            rows:
+              type: array
+              items:
+                type: object
+                required: [id, groupId, groupCode, grade, subject, scheduledClassDays, reportedClassDays, attendanceRate]
+                properties:
+                  id: { type: string }
+                  groupId: { type: string }
+                  groupCode: { type: string }
+                  grade: { type: string, nullable: true }
+                  subject: { type: string }
+                  classroom: { type: string, nullable: true }
+                  educationLevel: { type: string, nullable: true }
+                  period: { type: string }
+                  scheduledClassDays: { type: integer }
+                  reportedClassDays: { type: integer }
+                  attendanceRate: { type: number, format: float, nullable: true }
         meta:
           type: object
           required: [generatedAt, timezone]

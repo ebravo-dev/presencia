@@ -23,27 +23,46 @@ export type ReportCellStatus = 'TAKEN' | 'MISSING' | 'FUTURE' | 'NOT_SCHEDULED' 
 export type ReportDay = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
 export interface ReportCell { date: string; status: ReportCellStatus; portalSyncStatus: string | null; portalSyncError: string | null }
 export interface ReportRow {
-  id: string; groupId: string; groupCode: string; subject: string; classroom: string | null; educationLevel: string | null;
+  id: string; groupId: string; groupCode: string; grade?: string | null; subject: string; classroom: string | null; educationLevel: string | null;
   period: string; startTime: string | null; endTime: string | null; rawSchedule: string;
   completionRate: number | null;
   cells: Partial<Record<ReportDay, ReportCell>>;
 }
+export interface RangeReportRow {
+  id: string; groupId: string; groupCode: string; grade: string | null; subject: string; classroom: string | null; educationLevel: string | null;
+  period: string; startTime: string | null; endTime: string | null; rawSchedule: string;
+  scheduledClassDays: number; reportedClassDays: number; attendanceRate: number | null;
+}
+export type ReportAvailability = 'READY' | 'NOT_SYNCED' | 'IDENTITY_UNAVAILABLE' | 'ATTENDANCE_SOURCE_UNAVAILABLE';
+export interface ReportTeacher {
+  id: string;
+  name: string;
+  email: string | null;
+  institutionalCode?: string | null;
+  coordinations?: Array<{ id: string; externalId: string; name: string }>;
+}
 export interface WeeklyReportResponse {
   data: {
-    availability: 'READY' | 'NOT_SYNCED' | 'IDENTITY_UNAVAILABLE' | 'ATTENDANCE_SOURCE_UNAVAILABLE';
-    teacher: {
-      id: string;
-      name: string;
-      email: string | null;
-      institutionalCode?: string | null;
-      coordinations?: Array<{ id: string; externalId: string; name: string }>;
-    };
+    availability: ReportAvailability;
+    teacher: ReportTeacher;
     week: { start: string; end: string; isoWeek: number };
     summary: { scheduled: number; taken: number; missing: number; future: number; unknownSchedule: number; sourceUnavailable?: number; completionRate: number };
     rows: ReportRow[];
   };
   meta: { generatedAt: string; timezone: string };
 }
+export interface RangeReportResponse {
+  data: {
+    mode: 'range';
+    availability: ReportAvailability;
+    teacher: ReportTeacher;
+    range: { start: string; end: string };
+    summary: { scheduledClassDays: number; reportedClassDays: number; missingClassDays: number; attendanceRate: number };
+    rows: RangeReportRow[];
+  };
+  meta: { generatedAt: string; timezone: string };
+}
+export type AttendanceReportResponse = WeeklyReportResponse | RangeReportResponse;
 
 export interface Beacon {
   id: string;

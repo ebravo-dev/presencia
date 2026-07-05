@@ -111,6 +111,50 @@ describe('WeeklyAttendanceReportService', () => {
     expect(report.data.rows).toHaveLength(1);
     expect(report.data.rows[0]?.subject).toBe('Calculo de otono');
   });
+
+  it('genera reporte de rango con dias programados, reportados y porcentaje por materia', async () => {
+    const source = { getWeeklyAttendance: async () => ({
+      id: 'p1',
+      institutionalEmail: teacher.email,
+      name: teacher.name,
+      groups: [{
+        id: 'g1',
+        code: 'MAT-1',
+        groupLetter: '2 T',
+        name: 'Calculo',
+        level: 'Licenciatura',
+        classroom: 'A1',
+        period: '2026-1',
+        schedule: { lunes: '07:00 - 08:00', miercoles: '07:00 - 08:00', viernes: '07:00 - 08:00' },
+        attendanceRecords: [
+          { date: '2026-04-06T00:00:00.000Z', portalSyncStatus: 'COMPLETED', portalSyncError: null, portalSyncedAt: null, createdAt: '2026-04-06T08:00:00.000Z' },
+          { date: '2026-04-08T00:00:00.000Z', portalSyncStatus: 'COMPLETED', portalSyncError: null, portalSyncedAt: null, createdAt: '2026-04-08T08:00:00.000Z' },
+        ],
+      }],
+    }) } as unknown as AttendanceBackendClient;
+
+    const report = await new WeeklyAttendanceReportService(teacherRepository, source).getRangeReport(
+      teacher.id,
+      '2026-04-06',
+      '2026-04-12',
+    );
+
+    expect(report.data.rows).toHaveLength(1);
+    expect(report.data.rows[0]).toMatchObject({
+      subject: 'Calculo',
+      grade: '2',
+      groupCode: 'T',
+      scheduledClassDays: 3,
+      reportedClassDays: 2,
+      attendanceRate: 66.67,
+    });
+    expect(report.data.summary).toMatchObject({
+      scheduledClassDays: 3,
+      reportedClassDays: 2,
+      missingClassDays: 1,
+      attendanceRate: 66.67,
+    });
+  });
 });
 
 function assignmentDetail(input: { id: string; cycle: string; subjectName: string }) {

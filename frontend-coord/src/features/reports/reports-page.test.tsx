@@ -37,6 +37,36 @@ describe('ReportsPage', () => {
     expect(screen.getByText('Cumpl.')).toBeInTheDocument();
     expect(screen.getAllByText('50%')).toHaveLength(2);
   });
+  it('permite cambiar a reporte por rango con columnas agregadas por materia', async () => {
+    server.use(
+      http.get('/api/coordinacion/profesores', () => HttpResponse.json({
+        data: [{ id: 't1', externalId: 'e1', institutionalCode: 'FI-4829', name: 'Ada Lovelace', email: 'ada@uat.edu.mx', lastAuthenticatedAt: '2026-07-01T12:00:00Z', lastHarvestedAt: '2026-07-01T12:00:00Z', assignmentCount: 1, subjectCount: 1, coordinations: [{ id: 'c1', externalId: '12', name: 'Ciencias BÃ¡sicas' }] }],
+        meta: { page: 1, pageSize: 100, total: 1, totalPages: 1 },
+      })),
+      http.get('/api/coordinacion/reportes/asistencia-rango', () => HttpResponse.json({
+        data: {
+          mode: 'range',
+          availability: 'READY',
+          teacher: { id: 't1', name: 'Ada Lovelace', email: 'ada@uat.edu.mx', institutionalCode: 'FI-4829', coordinations: [{ id: 'c1', externalId: '12', name: 'Ciencias BÃ¡sicas' }] },
+          range: { start: '2026-04-01', end: '2026-04-30' },
+          summary: { scheduledClassDays: 11, reportedClassDays: 8, missingClassDays: 3, attendanceRate: 72.73 },
+          rows: [{ id: 'r1', groupId: 'g1', groupCode: 'T', grade: '2', subject: 'Calculo', classroom: 'Aula 101', educationLevel: 'Licenciatura', period: '2026-1', startTime: '07:00', endTime: '09:00', rawSchedule: '07:00 - 09:00', scheduledClassDays: 11, reportedClassDays: 8, attendanceRate: 72.73 }],
+        },
+        meta: { generatedAt: '2026-07-04T18:00:00Z', timezone: 'America/Mexico_City' },
+      })),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ReportsPage/></QueryClientProvider>);
+
+    await user.click(screen.getByRole('button', { name: /Rango/i }));
+    await user.click(await screen.findByRole('button', { name: /Ada Lovelace/i }));
+
+    expect(await screen.findByText('Calculo')).toBeInTheDocument();
+    expect(screen.getByText('Grado')).toBeInTheDocument();
+    expect(screen.getByText('Grupo')).toBeInTheDocument();
+    expect(screen.getByText('Reportadas')).toBeInTheDocument();
+    expect(screen.getAllByText('72.73%')).toHaveLength(2);
+  });
 });
 
 function cell(date: string, status: 'TAKEN' | 'MISSING' | 'NOT_SCHEDULED') {

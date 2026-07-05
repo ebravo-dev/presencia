@@ -26,6 +26,7 @@ interface ReportSourceGroup {
   id: string;
   code: string;
   groupLetter: string | null;
+  grade?: string | null;
   name: string;
   level: string | null;
   classroom: string | null;
@@ -66,6 +67,31 @@ export class WeeklyAttendanceReportService {
     return reportResponse(toReportTeacher(teacher), weekStart, weekEnd, 'READY', rows);
   }
 
+  async getRangeReport(teacherId: string, startDate: string, endDate: string) {
+    const teacher = await this.teachers.findById(teacherId);
+    if (!teacher) throw new ApiError(404, 'TEACHER_NOT_FOUND', `No existe el profesor ${teacherId}.`);
+    if (!teacher.email) return emptyRangeReport(teacher, startDate, endDate, 'IDENTITY_UNAVAILABLE');
+
+    const academicCycles = cyclesForRange(startDate, endDate);
+    let sourceProfessor;
+    try {
+      sourceProfessor = await this.source.getWeeklyAttendance({ professorEmail: teacher.email, startDate, endDate });
+    } catch (error) {
+      if (error instanceof AttendanceBackendUnavailableError) {
+        return this.getLocalRangeReport(teacher, startDate, endDate, academicCycles, 'ATTENDANCE_SOURCE_UNAVAILABLE');
+      }
+      throw error;
+    }
+    if (!sourceProfessor) return emptyRangeReport(teacher, startDate, endDate, 'NOT_SYNCED');
+
+    const dates = datesForRange(startDate, endDate);
+    const rows = sourceProfessor.groups
+      .filter((group) => matchesAnyAcademicCycle(group.period, academicCycles))
+      .map((group) => buildRangeRow(group, dates))
+      .filter((row) => row.scheduledClassDays > 0);
+    return rangeReportResponse(toReportTeacher(teacher), startDate, endDate, 'READY', rows);
+  }
+
   private async getLocalScheduleReport(
     teacher: ReportTeacher,
     weekDates: Array<{ day: ReportDay; date: string }>,
@@ -81,6 +107,24 @@ export class WeeklyAttendanceReportService {
       .filter((assignment) => assignmentMatchesAcademicCycle(assignment, academicCycle))
       .flatMap((assignment) => buildRows(toLocalReportGroup(assignment), weekDates, true));
     return reportResponse(toReportTeacher(teacher), weekStart, weekEnd, availability, rows);
+  }
+
+  private async getLocalRangeReport(
+    teacher: ReportTeacher,
+    startDate: string,
+    endDate: string,
+    academicCycles: Set<string>,
+    availability: ReportAvailability,
+  ) {
+    const assignments = await this.localAssignments?.findByTeacherId(teacher.id);
+    if (!assignments?.length) return emptyRangeReport(teacher, startDate, endDate, availability);
+
+    const dates = datesForRange(startDate, endDate);
+    const rows = assignments
+      .filter((assignment) => assignmentMatchesAnyAcademicCycle(assignment, academicCycles))
+      .map((assignment) => buildRangeRow(toLocalReportGroup(assignment), dates, true))
+      .filter((row) => row.scheduledClassDays > 0);
+    return rangeReportResponse(toReportTeacher(teacher), startDate, endDate, availability, rows);
   }
 }
 
@@ -98,15 +142,57 @@ function buildRows(
     buildCell(date, schedule[day], group.attendanceRecords, sourceUnavailable),
   ])) as Record<ReportDay, ReturnType<typeof buildCell>>;
   const displaySchedule = scheduleForDisplay(slots);
+  const groupParts = parseGroupParts(group.groupLetter || '');
 
   return [{
     id: group.id,
-    groupId: group.id, groupCode: group.groupLetter || group.code, subject: group.name,
+    groupId: group.id, groupCode: groupParts.group || group.groupLetter || group.code, grade: groupParts.grade ?? readGroupGrade(group),
+    subject: group.name,
     classroom: group.classroom || null, educationLevel: group.level || null, period: group.period,
     startTime: displaySchedule.startTime, endTime: displaySchedule.endTime, rawSchedule: displaySchedule.raw,
     cells,
     completionRate: completionRateForCells(cells),
   }];
+}
+
+function buildRangeRow(
+  group: ReportSourceGroup | AttendanceSourceGroup,
+  dates: Array<{ day: ReportDay; date: string }>,
+  sourceUnavailable = false,
+) {
+  const schedule = normalizeSchedule(group.schedule);
+  const scheduledDates = dates
+    .filter(({ day }) => schedule[day].length > 0)
+    .map(({ date }) => date);
+  const scheduledDateSet = new Set(scheduledDates);
+  const reportedDates = new Set(
+    sourceUnavailable
+      ? []
+      : group.attendanceRecords
+        .map((record) => record.date.slice(0, 10))
+        .filter((date) => scheduledDateSet.has(date)),
+  );
+  const displaySchedule = scheduleForDisplay(DAYS.flatMap((day) => schedule[day]));
+  const scheduledClassDays = scheduledDates.length;
+  const reportedClassDays = reportedDates.size;
+  const groupParts = parseGroupParts(group.groupLetter || '');
+
+  return {
+    id: group.id,
+    groupId: group.id,
+    groupCode: groupParts.group || group.groupLetter || group.code,
+    grade: groupParts.grade ?? readGroupGrade(group),
+    subject: group.name,
+    classroom: group.classroom || null,
+    educationLevel: group.level || null,
+    period: group.period,
+    startTime: displaySchedule.startTime,
+    endTime: displaySchedule.endTime,
+    rawSchedule: displaySchedule.raw,
+    scheduledClassDays,
+    reportedClassDays,
+    attendanceRate: scheduledClassDays === 0 ? null : roundPercentage(reportedClassDays, scheduledClassDays),
+  };
 }
 
 function buildCell(
@@ -256,6 +342,36 @@ function reportResponse(
   };
 }
 
+function rangeReportResponse(
+  teacher: ReportTeacher,
+  startDate: string,
+  endDate: string,
+  availability: ReportAvailability,
+  rows: ReturnType<typeof buildRangeRow>[],
+) {
+  rows.sort((a, b) => a.subject.localeCompare(b.subject) || (a.grade ?? '').localeCompare(b.grade ?? '') || a.groupCode.localeCompare(b.groupCode));
+  const scheduledClassDays = rows.reduce((total, row) => total + row.scheduledClassDays, 0);
+  const reportedClassDays = rows.reduce((total, row) => total + row.reportedClassDays, 0);
+  const summary = {
+    scheduledClassDays,
+    reportedClassDays,
+    missingClassDays: Math.max(0, scheduledClassDays - reportedClassDays),
+    attendanceRate: scheduledClassDays === 0 ? 0 : roundPercentage(reportedClassDays, scheduledClassDays),
+  };
+
+  return {
+    data: {
+      mode: 'range' as const,
+      availability,
+      teacher,
+      range: { start: startDate, end: endDate },
+      summary,
+      rows,
+    },
+    meta: { generatedAt: new Date().toISOString(), timezone: 'America/Mexico_City' },
+  };
+}
+
 function completionRateForCells(cells: Record<ReportDay, ReturnType<typeof buildCell>>): number | null {
   const values = Object.values(cells);
   const taken = values.filter((cell) => cell.status === 'TAKEN').length;
@@ -272,12 +388,32 @@ function cycleForWeek(weekStart: string): string {
   return `${year}-${term}`;
 }
 
+function cyclesForRange(startDate: string, endDate: string): Set<string> {
+  return new Set(datesForRange(startDate, endDate).map(({ date }) => cycleForWeek(date)));
+}
+
 function assignmentMatchesAcademicCycle(assignment: GroupAssignmentDetail, academicCycle: string): boolean {
   return [
     assignment.schoolCycleName,
     assignment.period,
     assignment.schoolCycleExternalId,
   ].some((value) => matchesAcademicCycle(value, academicCycle));
+}
+
+function assignmentMatchesAnyAcademicCycle(assignment: GroupAssignmentDetail, academicCycles: Set<string>): boolean {
+  return [
+    assignment.schoolCycleName,
+    assignment.period,
+    assignment.schoolCycleExternalId,
+  ].some((value) => {
+    const cycle = normalizeAcademicCycle(value);
+    return cycle ? academicCycles.has(cycle) : false;
+  });
+}
+
+function matchesAnyAcademicCycle(value: string | null | undefined, academicCycles: Set<string>): boolean {
+  const cycle = normalizeAcademicCycle(value);
+  return cycle ? academicCycles.has(cycle) : false;
 }
 
 function matchesAcademicCycle(value: string | null | undefined, academicCycle: string): boolean {
@@ -298,6 +434,17 @@ function currentLocalDateTime(): string {
 function addDays(date: string, days: number): string {
   const value = new Date(`${date}T12:00:00.000Z`); value.setUTCDate(value.getUTCDate() + days); return value.toISOString().slice(0, 10);
 }
+function datesForRange(startDate: string, endDate: string): Array<{ day: ReportDay; date: string }> {
+  const dates: Array<{ day: ReportDay; date: string }> = [];
+  let current = startDate;
+  while (current <= endDate) {
+    const weekday = new Date(`${current}T12:00:00.000Z`).getUTCDay();
+    const day = DAYS[weekday - 1];
+    if (day) dates.push({ day, date: current });
+    current = addDays(current, 1);
+  }
+  return dates;
+}
 function padTime(value: string): string { const [hour, minute] = value.split(':'); return `${hour?.padStart(2, '0')}:${minute}`; }
 function isoWeekNumber(date: string): number {
   const value = new Date(`${date}T00:00:00.000Z`); value.setUTCDate(value.getUTCDate() + 4 - (value.getUTCDay() || 7));
@@ -305,4 +452,18 @@ function isoWeekNumber(date: string): number {
 }
 function emptyReport(teacher: ReportTeacher, start: string, end: string, availability: ReportAvailability) {
   return { data: { availability, teacher, week: { start, end, isoWeek: isoWeekNumber(start) }, summary: { scheduled: 0, taken: 0, missing: 0, future: 0, unknownSchedule: 0, sourceUnavailable: 0, completionRate: 0 }, rows: [] }, meta: { generatedAt: new Date().toISOString(), timezone: 'America/Mexico_City' } };
+}
+function emptyRangeReport(teacher: ReportTeacher, start: string, end: string, availability: ReportAvailability) {
+  return rangeReportResponse(toReportTeacher(teacher), start, end, availability, []);
+}
+function roundPercentage(value: number, total: number): number {
+  return Math.round((value / total) * 10_000) / 100;
+}
+function parseGroupParts(value: string): { grade: string | null; group: string | null } {
+  const match = value.trim().match(/^(\d+)\s*[-\s]\s*([A-Za-z]+)$/);
+  return { grade: match?.[1] ?? null, group: match?.[2]?.toUpperCase() ?? null };
+}
+function readGroupGrade(group: ReportSourceGroup | AttendanceSourceGroup): string | null {
+  const record = group as ReportSourceGroup & { grade?: string | null };
+  return record.grade?.trim() || null;
 }

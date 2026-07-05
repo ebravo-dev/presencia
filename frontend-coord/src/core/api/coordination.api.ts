@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Assignment, Beacon, CoordinatorUser, GroupOption, InfrastructureSummaryResponse, OverviewResponse, ProfessorOption, SharedClassAssignment, StudentDeviceBinding, SubstituteAssignment, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
+import type { Assignment, Beacon, CoordinatorUser, GroupOption, InfrastructureSummaryResponse, OverviewResponse, ProfessorOption, RangeReportResponse, SharedClassAssignment, StudentDeviceBinding, SubstituteAssignment, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
 
 export const coordinationApi = {
   login: async (input: { email: string; password: string }) => (await api.post<{ data: { user: CoordinatorUser; expiresAt: string } }>('/coordinacion/auth/login', input)).data,
@@ -9,6 +9,7 @@ export const coordinationApi = {
   teachers: async (params: { search?: string; coordinationId?: string; page: number; pageSize: number }) => (await api.get<TeachersResponse>('/coordinacion/profesores', { params })).data,
   assignments: async (teacherId: string) => (await api.get<TeacherAssignmentsResponse>(`/coordinacion/profesores/${teacherId}/asignaciones`)).data,
   weeklyReport: async (params: { teacherId: string; weekStart: string }) => (await api.get<WeeklyReportResponse>('/coordinacion/reportes/asistencia-semanal', { params })).data,
+  rangeReport: async (params: { teacherId: string; startDate: string; endDate: string }) => (await api.get<RangeReportResponse>('/coordinacion/reportes/asistencia-rango', { params })).data,
   infrastructureSummary: async () => (await api.get<InfrastructureSummaryResponse>('/coordinacion/infraestructura/resumen')).data,
   beacons: async () => (await api.get<{ data: Beacon[] }>('/coordinacion/infraestructura/beacons')).data,
   createBeacon: async (input: { classroom: string; uuid: string }) => (await api.post<{ data: Beacon }>('/coordinacion/infraestructura/beacons', input)).data,

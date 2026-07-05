@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Download, FileSpreadsheet, Info, Search, Users, X } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CalendarRange, Check, ChevronLeft, ChevronRight, Clock3, Download, FileSpreadsheet, Info, Search, Users, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import fiuatLogo from '@/assets/fiuat-logo.png';
 import { coordinationApi } from '@/core/api/coordination.api';
-import type { ReportCell, ReportDay, TeacherSummary, WeeklyReportResponse } from '@/core/api/types';
+import type { AttendanceReportResponse, RangeReportResponse, ReportCell, ReportDay, TeacherSummary } from '@/core/api/types';
 import { Button, EmptyState, Skeleton, cn } from '@/shared/components/ui';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 
@@ -16,9 +16,14 @@ const days: Array<{ key: ReportDay; label: string; shortLabel: string }> = [
   { key: 'saturday', label: 'Sábado', shortLabel: 'Sáb' },
 ];
 
+type ReportMode = 'weekly' | 'range';
+
 export function ReportsPage() {
   const [teacherId, setTeacherId] = useState('');
   const [weekStart, setWeekStart] = useState(currentMonday());
+  const [reportMode, setReportMode] = useState<ReportMode>('weekly');
+  const [rangeStart, setRangeStart] = useState(currentMonday());
+  const [rangeEnd, setRangeEnd] = useState(addDays(currentMonday(), 5));
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 250);
 
@@ -27,10 +32,13 @@ export function ReportsPage() {
     queryFn: () => coordinationApi.teachers({ search: debouncedSearch || undefined, page: 1, pageSize: 100 }),
   });
 
-  const report = useQuery({
-    queryKey: ['coordination', 'weekly-report', teacherId, weekStart],
-    queryFn: () => coordinationApi.weeklyReport({ teacherId, weekStart }),
-    enabled: Boolean(teacherId),
+  const isRangeValid = rangeStart <= rangeEnd;
+  const report = useQuery<AttendanceReportResponse>({
+    queryKey: ['coordination', 'attendance-report', reportMode, teacherId, weekStart, rangeStart, rangeEnd],
+    queryFn: () => reportMode === 'weekly'
+      ? coordinationApi.weeklyReport({ teacherId, weekStart })
+      : coordinationApi.rangeReport({ teacherId, startDate: rangeStart, endDate: rangeEnd }),
+    enabled: Boolean(teacherId) && (reportMode === 'weekly' || isRangeValid),
   });
 
   const selectedTeacher = useMemo(
@@ -60,6 +68,14 @@ export function ReportsPage() {
           <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Filtros del reporte</h2>
 
           <div className="mt-4">
+            <label className="label">Tipo de reporte</label>
+            <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-200/80 bg-white p-1 dark:border-[#2e3138] dark:bg-[#1a1d23]">
+              <ModeButton selected={reportMode === 'weekly'} onClick={() => setReportMode('weekly')} icon={<CalendarDays size={14} />} label="Semanal" />
+              <ModeButton selected={reportMode === 'range'} onClick={() => setReportMode('range')} icon={<CalendarRange size={14} />} label="Rango" />
+            </div>
+          </div>
+
+          <div className={cn('mt-4', reportMode !== 'weekly' && 'hidden')}>
             <label className="label">Semana correspondiente</label>
 
             {/* Week navigator pill */}
@@ -104,6 +120,25 @@ export function ReportsPage() {
               )}
             </div>
           </div>
+
+          {reportMode === 'range' && (
+            <div className="mt-4">
+              <label className="label">Periodo personalizado</label>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="mb-1 block text-[11px] font-semibold text-slate-400">Inicio</span>
+                  <input className="field" type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} />
+                </div>
+                <div>
+                  <span className="mb-1 block text-[11px] font-semibold text-slate-400">Fin</span>
+                  <input className="field" type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} />
+                </div>
+              </div>
+              <p className={cn('mt-2 text-[11px]', isRangeValid ? 'text-slate-400 dark:text-slate-500' : 'font-semibold text-red-500')}>
+                {isRangeValid ? formatRangeShort(rangeStart, rangeEnd) : 'La fecha final debe ser posterior al inicio.'}
+              </p>
+            </div>
+          )}
 
           {/* Teacher search */}
           <div className="mt-5">
@@ -162,6 +197,8 @@ export function ReportsPage() {
         <div className="min-h-[660px] overflow-auto p-4 sm:p-7">
           {!teacherId ? (
             <EmptyPreview icon={<Users size={36} />} title="Selecciona un profesor" description="El reporte oficial se cargará aquí al elegir un profesor de la lista." />
+          ) : reportMode === 'range' && !isRangeValid ? (
+            <EmptyPreview icon={<CalendarRange size={36} />} title="Rango invalido" description="Selecciona una fecha final igual o posterior a la fecha de inicio." />
           ) : report.isLoading ? (
             <div className="mx-auto max-w-[820px] space-y-4"><Skeleton className="h-24" /><Skeleton className="h-[680px]" /></div>
           ) : report.isError || !report.data ? (
@@ -178,6 +215,25 @@ export function ReportsPage() {
 }
 
 /* ── Teacher list item ────────────────────────────────────────── */
+function ModeButton({ selected, onClick, icon, label }: { selected: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={cn(
+        'flex h-9 items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition',
+        selected
+          ? 'bg-[#C8102E] text-white shadow-sm'
+          : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-100',
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
 function TeacherButton({ teacher, selected, onSelect }: { teacher: TeacherSummary; selected: boolean; onSelect: () => void }) {
   const coordination = teacher.coordinations[0]?.name ?? 'Sin coordinación';
   return (
@@ -202,8 +258,10 @@ function TeacherButton({ teacher, selected, onSelect }: { teacher: TeacherSummar
 }
 
 /* ── Document preview (print-ready sheet) ─────────────────────── */
-function DocumentPreview({ report, fallbackTeacher }: { report: WeeklyReportResponse; fallbackTeacher: TeacherSummary | null }) {
-  const { teacher, week, summary, rows } = report.data;
+function DocumentPreview({ report, fallbackTeacher }: { report: AttendanceReportResponse; fallbackTeacher: TeacherSummary | null }) {
+  const isRange = isRangeReport(report);
+  const { teacher, rows } = report.data;
+  const period = isRange ? report.data.range : report.data.week;
   const coordination = teacher.coordinations?.[0]?.name ?? fallbackTeacher?.coordinations[0]?.name ?? 'Coordinación Académica';
 
   return (
@@ -213,12 +271,12 @@ function DocumentPreview({ report, fallbackTeacher }: { report: WeeklyReportResp
           <img src={fiuatLogo} alt="Facultad de Ingeniería Tampico" className="h-14 w-44 object-contain object-left" />
           <div className="border-l border-slate-300 pl-4">
             <h3 className="text-[17px] font-black leading-tight">FACULTAD DE INGENIERÍA<br />TAMPICO</h3>
-            <p className="mt-1 text-[10px] text-slate-500">Reporte de Asistencia Docente Semanal</p>
+            <p className="mt-1 text-[10px] text-slate-500">{isRange ? 'Reporte de Asistencia Docente por Rango' : 'Reporte de Asistencia Docente Semanal'}</p>
           </div>
         </div>
         <div className="text-right text-[10px] leading-4 text-slate-600">
-          <p><strong>Semana:</strong> {formatRange(week.start, week.end)}</p>
-          <p><strong>Semana ISO:</strong> {week.isoWeek}</p>
+          <p><strong>{isRange ? 'Periodo' : 'Semana'}:</strong> {formatRange(period.start, period.end)}</p>
+          {!isRange && <p><strong>Semana ISO:</strong> {report.data.week.isoWeek}</p>}
           <p><strong>Generado:</strong> {formatDateTime(report.meta.generatedAt)}</p>
         </div>
       </header>
@@ -246,6 +304,8 @@ function DocumentPreview({ report, fallbackTeacher }: { report: WeeklyReportResp
       <section className="mt-5 overflow-hidden border border-slate-300">
         {rows.length === 0 ? (
           <div className="grid h-48 place-items-center text-sm text-slate-500">Sin clases programadas para esta semana.</div>
+        ) : isRange ? (
+          <RangeReportTable report={report} />
         ) : (
           <table className="w-full table-fixed border-collapse text-[9px]">
             <thead className="bg-slate-100">
@@ -254,7 +314,7 @@ function DocumentPreview({ report, fallbackTeacher }: { report: WeeklyReportResp
                 {days.map((day, index) => (
                   <th key={day.key} className="border-b border-r border-slate-300 px-1 py-2 text-center last:border-r-0">
                     <span className="block font-bold">{day.label}</span>
-                    <span className="mt-0.5 block text-[8px] font-normal text-slate-500">{dayDate(rows[0]?.cells[day.key], week.start, index)}</span>
+                    <span className="mt-0.5 block text-[8px] font-normal text-slate-500">{dayDate(report.data.rows[0]?.cells[day.key], report.data.week.start, index)}</span>
                   </th>
                 ))}
                 <th className="border-b border-slate-300 px-1 py-2 text-center">
@@ -264,7 +324,7 @@ function DocumentPreview({ report, fallbackTeacher }: { report: WeeklyReportResp
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {report.data.rows.map((row) => (
                 <tr key={row.id}>
                   <th scope="row" className="border-b border-r border-slate-300 px-3 py-3 text-left align-middle last:border-b-0">
                     <span className="block font-extrabold tabular-nums">{row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : row.rawSchedule}</span>
@@ -291,20 +351,35 @@ function DocumentPreview({ report, fallbackTeacher }: { report: WeeklyReportResp
       <section className="mt-5 border border-slate-200 bg-slate-50 p-4">
         <h4 className="text-xs font-extrabold">Resumen de asistencia</h4>
         <div className="mt-3 grid grid-cols-4 gap-3 text-center">
-          <SummaryValue label="Programadas" value={summary.scheduled} />
-          <SummaryValue label="Asistencias" value={summary.taken} tone="green" />
-          <SummaryValue label="Inasistencias" value={summary.missing} tone="red" />
-          <SummaryValue label="Cumplimiento" value={`${summary.completionRate}%`} tone="brand" />
+          {isRange ? (
+            <>
+              <SummaryValue label="Programadas" value={report.data.summary.scheduledClassDays} />
+              <SummaryValue label="Reportadas" value={report.data.summary.reportedClassDays} tone="green" />
+              <SummaryValue label="Pendientes" value={report.data.summary.missingClassDays} tone="red" />
+              <SummaryValue label="Asistencia" value={formatRangeRate(report.data.summary.attendanceRate)} tone="brand" />
+            </>
+          ) : (
+            <>
+              <SummaryValue label="Programadas" value={report.data.summary.scheduled} />
+              <SummaryValue label="Asistencias" value={report.data.summary.taken} tone="green" />
+              <SummaryValue label="Inasistencias" value={report.data.summary.missing} tone="red" />
+              <SummaryValue label="Cumplimiento" value={`${report.data.summary.completionRate}%`} tone="brand" />
+            </>
+          )}
         </div>
       </section>
 
       <footer className="mt-5 flex items-center justify-between border-t border-slate-200 pt-3 text-[8px] text-slate-500">
-        <div className="flex gap-4">
+        {isRange ? (
+          <span>Porcentaje calculado como dias de clase reportados entre dias de clase en el periodo.</span>
+        ) : (
+          <div className="flex gap-4">
           <span>✓ Asistencia</span>
           <span className="text-red-600">✕ Inasistencia</span>
           <span>— Sin clase</span>
           <span>◷ Clase futura</span>
-        </div>
+          </div>
+        )}
         <span>Zona horaria: {report.meta.timezone}</span>
       </footer>
     </article>
@@ -312,6 +387,42 @@ function DocumentPreview({ report, fallbackTeacher }: { report: WeeklyReportResp
 }
 
 /* ── Sub-components ───────────────────────────────────────────── */
+function RangeReportTable({ report }: { report: RangeReportResponse }) {
+  return (
+    <table className="w-full table-fixed border-collapse text-[9px]">
+      <thead className="bg-slate-100">
+        <tr>
+          <th className="w-[230px] border-b border-r border-slate-300 px-3 py-2 text-left">Materia</th>
+          <th className="w-[46px] border-b border-r border-slate-300 px-1 py-2 text-center">Grado</th>
+          <th className="w-[46px] border-b border-r border-slate-300 px-1 py-2 text-center">Grupo</th>
+          <th className="border-b border-r border-slate-300 px-2 py-2 text-center">Dias de clase<br />en el periodo</th>
+          <th className="border-b border-r border-slate-300 px-2 py-2 text-center">Dias de clase<br />reportados</th>
+          <th className="border-b border-slate-300 px-2 py-2 text-center">Porcentaje<br />de asistencia</th>
+        </tr>
+      </thead>
+      <tbody>
+        {report.data.rows.map((row) => (
+          <tr key={row.id}>
+            <th scope="row" className="border-b border-r border-slate-300 px-3 py-3 text-left align-middle last:border-b-0">
+              <span className="block font-semibold leading-snug">{row.subject}</span>
+              <span className="mt-0.5 block text-[8px] font-normal text-slate-500">
+                {row.rawSchedule || 'Sin horario'}{row.classroom ? ` · ${row.classroom}` : ''}
+              </span>
+            </th>
+            <td className="border-b border-r border-slate-300 text-center text-[12px]">{row.grade || '-'}</td>
+            <td className="border-b border-r border-slate-300 text-center text-[12px]">{row.groupCode || '-'}</td>
+            <td className="border-b border-r border-slate-300 text-center text-[12px]">{row.scheduledClassDays}</td>
+            <td className="border-b border-r border-slate-300 text-center text-[12px]">{row.reportedClassDays}</td>
+            <td className={cn('border-b border-slate-300 text-center text-[12px] font-black', row.attendanceRate === 0 && 'bg-yellow-200 text-black')}>
+              {formatRangeRate(row.attendanceRate)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function ReportMark({ cell }: { cell?: ReportCell }) {
   if (!cell) return <span className="text-lg font-medium text-slate-300" aria-label="Sin clase">—</span>;
   if (cell.status === 'NOT_SCHEDULED') return <span className="text-lg font-medium text-slate-300" aria-label="Sin clase">—</span>;
@@ -336,6 +447,7 @@ function EmptyPreview({ icon, title, description }: { icon: React.ReactNode; tit
 }
 
 /* ── Date utilities ───────────────────────────────────────────── */
+function isRangeReport(report: AttendanceReportResponse): report is RangeReportResponse { return 'range' in report.data; }
 function currentMonday() { return mondayForDate(new Date().toISOString().slice(0, 10)); }
 function mondayForDate(value: string) { const date = new Date(`${value}T12:00:00Z`); const day = date.getUTCDay() || 7; date.setUTCDate(date.getUTCDate() - day + 1); return date.toISOString().slice(0, 10); }
 function addDays(value: string, amount: number) { const date = new Date(`${value}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + amount); return date.toISOString().slice(0, 10); }
@@ -357,3 +469,4 @@ function isoWeekLabel(monday: string) {
 function formatDateTime(value: string) { return new Date(value).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }); }
 function dayDate(cell: ReportCell | undefined, weekStart: string, offset: number) { const value = cell?.date ?? addDays(weekStart, offset); return new Date(`${value}T12:00:00Z`).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }); }
 function formatRate(value: number | null | undefined) { return value == null ? 'N/D' : `${value}%`; }
+function formatRangeRate(value: number | null | undefined) { return value == null ? 'N/D' : `${value.toFixed(2)}%`; }

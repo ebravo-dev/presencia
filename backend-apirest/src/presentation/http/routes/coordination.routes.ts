@@ -40,6 +40,11 @@ export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> =
     { schema: coordinationRouteSchemas.weeklyReport },
     controller.weeklyReport,
   );
+  fastify.get(
+    '/api/coordinacion/reportes/asistencia-rango',
+    { schema: coordinationRouteSchemas.rangeReport },
+    controller.rangeReport,
+  );
 
   fastify.get('/api/coordinacion/infraestructura/resumen', controller.infrastructureSummary);
   fastify.get('/api/coordinacion/infraestructura/beacons', controller.beacons);

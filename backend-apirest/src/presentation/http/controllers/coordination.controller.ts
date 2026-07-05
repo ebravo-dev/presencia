@@ -5,6 +5,7 @@ import type { SharedClassService, SharedClassInput } from '../../../application/
 import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
 import {
   parseCoordinationPayload,
+  rangeReportQuerySchema,
   sharedClassBodySchema,
   sharedClassParamsSchema,
   sharedClassUpdateBodySchema,
@@ -42,6 +43,11 @@ export class CoordinationController {
   weeklyReport = async (request: FastifyRequest, reply: FastifyReply) => {
     const query = parseCoordinationPayload(weeklyReportQuerySchema, request.query);
     return reply.send(await this.weeklyAttendanceReport.getReport(query.teacherId, query.weekStart));
+  };
+
+  rangeReport = async (request: FastifyRequest, reply: FastifyReply) => {
+    const query = parseCoordinationPayload(rangeReportQuerySchema, request.query);
+    return reply.send(await this.weeklyAttendanceReport.getRangeReport(query.teacherId, query.startDate, query.endDate));
   };
 
   beacons = async (_request: FastifyRequest, reply: FastifyReply) => {

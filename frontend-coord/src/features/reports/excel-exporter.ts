@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import type { ReportCellStatus, ReportDay, WeeklyReportResponse } from '@/core/api/types';
+import type { AttendanceReportResponse, RangeReportResponse, ReportCellStatus, ReportDay, WeeklyReportResponse } from '@/core/api/types';
 
 const days: Array<{ key: ReportDay; label: string }> = [
   { key: 'monday', label: 'Lunes' },
@@ -19,7 +19,12 @@ const statusLabels: Record<ReportCellStatus, string> = {
   SOURCE_UNAVAILABLE: '!',
 };
 
-export async function exportReportExcel(report: WeeklyReportResponse): Promise<void> {
+export async function exportReportExcel(report: AttendanceReportResponse): Promise<void> {
+  if (isRangeReport(report)) {
+    await exportRangeReportExcel(report);
+    return;
+  }
+
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Presencia · UAT';
   workbook.created = new Date();
@@ -58,6 +63,47 @@ export async function exportReportExcel(report: WeeklyReportResponse): Promise<v
   download(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), filename(report, 'xlsx'));
 }
 
+async function exportRangeReportExcel(report: RangeReportResponse): Promise<void> {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Presencia · UAT';
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet('Rango', { views: [{ state: 'frozen', ySplit: 4 }] });
+  sheet.mergeCells('A1:F1');
+  sheet.getCell('A1').value = 'FACULTAD DE INGENIERIA TAMPICO · Reporte de asistencia por rango';
+  sheet.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
+  sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF111111' } };
+  sheet.mergeCells('A2:F2');
+  sheet.getCell('A2').value = `${report.data.teacher.name} · ${report.data.range.start} a ${report.data.range.end}`;
+
+  sheet.addRow([]);
+  sheet.addRow(['Materia', 'Grado', 'Grupo', 'Dias de clase en el periodo', 'Dias de clase reportados', 'Porcentaje de asistencia']);
+  sheet.getRow(4).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  sheet.getRow(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC8102E' } };
+
+  for (const reportRow of report.data.rows) {
+    const row = sheet.addRow([
+      reportRow.subject,
+      reportRow.grade || '-',
+      reportRow.groupCode || '-',
+      reportRow.scheduledClassDays,
+      reportRow.reportedClassDays,
+      formatRangeRate(reportRow.attendanceRate),
+    ]);
+
+    row.getCell(6).alignment = { horizontal: 'center', vertical: 'middle' };
+    row.getCell(6).font = { bold: true };
+    if (reportRow.attendanceRate === 0) {
+      row.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+      row.getCell(6).font = { bold: true, color: { argb: 'FF000000' } };
+    }
+  }
+
+  sheet.columns = [{ width: 46 }, { width: 10 }, { width: 10 }, { width: 24 }, { width: 24 }, { width: 22 }];
+  const buffer = await workbook.xlsx.writeBuffer();
+  download(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), rangeFilename(report, 'xlsx'));
+}
+
 function styleStatusCell(cell: ExcelJS.Cell, status: ReportCellStatus): void {
   cell.alignment = { horizontal: 'center', vertical: 'middle' };
   cell.font = {
@@ -73,8 +119,20 @@ function formatRate(value: number | null | undefined) {
   return value == null ? 'N/D' : `${value}%`;
 }
 
+function formatRangeRate(value: number | null | undefined) {
+  return value == null ? 'N/D' : `${value.toFixed(2)}%`;
+}
+
+function isRangeReport(report: AttendanceReportResponse): report is RangeReportResponse {
+  return 'range' in report.data;
+}
+
 function filename(report: WeeklyReportResponse, extension: string) {
   return `asistencia-${report.data.teacher.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')}-semana-${report.data.week.isoWeek}.${extension}`;
+}
+
+function rangeFilename(report: RangeReportResponse, extension: string) {
+  return `asistencia-${report.data.teacher.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')}-${report.data.range.start}-a-${report.data.range.end}.${extension}`;
 }
 
 function download(blob: Blob, name: string) {
