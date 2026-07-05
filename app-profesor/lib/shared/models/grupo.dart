@@ -145,20 +145,38 @@ class Grupo extends Equatable {
     'sunday',
   ];
   static const Map<String, String> _diasAbreviados = {
-    'lunes': 'L',
-    'monday': 'L',
-    'martes': 'Ma',
-    'tuesday': 'Ma',
-    'miercoles': 'Mi',
-    'wednesday': 'Mi',
-    'jueves': 'J',
-    'thursday': 'J',
-    'viernes': 'V',
-    'friday': 'V',
-    'sabado': 'S',
-    'saturday': 'S',
-    'domingo': 'D',
-    'sunday': 'D',
+    'lunes': 'Lun',
+    'monday': 'Lun',
+    'martes': 'Mar',
+    'tuesday': 'Mar',
+    'miercoles': 'Mie',
+    'wednesday': 'Mie',
+    'jueves': 'Jue',
+    'thursday': 'Jue',
+    'viernes': 'Vie',
+    'friday': 'Vie',
+    'sabado': 'Sab',
+    'saturday': 'Sab',
+    'domingo': 'Dom',
+    'sunday': 'Dom',
+  };
+  static const Map<int, String> _weekdayShort = {
+    1: 'Lun',
+    2: 'Mar',
+    3: 'Mie',
+    4: 'Jue',
+    5: 'Vie',
+    6: 'Sab',
+    7: 'Dom',
+  };
+  static const Map<int, String> _weekdayFull = {
+    1: 'Lunes',
+    2: 'Martes',
+    3: 'Miercoles',
+    4: 'Jueves',
+    5: 'Viernes',
+    6: 'Sabado',
+    7: 'Domingo',
   };
   static const Map<String, int> _diasToWeekday = {
     'lunes': 1,
@@ -225,7 +243,7 @@ class Grupo extends Equatable {
     if (diasConHorario.length == 1) return diasConHorario.first;
 
     // Si son días consecutivos, usar formato "L-V"
-    final ordenAbrev = ['L', 'Ma', 'Mi', 'J', 'V', 'S', 'D'];
+    final ordenAbrev = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
     if (_sonConsecutivos(diasConHorario, ordenAbrev)) {
       return '${diasConHorario.first}-${diasConHorario.last}';
     }
@@ -266,11 +284,137 @@ class Grupo extends Equatable {
     weekdays.sort();
     return weekdays;
   }
+
+  String? get diasClaseAgrupados {
+    final weekdays = weekdaysConHorarioValido;
+    if (weekdays.isEmpty) return null;
+    if (weekdays.length == 1) return _weekdayFull[weekdays.first];
+    return _formatWeekdayGroups(weekdays, fullSingle: false);
+  }
+
+  String? get horarioValido {
+    final slots = _scheduleSlotsByWeekday();
+    return slots.isEmpty ? null : slots.values.first.time;
+  }
+
+  String? get horarioResumen {
+    final slots = _scheduleSlotsByWeekday();
+    if (slots.isEmpty) return null;
+
+    final byTime = <String, List<int>>{};
+    for (final entry in slots.entries) {
+      byTime.putIfAbsent(entry.value.time, () => []).add(entry.key);
+    }
+
+    final parts = byTime.entries.map((entry) {
+      entry.value.sort();
+      final days = entry.value.length == 1
+          ? _weekdayFull[entry.value.first]!
+          : _formatWeekdayGroups(entry.value, fullSingle: false);
+      return entry.value.length == 1
+          ? '$days ${entry.key}'
+          : '$days de ${entry.key}';
+    }).toList();
+
+    return parts.join(' · ');
+  }
+
+  List<int> get weekdaysConHorarioValido {
+    return _scheduleSlotsByWeekday().keys.toList()..sort();
+  }
+
+  Map<int, _ScheduleDaySlot> _scheduleSlotsByWeekday() {
+    if (schedule == null) return {};
+
+    final slots = <int, _ScheduleDaySlot>{};
+    schedule!.forEach((dia, horarioVal) {
+      final weekday = _diasToWeekday[dia.toLowerCase()];
+      final time = _normalizeScheduleTime(horarioVal);
+      if (weekday != null && time != null) {
+        slots[weekday] = _ScheduleDaySlot(weekday, time);
+      }
+    });
+
+    return Map.fromEntries(
+      slots.entries.toList()..sort((a, b) => a.key.compareTo(b.key)),
+    );
+  }
+
+  static String _formatWeekdayGroups(
+    List<int> weekdays, {
+    required bool fullSingle,
+  }) {
+    final sorted = [...weekdays]..sort();
+    final groups = <String>[];
+    var index = 0;
+
+    while (index < sorted.length) {
+      final start = sorted[index];
+      var end = start;
+      while (index + 1 < sorted.length && sorted[index + 1] == end + 1) {
+        index++;
+        end = sorted[index];
+      }
+
+      if (start == end) {
+        groups.add(fullSingle ? _weekdayFull[start]! : _weekdayShort[start]!);
+      } else {
+        groups.add('${_weekdayShort[start]}-${_weekdayShort[end]}');
+      }
+      index++;
+    }
+
+    return groups.join(', ');
+  }
+
+  static String? _normalizeScheduleTime(String? rawValue) {
+    final raw = rawValue?.trim();
+    if (raw == null || raw.isEmpty || _isEmptyScheduleMarker(raw)) {
+      return null;
+    }
+
+    final firstSlot = raw
+        .split(RegExp(r'[;\n]+'))
+        .map((value) => value.trim())
+        .firstWhere(
+          (value) => value.isNotEmpty && !_isEmptyScheduleMarker(value),
+          orElse: () => '',
+        );
+    if (firstSlot.isEmpty) return null;
+
+    final match = RegExp(
+      r'(\d{1,2}:\d{2})\s*(?:-|a)\s*(\d{1,2}:\d{2})',
+      caseSensitive: false,
+    ).firstMatch(firstSlot);
+    if (match == null) return firstSlot;
+    return '${_padTime(match.group(1)!)}-${_padTime(match.group(2)!)}';
+  }
+
+  static bool _isEmptyScheduleMarker(String value) {
+    return RegExp(
+      r'^(?:-+|n/?a|no aplica|sin horario)$',
+      caseSensitive: false,
+    ).hasMatch(value.trim());
+  }
+
+  static String _padTime(String value) {
+    final parts = value.split(':');
+    return '${parts[0].padLeft(2, '0')}:${parts[1]}';
+  }
+}
+
+class _ScheduleDaySlot {
+  final int weekday;
+  final String time;
+
+  const _ScheduleDaySlot(this.weekday, this.time);
 }
 
 Map<String, String?>? _scheduleFromJson(Object? value) {
   if (value is! Map) return null;
-  return value.map((key, rawValue) => MapEntry(key.toString(), _scheduleValue(rawValue)));
+  return value.map(
+    (key, rawValue) => MapEntry(key.toString(), _scheduleValue(rawValue)),
+  );
 }
 
 Map<String, String?>? _scheduleToJson(Map<String, String?>? value) => value;
@@ -280,14 +424,17 @@ String? _scheduleValue(Object? value) {
   if (value is String) return value;
   if (value is! List) return value.toString();
 
-  final slots = value.map((slot) {
-    if (slot is String) return slot.trim();
-    if (slot is! Map) return '';
-    final raw = slot['raw']?.toString().trim();
-    if (raw != null && raw.isNotEmpty) return raw;
-    final start = slot['startTime']?.toString();
-    final end = slot['endTime']?.toString();
-    return start != null && end != null ? '$start-$end' : '';
-  }).where((slot) => slot.isNotEmpty).toList();
+  final slots = value
+      .map((slot) {
+        if (slot is String) return slot.trim();
+        if (slot is! Map) return '';
+        final raw = slot['raw']?.toString().trim();
+        if (raw != null && raw.isNotEmpty) return raw;
+        final start = slot['startTime']?.toString();
+        final end = slot['endTime']?.toString();
+        return start != null && end != null ? '$start-$end' : '';
+      })
+      .where((slot) => slot.isNotEmpty)
+      .toList();
   return slots.isEmpty ? null : slots.join('; ');
 }

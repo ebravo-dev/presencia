@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,11 +29,12 @@ class GruposPage extends ConsumerStatefulWidget {
 class _GruposPageState extends ConsumerState<GruposPage>
     with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
-  bool _isExpanded = false; // Control de expansión de tarjetas
-  bool _showTitle = true; // Control de visibilidad del título
+  bool _isExpanded = false; // Control de expansiÃ³n de tarjetas
+  bool _showTitle = true; // Control de visibilidad del tÃ­tulo
   late AnimationController _pulseController;
-  int? _selectedCardIndex; // Índice de la tarjeta seleccionada para navegación
-  Timer? _titleVisibilityTimer; // Controla el retraso para esconder el título
+  int? _selectedCardIndex; // Ãndice de la tarjeta seleccionada para navegaciÃ³n
+  Timer? _titleVisibilityTimer; // Controla el retraso para esconder el tÃ­tulo
+  bool get _showDeveloperDiagnostics => false;
 
   static const List<List<Color>> _cardGradients = [
     [Color(0xFF8B5CF6), Color(0xFF7C3AED)],
@@ -58,13 +58,13 @@ class _GruposPageState extends ConsumerState<GruposPage>
   void initState() {
     super.initState();
 
-    // Animación pulsante para el indicador de clase actual
+    // AnimaciÃ³n pulsante para el indicador de clase actual
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
 
-    // Listener para animar el título basado en scroll
+    // Listener para animar el tÃ­tulo basado en scroll
     _scrollController.addListener(_handleScroll);
 
     // Configurar status bar transparente; el brillo se controla desde el tema.
@@ -206,39 +206,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
     }
   }
 
-  // Parsear cadena de días (ej: 'L-J', 'Ma,J') a lista de weekdays (1=Lunes..7=Domingo)
-  List<int> _parseDiasToWeekdays(String dias) {
-    final mapping = {'l': 1, 'ma': 2, 'mi': 3, 'j': 4, 'v': 5, 's': 6, 'd': 7};
-
-    final result = <int>{};
-    final parts = dias.split(',');
-    for (var part in parts) {
-      part = part.trim();
-      if (part.isEmpty) continue;
-      if (part.contains('-')) {
-        final range = part.split('-');
-        if (range.length != 2) continue;
-        final a = range[0].trim().toLowerCase();
-        final b = range[1].trim().toLowerCase();
-        final start = mapping[a] ?? mapping[a.substring(0, 1)] ?? 1;
-        final end = mapping[b] ?? mapping[b.substring(0, 1)] ?? start;
-        if (start <= end) {
-          for (var d = start; d <= end; d++) result.add(d);
-        } else {
-          // wrap around week
-          for (var d = start; d <= 7; d++) result.add(d);
-          for (var d = 1; d <= end; d++) result.add(d);
-        }
-      } else {
-        final key = part.toLowerCase();
-        final day = mapping[key] ?? mapping[key.substring(0, 1)];
-        if (day != null) result.add(day);
-      }
-    }
-    return result.toList()..sort();
-  }
-
-  // Obtener el próximo DateTime de inicio para un conjunto de weekdays y horario
+  // Obtener el prÃ³ximo DateTime de inicio para un conjunto de weekdays y horario
   DateTime _getNextStartForSchedule(
     DateTime now,
     List<int> weekdays,
@@ -247,7 +215,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
     int finHour,
     int finMinute,
   ) {
-    // Buscar hasta 14 días por seguridad
+    // Buscar hasta 14 dÃ­as por seguridad
     for (var add = 0; add < 14; add++) {
       final candidateDay = now.add(Duration(days: add));
       if (weekdays.contains(candidateDay.weekday)) {
@@ -267,16 +235,16 @@ class _GruposPageState extends ConsumerState<GruposPage>
         );
         final ventanaFin = candidateEnd.add(const Duration(minutes: 10));
 
-        // Si el inicio está en el futuro, lo retornamos
+        // Si el inicio estÃ¡ en el futuro, lo retornamos
         if (candidateStart.isAfter(now)) return candidateStart;
 
         // Si estamos dentro de la ventana (inicio <= now <= ventanaFin), considerar el inicio de hoy
         if (!now.isAfter(ventanaFin)) return candidateStart;
-        // Si ya pasó la ventana, continuar buscando la siguiente ocurrencia
+        // Si ya pasÃ³ la ventana, continuar buscando la siguiente ocurrencia
       }
     }
 
-    // Fallback: devolver dentro de la próxima semana el primer día coincidente
+    // Fallback: devolver dentro de la prÃ³xima semana el primer dÃ­a coincidente
     for (var add = 1; add <= 7; add++) {
       final candidateDay = now.add(Duration(days: add));
       if (weekdays.contains(candidateDay.weekday)) {
@@ -294,11 +262,11 @@ class _GruposPageState extends ConsumerState<GruposPage>
     return now;
   }
 
-  // Ordenar grupos por proximidad a la próxima ocurrencia real (considerando días de la semana)
+  // Ordenar grupos por proximidad a la prÃ³xima ocurrencia real (considerando dÃ­as de la semana)
   List<MapEntry<Grupo, int>> _sortGruposByProximity(List<Grupo> grupos) {
     final now = DateTime.now();
 
-    // Crear lista de entradas con grupo y su índice original
+    // Crear lista de entradas con grupo y su Ã­ndice original
     final gruposWithIndex = grupos
         .asMap()
         .entries
@@ -309,11 +277,11 @@ class _GruposPageState extends ConsumerState<GruposPage>
       final grupoA = a.key;
       final grupoB = b.key;
 
-      // Obtener horarios y días desde el schedule real del grupo
-      final horarioA = grupoA.horario ?? '00:00-00:00';
-      final horarioB = grupoB.horario ?? '00:00-00:00';
-      final weekdaysA = grupoA.weekdaysConClase;
-      final weekdaysB = grupoB.weekdaysConClase;
+      // Obtener horarios y dÃ­as desde el schedule real del grupo
+      final horarioA = grupoA.horarioValido ?? '00:00-00:00';
+      final horarioB = grupoB.horarioValido ?? '00:00-00:00';
+      final weekdaysA = grupoA.weekdaysConHorarioValido;
+      final weekdaysB = grupoB.weekdaysConHorarioValido;
 
       final inicioA = _parseHorarioInicio(horarioA);
       final finA = _parseHorarioFin(horarioA);
@@ -352,7 +320,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
       return diffA.compareTo(diffB);
     });
 
-    // Revertir para que la más próxima esté al final (arriba en el stack)
+    // Revertir para que la mÃ¡s prÃ³xima estÃ© al final (arriba en el stack)
     return gruposWithIndex.reversed.toList();
   }
 
@@ -362,7 +330,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
     await ref.read(profesorAuthProvider.notifier).refreshGrupos();
     // Forzar reordenamiento con setState
     if (mounted) setState(() {});
-    // Pequeña pausa para animación
+    // PequeÃ±a pausa para animaciÃ³n
     await Future.delayed(const Duration(milliseconds: 300));
   }
 
@@ -447,7 +415,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
               right: 12,
               child: Row(
                 children: [
-                  // Botón de expandir/colapsar
+                  // BotÃ³n de expandir/colapsar
                   ClipRRect(
                     borderRadius: BorderRadius.circular(22),
                     child: BackdropFilter(
@@ -499,7 +467,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Botón de subida de asistencias
+                            // BotÃ³n de subida de asistencias
                             GestureDetector(
                               onTap: () {
                                 HapticFeedback.lightImpact();
@@ -524,7 +492,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                 ),
                               ),
                             ),
-                            // Botón de más opciones
+                            // BotÃ³n de mÃ¡s opciones
                             GestureDetector(
                               onTap: () {
                                 HapticFeedback.lightImpact();
@@ -956,12 +924,12 @@ class _GruposPageState extends ConsumerState<GruposPage>
             ),
             const SizedBox(height: 12),
             Text(
-              'Si iniciaste sincronización, revisa el progreso abajo.',
+              'Si iniciaste sincronizaciÃ³n, revisa el progreso abajo.',
               style: TextStyle(fontSize: 16, color: palette.textSecondary),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
-            // Botón revisar sincronización
+            // BotÃ³n revisar sincronizaciÃ³n
             TextButton.icon(
               onPressed: () {
                 HapticFeedback.lightImpact();
@@ -969,7 +937,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
               },
               icon: const Icon(Icons.cloud_sync, color: Colors.blueAccent),
               label: const Text(
-                'Revisar sincronización',
+                'Revisar sincronizaciÃ³n',
                 style: TextStyle(
                   color: Colors.blueAccent,
                   fontSize: 16,
@@ -996,7 +964,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
     // Altura visible de cada tarjeta empalmada (como en Wallet)
     final cardPeekHeight = _isExpanded
         ? 180.0 // Modo expandido: mostrar hasta los valores de grupo y cantidad de estudiantes
-        : 60.0; // Modo normal: suficiente para mostrar horario y días
+        : 60.0; // Modo normal: suficiente para mostrar horario y dÃ­as
     const cardHeight = 200.0;
 
     // Calcular altura total del contenido
@@ -1029,16 +997,16 @@ class _GruposPageState extends ConsumerState<GruposPage>
               child: Stack(
                 clipBehavior: Clip.none,
                 children: gruposWithIndex.asMap().entries.map((entry) {
-                  final stackIndex = entry.key; // Posición en el stack
+                  final stackIndex = entry.key; // PosiciÃ³n en el stack
                   final grupoEntry = entry.value;
                   final grupo = grupoEntry.key;
                   final originalIndex =
-                      grupoEntry.value; // Índice original para horarios
-                  // La última tarjeta (la que está al frente) es la clase actual
+                      grupoEntry.value; // Ãndice original para horarios
+                  // La Ãºltima tarjeta (la que estÃ¡ al frente) es la clase actual
                   final isCurrentClass =
                       stackIndex == gruposWithIndex.length - 1;
 
-                  // Calcular posición: si hay una tarjeta seleccionada y esta está debajo,
+                  // Calcular posiciÃ³n: si hay una tarjeta seleccionada y esta estÃ¡ debajo,
                   // desplazarla hacia abajo
                   double topPosition = stackIndex * cardPeekHeight;
                   if (_selectedCardIndex != null &&
@@ -1067,7 +1035,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 }).toList(),
               ),
             ),
-            // Indicador sutil de próxima clase por atender
+            // Indicador sutil de prÃ³xima clase por atender
             const SizedBox(height: 12),
             Column(
               children: [
@@ -1078,7 +1046,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Próxima por atender',
+                  'PrÃ³xima por atender',
                   style: TextStyle(
                     color: context.uatPalette.textTertiary,
                     fontSize: 12,
@@ -1101,7 +1069,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
     bool isCurrentClass,
     List<Grupo> todosLosGrupos,
   ) {
-    // Obtiene los colores desde la configuración compartida para mantener coherencia visual
+    // Obtiene los colores desde la configuraciÃ³n compartida para mantener coherencia visual
     final gradientColors = _gradientForCard(originalIndex);
     final accentColor = _accentForCard(originalIndex);
 
@@ -1148,15 +1116,15 @@ class _GruposPageState extends ConsumerState<GruposPage>
                     onTap: () async {
                       HapticFeedback.lightImpact();
 
-                      // Establecer la tarjeta seleccionada y animar las demás hacia abajo
+                      // Establecer la tarjeta seleccionada y animar las demÃ¡s hacia abajo
                       setState(() {
                         _selectedCardIndex = stackIndex;
                       });
 
-                      // Esperar a que se complete la animación de desplazamiento
+                      // Esperar a que se complete la animaciÃ³n de desplazamiento
                       await Future.delayed(const Duration(milliseconds: 300));
 
-                      // Navegar a la página de detalles
+                      // Navegar a la pÃ¡gina de detalles
                       await Navigator.of(context).push(
                         PageRouteBuilder(
                           pageBuilder:
@@ -1165,8 +1133,9 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                     grupo: grupo,
                                     gradientColors: gradientColors,
                                     accentColor: accentColor,
-                                    horario: grupo.horario ?? '00:00-00:00',
-                                    dias: grupo.diasClase ?? 'N/A',
+                                    horario:
+                                        grupo.horarioValido ?? '00:00-00:00',
+                                    dias: grupo.diasClaseAgrupados ?? 'N/A',
                                     todosLosGrupos: todosLosGrupos,
                                   ),
                           transitionDuration: const Duration(milliseconds: 400),
@@ -1193,7 +1162,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                       // antes de restaurar las tarjetas de abajo
                       await Future.delayed(const Duration(milliseconds: 350));
 
-                      // Al regresar, limpiar la selección para que las tarjetas vuelvan
+                      // Al regresar, limpiar la selecciÃ³n para que las tarjetas vuelvan
                       if (mounted) {
                         setState(() {
                           _selectedCardIndex = null;
@@ -1243,10 +1212,15 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                               vertical: 6,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: accentColor.withOpacity(0.2),
-                                              borderRadius: BorderRadius.circular(8),
+                                              color: accentColor.withOpacity(
+                                                0.2,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                               border: Border.all(
-                                                color: accentColor.withOpacity(0.3),
+                                                color: accentColor.withOpacity(
+                                                  0.3,
+                                                ),
                                               ),
                                             ),
                                             child: Text(
@@ -1265,19 +1239,33 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                         if (grupo.esCompartida) ...[
                                           const SizedBox(width: 8),
                                           Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 5,
+                                            ),
                                             decoration: BoxDecoration(
-                                              color: accentColor.withOpacity(0.12),
-                                              borderRadius: BorderRadius.circular(8),
+                                              color: accentColor.withOpacity(
+                                                0.12,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                             ),
                                             child: Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
-                                                Icon(Icons.group_add_outlined, size: 13, color: accentColor),
+                                                Icon(
+                                                  Icons.group_add_outlined,
+                                                  size: 13,
+                                                  color: accentColor,
+                                                ),
                                                 const SizedBox(width: 4),
                                                 Text(
                                                   'COMPARTIDA',
-                                                  style: TextStyle(color: accentColor, fontSize: 9, fontWeight: FontWeight.w800),
+                                                  style: TextStyle(
+                                                    color: accentColor,
+                                                    fontSize: 9,
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
                                                 ),
                                               ],
                                             ),
@@ -1287,40 +1275,35 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                     ),
                                   ),
                                   const SizedBox(width: 10),
-                                  // Horario real desde el schedule
-                                  Text(
-                                    grupo.horario ?? 'Sin horario',
-                                    style: TextStyle(
-                                      color: accentColor.withOpacity(0.8),
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 0.5,
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxWidth: 150,
+                                    ),
+                                    child: Text(
+                                      grupo.horarioResumen ?? 'Sin horario',
+                                      textAlign: TextAlign.right,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: accentColor.withOpacity(0.88),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        height: 1.15,
+                                        letterSpacing: 0.2,
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
-                              // Días flotando abajo a la derecha
-                              Positioned(
-                                right: 0,
-                                top: 22,
-                                child: Text(
-                                  grupo.diasClase ?? 'N/A',
-                                  style: TextStyle(
-                                    color: accentColor.withOpacity(0.6),
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w500,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ),
+                              // DÃ­as flotando abajo a la derecha
                             ],
                           ),
 
                           const SizedBox(height: 12),
 
-                          // Nombre de la materia con altura mínima fija para consistencia
+                          // Nombre de la materia con altura mÃ­nima fija para consistencia
                           SizedBox(
-                            height: 56, // Espacio para 2 líneas
+                            height: 56, // Espacio para 2 lÃ­neas
                             child: Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
@@ -1342,7 +1325,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
 
                           const SizedBox(height: 16),
 
-                          // Info del grupo - posición fija
+                          // Info del grupo - posiciÃ³n fija
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -1473,7 +1456,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Se descargarán tus clases actualizadas del portal UAT.',
+                    'Se descargarÃ¡n tus clases actualizadas del portal UAT.',
                     style: TextStyle(
                       fontSize: 14,
                       color: palette.textSecondary,
@@ -1498,7 +1481,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Las asistencias no subidas y los datos locales serán reemplazados con la información actualizada del portal.',
+                            'Las asistencias no subidas y los datos locales serÃ¡n reemplazados con la informaciÃ³n actualizada del portal.',
                             style: TextStyle(
                               fontSize: 13,
                               color: Colors.orange,
@@ -1513,7 +1496,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                     const CircularProgressIndicator(color: Colors.blueAccent),
                     const SizedBox(height: 8),
                     Text(
-                      'Solicitando sincronización...',
+                      'Solicitando sincronizaciÃ³n...',
                       style: TextStyle(
                         color: palette.textSecondary,
                         fontSize: 12,
@@ -1554,7 +1537,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                   ),
                                 ),
                             (message) {
-                              // Navegar a pantalla de estado de sincronización
+                              // Navegar a pantalla de estado de sincronizaciÃ³n
                               context.push('/sync-status');
                             },
                           );
@@ -1607,7 +1590,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Ingresa tu contraseña de la UAT para descargar tus clases actualizadas.',
+                    'Ingresa tu contraseÃ±a de la UAT para descargar tus clases actualizadas.',
                     style: TextStyle(
                       fontSize: 14,
                       color: palette.textSecondary,
@@ -1632,7 +1615,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Las asistencias no subidas y los datos locales serán reemplazados con la información actualizada del portal.',
+                            'Las asistencias no subidas y los datos locales serÃ¡n reemplazados con la informaciÃ³n actualizada del portal.',
                             style: TextStyle(
                               fontSize: 13,
                               color: Colors.orange,
@@ -1650,7 +1633,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                       obscureText: obscureText,
                       style: TextStyle(color: palette.textPrimary),
                       decoration: InputDecoration(
-                        hintText: 'Contraseña UAT',
+                        hintText: 'ContraseÃ±a UAT',
                         hintStyle: TextStyle(color: palette.textTertiary),
                         filled: true,
                         fillColor: palette.surface,
@@ -1682,7 +1665,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Ingresa tu contraseña';
+                          return 'Ingresa tu contraseÃ±a';
                         }
                         return null;
                       },
@@ -1693,7 +1676,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                     const CircularProgressIndicator(color: Colors.blueAccent),
                     const SizedBox(height: 8),
                     Text(
-                      'Solicitando sincronización...',
+                      'Solicitando sincronizaciÃ³n...',
                       style: TextStyle(
                         color: palette.textSecondary,
                         fontSize: 12,
@@ -1828,234 +1811,105 @@ class _GruposPageState extends ConsumerState<GruposPage>
                   const SizedBox(height: 8),
 
                   // Opciones
-                  ListTile(
-                    leading: const Icon(
-                      Icons.sync_rounded,
-                      color: Colors.blueAccent,
+                  Container(
+                    decoration: BoxDecoration(
+                      color: palette.surfaceMuted.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: palette.border),
                     ),
-                    title: Text(
-                      'Sincronizar Ciclo',
-                      style: TextStyle(color: palette.textPrimary),
-                    ),
-                    subtitle: Text(
-                      'Descargar clases actualizadas del portal',
-                      style: TextStyle(
-                        color: palette.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showSyncDialog(context);
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(
-                      Icons.delete_sweep,
-                      color: Colors.orange,
-                    ),
-                    title: Text(
-                      'Borrar Caché de Asistencias',
-                      style: TextStyle(color: palette.textPrimary),
-                    ),
-                    subtitle: Text(
-                      'Eliminar asistencias guardadas localmente',
-                      style: TextStyle(
-                        color: palette.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showClearCacheDialog(context);
-                    },
-                  ),
-                  if (kDebugMode)
-                    ListTile(
-                      leading: const Icon(
-                        Icons.bug_report,
-                        color: Colors.greenAccent,
-                      ),
-                      title: const Text(
-                        'Imprimir Salones',
-                        style: TextStyle(color: Colors.greenAccent),
-                      ),
-                      subtitle: Text(
-                        'Debug: ver configuración de aulas en consola',
-                        style: TextStyle(
-                          color: palette.textSecondary,
-                          fontSize: 12,
-                        ),
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        final beacons = AuthStorageService().getBeacons();
-                        if (beacons == null || beacons.isEmpty) {
-                          debugPrint(
-                            '⚠️ No hay configuración de aulas almacenada',
-                          );
-                        } else {
-                          debugPrint(
-                            '🏫 Configuración de aulas (${beacons.length}):',
-                          );
-                          for (final b in beacons) {
-                            debugPrint(
-                              '  Salón: ${b['classroom']} → UUID: ${b['uuid']}',
-                            );
-                          }
-                        }
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              beacons == null || beacons.isEmpty
-                                  ? 'Sin configuración de aulas'
-                                  : '${beacons.length} aulas impresas en consola',
-                            ),
-                            duration: const Duration(seconds: 2),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: const Icon(
+                            Icons.sync_rounded,
+                            color: Colors.blueAccent,
                           ),
-                        );
-
-                        if (beacons != null && beacons.isNotEmpty) {
-                          Future.delayed(const Duration(seconds: 2), () async {
-                            final altBeacon = NativeAltBeaconChannel();
-
-                            final permGranted =
-                                await PermissionService.requestBluetoothPermissions();
-                            debugPrint(
-                              '[ALTBEACON-TEST] Permisos: ${permGranted ? "OK" : "DENEGADOS"}',
-                            );
-                            if (!permGranted) {
-                              debugPrint(
-                                '[ALTBEACON-TEST] No se puede escanear sin permisos',
-                              );
-                              return;
-                            }
-
-                            debugPrint(
-                              '══════════════════════════════════════════════',
-                            );
-                            debugPrint('[ALTBEACON-TEST] UUIDs en DB:');
-                            for (final b in beacons) {
-                              debugPrint(
-                                '[ALTBEACON-TEST]   ${b['classroom']} → ${b['uuid']}',
-                              );
-                            }
-                            debugPrint(
-                              '══════════════════════════════════════════════',
-                            );
-
-                            debugPrint('[ALTBEACON-TEST] Buscando por UUID...');
-                            final results = <String, bool>{};
-                            for (final b in beacons) {
-                              final uuid = b['uuid'] as String?;
-                              final salon = b['classroom'] as String?;
-                              if (uuid == null || uuid.isEmpty) continue;
-
-                              debugPrint(
-                                '──────────────────────────────────────────────',
-                              );
-                              debugPrint(
-                                '[ALTBEACON-TEST] Buscando UUID: $uuid (Salón: $salon)',
-                              );
-
-                              bool found = false;
-                              final rangingSub = altBeacon.detectionsStream.listen((
-                                detections,
-                              ) {
-                                if (detections.isEmpty) return;
-                                found = true;
-                                for (final detection in detections) {
-                                  debugPrint(
-                                    '[ALTBEACON-TEST] DETECTADO: '
-                                    '${detection.uuid} | RSSI: ${detection.rssi} '
-                                    '| distancia: ${detection.distance}',
-                                  );
-                                }
-                              });
-                              final started = await altBeacon.startScanning(
-                                uuids: [uuid],
-                              );
-                              debugPrint(
-                                '[ALTBEACON-TEST] startScanning → $started',
-                              );
-                              await Future.delayed(const Duration(seconds: 5));
-                              await altBeacon.stopScanning();
-                              await rangingSub.cancel();
-                              results[salon ?? uuid] = found;
-                              if (!found) {
-                                debugPrint(
-                                  '[ALTBEACON-TEST] NO detectado: $salon ($uuid)',
-                                );
-                              }
-                              await Future.delayed(
-                                const Duration(milliseconds: 500),
-                              );
-                            }
-
-                            debugPrint(
-                              '══════════════════════════════════════════════',
-                            );
-                            debugPrint('[ALTBEACON-TEST] RESUMEN POR UUID:');
-                            for (final entry in results.entries) {
-                              final label = entry.value
-                                  ? 'DETECTADO'
-                                  : 'NO detectado';
-                              debugPrint(
-                                '[ALTBEACON-TEST]   $label ${entry.key}',
-                              );
-                            }
-                            debugPrint(
-                              '══════════════════════════════════════════════',
-                            );
-                          });
-                        }
-                      },
+                          title: Text(
+                            'Sincronizar Ciclo',
+                            style: TextStyle(color: palette.textPrimary),
+                          ),
+                          subtitle: Text(
+                            'Descargar clases actualizadas del portal',
+                            style: TextStyle(
+                              color: palette.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showSyncDialog(context);
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(
+                            Icons.delete_sweep,
+                            color: Colors.orange,
+                          ),
+                          title: Text(
+                            'Borrar CachÃ© de Asistencias',
+                            style: TextStyle(color: palette.textPrimary),
+                          ),
+                          subtitle: Text(
+                            'Eliminar asistencias guardadas localmente',
+                            style: TextStyle(
+                              color: palette.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showClearCacheDialog(context);
+                          },
+                        ),
+                        ListTile(
+                          leading: Icon(
+                            isLightMode
+                                ? Icons.light_mode_rounded
+                                : Icons.dark_mode_rounded,
+                            color: UATColors.primary,
+                          ),
+                          title: Text(
+                            isLightMode ? 'Modo claro' : 'Modo oscuro',
+                            style: TextStyle(color: palette.textPrimary),
+                          ),
+                          subtitle: Text(
+                            'Cambiar apariencia de la app',
+                            style: TextStyle(
+                              color: palette.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                          trailing: Switch.adaptive(
+                            value: isLightMode,
+                            activeThumbColor: UATColors.primary,
+                            onChanged: (enabled) {
+                              HapticFeedback.lightImpact();
+                              ref
+                                  .read(themeControllerProvider.notifier)
+                                  .setLightMode(enabled);
+                            },
+                          ),
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            ref
+                                .read(themeControllerProvider.notifier)
+                                .setLightMode(!isLightMode);
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.logout, color: Colors.red),
+                          title: const Text(
+                            'Cerrar SesiÃ³n',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showLogoutDialog(context);
+                          },
+                        ),
+                      ],
                     ),
-                  ListTile(
-                    leading: Icon(
-                      isLightMode
-                          ? Icons.light_mode_rounded
-                          : Icons.dark_mode_rounded,
-                      color: UATColors.primary,
-                    ),
-                    title: Text(
-                      isLightMode ? 'Modo claro' : 'Modo oscuro',
-                      style: TextStyle(color: palette.textPrimary),
-                    ),
-                    subtitle: Text(
-                      'Cambiar apariencia de la app',
-                      style: TextStyle(
-                        color: palette.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                    trailing: Switch.adaptive(
-                      value: isLightMode,
-                      activeThumbColor: UATColors.primary,
-                      onChanged: (enabled) {
-                        HapticFeedback.lightImpact();
-                        ref
-                            .read(themeControllerProvider.notifier)
-                            .setLightMode(enabled);
-                      },
-                    ),
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      ref
-                          .read(themeControllerProvider.notifier)
-                          .setLightMode(!isLightMode);
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.logout, color: Colors.red),
-                    title: const Text(
-                      'Cerrar Sesión',
-                      style: TextStyle(color: Colors.red),
-                    ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showLogoutDialog(context);
-                    },
                   ),
 
                   SizedBox(height: MediaQuery.of(context).padding.bottom),
@@ -2084,13 +1938,13 @@ class _GruposPageState extends ConsumerState<GruposPage>
               const Icon(Icons.logout_rounded, color: Colors.red),
               const SizedBox(width: 12),
               Text(
-                'Cerrar Sesión',
+                'Cerrar SesiÃ³n',
                 style: TextStyle(color: palette.textPrimary),
               ),
             ],
           ),
           content: Text(
-            '¿Estás seguro de que quieres cerrar sesión?',
+            'Â¿EstÃ¡s seguro de que quieres cerrar sesiÃ³n?',
             style: TextStyle(fontSize: 16, color: palette.textSecondary),
           ),
           actions: [
@@ -2110,7 +1964,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Cerrar Sesión'),
+              child: const Text('Cerrar SesiÃ³n'),
             ),
           ],
         );
@@ -2134,13 +1988,13 @@ class _GruposPageState extends ConsumerState<GruposPage>
               const Icon(Icons.delete_sweep, color: Colors.orange),
               const SizedBox(width: 12),
               Text(
-                'Borrar Caché',
+                'Borrar CachÃ©',
                 style: TextStyle(color: palette.textPrimary),
               ),
             ],
           ),
           content: Text(
-            '¿Estás seguro de que quieres eliminar todas las asistencias guardadas localmente?\n\nEsto solo afecta las asistencias no sincronizadas.',
+            'Â¿EstÃ¡s seguro de que quieres eliminar todas las asistencias guardadas localmente?\n\nEsto solo afecta las asistencias no sincronizadas.',
             style: TextStyle(fontSize: 16, color: palette.textSecondary),
           ),
           actions: [
@@ -2160,7 +2014,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 backgroundColor: Colors.orange,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Borrar Caché'),
+              child: const Text('Borrar CachÃ©'),
             ),
           ],
         );
@@ -2176,7 +2030,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Caché de asistencias eliminado correctamente'),
+            content: Text('CachÃ© de asistencias eliminado correctamente'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
             duration: Duration(seconds: 2),
@@ -2187,7 +2041,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al limpiar caché: $e'),
+            content: Text('Error al limpiar cachÃ©: $e'),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 3),

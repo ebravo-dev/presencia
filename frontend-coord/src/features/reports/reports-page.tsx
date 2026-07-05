@@ -202,7 +202,7 @@ export function ReportsPage() {
           ) : report.isLoading ? (
             <div className="mx-auto max-w-[820px] space-y-4"><Skeleton className="h-24" /><Skeleton className="h-[680px]" /></div>
           ) : report.isError || !report.data ? (
-            <EmptyPreview icon={<AlertTriangle size={36} />} title="Fuente de asistencia no disponible" description="No fue posible consultar el backend de asistencia. Intenta nuevamente." />
+            <EmptyPreview icon={<AlertTriangle size={36} />} title="No se pudo cargar el reporte" description="Intenta nuevamente en unos momentos." />
           ) : !canShowReport ? (
             <EmptyPreview icon={<Info size={36} />} title="Profesor sin historial sincronizado" description="La identidad todavía no tiene grupos sincronizados desde la aplicación de profesores." />
           ) : (
@@ -290,16 +290,6 @@ function DocumentPreview({ report, fallbackTeacher }: { report: AttendanceReport
           <p><strong>Correo:</strong> {teacher.email || '—'}</p>
         </div>
       </section>
-
-      {report.data.availability === 'ATTENDANCE_SOURCE_UNAVAILABLE' && (
-        <section className="mt-4 flex items-start gap-3 border border-amber-200 bg-amber-50 p-3 text-[10px] leading-4 text-amber-800">
-          <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-          <p>
-            El backend de asistencia no estuvo disponible. Se muestra el horario local recolectado, pero las marcas de
-            asistencia no pudieron verificarse.
-          </p>
-        </section>
-      )}
 
       <section className="mt-5 overflow-hidden border border-slate-300">
         {rows.length === 0 ? (
