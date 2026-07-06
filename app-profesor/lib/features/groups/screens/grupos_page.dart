@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,9 +12,7 @@ import '../../../../shared/models/grupo.dart';
 import '../../../../services/asistencia_local_service.dart';
 import '../../../../services/api_service.dart';
 import '../../../../services/auth_storage_service.dart';
-import '../../../../services/native_altbeacon_channel.dart';
 import '../../../../services/teacher_beacon_attendance_service.dart';
-import '../../../../core/permissions/permission_service.dart';
 import '../../authentication/providers/profesor_auth_provider.dart';
 import 'grupo_detail_page.dart';
 import 'upload_management_page.dart';
@@ -206,38 +203,6 @@ class _GruposPageState extends ConsumerState<GruposPage>
     }
   }
 
-  // Parsear cadena de días (ej: 'L-J', 'Ma,J') a lista de weekdays (1=Lunes..7=Domingo)
-  List<int> _parseDiasToWeekdays(String dias) {
-    final mapping = {'l': 1, 'ma': 2, 'mi': 3, 'j': 4, 'v': 5, 's': 6, 'd': 7};
-
-    final result = <int>{};
-    final parts = dias.split(',');
-    for (var part in parts) {
-      part = part.trim();
-      if (part.isEmpty) continue;
-      if (part.contains('-')) {
-        final range = part.split('-');
-        if (range.length != 2) continue;
-        final a = range[0].trim().toLowerCase();
-        final b = range[1].trim().toLowerCase();
-        final start = mapping[a] ?? mapping[a.substring(0, 1)] ?? 1;
-        final end = mapping[b] ?? mapping[b.substring(0, 1)] ?? start;
-        if (start <= end) {
-          for (var d = start; d <= end; d++) result.add(d);
-        } else {
-          // wrap around week
-          for (var d = start; d <= 7; d++) result.add(d);
-          for (var d = 1; d <= end; d++) result.add(d);
-        }
-      } else {
-        final key = part.toLowerCase();
-        final day = mapping[key] ?? mapping[key.substring(0, 1)];
-        if (day != null) result.add(day);
-      }
-    }
-    return result.toList()..sort();
-  }
-
   // Obtener el próximo DateTime de inicio para un conjunto de weekdays y horario
   DateTime _getNextStartForSchedule(
     DateTime now,
@@ -310,10 +275,10 @@ class _GruposPageState extends ConsumerState<GruposPage>
       final grupoB = b.key;
 
       // Obtener horarios y días desde el schedule real del grupo
-      final horarioA = grupoA.horario ?? '00:00-00:00';
-      final horarioB = grupoB.horario ?? '00:00-00:00';
-      final weekdaysA = grupoA.weekdaysConClase;
-      final weekdaysB = grupoB.weekdaysConClase;
+      final horarioA = grupoA.horarioValido ?? '00:00-00:00';
+      final horarioB = grupoB.horarioValido ?? '00:00-00:00';
+      final weekdaysA = grupoA.weekdaysConHorarioValido;
+      final weekdaysB = grupoB.weekdaysConHorarioValido;
 
       final inicioA = _parseHorarioInicio(horarioA);
       final finA = _parseHorarioFin(horarioA);
@@ -1165,8 +1130,9 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                     grupo: grupo,
                                     gradientColors: gradientColors,
                                     accentColor: accentColor,
-                                    horario: grupo.horario ?? '00:00-00:00',
-                                    dias: grupo.diasClase ?? 'N/A',
+                                    horario:
+                                        grupo.horarioValido ?? '00:00-00:00',
+                                    dias: grupo.diasClaseAgrupados ?? 'N/A',
                                     todosLosGrupos: todosLosGrupos,
                                   ),
                           transitionDuration: const Duration(milliseconds: 400),
@@ -1233,54 +1199,100 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: accentColor.withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: accentColor.withOpacity(0.3),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      grupo.aula,
-                                      style: TextStyle(
-                                        color: accentColor,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 1.2,
-                                      ),
+                                  Expanded(
+                                    child: Row(
+                                      children: [
+                                        Flexible(
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 6,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: accentColor.withOpacity(
+                                                0.2,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              border: Border.all(
+                                                color: accentColor.withOpacity(
+                                                  0.3,
+                                                ),
+                                              ),
+                                            ),
+                                            child: Text(
+                                              grupo.aula,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: accentColor,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                                letterSpacing: 1.2,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        if (grupo.esCompartida) ...[
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 5,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: accentColor.withOpacity(
+                                                0.12,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  Icons.group_add_outlined,
+                                                  size: 13,
+                                                  color: accentColor,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  'COMPARTIDA',
+                                                  style: TextStyle(
+                                                    color: accentColor,
+                                                    fontSize: 9,
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     ),
                                   ),
-                                  // Horario real desde el schedule
-                                  Text(
-                                    grupo.horario ?? 'Sin horario',
-                                    style: TextStyle(
-                                      color: accentColor.withOpacity(0.8),
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 0.5,
+                                  const SizedBox(width: 10),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxWidth: 150,
+                                    ),
+                                    child: Text(
+                                      grupo.horarioResumen ?? 'Sin horario',
+                                      textAlign: TextAlign.right,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: accentColor.withOpacity(0.88),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        height: 1.15,
+                                        letterSpacing: 0.2,
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
                               // Días flotando abajo a la derecha
-                              Positioned(
-                                right: 0,
-                                top: 22,
-                                child: Text(
-                                  grupo.diasClase ?? 'N/A',
-                                  style: TextStyle(
-                                    color: accentColor.withOpacity(0.6),
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w500,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ),
                             ],
                           ),
 
@@ -1796,234 +1808,105 @@ class _GruposPageState extends ConsumerState<GruposPage>
                   const SizedBox(height: 8),
 
                   // Opciones
-                  ListTile(
-                    leading: const Icon(
-                      Icons.sync_rounded,
-                      color: Colors.blueAccent,
+                  Container(
+                    decoration: BoxDecoration(
+                      color: palette.surfaceMuted.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: palette.border),
                     ),
-                    title: Text(
-                      'Sincronizar Ciclo',
-                      style: TextStyle(color: palette.textPrimary),
-                    ),
-                    subtitle: Text(
-                      'Descargar clases actualizadas del portal',
-                      style: TextStyle(
-                        color: palette.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showSyncDialog(context);
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(
-                      Icons.delete_sweep,
-                      color: Colors.orange,
-                    ),
-                    title: Text(
-                      'Borrar Caché de Asistencias',
-                      style: TextStyle(color: palette.textPrimary),
-                    ),
-                    subtitle: Text(
-                      'Eliminar asistencias guardadas localmente',
-                      style: TextStyle(
-                        color: palette.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showClearCacheDialog(context);
-                    },
-                  ),
-                  if (kDebugMode)
-                    ListTile(
-                      leading: const Icon(
-                        Icons.bug_report,
-                        color: Colors.greenAccent,
-                      ),
-                      title: const Text(
-                        'Imprimir Salones',
-                        style: TextStyle(color: Colors.greenAccent),
-                      ),
-                      subtitle: Text(
-                        'Debug: ver configuración de aulas en consola',
-                        style: TextStyle(
-                          color: palette.textSecondary,
-                          fontSize: 12,
-                        ),
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        final beacons = AuthStorageService().getBeacons();
-                        if (beacons == null || beacons.isEmpty) {
-                          debugPrint(
-                            '⚠️ No hay configuración de aulas almacenada',
-                          );
-                        } else {
-                          debugPrint(
-                            '🏫 Configuración de aulas (${beacons.length}):',
-                          );
-                          for (final b in beacons) {
-                            debugPrint(
-                              '  Salón: ${b['classroom']} → UUID: ${b['uuid']}',
-                            );
-                          }
-                        }
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              beacons == null || beacons.isEmpty
-                                  ? 'Sin configuración de aulas'
-                                  : '${beacons.length} aulas impresas en consola',
-                            ),
-                            duration: const Duration(seconds: 2),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: const Icon(
+                            Icons.sync_rounded,
+                            color: Colors.blueAccent,
                           ),
-                        );
-
-                        if (beacons != null && beacons.isNotEmpty) {
-                          Future.delayed(const Duration(seconds: 2), () async {
-                            final altBeacon = NativeAltBeaconChannel();
-
-                            final permGranted =
-                                await PermissionService.requestBluetoothPermissions();
-                            debugPrint(
-                              '[ALTBEACON-TEST] Permisos: ${permGranted ? "OK" : "DENEGADOS"}',
-                            );
-                            if (!permGranted) {
-                              debugPrint(
-                                '[ALTBEACON-TEST] No se puede escanear sin permisos',
-                              );
-                              return;
-                            }
-
-                            debugPrint(
-                              '══════════════════════════════════════════════',
-                            );
-                            debugPrint('[ALTBEACON-TEST] UUIDs en DB:');
-                            for (final b in beacons) {
-                              debugPrint(
-                                '[ALTBEACON-TEST]   ${b['classroom']} → ${b['uuid']}',
-                              );
-                            }
-                            debugPrint(
-                              '══════════════════════════════════════════════',
-                            );
-
-                            debugPrint('[ALTBEACON-TEST] Buscando por UUID...');
-                            final results = <String, bool>{};
-                            for (final b in beacons) {
-                              final uuid = b['uuid'] as String?;
-                              final salon = b['classroom'] as String?;
-                              if (uuid == null || uuid.isEmpty) continue;
-
-                              debugPrint(
-                                '──────────────────────────────────────────────',
-                              );
-                              debugPrint(
-                                '[ALTBEACON-TEST] Buscando UUID: $uuid (Salón: $salon)',
-                              );
-
-                              bool found = false;
-                              final rangingSub = altBeacon.detectionsStream.listen((
-                                detections,
-                              ) {
-                                if (detections.isEmpty) return;
-                                found = true;
-                                for (final detection in detections) {
-                                  debugPrint(
-                                    '[ALTBEACON-TEST] DETECTADO: '
-                                    '${detection.uuid} | RSSI: ${detection.rssi} '
-                                    '| distancia: ${detection.distance}',
-                                  );
-                                }
-                              });
-                              final started = await altBeacon.startScanning(
-                                uuids: [uuid],
-                              );
-                              debugPrint(
-                                '[ALTBEACON-TEST] startScanning → $started',
-                              );
-                              await Future.delayed(const Duration(seconds: 5));
-                              await altBeacon.stopScanning();
-                              await rangingSub.cancel();
-                              results[salon ?? uuid] = found;
-                              if (!found) {
-                                debugPrint(
-                                  '[ALTBEACON-TEST] NO detectado: $salon ($uuid)',
-                                );
-                              }
-                              await Future.delayed(
-                                const Duration(milliseconds: 500),
-                              );
-                            }
-
-                            debugPrint(
-                              '══════════════════════════════════════════════',
-                            );
-                            debugPrint('[ALTBEACON-TEST] RESUMEN POR UUID:');
-                            for (final entry in results.entries) {
-                              final label = entry.value
-                                  ? 'DETECTADO'
-                                  : 'NO detectado';
-                              debugPrint(
-                                '[ALTBEACON-TEST]   $label ${entry.key}',
-                              );
-                            }
-                            debugPrint(
-                              '══════════════════════════════════════════════',
-                            );
-                          });
-                        }
-                      },
+                          title: Text(
+                            'Sincronizar Ciclo',
+                            style: TextStyle(color: palette.textPrimary),
+                          ),
+                          subtitle: Text(
+                            'Descargar clases actualizadas del portal',
+                            style: TextStyle(
+                              color: palette.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showSyncDialog(context);
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(
+                            Icons.delete_sweep,
+                            color: Colors.orange,
+                          ),
+                          title: Text(
+                            'Borrar Caché de Asistencias',
+                            style: TextStyle(color: palette.textPrimary),
+                          ),
+                          subtitle: Text(
+                            'Eliminar asistencias guardadas localmente',
+                            style: TextStyle(
+                              color: palette.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showClearCacheDialog(context);
+                          },
+                        ),
+                        ListTile(
+                          leading: Icon(
+                            isLightMode
+                                ? Icons.light_mode_rounded
+                                : Icons.dark_mode_rounded,
+                            color: UATColors.primary,
+                          ),
+                          title: Text(
+                            isLightMode ? 'Modo claro' : 'Modo oscuro',
+                            style: TextStyle(color: palette.textPrimary),
+                          ),
+                          subtitle: Text(
+                            'Cambiar apariencia de la app',
+                            style: TextStyle(
+                              color: palette.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                          trailing: Switch.adaptive(
+                            value: isLightMode,
+                            activeThumbColor: UATColors.primary,
+                            onChanged: (enabled) {
+                              HapticFeedback.lightImpact();
+                              ref
+                                  .read(themeControllerProvider.notifier)
+                                  .setLightMode(enabled);
+                            },
+                          ),
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            ref
+                                .read(themeControllerProvider.notifier)
+                                .setLightMode(!isLightMode);
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.logout, color: Colors.red),
+                          title: const Text(
+                            'Cerrar Sesión',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showLogoutDialog(context);
+                          },
+                        ),
+                      ],
                     ),
-                  ListTile(
-                    leading: Icon(
-                      isLightMode
-                          ? Icons.light_mode_rounded
-                          : Icons.dark_mode_rounded,
-                      color: UATColors.primary,
-                    ),
-                    title: Text(
-                      isLightMode ? 'Modo claro' : 'Modo oscuro',
-                      style: TextStyle(color: palette.textPrimary),
-                    ),
-                    subtitle: Text(
-                      'Cambiar apariencia de la app',
-                      style: TextStyle(
-                        color: palette.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                    trailing: Switch.adaptive(
-                      value: isLightMode,
-                      activeThumbColor: UATColors.primary,
-                      onChanged: (enabled) {
-                        HapticFeedback.lightImpact();
-                        ref
-                            .read(themeControllerProvider.notifier)
-                            .setLightMode(enabled);
-                      },
-                    ),
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      ref
-                          .read(themeControllerProvider.notifier)
-                          .setLightMode(!isLightMode);
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.logout, color: Colors.red),
-                    title: const Text(
-                      'Cerrar Sesión',
-                      style: TextStyle(color: Colors.red),
-                    ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showLogoutDialog(context);
-                    },
                   ),
 
                   SizedBox(height: MediaQuery.of(context).padding.bottom),

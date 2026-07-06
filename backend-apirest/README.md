@@ -269,6 +269,28 @@ El backend serializa `Asistencia` como JSON comprimido y lo envia al portal UAT
 en `application/x-www-form-urlencoded` contra
 `/Profesor/ControlAsistencia/GuardaAsistencias`.
 
+## Seeder de clases compartidas
+
+Aplica primero las migraciones y luego crea dos profesores y una clase de prueba:
+
+```powershell
+npm run prisma:deploy
+npm run seed:shared-class
+```
+
+Para probar el acceso con cuentas UAT reales:
+
+```powershell
+$env:SEED_PRIMARY_EMAIL="titular@uat.edu.mx"
+$env:SEED_SECONDARY_EMAIL="profesor2@uat.edu.mx"
+npm run seed:shared-class
+```
+
+El seeder es idempotente y deja la clase sin compartir. La asignacion se realiza
+desde Coordinacion, en la seccion de clases compartidas. Por defecto usa el ciclo
+`2026 - 1 PRIMAVERA` (`Id_Ciclo_Escolar=150`); puede sobrescribirse con
+`SEED_CYCLE_NAME` y `SEED_CYCLE_EXTERNAL_ID`.
+
 ## Script CLI opcional
 
 Para probar desde terminal sin levantar el servidor:

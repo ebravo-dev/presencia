@@ -1627,9 +1627,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
   // Verificar si la fecha seleccionada es un día de clase válido
   bool _esDiaDeClase() {
-    final weekdaysConClase = widget.grupo.weekdaysConClase;
-    if (weekdaysConClase.isEmpty)
+    final weekdaysConClase = widget.grupo.weekdaysConHorarioValido;
+    if (weekdaysConClase.isEmpty) {
       return true; // Si no hay horario, permitir cualquier día
+    }
 
     // weekday: 1=Monday, 2=Tuesday, ..., 7=Sunday
     return weekdaysConClase.contains(_selectedDateTime.weekday);
@@ -2057,15 +2058,45 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     );
   }
 
+  bool _esFechaSeleccionable(DateTime date) {
+    final weekdays = widget.grupo.weekdaysConHorarioValido;
+    if (weekdays.isEmpty) return true;
+    return weekdays.contains(date.weekday);
+  }
+
+  DateTime _fechaInicialSeleccionable(DateTime candidate, DateTime lastDate) {
+    if (_esFechaSeleccionable(candidate) && !candidate.isAfter(lastDate)) {
+      return candidate;
+    }
+
+    var cursor = candidate.isAfter(lastDate) ? lastDate : candidate;
+    for (var i = 0; i < 14; i++) {
+      if (_esFechaSeleccionable(cursor)) return cursor;
+      cursor = cursor.subtract(const Duration(days: 1));
+    }
+
+    cursor = candidate;
+    for (var i = 0; i < 14; i++) {
+      if (!cursor.isAfter(lastDate) && _esFechaSeleccionable(cursor)) {
+        return cursor;
+      }
+      cursor = cursor.add(const Duration(days: 1));
+    }
+
+    return lastDate;
+  }
+
   Future<void> _showDateTimePicker() async {
     // Obtener la hora actual para mantenerla cuando se cambie la fecha
     final now = DateTime.now();
+    final initialDate = _fechaInicialSeleccionable(_selectedDateTime, now);
     final DateTime? pickedDate = await showDatePicker(
       context: context,
-      initialDate: _selectedDateTime,
+      initialDate: initialDate,
       firstDate: DateTime(2020),
       lastDate: now, // No permitir fechas futuras
       locale: const Locale('es', 'MX'),
+      selectableDayPredicate: _esFechaSeleccionable,
       builder: (context, child) {
         final palette = context.uatPalette;
         final baseTheme = Theme.of(context);
@@ -2077,12 +2108,43 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
               onPrimary: Colors.white,
               surface: palette.surfaceElevated,
               onSurface: palette.textPrimary,
+              onSurfaceVariant: palette.textSecondary,
             ),
             textButtonTheme: TextButtonThemeData(
               style: TextButton.styleFrom(foregroundColor: widget.accentColor),
             ),
+            datePickerTheme: DatePickerThemeData(
+              backgroundColor: palette.surfaceElevated,
+              headerBackgroundColor: palette.surfaceElevated,
+              headerForegroundColor: palette.textPrimary,
+              dividerColor: palette.border,
+              dayForegroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.disabled)) {
+                  return palette.textTertiary.withValues(alpha: 0.35);
+                }
+                if (states.contains(WidgetState.selected)) return Colors.white;
+                return palette.textPrimary;
+              }),
+              dayBackgroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return widget.accentColor;
+                }
+                if (states.contains(WidgetState.hovered)) {
+                  return widget.accentColor.withValues(alpha: 0.12);
+                }
+                return null;
+              }),
+              todayForegroundColor: WidgetStateProperty.all(widget.accentColor),
+              todayBorder: BorderSide(color: widget.accentColor),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+            ),
             dialogTheme: DialogThemeData(
               backgroundColor: palette.surfaceElevated,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
             ),
           ),
           child: child!,

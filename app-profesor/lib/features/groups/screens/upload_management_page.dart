@@ -1754,14 +1754,9 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
           // List
           Expanded(
             child: ListView.separated(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
               itemCount: _localPendientes.length,
-              separatorBuilder: (_, __) => Divider(
-                color: palette.border,
-                height: 1,
-                indent: 16,
-                endIndent: 16,
-              ),
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final registro = _localPendientes[index];
                 return _buildRegistroTile(registro);
@@ -1813,89 +1808,98 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
     final (className, grupoMeta) = _resolveGrupoMeta(registro);
     final palette = context.uatPalette;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => _openRegistroDetail(registro),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              // Orange dot
-              Container(
-                width: 10,
-                height: 10,
-                decoration: const BoxDecoration(
-                  color: Colors.orange,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 12),
-              // Date + group info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _formatFecha(registro.fecha),
-                      style: TextStyle(
-                        color: palette.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      className,
-                      style: TextStyle(
-                        color: palette.textSecondary,
-                        fontSize: 13,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (grupoMeta != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        grupoMeta,
-                        style: TextStyle(
-                          color: palette.textTertiary,
-                          fontSize: 12,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Changed count chip
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  total == 1 ? '$total cambio' : '$total cambios',
-                  style: TextStyle(
-                    color: Colors.orange.shade400,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+    return Container(
+      decoration: BoxDecoration(
+        color: palette.surfaceElevated,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: palette.border),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => _openRegistroDetail(registro),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            child: Row(
+              children: [
+                // Orange dot
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: const BoxDecoration(
+                    color: Colors.orange,
+                    shape: BoxShape.circle,
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: palette.iconMuted,
-                size: 24,
-              ),
-            ],
+                const SizedBox(width: 12),
+                // Date + group info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _formatFecha(registro.fecha),
+                        style: TextStyle(
+                          color: palette.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        className,
+                        style: TextStyle(
+                          color: palette.textSecondary,
+                          fontSize: 13,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (grupoMeta != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          grupoMeta,
+                          style: TextStyle(
+                            color: palette.textTertiary,
+                            fontSize: 12,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Changed count chip
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    total == 1 ? '$total cambio' : '$total cambios',
+                    style: TextStyle(
+                      color: Colors.orange.shade400,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: palette.iconMuted,
+                  size: 24,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1958,8 +1962,8 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
               grupo: grupo,
               gradientColors: gradientColors,
               accentColor: Colors.white,
-              horario: grupo.horario ?? '00:00-00:00',
-              dias: grupo.diasClase ?? 'N/A',
+              horario: grupo.horarioValido ?? '00:00-00:00',
+              dias: grupo.diasClaseAgrupados ?? 'N/A',
               todosLosGrupos: widget.todosLosGrupos,
               initialDate: registro.fecha,
               highlightDateSelector: true,
@@ -2164,10 +2168,7 @@ class _PendingRegistroDetailPage extends StatelessWidget {
             ),
             Container(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-              decoration: BoxDecoration(
-                color: palette.surface,
-                border: Border(top: BorderSide(color: palette.border)),
-              ),
+              decoration: BoxDecoration(color: palette.appBackground),
               child: Row(
                 children: [
                   Expanded(

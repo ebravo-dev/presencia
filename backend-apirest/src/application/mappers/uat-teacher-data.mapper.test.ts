@@ -13,4 +13,8 @@ describe('UatTeacherDataMapper schedule normalization', () => {
   it('separa multiples bloques horarios', () => {
     expect(parseScheduleSlots('07:00-08:00; 10:00 a 11:30')).toHaveLength(2);
   });
+
+  it('ignora marcadores que representan dias sin horario', () => {
+    expect(parseScheduleSlots('-; --; N/A; sin horario')).toEqual([]);
+  });
 });

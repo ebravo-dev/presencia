@@ -126,6 +126,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
 
           // Cargar grupos y configuración de aulas desde el servidor
           await _loadGrupos(forceRefresh: true);
+          await _authStorage.setSyncInProgress(false);
         },
       );
     } catch (e, stackTrace) {
@@ -254,10 +255,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
       },
       (message) async {
         await _authStorage.setSyncInProgress(false);
-        final cachedGrupos = _authStorage.getGrupos();
-        if (cachedGrupos != null) {
-          state = state.copyWith(grupos: cachedGrupos);
-        }
+        await _loadGrupos(forceRefresh: true);
       },
     );
 

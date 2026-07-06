@@ -20,6 +20,30 @@ export const weeklyReportQuerySchema = z.object({
   ),
 }).strict();
 
+export const rangeReportQuerySchema = z.object({
+  teacherId: z.string().trim().min(1),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+}).strict().refine((value) => value.startDate <= value.endDate, {
+  path: ['endDate'],
+  message: 'endDate debe ser igual o posterior a startDate.',
+}).refine((value) => daysBetween(value.startDate, value.endDate) <= 366, {
+  path: ['endDate'],
+  message: 'El rango no puede exceder 366 dias.',
+});
+
+export const sharedClassBodySchema = z.object({
+  sourceAssignmentId: z.string().trim().min(1),
+  assignedTeacherId: z.string().trim().min(1),
+  schoolCycleYear: z.coerce.number().int().min(2000).max(2100),
+  schoolCycleTerm: z.coerce.number().int().min(1).max(3),
+  active: z.boolean().optional(),
+  notes: z.string().trim().max(500).nullable().optional(),
+}).strict();
+
+export const sharedClassUpdateBodySchema = sharedClassBodySchema.partial();
+export const sharedClassParamsSchema = z.object({ id: z.string().trim().min(1) }).strict();
+
 export function parseCoordinationPayload<TSchema extends z.ZodTypeAny>(
   schema: TSchema,
   value: unknown,
@@ -241,4 +265,20 @@ export const coordinationRouteSchemas = {
       },
     },
   },
+  rangeReport: {
+    querystring: {
+      type: 'object', additionalProperties: false, required: ['teacherId', 'startDate', 'endDate'],
+      properties: {
+        teacherId: { type: 'string', minLength: 1 },
+        startDate: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+        endDate: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+      },
+    },
+  },
 } as const;
+
+function daysBetween(startDate: string, endDate: string): number {
+  const start = new Date(`${startDate}T12:00:00.000Z`);
+  const end = new Date(`${endDate}T12:00:00.000Z`);
+  return Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1;
+}

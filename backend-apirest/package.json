@@ -16,6 +16,8 @@
     "prisma:deploy": "prisma migrate deploy",
     "coordinator:create": "tsx src/scripts/create-coordinator.ts",
     "coordinator:create:production": "node dist/scripts/create-coordinator.js",
+    "seed:shared-class": "node dist/scripts/seed-shared-class.js",
+    "seed:shared-class:dev": "tsx prisma/seed.ts",
     "test": "vitest run",
     "fetch:horarios": "tsx src/scripts/fetch-horarios.ts"
   },

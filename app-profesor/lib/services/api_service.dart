@@ -3,6 +3,10 @@ import 'package:dio/dio.dart';
 
 import '../core/constants/api_constants.dart';
 import '../core/utils/utils.dart';
+import '../data/models/uat_asistencia_model.dart';
+import '../data/models/uat_horario_model.dart';
+import '../services/auth_storage_service.dart';
+import '../shared/models/alumno.dart';
 import '../shared/models/grupo.dart';
 import '../shared/models/profesor.dart';
 import '../shared/models/sync_status.dart';
@@ -57,10 +61,20 @@ class ApiService {
 
   String ensureEncryptedPassword(String value) => value;
 
+  bool get _usesBackendApiRest {
+    final uri = Uri.tryParse(ApiConstants.presenceApiBaseUrl);
+    if (uri == null) return false;
+    return uri.host.contains('backendapirest') || uri.port == 3100;
+  }
+
   Future<Either<String, LoginResponse>> loginProfesor({
     required String email,
     required String password,
   }) async {
+    if (_usesBackendApiRest) {
+      return _loginProfesorViaBackendApiRest(email: email, password: password);
+    }
+
     try {
       Logger.info('Intentando login contra backend principal para: $email');
 
@@ -80,6 +94,59 @@ class ApiService {
     }
   }
 
+  Future<Either<String, LoginResponse>> _loginProfesorViaBackendApiRest({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      Logger.info('Intentando login UAT contra backend-apirest para: $email');
+
+      final response = await _presenceDio.post(
+        ApiConstants.uatSessions,
+        data: {'username': email, 'password': password},
+      );
+      final data = _asMap(response.data);
+      final login = _asMap(data['login']);
+      final parametros = _asMap(login['parametros']);
+      final sessionId = data['sessionId']?.toString() ?? '';
+      final authenticated = data['authenticated'] == true;
+      final message =
+          login['mensaje']?.toString() ?? 'Sesion UAT creada correctamente';
+
+      if (sessionId.isEmpty || !authenticated) {
+        return Left(message);
+      }
+
+      final profesor = Profesor(
+        id:
+            parametros['Id_Plantilla_AdmonUAT']?.toString() ??
+            parametros['Id_Usuario_AdmonUAT']?.toString() ??
+            email,
+        name:
+            parametros['Txt_Usuario_AdmonUAT']?.toString() ??
+            email.split('@').first,
+        institutionalEmail: email,
+      );
+
+      return Right(
+        LoginResponse(
+          message: message,
+          profesor: profesor,
+          token: sessionId,
+          currentPeriod: ApiConstants.uatDefaultIdCiclo.toString(),
+          needsSync: true,
+        ),
+      );
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error('Error de conexion en login UAT: $errorMessage', e);
+      return Left(errorMessage);
+    } catch (e, stackTrace) {
+      Logger.error('Error inesperado en login UAT', e, stackTrace);
+      return Left(_cleanException(e));
+    }
+  }
+
   Future<Either<String, LoginResponse>> loginProfesorWithEncryptedPassword({
     required String email,
     required String encryptedPassword,
@@ -94,6 +161,10 @@ class ApiService {
     Either<String, ({List<Grupo> grupos, List<Map<String, dynamic>> beacons})>
   >
   getGruposProfesor(String token) async {
+    if (_usesBackendApiRest) {
+      return _getGruposProfesorViaBackendApiRest(token);
+    }
+
     try {
       Logger.info('Obteniendo clases del profesor desde backend principal');
 
@@ -124,6 +195,156 @@ class ApiService {
     }
   }
 
+  Future<
+    Either<String, ({List<Grupo> grupos, List<Map<String, dynamic>> beacons})>
+  >
+  _getGruposProfesorViaBackendApiRest(String sessionId) async {
+    try {
+      Logger.info('Obteniendo clases UAT desde backend-apirest');
+
+      final profesor = AuthStorageService().getProfesor();
+      final idPlantilla = int.tryParse(profesor?.id ?? '');
+      if (idPlantilla == null || idPlantilla <= 0) {
+        return const Left('No se encontro el Id_Plantilla del profesor.');
+      }
+
+      final requestOptions = Options(headers: {'X-UAT-Session-Id': sessionId});
+      final horariosResponse = await _presenceDio.get(
+        ApiConstants.uatHorarios,
+        queryParameters: {
+          'Id_Ciclo_Escolar': ApiConstants.uatDefaultIdCiclo,
+          'Id_DES': ApiConstants.uatDefaultIdDes,
+        },
+        options: requestOptions,
+      );
+      final gruposResponse = await _presenceDio.get(
+        ApiConstants.uatControlGrupos,
+        queryParameters: {
+          'Id_Des': ApiConstants.uatDefaultIdDes,
+          'Id_Ciclo': ApiConstants.uatDefaultIdCiclo,
+          'Id_Plantilla': idPlantilla,
+        },
+        options: requestOptions,
+      );
+
+      final horarios = _dataList(horariosResponse.data)
+          .map((item) => UatHorarioModel.fromJson(_asMap(item)))
+          .where((item) => item.idGrupo > 0)
+          .toList();
+      final horariosByGrupo = {
+        for (final horario in horarios) horario.idGrupo: horario,
+      };
+      final gruposPortal = _dataList(gruposResponse.data)
+          .map((item) => UatGrupoModel.fromJson(_asMap(item)))
+          .where((item) => item.idGrupo > 0)
+          .toList();
+
+      final grupos = <Grupo>[];
+      for (final grupoPortal in gruposPortal) {
+        final students = await _loadAlumnosForGroup(
+          sessionId: sessionId,
+          idGrupo: grupoPortal.idGrupo,
+        );
+        grupos.add(
+          grupoPortal.toGrupo(
+            students: students,
+            horario: horariosByGrupo[grupoPortal.idGrupo],
+          ),
+        );
+      }
+
+      var sharedGroups = <Grupo>[];
+      try {
+        final sharedResponse = await _presenceDio.get(
+          ApiConstants.uatSharedClasses,
+          queryParameters: {
+            'year': ApiConstants.uatAcademicYear,
+            'term': ApiConstants.uatAcademicTerm,
+          },
+          options: requestOptions,
+        );
+        sharedGroups = _dataList(sharedResponse.data)
+            .map((item) => Grupo.fromJson(_asMap(item)))
+            .toList();
+      } on DioException catch (error) {
+        Logger.error('No se pudieron cargar las clases compartidas', error);
+      }
+      for (final sharedGroup in sharedGroups) {
+        final idGrupo = int.tryParse(sharedGroup.id);
+        final students = idGrupo == null
+            ? const <Alumno>[]
+            : await _loadAlumnosForGroup(
+                sessionId: sessionId,
+                idGrupo: idGrupo,
+              );
+        grupos.add(
+          sharedGroup.copyWith(
+            students: students,
+            studentsCount: students.length,
+          ),
+        );
+      }
+
+      Logger.info(
+        'Clases obtenidas: ${gruposPortal.length} oficiales y ${sharedGroups.length} compartidas',
+      );
+      return Right((grupos: grupos, beacons: const <Map<String, dynamic>>[]));
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error('Error de conexion obteniendo clases UAT: $errorMessage', e);
+      return Left(errorMessage);
+    } catch (e, stackTrace) {
+      Logger.error('Error inesperado obteniendo clases UAT', e, stackTrace);
+      return Left(_cleanException(e));
+    }
+  }
+
+  Future<List<Alumno>> _loadAlumnosForGroup({
+    required String sessionId,
+    required int idGrupo,
+  }) async {
+    try {
+      final requestOptions = Options(headers: {'X-UAT-Session-Id': sessionId});
+      final semanasResponse = await _presenceDio.get(
+        ApiConstants.uatControlSemanas,
+        queryParameters: {'Id_Grupo': idGrupo},
+        options: requestOptions,
+      );
+      final semanas = _dataList(semanasResponse.data)
+          .map((item) => UatSemanaModel.fromJson(_asMap(item)))
+          .where((item) => item.isValid)
+          .toList();
+
+      for (final semana in semanas) {
+        final asistenciaResponse = await _presenceDio.get(
+          ApiConstants.uatControlAsistenciaGrupo,
+          queryParameters: {
+            'Id_Grupo': idGrupo,
+            'fec_ini': semana.fecIni,
+            'fec_fin': semana.fecFin,
+          },
+          options: requestOptions,
+        );
+        final envelope = _asMap(asistenciaResponse.data);
+        final data = _asMap(envelope['data']);
+        final asistencia = UatAsistenciaGrupoModel.fromJson(
+          data.isNotEmpty ? data : envelope,
+        );
+        if (asistencia.alumnos.isNotEmpty) {
+          return asistencia.alumnos.map((alumno) => alumno.toAlumno()).toList();
+        }
+      }
+    } catch (e, stackTrace) {
+      Logger.error(
+        'No se pudieron cargar alumnos del grupo $idGrupo',
+        e,
+        stackTrace,
+      );
+    }
+
+    return const [];
+  }
+
   /// Fuerza la sincronizacion de grupos desde el backend principal.
   /// Endpoint: POST /professors/sync
   Future<Either<String, String>> forceSync({
@@ -131,6 +352,16 @@ class ApiService {
     required String encryptedPassword,
     required String token,
   }) async {
+    if (_usesBackendApiRest) {
+      final groups = await getGruposProfesor(token);
+      return groups.fold(
+        (error) => Left(error),
+        (data) => Right(
+          'Sincronizacion completada. ${data.grupos.length} clases cargadas.',
+        ),
+      );
+    }
+
     try {
       Logger.info('Sincronizando datos desde backend principal: $email');
       final response = await _presenceDio.post(
@@ -193,6 +424,16 @@ class ApiService {
     String? groupId,
     bool forceUpload = false,
   }) async {
+    if (_usesBackendApiRest) {
+      return _uploadAttendanceViaBackendApiRest(
+        token: token,
+        groupId: groupId,
+        code: code,
+        date: date,
+        attendances: attendances,
+      );
+    }
+
     try {
       final response = await _presenceDio.post(
         ApiConstants.attendance,
@@ -216,6 +457,76 @@ class ApiService {
       return Left(errorMessage);
     } catch (e, stackTrace) {
       Logger.error('Error inesperado subiendo asistencia', e, stackTrace);
+      return Left(_cleanException(e));
+    }
+  }
+
+  Future<Either<String, Map<String, dynamic>>>
+  _uploadAttendanceViaBackendApiRest({
+    required String token,
+    String? groupId,
+    required String code,
+    required DateTime date,
+    required List<Map<String, dynamic>> attendances,
+  }) async {
+    try {
+      final idGrupo = int.tryParse(groupId ?? '') ?? int.tryParse(code);
+      if (idGrupo == null || idGrupo <= 0) {
+        return const Left('No se pudo identificar el grupo UAT.');
+      }
+
+      final asistencia = <Map<String, dynamic>>[];
+      for (final entry in attendances.asMap().entries) {
+        final item = entry.value;
+        final idAlumno =
+            int.tryParse(
+              item['id_alumno']?.toString() ??
+                  item['idAlumno']?.toString() ??
+                  item['studentId']?.toString() ??
+                  item['id']?.toString() ??
+                  '',
+            ) ??
+            0;
+        if (idAlumno <= 0) continue;
+        asistencia.add({
+          'id_alumno': idAlumno,
+          'num_pase_lista':
+              int.tryParse(item['num_pase_lista']?.toString() ?? '') ??
+              int.tryParse(item['numPaseLista']?.toString() ?? '') ??
+              entry.key + 1,
+          'num_dia':
+              int.tryParse(item['num_dia']?.toString() ?? '') ?? date.weekday,
+          'sn_asistencia':
+              item['sn_asistencia'] == true ||
+              item['snAsistencia'] == true ||
+              item['present'] == true ||
+              item['isPresent'] == true ||
+              item['status']?.toString() == 'PRESENT' ||
+              item['status']?.toString() == 'LATE',
+        });
+      }
+
+      if (asistencia.isEmpty) {
+        return const Left('No hay alumnos validos para subir asistencia.');
+      }
+
+      final response = await _presenceDio.post(
+        ApiConstants.uatAsistenciaGuardar,
+        data: {
+          'Id_Grupo': idGrupo,
+          'Fec_Ini': formatUatWeekStart(date),
+          'Asistencia': asistencia,
+        },
+        options: Options(headers: {'X-UAT-Session-Id': token}),
+      );
+
+      return Right(_asMap(response.data));
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error('Error subiendo asistencia UAT: $errorMessage', e);
+      return Left(errorMessage);
+    } catch (e, stackTrace) {
+      Logger.error('Error inesperado subiendo asistencia UAT', e, stackTrace);
       return Left(_cleanException(e));
     }
   }
@@ -292,6 +603,20 @@ class ApiService {
     return message.startsWith('Exception: ')
         ? message.substring('Exception: '.length)
         : message;
+  }
+
+  Map<String, dynamic> _asMap(Object? value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return <String, dynamic>{};
+  }
+
+  List<dynamic> _dataList(Object? value) {
+    final envelope = _asMap(value);
+    final data = envelope['data'];
+    if (data is List) return data;
+    if (value is List) return value;
+    return const [];
   }
 
   Future<Either<String, List<Map<String, dynamic>>>> resolveClassroomBeacons({

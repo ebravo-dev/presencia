@@ -1,23 +1,27 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { UatService } from '../../../application/services/uat.service.js';
 import type { IDomainEventBus } from '../../../domain/events/domain-event-bus.js';
+import type { SharedClassService } from '../../../application/services/shared-class.service.js';
 import { AsistenciaController } from '../controllers/asistencia.controller.js';
 import { CatalogoController } from '../controllers/catalogo.controller.js';
 import { ConsultaController } from '../controllers/consulta.controller.js';
 import { SessionController } from '../controllers/session.controller.js';
+import { SharedClassController } from '../controllers/shared-class.controller.js';
 import { buildAuthUatHook } from '../hooks/auth-uat.hook.js';
 
 export interface UatRoutesOptions {
   uatService: UatService;
   eventBus: IDomainEventBus;
+  sharedClassService: SharedClassService;
 }
 
-export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (fastify, { uatService, eventBus }) => {
+export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (fastify, { uatService, eventBus, sharedClassService }) => {
   const authUat = buildAuthUatHook(uatService);
   const sessionController = new SessionController(uatService, eventBus);
   const consultaController = new ConsultaController(uatService);
   const catalogoController = new CatalogoController(uatService);
   const asistenciaController = new AsistenciaController(uatService);
+  const sharedClassController = new SharedClassController(sharedClassService);
 
   fastify.post('/api/uat/sessions', sessionController.create);
   fastify.delete('/api/uat/sessions/:sessionId', sessionController.delete);
@@ -32,6 +36,7 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (fastify, {
   fastify.get('/api/uat/catalogos/ciclos-escolares', { preHandler: authUat }, catalogoController.ciclosEscolares);
 
   fastify.get('/api/uat/profesor/control-asistencia/grupos', { preHandler: authUat }, asistenciaController.gruposProfesor);
+  fastify.get('/api/uat/profesor/clases-compartidas', { preHandler: authUat }, sharedClassController.forAuthenticatedTeacher);
   fastify.get('/api/uat/profesor/control-asistencia/semanas', { preHandler: authUat }, asistenciaController.semanasGrupo);
   fastify.get(
     '/api/uat/profesor/control-asistencia/asistencia-grupo',

@@ -9,18 +9,18 @@ import '../utils/utils.dart';
 class EncryptionService {
   // Clave pública del servidor para encriptación RSA
   static const String _publicKeyPEM = '''-----BEGIN PUBLIC KEY-----
-MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAxPl91co6SigcVBtOQLf1
-BhOK6t5CP8RLKqHbGBcvvxdZqqiZy1K/YkYW9ePDaA+wQvV8VJ2hTuMtbnaFha+r
-Cyc5sNAjwcirPnTJQP+IAChuLq0mtAdaNKhLnOAV78ZpOrm4tPy80jE/NsO0vkDe
-PpZJgl+Tu71lLQ0s3CG4+pK1wdrULp81+kGCAW+GLpJHFPf57e6U75/gA0iFicDQ
-gp3yHr7xhUPugHKLvv8Z/4uhR2GP70L2XyazMuIr/GAbu1Ua2jYeMl8ni/r5HPiT
-cVp9LU09jBHu2KtRsV+mDXSFfyAQeItKxfSgfkvV+PgytvUP4eM6DsZNHCrP5Ggl
-pOXPV9mTE3Dqx9FdkMJEtzGQDxfnMJ1xFRBz1mn4qxYCMbhC52n14j6uO7L8aQ21
-bjNXN1lnnaqRFpHgVRyMUZuOoww9db0m5b8l8A7K9yqS/QUojZSUafpHnfpMajE7
-TKkQnDhp1RwgvmJh9/v1QLMTgB9D10DpP1xhemahis+zJ5KT/pXNLX/3v7492e8p
-5LJ+oWzrhTchuRoTyhsRoof1KZbSiKjVdR1WawW6VX1ahugbierpqWBD/va9D7Zi
-nxp6XfKAQeyvnbqtfrgGdNvrPeDX6E0+WnQ9vto17muz9MwbfKrMap/j6w/Lw372
-UMRPIp4WhggjKe58uNusKdMCAwEAAQ==
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAxyKgOh66LT3fskoF1J9D
+AU8nw5oBtzGA+4m//36xS+uy6S6LxqF5Wfgv2szKFVjTRLZ1gTIy/Lmv/F+ct4Q7
+sFAq8n7EubbaTLNMndZ8ih6BRcuw9/aWQrZCBo5umZ+uAXWEX9wf4RqS75llsZgt
+YDEOaN5M2sEhOicDHJKND1bXfGvvPqau2vq2Qs0fM3luyhFVzTRJ/2vIPrtPX0KW
+Vh5fylRa5qVKo/bkUQSEviy25VS0A5qM/eSjE3tX6D9HrBcABxNiSgxURhTjQDYO
+ZdE5zNU7lDMn2d0E+nqHviBAq9L0cTIDw4SuhJCj4ubsvw20xLNNGAz3QVysCbE+
+ttsWIq3JssBAZVvi5L/KWCTOxFRWs2yJB9WaMDN3Fs7Y8pIIIk6Y3N4eX59imtfK
+qt4UiIU6rrYkKgwMXeQay17WqatVCEgxvJ5f2v6ETWYT+swTShHu0y8w10qGMlab
+rpes5n4rEg2CMM4BBhAN6lJUQZAVjywkMXqE+XeRxVy/1UrOwgp5tTcIC5FVxkl4
+SWQtBBE+tGydf5UPcbe9sfr2FVTfK5nIveyrpnQEmuCKcQqSuKbDm3GzjnOATstH
+iKMEuCMlMCCciMqvQ5UqA4hmsU0Tj3iJU4szCsZ8rkqt/R1NQuiPcN/ypDoQjn8v
+xsL/fYza7eo+DEseSEO5BpECAwEAAQ==
 -----END PUBLIC KEY-----''';
 
   late final RSAPublicKey _publicKey;

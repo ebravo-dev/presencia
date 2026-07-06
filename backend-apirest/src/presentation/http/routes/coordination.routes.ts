@@ -3,6 +3,7 @@ import type { CoordinationService } from '../../../application/services/coordina
 import type { CoordinatorAuthService } from '../../../application/services/coordinator-auth.service.js';
 import type { WeeklyAttendanceReportService } from '../../../application/services/weekly-attendance-report.service.js';
 import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
+import type { SharedClassService } from '../../../application/services/shared-class.service.js';
 import { CoordinationController } from '../controllers/coordination.controller.js';
 import { coordinationRouteSchemas } from '../schemas/coordination.schemas.js';
 import { buildCoordinatorAuthHook } from '../hooks/coordinator-auth.hook.js';
@@ -12,14 +13,15 @@ export interface CoordinationRoutesOptions {
   authService: CoordinatorAuthService;
   weeklyAttendanceReport: WeeklyAttendanceReportService;
   attendanceBackendClient: AttendanceBackendClient;
+  sharedClassService: SharedClassService;
 }
 
 export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> = async (
   fastify,
-  { coordinationService, authService, weeklyAttendanceReport, attendanceBackendClient },
+  { coordinationService, authService, weeklyAttendanceReport, attendanceBackendClient, sharedClassService },
 ) => {
   fastify.addHook('preHandler', buildCoordinatorAuthHook(authService));
-  const controller = new CoordinationController(coordinationService, weeklyAttendanceReport, attendanceBackendClient);
+  const controller = new CoordinationController(coordinationService, weeklyAttendanceReport, attendanceBackendClient, sharedClassService);
 
   fastify.get('/api/coordinacion/resumen', { schema: coordinationRouteSchemas.overview }, controller.overview);
   fastify.get(
@@ -38,6 +40,11 @@ export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> =
     { schema: coordinationRouteSchemas.weeklyReport },
     controller.weeklyReport,
   );
+  fastify.get(
+    '/api/coordinacion/reportes/asistencia-rango',
+    { schema: coordinationRouteSchemas.rangeReport },
+    controller.rangeReport,
+  );
 
   fastify.get('/api/coordinacion/infraestructura/resumen', controller.infrastructureSummary);
   fastify.get('/api/coordinacion/infraestructura/beacons', controller.beacons);
@@ -46,6 +53,11 @@ export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> =
   fastify.delete('/api/coordinacion/infraestructura/beacons/:id', controller.deleteBeacon);
   fastify.get('/api/coordinacion/infraestructura/alumnos-vinculados', controller.studentDeviceBindings);
   fastify.delete('/api/coordinacion/infraestructura/alumnos-vinculados/:matricula', controller.deleteStudentDeviceBinding);
+  fastify.get('/api/coordinacion/clases-compartidas/opciones', controller.sharedClassOptions);
+  fastify.get('/api/coordinacion/clases-compartidas', controller.sharedClasses);
+  fastify.post('/api/coordinacion/clases-compartidas', controller.createSharedClass);
+  fastify.put('/api/coordinacion/clases-compartidas/:id', controller.updateSharedClass);
+  fastify.delete('/api/coordinacion/clases-compartidas/:id', controller.deleteSharedClass);
   fastify.get('/api/coordinacion/infraestructura/sustituciones/opciones', controller.substitutionOptions);
   fastify.get('/api/coordinacion/infraestructura/sustituciones', controller.substituteAssignments);
   fastify.post('/api/coordinacion/infraestructura/sustituciones', controller.createSubstituteAssignment);

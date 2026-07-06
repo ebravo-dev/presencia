@@ -20,6 +20,7 @@ export interface GroupAssignmentDetail {
 
 export interface IGroupAssignmentRepository {
   upsert(group: Group): Promise<void>;
+  findById(id: string): Promise<GroupAssignmentDetail | null>;
   findByTeacherId(teacherId: string): Promise<GroupAssignmentDetail[]>;
   count(): Promise<number>;
 }

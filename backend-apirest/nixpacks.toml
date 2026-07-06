@@ -5,7 +5,7 @@ cmds = ["npm ci"]
 cmds = ["npm run build"]
 
 [start]
-cmd = "npm run start"
+cmd = "npm run start:production"
 
 [variables]
 NODE_ENV = "production"

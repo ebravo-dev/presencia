@@ -11,6 +11,7 @@ import { SyncTeacherDataListener } from './application/listeners/sync-teacher-da
 import { CoordinationService } from './application/services/coordination.service.js';
 import { CoordinatorAuthService } from './application/services/coordinator-auth.service.js';
 import { WeeklyAttendanceReportService } from './application/services/weekly-attendance-report.service.js';
+import { SharedClassService } from './application/services/shared-class.service.js';
 import { UatService } from './application/services/uat.service.js';
 import { HarvestTeacherDataUseCase } from './application/use-cases/harvest-teacher-data.use-case.js';
 import { env } from './config/env.js';
@@ -23,6 +24,7 @@ import { prisma } from './infrastructure/persistence/prisma/prisma.client.js';
 import { PrismaCoordinationRepository } from './infrastructure/persistence/prisma/prisma-coordination.repository.js';
 import { PrismaGroupAssignmentRepository } from './infrastructure/persistence/prisma/prisma-group-assignment.repository.js';
 import { PrismaSubjectRepository } from './infrastructure/persistence/prisma/prisma-subject.repository.js';
+import { PrismaSharedClassAssignmentRepository } from './infrastructure/persistence/prisma/prisma-shared-class-assignment.repository.js';
 import { PrismaTeacherRepository } from './infrastructure/persistence/prisma/prisma-teacher.repository.js';
 import { coordinationRoutes } from './presentation/http/routes/coordination.routes.js';
 import { coordinatorAuthRoutes } from './presentation/http/routes/coordinator-auth.routes.js';
@@ -51,6 +53,8 @@ export async function buildApp() {
   const subjectRepository = new PrismaSubjectRepository(prisma);
   const coordinationRepository = new PrismaCoordinationRepository(prisma);
   const groupAssignmentRepository = new PrismaGroupAssignmentRepository(prisma);
+  const sharedClassRepository = new PrismaSharedClassAssignmentRepository(prisma);
+  const sharedClassService = new SharedClassService(sharedClassRepository, teacherRepository, groupAssignmentRepository);
   const eventBus = new InMemoryDomainEventBus(fastify.log);
   const harvestTeacherData = new HarvestTeacherDataUseCase(
     uatService,
@@ -58,6 +62,7 @@ export async function buildApp() {
     subjectRepository,
     coordinationRepository,
     groupAssignmentRepository,
+    { preferredCycleId: env.UAT_ID_CICLO_ESCOLAR },
   );
   const unsubscribeSync = new SyncTeacherDataListener(eventBus, harvestTeacherData, fastify.log).register();
   const coordinationService = new CoordinationService(
@@ -71,7 +76,11 @@ export async function buildApp() {
     env.ATTENDANCE_BACKEND_URL,
     env.ATTENDANCE_BACKEND_SERVICE_TOKEN,
   );
-  const weeklyAttendanceReport = new WeeklyAttendanceReportService(teacherRepository, attendanceBackendClient);
+  const weeklyAttendanceReport = new WeeklyAttendanceReportService(
+    teacherRepository,
+    attendanceBackendClient,
+    groupAssignmentRepository,
+  );
 
   fastify.addHook('onClose', async () => {
     unsubscribeSync();
@@ -118,6 +127,7 @@ export async function buildApp() {
   await fastify.register(uatRoutes, {
     uatService,
     eventBus,
+    sharedClassService,
   });
 
   await fastify.register(coordinatorAuthRoutes, { authService: coordinatorAuthService });
@@ -127,6 +137,7 @@ export async function buildApp() {
     authService: coordinatorAuthService,
     weeklyAttendanceReport,
     attendanceBackendClient,
+    sharedClassService,
   });
 
   const webDist = resolve(env.COORDINATION_WEB_DIST || resolve(process.cwd(), '../frontend-coord/dist'));

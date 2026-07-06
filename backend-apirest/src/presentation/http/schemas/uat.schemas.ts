@@ -35,6 +35,13 @@ export const gruposProfesorQuerySchema = z.object({
   Id_Plantilla: z.coerce.number().int().positive(),
 });
 
+export const sharedClassesQuerySchema = z.object({
+  year: z.coerce.number().int().min(2000).max(2100).optional(),
+  term: z.coerce.number().int().min(1).max(3).optional(),
+}).refine((value) => (value.year === undefined) === (value.term === undefined), {
+  message: 'year y term deben enviarse juntos.',
+});
+
 export const semanasGrupoQuerySchema = z.object({
   Id_Grupo: z.coerce.number().int().positive(),
 });

@@ -7,7 +7,7 @@ class ApiConstants {
   // --dart-define=API_BASE_URL=http://10.0.2.2:3000
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:3000',
+    defaultValue: 'https://backendapirest.149828.xyz/',
   );
   static const String presenceApiBaseUrl = String.fromEnvironment(
     'PRESENCIA_API_BASE_URL',
@@ -29,6 +29,14 @@ class ApiConstants {
     'UAT_ID_DES',
     defaultValue: 12,
   );
+  static const int uatAcademicYear = int.fromEnvironment(
+    'UAT_ACADEMIC_YEAR',
+    defaultValue: 2026,
+  );
+  static const int uatAcademicTerm = int.fromEnvironment(
+    'UAT_ACADEMIC_TERM',
+    defaultValue: 1,
+  );
 
   static void printConfig() {
     Logger.info('API Configuration:');
@@ -37,6 +45,7 @@ class ApiConstants {
     Logger.info('   timeout: $timeoutDuration ms');
     Logger.info('   UAT cycle: $uatDefaultIdCiclo');
     Logger.info('   UAT DES: $uatDefaultIdDes');
+    Logger.info('   UAT academic cycle: $uatAcademicYear-$uatAcademicTerm');
   }
 
   // Main backend professor endpoints.
@@ -60,6 +69,8 @@ class ApiConstants {
   static const String uatCatalogoCiclos = '/api/uat/catalogos/ciclos-escolares';
   static const String uatControlGrupos =
       '/api/uat/profesor/control-asistencia/grupos';
+  static const String uatSharedClasses =
+      '/api/uat/profesor/clases-compartidas';
   static const String uatControlSemanas =
       '/api/uat/profesor/control-asistencia/semanas';
   static const String uatControlAsistenciaGrupo =

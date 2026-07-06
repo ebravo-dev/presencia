@@ -422,7 +422,7 @@ paths:
     get:
       tags: [Coordinacion]
       security: [{ CoordinatorCookie: [] }]
-      summary: Reporte de cumplimiento docente de lunes a jueves
+      summary: Reporte de cumplimiento docente de lunes a sabado
       parameters:
         - name: teacherId
           in: query
@@ -441,6 +441,123 @@ paths:
               schema: { $ref: "#/components/schemas/WeeklyAttendanceReport" }
         "400": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /api/coordinacion/reportes/asistencia-rango:
+    get:
+      tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
+      summary: Reporte agregado por materia para un rango de fechas
+      parameters:
+        - name: teacherId
+          in: query
+          required: true
+          schema: { type: string }
+        - name: startDate
+          in: query
+          required: true
+          description: Fecha inicial en formato YYYY-MM-DD
+          schema: { type: string, format: date }
+        - name: endDate
+          in: query
+          required: true
+          description: Fecha final en formato YYYY-MM-DD
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Resumen por materia con dias programados, reportados y porcentaje
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RangeAttendanceReport" }
+        "400": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /api/uat/profesor/clases-compartidas:
+    get:
+      summary: Lista las clases no oficiales vigentes del profesor autenticado
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+        - name: year
+          in: query
+          required: false
+          description: Anio del ciclo escolar compartido. Debe enviarse junto con term.
+          schema: { type: integer, minimum: 2000, maximum: 2100, example: 2026 }
+        - name: term
+          in: query
+          required: false
+          description: Parte del anio escolar. 1=Primavera, 2=Verano, 3=Otono.
+          schema: { type: integer, minimum: 1, maximum: 3, example: 1 }
+      responses:
+        "200":
+          description: Clases compartidas listas para integrarse con la carga oficial
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProfessorSharedClassesResponse" }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/coordinacion/clases-compartidas/opciones:
+    get:
+      tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
+      summary: Lista profesores y clases oficiales disponibles para compartir
+      responses:
+        "200": { description: Opciones de asignacion }
+  /api/coordinacion/clases-compartidas:
+    get:
+      tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
+      summary: Lista las asignaciones de clases compartidas
+      responses:
+        "200":
+          description: Asignaciones registradas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/SharedClassAssignment" }
+    post:
+      tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
+      summary: Comparte una clase oficial con otro profesor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SharedClassInput" }
+      responses:
+        "201": { description: Clase compartida }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/coordinacion/clases-compartidas/{id}:
+    put:
+      tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
+      summary: Actualiza vigencia, profesor receptor o estado
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SharedClassUpdate" }
+      responses:
+        "200": { description: Asignacion actualizada }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [Coordinacion]
+      security: [{ CoordinatorCookie: [] }]
+      summary: Elimina una asignacion compartida
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Asignacion eliminada }
+        "404": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     CoordinatorCookie:
@@ -763,6 +880,72 @@ components:
         coordination:
           type: object
           additionalProperties: true
+    SharedClassInput:
+      type: object
+      required: [sourceAssignmentId, assignedTeacherId, schoolCycleYear, schoolCycleTerm]
+      properties:
+        sourceAssignmentId: { type: string }
+        assignedTeacherId: { type: string }
+        schoolCycleYear: { type: integer, minimum: 2000, maximum: 2100, example: 2026 }
+        schoolCycleTerm: { type: integer, minimum: 1, maximum: 3, example: 1 }
+        active: { type: boolean, default: true }
+        notes: { type: string, nullable: true, maxLength: 500 }
+    SharedClassAssignment:
+      allOf:
+        - $ref: "#/components/schemas/SharedClassInput"
+        - type: object
+          required: [id, active, createdAt, updatedAt, sourceAssignment, assignedTeacher]
+          properties:
+            id: { type: string }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+            sourceAssignment: { $ref: "#/components/schemas/GroupAssignment" }
+            assignedTeacher:
+              type: object
+              additionalProperties: true
+    SharedClassUpdate:
+      type: object
+      properties:
+        sourceAssignmentId: { type: string }
+        assignedTeacherId: { type: string }
+        schoolCycleYear: { type: integer, minimum: 2000, maximum: 2100 }
+        schoolCycleTerm: { type: integer, minimum: 1, maximum: 3 }
+        active: { type: boolean }
+        notes: { type: string, nullable: true, maxLength: 500 }
+    ProfessorSharedClass:
+      type: object
+      required: [id, code, groupLetter, period, group, name, classroom, schedule, students, studentsCount, source, isShared, sharedAssignmentId]
+      properties:
+        id: { type: string, description: Id_Grupo de Administracion Escolar }
+        code: { type: string }
+        groupLetter: { type: string }
+        period: { type: string }
+        group: { type: string }
+        name: { type: string }
+        level: { type: string, nullable: true }
+        classroom: { type: string }
+        schedule: { type: object, additionalProperties: true }
+        students: { type: array, items: { type: object } }
+        studentsCount: { type: integer }
+        source: { type: string, enum: [SHARED] }
+        isShared: { type: boolean, enum: [true] }
+        sharedAssignmentId: { type: string }
+        sharedCycle:
+          type: object
+          required: [year, term]
+          properties:
+            year: { type: integer }
+            term: { type: integer }
+        primaryProfessor: { type: object, additionalProperties: true }
+    ProfessorSharedClassesResponse:
+      type: object
+      required: [source, data, fetchedAt]
+      properties:
+        source: { type: string, enum: [SHARED_CLASSES] }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/ProfessorSharedClass" }
+        fetchedAt: { type: string, format: date-time }
     CoordinationOverviewResponse:
       type: object
       required: [data, meta]
@@ -864,7 +1047,7 @@ components:
           type: object
           required: [availability, teacher, week, summary, rows]
           properties:
-            availability: { type: string, enum: [READY, NOT_SYNCED, IDENTITY_UNAVAILABLE] }
+            availability: { type: string, enum: [READY, NOT_SYNCED, IDENTITY_UNAVAILABLE, ATTENDANCE_SOURCE_UNAVAILABLE] }
             teacher: { type: object, additionalProperties: true }
             week: { type: object, additionalProperties: true }
             summary: { type: object, additionalProperties: true }
@@ -873,6 +1056,54 @@ components:
               items:
                 type: object
                 additionalProperties: true
+        meta:
+          type: object
+          required: [generatedAt, timezone]
+          properties:
+            generatedAt: { type: string, format: date-time }
+            timezone: { type: string, example: America/Mexico_City }
+    RangeAttendanceReport:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [mode, availability, teacher, range, summary, rows]
+          properties:
+            mode: { type: string, enum: [range] }
+            availability: { type: string, enum: [READY, NOT_SYNCED, IDENTITY_UNAVAILABLE, ATTENDANCE_SOURCE_UNAVAILABLE] }
+            teacher: { type: object, additionalProperties: true }
+            range:
+              type: object
+              required: [start, end]
+              properties:
+                start: { type: string, format: date }
+                end: { type: string, format: date }
+            summary:
+              type: object
+              required: [scheduledClassDays, reportedClassDays, missingClassDays, attendanceRate]
+              properties:
+                scheduledClassDays: { type: integer }
+                reportedClassDays: { type: integer }
+                missingClassDays: { type: integer }
+                attendanceRate: { type: number, format: float }
+            rows:
+              type: array
+              items:
+                type: object
+                required: [id, groupId, groupCode, grade, subject, scheduledClassDays, reportedClassDays, attendanceRate]
+                properties:
+                  id: { type: string }
+                  groupId: { type: string }
+                  groupCode: { type: string }
+                  grade: { type: string, nullable: true }
+                  subject: { type: string }
+                  classroom: { type: string, nullable: true }
+                  educationLevel: { type: string, nullable: true }
+                  period: { type: string }
+                  scheduledClassDays: { type: integer }
+                  reportedClassDays: { type: integer }
+                  attendanceRate: { type: number, format: float, nullable: true }
         meta:
           type: object
           required: [generatedAt, timezone]
