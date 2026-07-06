@@ -32,6 +32,39 @@ describe('UatStudentService', () => {
     expect(client.selectedPlans).toEqual([3314]);
   });
 
+  it('vincula el celular con la matricula devuelta por UAT cuando recibe UUID', async () => {
+    const client = fakeStudentClient();
+    const bindings: unknown[] = [];
+    const service = new UatStudentService(
+      memoryRepository(),
+      fakeFactory(client),
+      {
+        createStudentDeviceBinding: async (input: unknown) => {
+          bindings.push(input);
+          return { data: input };
+        },
+      } as never,
+    );
+
+    await service.createSession({
+      username: 'alumno@uat.edu.mx',
+      password: 'secret',
+      attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+      deviceBindingId: '12345678-1234-4234-9234-123456789abd',
+      platform: 'android',
+    });
+
+    expect(bindings).toEqual([
+      {
+        matricula: '2251330007',
+        attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+        deviceBindingId: '12345678-1234-4234-9234-123456789abd',
+        platform: 'android',
+        deviceInfo: undefined,
+      },
+    ]);
+  });
+
   it('rechaza un plan que no pertenece al alumno', async () => {
     const client = fakeStudentClient();
     const service = new UatStudentService(memoryRepository(), fakeFactory(client));

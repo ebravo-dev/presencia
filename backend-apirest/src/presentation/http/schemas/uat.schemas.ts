@@ -8,6 +8,10 @@ export const credentialsSchema = z.object({
 
 export const studentCredentialsSchema = credentialsSchema.extend({
   idPlanEstudio: z.coerce.number().int().positive().optional(),
+  attendanceUuid: z.string().uuid().optional(),
+  deviceBindingId: z.string().uuid().optional(),
+  platform: z.string().max(40).optional(),
+  deviceInfo: z.string().max(500).optional(),
 });
 
 export const consultaQuerySchema = z.object({

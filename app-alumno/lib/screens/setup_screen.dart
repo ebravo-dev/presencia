@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class SetupScreen extends StatefulWidget {
-  final Future<void> Function(String matricula) onComplete;
+  final Future<void> Function({
+    required String username,
+    required String password,
+  })
+  onComplete;
 
   const SetupScreen({super.key, required this.onComplete});
 
@@ -11,26 +15,35 @@ class SetupScreen extends StatefulWidget {
 }
 
 class _SetupScreenState extends State<SetupScreen> {
-  final _matriculaController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _loading = false;
   String? _errorText;
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
-    _matriculaController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
-    final matricula = _matriculaController.text.trim().toUpperCase();
+    final username = _emailController.text.trim().toLowerCase();
+    final password = _passwordController.text;
 
-    if (matricula.isEmpty) {
-      setState(() => _errorText = 'Ingresa tu matrícula');
+    if (username.isEmpty) {
+      setState(() => _errorText = 'Ingresa tu correo institucional');
       return;
     }
 
-    if (matricula.length < 5) {
-      setState(() => _errorText = 'Revisa que tu matrícula esté completa');
+    if (!username.contains('@')) {
+      setState(() => _errorText = 'Ingresa un correo institucional válido');
+      return;
+    }
+
+    if (password.isEmpty) {
+      setState(() => _errorText = 'Ingresa tu contraseña');
       return;
     }
 
@@ -40,7 +53,15 @@ class _SetupScreenState extends State<SetupScreen> {
       _errorText = null;
     });
     HapticFeedback.mediumImpact();
-    await widget.onComplete(matricula);
+    try {
+      await widget.onComplete(username: username, password: password);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _errorText = error.toString();
+      });
+    }
   }
 
   @override
@@ -61,7 +82,7 @@ class _SetupScreenState extends State<SetupScreen> {
                     const _BrandHeader(),
                     SizedBox(height: constraints.maxHeight < 700 ? 44 : 84),
                     const Text(
-                      'Vincula tu celular',
+                      'Inicia sesión',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 34,
@@ -71,7 +92,7 @@ class _SetupScreenState extends State<SetupScreen> {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Tu matrícula quedará asociada a este dispositivo. Un cambio de celular deberá ser autorizado por un maestro.',
+                      'Usa tu cuenta institucional UAT. Al iniciar sesión se vinculará este celular con tu matrícula y UUID de asistencia.',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.62),
                         fontSize: 15,
@@ -80,9 +101,34 @@ class _SetupScreenState extends State<SetupScreen> {
                     ),
                     const SizedBox(height: 34),
                     TextField(
-                      controller: _matriculaController,
+                      controller: _emailController,
                       enabled: !_loading,
-                      textCapitalization: TextCapitalization.characters,
+                      keyboardType: TextInputType.emailAddress,
+                      textCapitalization: TextCapitalization.none,
+                      autocorrect: false,
+                      textInputAction: TextInputAction.next,
+                      onChanged: (_) {
+                        if (_errorText != null) {
+                          setState(() => _errorText = null);
+                        }
+                      },
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Correo institucional',
+                        hintText: 'tu.correo@alumnos.uat.edu.mx',
+                        prefixIcon: const Icon(Icons.alternate_email_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: _passwordController,
+                      enabled: !_loading,
+                      obscureText: _obscurePassword,
                       textInputAction: TextInputAction.done,
                       onSubmitted: (_) => _loading ? null : _submit(),
                       onChanged: (_) {
@@ -90,36 +136,35 @@ class _SetupScreenState extends State<SetupScreen> {
                           setState(() => _errorText = null);
                         }
                       },
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'[a-zA-Z0-9]'),
-                        ),
-                        LengthLimitingTextInputFormatter(14),
-                        TextInputFormatter.withFunction((oldValue, newValue) {
-                          return newValue.copyWith(
-                            text: newValue.text.toUpperCase(),
-                            selection: newValue.selection,
-                          );
-                        }),
-                      ],
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
                       decoration: InputDecoration(
-                        labelText: 'Matrícula',
-                        hintText: 'A2130587',
+                        labelText: 'Contraseña',
                         errorText: _errorText,
-                        prefixIcon: const Icon(Icons.badge_rounded),
+                        prefixIcon: const Icon(Icons.lock_rounded),
+                        suffixIcon: IconButton(
+                          onPressed: _loading
+                              ? null
+                              : () => setState(
+                                  () => _obscurePassword = !_obscurePassword,
+                                ),
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_rounded
+                                : Icons.visibility_off_rounded,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 18),
                     _InfoStrip(
                       icon: Icons.verified_user_rounded,
                       text:
-                          'Este vínculo ayuda a evitar registros desde otro celular.',
+                          'La matrícula se obtiene desde UAT; no se captura manualmente.',
                     ),
                     const SizedBox(height: 28),
                     SizedBox(

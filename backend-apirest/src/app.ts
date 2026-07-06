@@ -54,7 +54,11 @@ export async function buildApp() {
   const clientFactory = new UatClientFactory();
   const studentClientFactory = new UatStudentClientFactory();
   const uatService = new UatService(sessionRepository, clientFactory);
-  const uatStudentService = new UatStudentService(studentSessionRepository, studentClientFactory);
+  const attendanceBackendClient = new AttendanceBackendClient(
+    env.ATTENDANCE_BACKEND_URL,
+    env.ATTENDANCE_BACKEND_SERVICE_TOKEN,
+  );
+  const uatStudentService = new UatStudentService(studentSessionRepository, studentClientFactory, attendanceBackendClient);
   const teacherRepository = new PrismaTeacherRepository(prisma);
   const subjectRepository = new PrismaSubjectRepository(prisma);
   const coordinationRepository = new PrismaCoordinationRepository(prisma);
@@ -78,10 +82,6 @@ export async function buildApp() {
     groupAssignmentRepository,
   );
   const coordinatorAuthService = new CoordinatorAuthService(prisma, env.COORDINATION_JWT_SECRET);
-  const attendanceBackendClient = new AttendanceBackendClient(
-    env.ATTENDANCE_BACKEND_URL,
-    env.ATTENDANCE_BACKEND_SERVICE_TOKEN,
-  );
   const weeklyAttendanceReport = new WeeklyAttendanceReportService(
     teacherRepository,
     attendanceBackendClient,

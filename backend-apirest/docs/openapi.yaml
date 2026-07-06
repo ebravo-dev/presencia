@@ -767,6 +767,19 @@ components:
               type: integer
               minimum: 1
               example: 3313
+            attendanceUuid:
+              type: string
+              format: uuid
+              description: UUID BLE estable generado por la app de alumnos.
+            deviceBindingId:
+              type: string
+              format: uuid
+              description: Identificador estable de la instalacion/dispositivo.
+            platform:
+              type: string
+              example: android
+            deviceInfo:
+              type: string
     HealthResponse:
       type: object
       required: [status, service, activeUatSessions, activeUatStudentSessions, timestamp]

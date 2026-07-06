@@ -79,6 +79,16 @@ export class AttendanceBackendClient {
     await this.request(() => this.http.delete(`/internal/coordination/student-device-bindings/${encodeURIComponent(matricula)}`));
   }
 
+  async createStudentDeviceBinding(input: {
+    matricula: string;
+    attendanceUuid: string;
+    deviceBindingId?: string;
+    platform?: string;
+    deviceInfo?: string;
+  }) {
+    return this.request(() => this.http.post('/api/student-device-bindings', input));
+  }
+
   async getSubstitutionOptions() {
     return this.request(() => this.http.get('/internal/coordination/substitutions/options'));
   }

@@ -16,15 +16,21 @@ import type {
   UatStudentSessionResponse,
 } from '../../domain/types/uat.interfaces.js';
 import type { UatStudentClientFactory } from '../../infrastructure/http/client/uat-student-client.factory.js';
+import type { AttendanceBackendClient } from '../../infrastructure/http/client/attendance-backend.client.js';
 
 export interface CreateUatStudentSessionInput extends UatCredentials {
   idPlanEstudio?: number;
+  attendanceUuid?: string;
+  deviceBindingId?: string;
+  platform?: string;
+  deviceInfo?: string;
 }
 
 export class UatStudentService {
   constructor(
     private readonly sessionRepository: IUatSessionRepository<StoredUatStudentSession>,
     private readonly clientFactory: UatStudentClientFactory,
+    private readonly attendanceBackendClient?: AttendanceBackendClient,
   ) {}
 
   async createSession(input: CreateUatStudentSessionInput): Promise<StoredUatStudentSession> {
@@ -38,6 +44,7 @@ export class UatStudentService {
 
     const career = selectCareer(careers, input.idPlanEstudio);
     const selectedCareer = await client.selectCareer(career.Id_Plan_Estudio);
+    await this.bindStudentDeviceIfRequested(input, selectedCareer, career);
     const now = new Date();
     const session: StoredUatStudentSession = {
       id: randomUUID(),
@@ -135,6 +142,33 @@ export class UatStudentService {
     };
   }
 
+  private async bindStudentDeviceIfRequested(
+    input: CreateUatStudentSessionInput,
+    selectedCareer: UatStudentCareerSelection,
+    fallbackCareer: UatStudentCareerItem,
+  ): Promise<void> {
+    if (!input.attendanceUuid) return;
+    if (!this.attendanceBackendClient) {
+      throw new ApiError(500, 'ATTENDANCE_BACKEND_NOT_CONFIGURED', 'No se configuro el backend de asistencia para vincular alumnos.');
+    }
+
+    const matricula = readStudentMatricula(selectedCareer, fallbackCareer);
+    if (!matricula) {
+      throw new ApiError(502, 'UAT_STUDENT_MATRICULA_MISSING', 'El portal de alumnos no devolvio matricula para vincular el celular.', {
+        selectedCareer,
+        fallbackCareer,
+      });
+    }
+
+    await this.attendanceBackendClient.createStudentDeviceBinding({
+      matricula,
+      attendanceUuid: input.attendanceUuid,
+      deviceBindingId: input.deviceBindingId,
+      platform: input.platform,
+      deviceInfo: input.deviceInfo,
+    });
+  }
+
   private toUatDataResponse<TItem extends JsonRecord>(
     endpoint: string,
     query: JsonRecord,
@@ -162,6 +196,23 @@ export class UatStudentService {
       fetchedAt: new Date().toISOString(),
     };
   }
+}
+
+function readStudentMatricula(selectedCareer: UatStudentCareerSelection, fallbackCareer: UatStudentCareerItem): string | null {
+  const candidates = [
+    selectedCareer.parametros?.Num_Matricula_AlumnosUAT,
+    selectedCareer.parametros?.Num_Matricula,
+    selectedCareer.Num_Matricula,
+    fallbackCareer.Num_Matricula,
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate === null) continue;
+    const value = String(candidate).trim().toUpperCase();
+    if (value.length > 0) return value;
+  }
+
+  return null;
 }
 
 function selectCareer(careers: UatStudentCareerItem[], idPlanEstudio?: number): UatStudentCareerItem & { Id_Plan_Estudio: number } {

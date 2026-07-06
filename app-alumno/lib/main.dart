@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'services/local_storage_service.dart';
 import 'services/ble_advertiser_service.dart';
 import 'services/attendance_session_service.dart';
-import 'services/student_device_binding_service.dart';
+import 'services/student_auth_service.dart';
 import 'screens/setup_screen.dart';
 import 'screens/home_screen.dart';
 
@@ -28,7 +28,7 @@ void main() async {
     storage: storage,
     advertiser: bleService,
   );
-  final deviceBindingService = StudentDeviceBindingService();
+  final studentAuthService = StudentAuthService();
 
   // Sync student identity to native so attendance services can read it.
   if (storage.isProfileSet) {
@@ -37,8 +37,6 @@ void main() async {
       attendanceUuid: storage.attendanceUuid,
       deviceBindingId: storage.deviceBindingId,
     );
-    final synced = await deviceBindingService.sync(storage);
-    await storage.setDeviceBindingSyncPending(!synced);
   }
 
   runApp(
@@ -46,7 +44,7 @@ void main() async {
       storage: storage,
       bleService: bleService,
       attendanceSession: attendanceSession,
-      deviceBindingService: deviceBindingService,
+      studentAuthService: studentAuthService,
     ),
   );
 }
@@ -55,14 +53,14 @@ class PresenciaAlumnoApp extends StatelessWidget {
   final LocalStorageService storage;
   final BleAdvertiserService bleService;
   final AttendanceSessionService attendanceSession;
-  final StudentDeviceBindingService deviceBindingService;
+  final StudentAuthService studentAuthService;
 
   const PresenciaAlumnoApp({
     super.key,
     required this.storage,
     required this.bleService,
     required this.attendanceSession,
-    required this.deviceBindingService,
+    required this.studentAuthService,
   });
 
   @override
@@ -141,7 +139,7 @@ class PresenciaAlumnoApp extends StatelessWidget {
         storage: storage,
         bleService: bleService,
         attendanceSession: attendanceSession,
-        deviceBindingService: deviceBindingService,
+        studentAuthService: studentAuthService,
       ),
     );
   }
@@ -152,13 +150,13 @@ class _AppRouter extends StatefulWidget {
   final LocalStorageService storage;
   final BleAdvertiserService bleService;
   final AttendanceSessionService attendanceSession;
-  final StudentDeviceBindingService deviceBindingService;
+  final StudentAuthService studentAuthService;
 
   const _AppRouter({
     required this.storage,
     required this.bleService,
     required this.attendanceSession,
-    required this.deviceBindingService,
+    required this.studentAuthService,
   });
 
   @override
@@ -178,15 +176,23 @@ class _AppRouterState extends State<_AppRouter> {
   Widget build(BuildContext context) {
     if (!_profileSet) {
       return SetupScreen(
-        onComplete: (matricula) async {
-          await widget.storage.saveProfile(matricula);
+        onComplete: ({required username, required password}) async {
+          final authResult = await widget.studentAuthService.loginAndBind(
+            username: username,
+            password: password,
+            storage: widget.storage,
+          );
+          await widget.storage.saveProfile(
+            authResult.matricula,
+            institutionalEmail: username.trim().toLowerCase(),
+            uatStudentSessionId: authResult.sessionId,
+          );
           await widget.bleService.setStudentIdentity(
-            matricula: matricula,
+            matricula: authResult.matricula,
             attendanceUuid: widget.storage.attendanceUuid,
             deviceBindingId: widget.storage.deviceBindingId,
           );
-          final synced = await widget.deviceBindingService.sync(widget.storage);
-          await widget.storage.setDeviceBindingSyncPending(!synced);
+          await widget.storage.setDeviceBindingSyncPending(false);
           setState(() => _profileSet = true);
         },
       );

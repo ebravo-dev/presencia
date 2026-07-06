@@ -25,6 +25,12 @@ class LocalStorageService {
   String get deviceBindingId =>
       _profile.get('device_binding_id', defaultValue: '');
 
+  String get institutionalEmail =>
+      _profile.get('institutional_email', defaultValue: '');
+
+  String get uatStudentSessionId =>
+      _profile.get('uat_student_session_id', defaultValue: '');
+
   String get classroomBeaconUuid =>
       _profile.get('classroom_beacon_uuid', defaultValue: '');
 
@@ -36,30 +42,41 @@ class LocalStorageService {
   Future<void> ensureDeviceBinding() async {
     if (!isProfileSet) return;
 
-    final stableUuid = attendanceUuid.isNotEmpty ? attendanceUuid : _uuidV4();
-    final bindingId = deviceBindingId.isNotEmpty ? deviceBindingId : _uuidV4();
-
-    await _profile.put('attendance_uuid', stableUuid);
-    await _profile.put('device_binding_id', bindingId);
+    await ensureDeviceIdentity();
     await _syncNativeIdentity(
       matricula: matricula,
-      attendanceUuid: stableUuid,
-      deviceBindingId: bindingId,
+      attendanceUuid: attendanceUuid,
+      deviceBindingId: deviceBindingId,
     );
   }
 
-  Future<void> saveProfile(String matricula) async {
+  Future<void> ensureDeviceIdentity() async {
     final stableUuid = attendanceUuid.isNotEmpty ? attendanceUuid : _uuidV4();
     final bindingId = deviceBindingId.isNotEmpty ? deviceBindingId : _uuidV4();
 
-    await _profile.put('matricula', matricula);
     await _profile.put('attendance_uuid', stableUuid);
     await _profile.put('device_binding_id', bindingId);
+  }
+
+  Future<void> saveProfile(
+    String matricula, {
+    String? institutionalEmail,
+    String? uatStudentSessionId,
+  }) async {
+    await ensureDeviceIdentity();
+
+    await _profile.put('matricula', matricula);
+    if (institutionalEmail != null) {
+      await _profile.put('institutional_email', institutionalEmail);
+    }
+    if (uatStudentSessionId != null) {
+      await _profile.put('uat_student_session_id', uatStudentSessionId);
+    }
 
     await _syncNativeIdentity(
       matricula: matricula,
-      attendanceUuid: stableUuid,
-      deviceBindingId: bindingId,
+      attendanceUuid: attendanceUuid,
+      deviceBindingId: deviceBindingId,
     );
   }
 

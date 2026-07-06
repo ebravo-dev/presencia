@@ -138,11 +138,14 @@ Crear sesion de alumno:
 ```bash
 curl -X POST http://localhost:3100/api/uat/alumnos/sessions \
   -H "Content-Type: application/json" \
-  -d "{\"username\":\"correo.alumno@alumnos.uat.edu.mx\",\"password\":\"PASSWORD\",\"idPlanEstudio\":3313}"
+  -d "{\"username\":\"correo.alumno@alumnos.uat.edu.mx\",\"password\":\"PASSWORD\",\"idPlanEstudio\":3313,\"attendanceUuid\":\"12345678-1234-4234-9234-123456789abc\",\"deviceBindingId\":\"12345678-1234-4234-9234-123456789abd\",\"platform\":\"android\"}"
 ```
 
 `idPlanEstudio` es opcional. Si no se envia, la API selecciona la primera
 carrera devuelta por `/Home/CarrerasAlumno`.
+`attendanceUuid` y `deviceBindingId` son opcionales para clientes de consulta,
+pero la app de alumnos los envia para que el backend vincule la matricula UAT
+con el UUID BLE estable del celular.
 
 Consultar datos de alumno:
 
