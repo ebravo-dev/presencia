@@ -1,19 +1,19 @@
 import { env } from '../../config/env.js';
 import type { IUatSessionRepository } from '../../domain/repositories/session-store.repository.js';
-import type { StoredUatSession } from '../../domain/types/uat.interfaces.js';
+import type { StoredUatSession, StoredUatSessionBase } from '../../domain/types/uat.interfaces.js';
 
-export class MemoryUatSessionStore implements IUatSessionRepository {
-  private readonly sessions = new Map<string, StoredUatSession>();
+export class MemoryUatSessionStore<TSession extends StoredUatSessionBase = StoredUatSession> implements IUatSessionRepository<TSession> {
+  private readonly sessions = new Map<string, TSession>();
 
   constructor(private readonly ttlMs = env.UAT_SESSION_TTL_MINUTES * 60 * 1000) {}
 
-  async create(sessionId: string, session: StoredUatSession): Promise<void> {
+  async create(sessionId: string, session: TSession): Promise<void> {
     this.cleanupExpired();
     this.touch(session);
     this.sessions.set(sessionId, session);
   }
 
-  async get(sessionId: string): Promise<StoredUatSession | null> {
+  async get(sessionId: string): Promise<TSession | null> {
     this.cleanupExpired();
 
     const session = this.sessions.get(sessionId);
@@ -47,11 +47,11 @@ export class MemoryUatSessionStore implements IUatSessionRepository {
     }
   }
 
-  private isExpired(session: StoredUatSession): boolean {
+  private isExpired(session: TSession): boolean {
     return session.expiresAt.getTime() <= Date.now();
   }
 
-  private touch(session: StoredUatSession): void {
+  private touch(session: TSession): void {
     const now = new Date();
     session.lastUsedAt = now;
     session.expiresAt = new Date(now.getTime() + this.ttlMs);

@@ -12,11 +12,14 @@ import { CoordinationService } from './application/services/coordination.service
 import { CoordinatorAuthService } from './application/services/coordinator-auth.service.js';
 import { WeeklyAttendanceReportService } from './application/services/weekly-attendance-report.service.js';
 import { SharedClassService } from './application/services/shared-class.service.js';
+import { UatStudentService } from './application/services/uat-student.service.js';
 import { UatService } from './application/services/uat.service.js';
 import { HarvestTeacherDataUseCase } from './application/use-cases/harvest-teacher-data.use-case.js';
 import { env } from './config/env.js';
+import type { StoredUatStudentSession } from './domain/types/uat.interfaces.js';
 import { ApiError } from './errors/api-error.js';
 import { UatClientFactory } from './infrastructure/http/client/uat-client.factory.js';
+import { UatStudentClientFactory } from './infrastructure/http/client/uat-student-client.factory.js';
 import { AttendanceBackendClient } from './infrastructure/http/client/attendance-backend.client.js';
 import { InMemoryDomainEventBus } from './infrastructure/events/in-memory-domain-event-bus.js';
 import { MemoryUatSessionStore } from './infrastructure/persistence/memory-session.store.js';
@@ -47,8 +50,11 @@ export async function buildApp() {
   });
 
   const sessionRepository = new MemoryUatSessionStore();
+  const studentSessionRepository = new MemoryUatSessionStore<StoredUatStudentSession>();
   const clientFactory = new UatClientFactory();
+  const studentClientFactory = new UatStudentClientFactory();
   const uatService = new UatService(sessionRepository, clientFactory);
+  const uatStudentService = new UatStudentService(studentSessionRepository, studentClientFactory);
   const teacherRepository = new PrismaTeacherRepository(prisma);
   const subjectRepository = new PrismaSubjectRepository(prisma);
   const coordinationRepository = new PrismaCoordinationRepository(prisma);
@@ -121,11 +127,13 @@ export async function buildApp() {
     status: 'ok',
     service: 'backend-apirest',
     activeUatSessions: await uatService.getActiveSessionCount(),
+    activeUatStudentSessions: await uatStudentService.getActiveSessionCount(),
     timestamp: new Date().toISOString(),
   }));
 
   await fastify.register(uatRoutes, {
     uatService,
+    uatStudentService,
     eventBus,
     sharedClassService,
   });

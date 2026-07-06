@@ -1,0 +1,14 @@
+import { CookieJar } from 'tough-cookie';
+import { env } from '../../../config/env.js';
+import type { UatStudentPortalClientPort } from '../../../domain/types/uat.interfaces.js';
+import { UatStudentPortalClient } from './uat-student-client.js';
+
+export class UatStudentClientFactory {
+  create(): UatStudentPortalClientPort {
+    return new UatStudentPortalClient({
+      baseUrl: env.UAT_ALUMNOS_BASE_URL,
+      timeoutMs: env.UAT_HTTP_TIMEOUT_MS,
+      jar: new CookieJar(),
+    });
+  }
+}

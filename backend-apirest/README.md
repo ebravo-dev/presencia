@@ -44,6 +44,7 @@ NODE_ENV=production
 HOST=0.0.0.0
 PORT=3100
 UAT_BASE_URL=https://administracionescolar.uat.edu.mx
+UAT_ALUMNOS_BASE_URL=https://alumnossur.uat.edu.mx
 UAT_HTTP_TIMEOUT_MS=30000
 UAT_SESSION_TTL_MINUTES=45
 DATABASE_URL=postgresql://usuario:password@postgres:5432/presencia_coordination?schema=public
@@ -132,6 +133,40 @@ curl -X POST http://localhost:3100/api/uat/profesor/consultas/snapshot \
   -d "{\"username\":\"CORREO_USUARIO\",\"password\":\"PASSWORD_USUARIO\",\"Id_Ciclo_Escolar\":150,\"Id_DES\":12,\"includeExamenes\":true}"
 ```
 
+Crear sesion de alumno:
+
+```bash
+curl -X POST http://localhost:3100/api/uat/alumnos/sessions \
+  -H "Content-Type: application/json" \
+  -d "{\"username\":\"correo.alumno@alumnos.uat.edu.mx\",\"password\":\"PASSWORD\",\"idPlanEstudio\":3313}"
+```
+
+`idPlanEstudio` es opcional. Si no se envia, la API selecciona la primera
+carrera devuelta por `/Home/CarrerasAlumno`.
+
+Consultar datos de alumno:
+
+```bash
+curl http://localhost:3100/api/uat/alumnos/carreras \
+  -H "X-UAT-Student-Session-Id: SESSION_ID"
+
+curl http://localhost:3100/api/uat/alumnos/horario \
+  -H "X-UAT-Student-Session-Id: SESSION_ID"
+```
+
+El backend de alumnos ejecuta internamente:
+
+```txt
+GET  https://alumnossur.uat.edu.mx/
+POST https://alumnossur.uat.edu.mx/Login/Accesar_Dominio
+GET  https://alumnossur.uat.edu.mx/Login/Validar
+GET  https://alumnossur.uat.edu.mx/Home/CarrerasAlumno
+POST https://alumnossur.uat.edu.mx/Home/SeleccionarCarreraAlumno
+GET  https://alumnossur.uat.edu.mx/Alumno/Horario/SpuSelHorarioFichaAlumno
+GET  https://alumnossur.uat.edu.mx/Alumno/CalificacionesParciales/SPUSELCalificacionesParciales
+GET  https://alumnossur.uat.edu.mx/Alumno/CalificacionesFinales/ConsultaEvaluaciones
+```
+
 ## Contrato
 
 El contrato OpenAPI esta en:
@@ -158,6 +193,13 @@ GET    /api/uat/profesor/control-asistencia/semanas
 GET    /api/uat/profesor/control-asistencia/asistencia-grupo
 POST   /api/uat/profesor/control-asistencia/asistencias
 POST   /api/uat/asistencia/guardar
+POST   /api/uat/alumnos/sessions
+DELETE /api/uat/alumnos/sessions/{sessionId}
+GET    /api/uat/alumnos/carreras
+POST   /api/uat/alumnos/carreras/seleccionar
+GET    /api/uat/alumnos/horario
+GET    /api/uat/alumnos/calificaciones/parciales
+GET    /api/uat/alumnos/calificaciones/finales
 GET    /api/coordinacion/resumen
 GET    /api/coordinacion/coordinaciones
 GET    /api/coordinacion/profesores

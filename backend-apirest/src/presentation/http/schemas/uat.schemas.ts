@@ -6,6 +6,10 @@ export const credentialsSchema = z.object({
   password: z.string().min(1),
 });
 
+export const studentCredentialsSchema = credentialsSchema.extend({
+  idPlanEstudio: z.coerce.number().int().positive().optional(),
+});
+
 export const consultaQuerySchema = z.object({
   Id_Ciclo_Escolar: z.coerce.number().int().positive(),
   Id_DES: z.coerce.number().int().positive(),
@@ -66,6 +70,10 @@ export const registrarAsistenciasBodySchema = z.object({
 
 export const sessionParamsSchema = z.object({
   sessionId: z.string().uuid(),
+});
+
+export const selectStudentCareerSchema = z.object({
+  idPlanEstudio: z.coerce.number().int().positive(),
 });
 
 export function parsePayload<T>(schema: z.ZodType<T>, value: unknown): T {
