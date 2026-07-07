@@ -5,17 +5,20 @@ import 'package:flutter/material.dart';
 import '../services/attendance_session_service.dart';
 import '../services/ble_advertiser_service.dart';
 import '../services/local_storage_service.dart';
+import '../services/student_auth_service.dart';
 
 class HomeScreen extends StatefulWidget {
   final LocalStorageService storage;
   final BleAdvertiserService bleService;
   final AttendanceSessionService attendanceSession;
+  final StudentAuthService studentAuthService;
 
   const HomeScreen({
     super.key,
     required this.storage,
     required this.bleService,
     required this.attendanceSession,
+    required this.studentAuthService,
   });
 
   @override
@@ -27,6 +30,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   AttendanceSessionState _sessionState = AttendanceSessionState.idle;
   String _statusText = 'Preparando asistencia';
   String? _lastConfirmation;
+  bool _syncingAcademicInfo = false;
+  String? _academicSyncMessage;
+  bool _academicSyncError = false;
 
   StreamSubscription<AdvertiserState>? _stateSub;
   StreamSubscription<String>? _confirmSub;
@@ -182,6 +188,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       body: _helpBody,
                       icon: _helpIcon,
                     ),
+                    const SizedBox(height: 14),
+                    _AcademicSyncPanel(
+                      syncing: _syncingAcademicInfo,
+                      message: _academicSyncMessage,
+                      hasError: _academicSyncError,
+                      onSync: _syncAcademicInfo,
+                    ),
                   ],
                 ),
               ),
@@ -199,6 +212,47 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await widget.bleService.startAdvertising(
         uuid: widget.storage.attendanceUuid,
       );
+    }
+  }
+
+  Future<void> _syncAcademicInfo() async {
+    if (_syncingAcademicInfo) return;
+    setState(() {
+      _syncingAcademicInfo = true;
+      _academicSyncError = false;
+      _academicSyncMessage = 'Sincronizando información UAT...';
+    });
+
+    try {
+      final result = await widget.studentAuthService.syncAcademicInfo(
+        widget.storage,
+      );
+      if (!mounted) return;
+      setState(() {
+        _syncingAcademicInfo = false;
+        _academicSyncError = false;
+        _academicSyncMessage =
+            'Sincronización lista: ${result.scheduleCount} horarios, '
+            '${result.partialGradesCount} parciales y '
+            '${result.finalGradesCount} finales.';
+      });
+    } on StudentAuthException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _syncingAcademicInfo = false;
+        _academicSyncError = true;
+        _academicSyncMessage = error.authenticationFailed
+            ? 'No se puede sincronizar horario o calificaciones. Tu contraseña UAT cambió o ya no es válida. El pase de asistencia sigue funcionando.'
+            : error.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _syncingAcademicInfo = false;
+        _academicSyncError = true;
+        _academicSyncMessage =
+            'No se pudo sincronizar la información. El pase de asistencia sigue funcionando.';
+      });
     }
   }
 
@@ -619,6 +673,76 @@ class _HelpPanel extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AcademicSyncPanel extends StatelessWidget {
+  final bool syncing;
+  final String? message;
+  final bool hasError;
+  final VoidCallback onSync;
+
+  const _AcademicSyncPanel({
+    required this.syncing,
+    required this.message,
+    required this.hasError,
+    required this.onSync,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = hasError ? const Color(0xFFFF7A70) : const Color(0xFF79A8FF);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF10161E),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF1D2936)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.cloud_sync_rounded, color: accent, size: 22),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Información UAT',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: syncing ? null : onSync,
+                icon: syncing
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh_rounded, size: 18),
+                label: Text(syncing ? 'Sincronizando' : 'Sincronizar'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message ??
+                'Horario y calificaciones son opcionales. Tu pase de asistencia funciona aunque no se sincronicen.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: hasError ? 0.78 : 0.58),
+              fontSize: 13,
+              height: 1.35,
             ),
           ),
         ],

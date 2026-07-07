@@ -182,6 +182,10 @@ class _AppRouterState extends State<_AppRouter> {
             password: password,
             storage: widget.storage,
           );
+          await widget.storage.saveInstitutionalCredentials(
+            username: username,
+            password: password,
+          );
           await widget.storage.saveProfile(
             authResult.matricula,
             institutionalEmail: username.trim().toLowerCase(),
@@ -202,6 +206,7 @@ class _AppRouterState extends State<_AppRouter> {
       storage: widget.storage,
       bleService: widget.bleService,
       attendanceSession: widget.attendanceSession,
+      studentAuthService: widget.studentAuthService,
     );
   }
 }

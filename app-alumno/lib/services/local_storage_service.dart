@@ -1,11 +1,31 @@
 import 'dart:math';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class StudentStoredCredentials {
+  final String username;
+  final String password;
+
+  const StudentStoredCredentials({
+    required this.username,
+    required this.password,
+  });
+}
 
 /// Local storage for student profile
 class LocalStorageService {
   static const String _profileBox = 'student_profile';
+  static const String _secureUsernameKey = 'uat_student_username';
+  static const String _securePasswordKey = 'uat_student_password';
+  static const _secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
+  );
+
   late Box _profile;
 
   Future<void> init() async {
@@ -78,6 +98,39 @@ class LocalStorageService {
       attendanceUuid: attendanceUuid,
       deviceBindingId: deviceBindingId,
     );
+  }
+
+  Future<void> saveInstitutionalCredentials({
+    required String username,
+    required String password,
+  }) async {
+    await _secureStorage.write(
+      key: _secureUsernameKey,
+      value: username.trim().toLowerCase(),
+    );
+    await _secureStorage.write(key: _securePasswordKey, value: password);
+  }
+
+  Future<StudentStoredCredentials?> readInstitutionalCredentials() async {
+    final username = await _secureStorage.read(key: _secureUsernameKey);
+    final password = await _secureStorage.read(key: _securePasswordKey);
+
+    if (username == null ||
+        username.trim().isEmpty ||
+        password == null ||
+        password.isEmpty) {
+      return null;
+    }
+
+    return StudentStoredCredentials(
+      username: username.trim().toLowerCase(),
+      password: password,
+    );
+  }
+
+  Future<void> clearInstitutionalCredentials() async {
+    await _secureStorage.delete(key: _secureUsernameKey);
+    await _secureStorage.delete(key: _securePasswordKey);
   }
 
   Future<void> saveClassroomBeaconUuid(String uuid) async {

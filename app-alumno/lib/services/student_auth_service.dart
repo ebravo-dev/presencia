@@ -11,10 +11,25 @@ class StudentAuthResult {
   const StudentAuthResult({required this.sessionId, required this.matricula});
 }
 
+class StudentInfoSyncResult {
+  final int scheduleCount;
+  final int partialGradesCount;
+  final int finalGradesCount;
+  final DateTime syncedAt;
+
+  const StudentInfoSyncResult({
+    required this.scheduleCount,
+    required this.partialGradesCount,
+    required this.finalGradesCount,
+    required this.syncedAt,
+  });
+}
+
 class StudentAuthException implements Exception {
   final String message;
+  final bool authenticationFailed;
 
-  const StudentAuthException(this.message);
+  const StudentAuthException(this.message, {this.authenticationFailed = false});
 
   @override
   String toString() => message;
@@ -32,7 +47,73 @@ class StudentAuthService {
     required LocalStorageService storage,
   }) async {
     await storage.ensureDeviceIdentity();
+    final decoded = await _createStudentSession(
+      username: username,
+      password: password,
+      storage: storage,
+      bindDevice: true,
+    );
 
+    final sessionId = decoded['sessionId']?.toString() ?? '';
+    final matricula = _extractMatricula(decoded);
+
+    if (sessionId.isEmpty || matricula.isEmpty) {
+      throw const StudentAuthException(
+        'El backend no devolvió la sesión o matrícula del alumno.',
+      );
+    }
+
+    return StudentAuthResult(sessionId: sessionId, matricula: matricula);
+  }
+
+  Future<StudentInfoSyncResult> syncAcademicInfo(
+    LocalStorageService storage,
+  ) async {
+    final credentials = await storage.readInstitutionalCredentials();
+    if (credentials == null) {
+      throw const StudentAuthException(
+        'No se encontraron credenciales guardadas. Inicia sesión de nuevo.',
+        authenticationFailed: true,
+      );
+    }
+
+    final session = await _createStudentSession(
+      username: credentials.username,
+      password: credentials.password,
+      storage: storage,
+      bindDevice: false,
+    );
+    final sessionId = session['sessionId']?.toString() ?? '';
+    if (sessionId.isEmpty) {
+      throw const StudentAuthException(
+        'No se pudo abrir una sesión UAT para sincronizar.',
+      );
+    }
+
+    try {
+      final responses = await Future.wait([
+        _getStudentData('/api/uat/alumnos/horario', sessionId),
+        _getStudentData('/api/uat/alumnos/calificaciones/parciales', sessionId),
+        _getStudentData('/api/uat/alumnos/calificaciones/finales', sessionId),
+      ]);
+
+      return StudentInfoSyncResult(
+        scheduleCount: responses[0],
+        partialGradesCount: responses[1],
+        finalGradesCount: responses[2],
+        syncedAt: DateTime.now(),
+      );
+    } finally {
+      await _deleteStudentSession(sessionId);
+    }
+  }
+
+  Future<Map<String, dynamic>> _createStudentSession({
+    required String username,
+    required String password,
+    required LocalStorageService storage,
+    required bool bindDevice,
+  }) async {
     final client = HttpClient()..connectionTimeout = _timeout;
     try {
       final uri = Uri.parse(baseUrl).resolve('/api/uat/alumnos/sessions');
@@ -43,12 +124,65 @@ class StudentAuthService {
         jsonEncode({
           'username': username.trim(),
           'password': password,
-          'attendanceUuid': storage.attendanceUuid,
-          'deviceBindingId': storage.deviceBindingId,
-          'platform': Platform.operatingSystem,
-          'deviceInfo': Platform.operatingSystemVersion,
+          if (bindDevice) 'attendanceUuid': storage.attendanceUuid,
+          if (bindDevice) 'deviceBindingId': storage.deviceBindingId,
+          if (bindDevice) 'platform': Platform.operatingSystem,
+          if (bindDevice) 'deviceInfo': Platform.operatingSystemVersion,
         }),
       );
+
+      final response = await request.close().timeout(_timeout);
+      final body = await utf8.decodeStream(response);
+      final decoded = body.trim().isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(body);
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final message = decoded is Map<String, dynamic>
+            ? decoded['message']?.toString()
+            : null;
+        final error = decoded is Map<String, dynamic>
+            ? decoded['error']?.toString()
+            : null;
+        final isAuthError =
+            response.statusCode == 401 ||
+            error == 'UAT_LOGIN_FAILED' ||
+            error == 'UNAUTHORIZED';
+        throw StudentAuthException(
+          message?.isNotEmpty == true
+              ? message!
+              : 'No fue posible iniciar sesión. Revisa tus datos.',
+          authenticationFailed: isAuthError,
+        );
+      }
+
+      if (decoded is! Map<String, dynamic>) {
+        throw const StudentAuthException(
+          'El backend devolvió una respuesta inválida.',
+        );
+      }
+
+      return decoded;
+    } on StudentAuthException {
+      rethrow;
+    } on SocketException {
+      throw const StudentAuthException('No hay conexión con el backend.');
+    } on FormatException {
+      throw const StudentAuthException('El backend devolvió JSON inválido.');
+    } catch (_) {
+      throw const StudentAuthException('No fue posible iniciar sesión.');
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<int> _getStudentData(String path, String sessionId) async {
+    final client = HttpClient()..connectionTimeout = _timeout;
+    try {
+      final uri = Uri.parse(baseUrl).resolve(path);
+      final request = await client.getUrl(uri).timeout(_timeout);
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      request.headers.set('X-UAT-Student-Session-Id', sessionId);
 
       final response = await request.close().timeout(_timeout);
       final body = await utf8.decodeStream(response);
@@ -63,34 +197,38 @@ class StudentAuthService {
         throw StudentAuthException(
           message?.isNotEmpty == true
               ? message!
-              : 'No fue posible iniciar sesión. Revisa tus datos.',
+              : 'No se pudo sincronizar información UAT.',
+          authenticationFailed: response.statusCode == 401,
         );
       }
 
-      if (decoded is! Map<String, dynamic>) {
-        throw const StudentAuthException(
-          'El backend devolvió una respuesta inválida.',
-        );
+      if (decoded is Map<String, dynamic>) {
+        final data = decoded['data'];
+        return data is List ? data.length : 0;
       }
 
-      final sessionId = decoded['sessionId']?.toString() ?? '';
-      final matricula = _extractMatricula(decoded);
-
-      if (sessionId.isEmpty || matricula.isEmpty) {
-        throw const StudentAuthException(
-          'El backend no devolvió la sesión o matrícula del alumno.',
-        );
-      }
-
-      return StudentAuthResult(sessionId: sessionId, matricula: matricula);
+      return 0;
     } on StudentAuthException {
       rethrow;
-    } on SocketException {
-      throw const StudentAuthException('No hay conexión con el backend.');
-    } on FormatException {
-      throw const StudentAuthException('El backend devolvió JSON inválido.');
     } catch (_) {
-      throw const StudentAuthException('No fue posible iniciar sesión.');
+      throw const StudentAuthException(
+        'No se pudo sincronizar información UAT.',
+      );
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<void> _deleteStudentSession(String sessionId) async {
+    final client = HttpClient()..connectionTimeout = _timeout;
+    try {
+      final uri = Uri.parse(
+        baseUrl,
+      ).resolve('/api/uat/alumnos/sessions/$sessionId');
+      final request = await client.deleteUrl(uri).timeout(_timeout);
+      await request.close().timeout(_timeout);
+    } catch (_) {
+      // Best-effort cleanup. La sesion expira sola en backend.
     } finally {
       client.close(force: true);
     }
