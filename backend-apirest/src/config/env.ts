@@ -29,6 +29,7 @@ const envSchema = z.object({
     .min(1)
     .default('postgresql://postgres:postgres@localhost:5432/presencia_coordination?schema=public'),
   COORDINATION_JWT_SECRET: z.string().min(32).default('development-coordination-jwt-secret-change-me'),
+  INTERNAL_API_TOKEN: z.string().min(32).default('development-internal-service-token-change-me'),
   COORDINATION_WEB_ORIGIN: z.string().url().default('http://localhost:5173'),
   COORDINATION_COOKIE_SECURE: z.preprocess(
     (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',

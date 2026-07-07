@@ -14,8 +14,10 @@ void main() async {
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
-      statusBarBrightness: Brightness.dark,
-      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.light,
+      statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarColor: Color(0xFFF7FAFE),
+      systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
 
@@ -69,65 +71,72 @@ class PresenciaAlumnoApp extends StatelessWidget {
       title: 'Presencia Alumno',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        brightness: Brightness.dark,
+        brightness: Brightness.light,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF62D6A2),
-          brightness: Brightness.dark,
-          primary: const Color(0xFF62D6A2),
-          surface: const Color(0xFF111923),
+          seedColor: const Color(0xFF2348ED),
+          brightness: Brightness.light,
+          primary: const Color(0xFF2348ED),
+          secondary: const Color(0xFF10AF74),
+          surface: const Color(0xFFFFFFFF),
         ),
-        scaffoldBackgroundColor: const Color(0xFF0B0F14),
+        scaffoldBackgroundColor: const Color(0xFFF7FAFE),
         fontFamily: 'Roboto',
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            foregroundColor: const Color(0xFF2348ED),
+            textStyle: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+        ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xFF62D6A2),
-            foregroundColor: const Color(0xFF07110D),
-            disabledBackgroundColor: const Color(0xFF27313B),
-            disabledForegroundColor: const Color(0xFF8F9BA8),
+            backgroundColor: const Color(0xFF2348ED),
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: const Color(0xFFE0ECFF),
+            disabledForegroundColor: const Color(0xFF65728B),
             textStyle: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w800,
             ),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(18),
             ),
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: const Color(0xFF111923),
+          fillColor: Colors.white,
           labelStyle: const TextStyle(
-            color: Color(0xFF8F9BA8),
+            color: Color(0xFF65728B),
             fontWeight: FontWeight.w700,
           ),
           hintStyle: TextStyle(
-            color: Colors.white.withValues(alpha: 0.28),
+            color: const Color(0xFF65728B).withValues(alpha: 0.62),
             fontWeight: FontWeight.w700,
           ),
-          prefixIconColor: const Color(0xFF8F9BA8),
+          prefixIconColor: const Color(0xFF65728B),
           errorStyle: const TextStyle(
-            color: Color(0xFFFF7A70),
+            color: Color(0xFFED4444),
             fontWeight: FontWeight.w700,
           ),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFF223040)),
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: Color(0xFFDAE2F0)),
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFF223040)),
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: Color(0xFFDAE2F0)),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFF62D6A2), width: 1.4),
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: Color(0xFF2348ED), width: 1.4),
           ),
           errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFFFF7A70)),
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: Color(0xFFED4444)),
           ),
           focusedErrorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFFFF7A70), width: 1.4),
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: Color(0xFFED4444), width: 1.4),
           ),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,

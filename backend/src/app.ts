@@ -13,6 +13,7 @@ import { beaconsRoutes } from './modules/beacons/index.js';
 import { uatProxyRoutes } from './modules/uat-proxy/index.js';
 import { substitutionsRoutes } from './modules/substitutions/index.js';
 import { internalCoordinationRoutes } from './modules/internal-coordination/index.js';
+import { superUserRoutes } from './modules/super-user/index.js';
 import { sessionService } from './core/security/index.js';
 import fastifyStatic from '@fastify/static';
 import path from 'path';
@@ -100,6 +101,7 @@ async function registerRoutes(): Promise<void> {
     await fastify.register(beaconsRoutes);
     await fastify.register(substitutionsRoutes);
     await fastify.register(internalCoordinationRoutes);
+    await fastify.register(superUserRoutes);
 
     // Serve admin panel static files
     await fastify.register(fastifyStatic, {

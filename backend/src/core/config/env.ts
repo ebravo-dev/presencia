@@ -11,6 +11,7 @@ const envSchema = z.object({
     // JWT
     JWT_SECRET: z.string().min(32),
     JWT_EXPIRES_IN: z.string().default('7d'),
+    SUPER_USER_PASSWORD: z.string().min(8).default('development-super-user-password'),
 
     // RSA
     RSA_PRIVATE_KEY: z.string().min(1),

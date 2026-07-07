@@ -9,6 +9,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { SyncTeacherDataListener } from './application/listeners/sync-teacher-data.listener.js';
 import { CoordinationService } from './application/services/coordination.service.js';
+import { CoordinatorAccountService } from './application/services/coordinator-account.service.js';
 import { CoordinatorAuthService } from './application/services/coordinator-auth.service.js';
 import { WeeklyAttendanceReportService } from './application/services/weekly-attendance-report.service.js';
 import { SharedClassService } from './application/services/shared-class.service.js';
@@ -31,6 +32,7 @@ import { PrismaSharedClassAssignmentRepository } from './infrastructure/persiste
 import { PrismaTeacherRepository } from './infrastructure/persistence/prisma/prisma-teacher.repository.js';
 import { coordinationRoutes } from './presentation/http/routes/coordination.routes.js';
 import { coordinatorAuthRoutes } from './presentation/http/routes/coordinator-auth.routes.js';
+import { internalCoordinationRoutes } from './presentation/http/routes/internal-coordination.routes.js';
 import { uatRoutes } from './presentation/http/routes/uat.routes.js';
 
 export async function buildApp() {
@@ -82,6 +84,7 @@ export async function buildApp() {
     groupAssignmentRepository,
   );
   const coordinatorAuthService = new CoordinatorAuthService(prisma, env.COORDINATION_JWT_SECRET);
+  const coordinatorAccountService = new CoordinatorAccountService(prisma);
   const weeklyAttendanceReport = new WeeklyAttendanceReportService(
     teacherRepository,
     attendanceBackendClient,
@@ -139,6 +142,10 @@ export async function buildApp() {
   });
 
   await fastify.register(coordinatorAuthRoutes, { authService: coordinatorAuthService });
+  await fastify.register(internalCoordinationRoutes, {
+    coordinatorAccountService,
+    internalToken: env.INTERNAL_API_TOKEN,
+  });
 
   await fastify.register(coordinationRoutes, {
     coordinationService,

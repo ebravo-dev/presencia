@@ -9,7 +9,7 @@ import { LoginPage } from '@/features/auth/login-page';
 import { DashboardPage } from '@/features/dashboard/dashboard-page';
 import { AllocationPage } from '@/features/allocation/allocation-page';
 import { ReportsPage } from '@/features/reports/reports-page';
-import { InfrastructurePage } from '@/features/infrastructure/infrastructure-page';
+import { SuperUserPage } from '@/features/super-user/super-user-page';
 
 function ProtectedApp() {
   const setUser = useAuthStore((state) => state.setUser);
@@ -22,10 +22,10 @@ function ProtectedApp() {
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
+  { path: '/superUsuario', element: <SuperUserPage /> },
   { element: <ProtectedApp />, children: [
     { path: '/', element: <DashboardPage /> },
     { path: '/carga-academica', element: <AllocationPage /> },
-    { path: '/infraestructura', element: <InfrastructurePage /> },
     { path: '/reportes/asistencia', element: <ReportsPage /> },
   ] },
   { path: '*', element: <Navigate to="/" replace /> },

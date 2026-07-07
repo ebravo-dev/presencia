@@ -1,22 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
 import {
-  Activity,
   ArrowRight,
-  Bluetooth,
   BookOpen,
   Building2,
   Clock3,
   GraduationCap,
-  Link2,
   RefreshCw,
-  ShieldCheck,
   Users,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { coordinationApi } from '@/core/api/coordination.api';
-import type { InfrastructureSummaryResponse, OverviewResponse } from '@/core/api/types';
-import { Badge, Button, Card, EmptyState, Skeleton } from '@/shared/components/ui';
+import type { OverviewResponse } from '@/core/api/types';
+import { Button, Card, EmptyState, Skeleton } from '@/shared/components/ui';
 
 const academicCards = [
   { key: 'teachers', label: 'Profesores indexados', icon: Users, accent: 'bg-red-50 text-[#C8102E] dark:bg-red-950/30 dark:text-red-400' },
@@ -25,41 +21,31 @@ const academicCards = [
   { key: 'coordinations', label: 'Coordinaciones', icon: Building2, accent: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400' },
 ] as const;
 
-const infrastructureCards = [
-  { key: 'beacons', label: 'Beacons de salón', icon: Bluetooth, accent: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-400' },
-  { key: 'studentDeviceBindings', label: 'Celulares vinculados', icon: Link2, accent: 'bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-400' },
-  { key: 'studentBleAttendances', label: 'Detecciones BLE recibidas', icon: Activity, accent: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' },
-  { key: 'activeSubstitutions', label: 'Sustituciones activas', icon: ShieldCheck, accent: 'bg-orange-50 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400' },
-] as const;
-
 const REFRESH_INTERVAL_MS = 10_000;
 
 export function DashboardPage() {
   const overview = useQuery({ queryKey: ['coordination', 'overview'], queryFn: coordinationApi.overview, refetchInterval: REFRESH_INTERVAL_MS });
-  const infrastructure = useQuery({ queryKey: ['coordination', 'infrastructure-summary'], queryFn: coordinationApi.infrastructureSummary, refetchInterval: REFRESH_INTERVAL_MS });
 
-  if (overview.isLoading || infrastructure.isLoading) {
+  if (overview.isLoading) {
     return (
       <div className="space-y-8">
         <Skeleton className="h-32" />
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{academicCards.map((item) => <Skeleton key={item.key} className="h-36" />)}</div>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{infrastructureCards.map((item) => <Skeleton key={item.key} className="h-36" />)}</div>
         <Skeleton className="h-72" />
       </div>
     );
   }
 
-  if (overview.isError || infrastructure.isError || !overview.data || !infrastructure.data) {
-    return <EmptyState icon={<RefreshCw size={34} />} title="No pudimos cargar el resumen" description="Verifica la conexión entre coordinación, backend-apirest y el backend de asistencia." />;
+  if (overview.isError || !overview.data) {
+    return <EmptyState icon={<RefreshCw size={34} />} title="No pudimos cargar el resumen" description="Verifica la conexión del módulo de coordinación." />;
   }
 
-  return <DashboardContent overview={overview.data} infrastructure={infrastructure.data} />;
+  return <DashboardContent overview={overview.data} />;
 }
 
-function DashboardContent({ overview, infrastructure }: { overview: OverviewResponse; infrastructure: InfrastructureSummaryResponse }) {
+function DashboardContent({ overview }: { overview: OverviewResponse }) {
   const { counts, coordinations } = overview.data;
-  const operational = infrastructure.data;
-  const lastUpdate = latestDate(overview.meta.generatedAt, infrastructure.meta.generatedAt);
+  const lastUpdate = overview.meta.generatedAt;
 
   return (
     <div className="space-y-8">
@@ -69,17 +55,17 @@ function DashboardContent({ overview, infrastructure }: { overview: OverviewResp
             <p className="text-sm font-semibold text-[#C8102E]">Centro operativo</p>
             <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">Coordinación académica y presencia BLE</h2>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400">
-              Monitorea la cosecha académica del portal UAT, la infraestructura BLE del salón, los celulares vinculados y las sustituciones que afectan la toma de asistencia.
+              Monitorea la cosecha académica del portal UAT, la asignación de profesores, materias y grupos, y genera reportes de asistencia para coordinación.
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
-              <Button asChild><Link to="/infraestructura">Gestionar infraestructura <ArrowRight size={17} /></Link></Button>
               <Button asChild variant="secondary"><Link to="/carga-academica">Revisar carga académica</Link></Button>
+              <Button asChild><Link to="/reportes/asistencia">Ver reportes <ArrowRight size={17} /></Link></Button>
             </div>
           </div>
           <div className="border-t border-slate-200/80 bg-slate-50 p-6 transition-colors dark:border-[#1f2229] dark:bg-[#15181d] lg:border-l lg:border-t-0">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500"><Clock3 size={15} />Actualizado</div>
             <p className="mt-2 text-lg font-bold text-slate-900 dark:text-white">{formatDateTime(lastUpdate)}</p>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">El resumen operativo viene del backend de asistencia mediante el canal interno autenticado.</p>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">La infraestructura BLE se administra desde el acceso de super usuario.</p>
           </div>
         </div>
       </section>
@@ -87,60 +73,6 @@ function DashboardContent({ overview, infrastructure }: { overview: OverviewResp
       <MetricSection title="Cosecha académica" description="Datos acumulados cada vez que un profesor inicia sesión.">
         {academicCards.map(({ key, label, icon: Icon, accent }) => <MetricCard key={key} label={label} value={counts[key]} icon={<Icon size={21} />} accent={accent} />)}
       </MetricSection>
-
-      <MetricSection title="Operación de asistencia" description="Estado actual de beacons, celulares vinculados y sustituciones.">
-        {infrastructureCards.map(({ key, label, icon: Icon, accent }) => <MetricCard key={key} label={label} value={operational.counts[key]} icon={<Icon size={21} />} accent={accent} />)}
-      </MetricSection>
-
-      <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-        <Card className="overflow-hidden">
-          <div className="border-b border-slate-200/80 p-5 dark:border-[#1f2229]">
-            <h2 className="font-bold text-slate-900 dark:text-white">Actividad BLE reciente</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Últimos celulares vinculados desde la app de alumnos.</p>
-          </div>
-          {operational.recentBindings.length === 0 ? (
-            <div className="p-5"><EmptyState icon={<Link2 size={34} />} title="Sin vinculaciones" description="Los alumnos aparecerán aquí cuando vinculen su celular." /></div>
-          ) : (
-            <div className="divide-y divide-slate-100 dark:divide-[#1f2229]">
-              {operational.recentBindings.map((binding) => (
-                <div key={binding.id} className="flex items-start justify-between gap-4 p-5">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-slate-900 dark:text-slate-100">{binding.matricula}</p>
-                    <p className="mt-1 truncate font-mono text-xs text-slate-400 dark:text-slate-500">{binding.attendanceUuid}</p>
-                    <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{binding.students[0]?.name ?? 'Alumno no sincronizado'}</p>
-                  </div>
-                  <Badge tone={binding.students.length ? 'success' : 'warning'}>{binding.students.length ? 'En lista' : 'Sin lista'}</Badge>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-
-        <Card className="overflow-hidden">
-          <div className="border-b border-slate-200/80 p-5 dark:border-[#1f2229]">
-            <h2 className="font-bold text-slate-900 dark:text-white">Sustituciones activas</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Clases que hoy pueden tomar asistencia con profesor sustituto.</p>
-          </div>
-          {operational.recentSubstitutions.length === 0 ? (
-            <div className="p-5"><EmptyState icon={<ShieldCheck size={34} />} title="Sin sustituciones activas" description="Las asignaciones aparecerán cuando se activen desde infraestructura." /></div>
-          ) : (
-            <div className="divide-y divide-slate-100 dark:divide-[#1f2229]">
-              {operational.recentSubstitutions.map((assignment) => (
-                <div key={assignment.id} className="p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="font-semibold text-slate-900 dark:text-slate-100">{assignment.group.name}</p>
-                      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{assignment.group.groupLetter || 'Grupo'} · {assignment.group.classroom || 'Sin salón'}</p>
-                    </div>
-                    <Badge tone="info">Activa</Badge>
-                  </div>
-                  <p className="mt-3 text-sm text-slate-600 dark:text-slate-400"><b>{assignment.substituteProfessor.name}</b> cubre a {assignment.primaryProfessor.name}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      </section>
 
       <section>
         <div className="mb-4">
@@ -199,10 +131,6 @@ function MetricCard({ label, value, icon, accent }: { label: string; value: numb
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{label}</p>
     </Card>
   );
-}
-
-function latestDate(...values: string[]) {
-  return values.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? new Date().toISOString();
 }
 
 function formatDateTime(value: string) {

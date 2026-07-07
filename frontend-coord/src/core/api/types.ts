@@ -1,4 +1,15 @@
 export interface CoordinatorUser { id: string; email: string; name: string; role: string }
+export interface SuperUser { role: 'SUPER_USER' }
+export interface CoordinatorAccount {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  disabledAt: string | null;
+  disabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 export interface CoordinationSummary { id: string; externalId: string; name: string; shortName: string | null; teacherCount: number; subjectCount: number; assignmentCount: number }
 export interface TeacherSummary {
   id: string; externalId: string; institutionalCode: string | null; name: string; email: string | null;
@@ -113,32 +124,6 @@ export interface ProfessorOption {
   email?: string | null;
 }
 
-export interface GroupOption {
-  id: string;
-  code: string;
-  groupLetter: string;
-  period: string;
-  name: string;
-  classroom: string;
-  professor: ProfessorOption;
-}
-
-export interface SubstituteAssignment {
-  id: string;
-  groupId: string;
-  primaryProfessorId: string;
-  substituteProfessorId: string;
-  startsAt: string | null;
-  endsAt: string | null;
-  active: boolean;
-  notes: string | null;
-  createdAt: string;
-  updatedAt: string;
-  group: Omit<GroupOption, 'professor'> & { schedule: unknown };
-  primaryProfessor: ProfessorOption;
-  substituteProfessor: ProfessorOption;
-}
-
 export interface SharedClassAssignment {
   id: string;
   sourceAssignmentId: string;
@@ -151,19 +136,4 @@ export interface SharedClassAssignment {
   updatedAt: string;
   sourceAssignment: Assignment;
   assignedTeacher: ProfessorOption;
-}
-
-export interface InfrastructureSummaryResponse {
-  data: {
-    counts: {
-      beacons: number;
-      studentDeviceBindings: number;
-      studentBleAttendances: number;
-      activeSubstitutions: number;
-    };
-    recentBindings: StudentDeviceBinding[];
-    recentSubstitutions: SubstituteAssignment[];
-    recentBeacons: Beacon[];
-  };
-  meta: { generatedAt: string };
 }
