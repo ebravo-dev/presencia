@@ -25,3 +25,7 @@ yarn-error.log*
 build/
 .flutter-plugins
 .flutter-plugins-dependencies
+backend-apirest.zip
+backend.zip
+frontend-coord.zip
+frontend-coord-dokploy.zip

@@ -172,6 +172,8 @@ export async function internalCoordinationRoutes(fastify: FastifyInstance): Prom
                 },
                 select: {
                   date: true,
+                  professorEntryAt: true,
+                  professorExitAt: true,
                   portalSyncStatus: true,
                   portalSyncError: true,
                   portalSyncedAt: true,

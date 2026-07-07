@@ -294,6 +294,8 @@ class _AsistenciasPendientesPageState
       date: registroActualizado.fecha,
       attendances: attendances,
       encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
+      professorEntryAt: registroActualizado.horaEntrada,
+      professorExitAt: registroActualizado.horaSalida,
     );
 
     final uploadSuccess = await result.fold(

@@ -17,10 +17,12 @@ describe('WeeklyAttendanceReportService', () => {
   it('considera tomada la captura local aunque el portal haya fallado', async () => {
     const source = { getWeeklyAttendance: async () => ({
       id: 'p1', institutionalEmail: teacher.email, name: teacher.name,
-      groups: [{ id: 'g1', code: 'MAT-1', groupLetter: 'A', name: 'Calculo', level: 'Licenciatura', classroom: 'A1', period: '2020-1', schedule: { lunes: '07:00 - 08:00', martes: '07:00 - 08:00' }, attendanceRecords: [{ date: '2020-01-06T00:00:00.000Z', portalSyncStatus: 'FAILED', portalSyncError: 'portal timeout', portalSyncedAt: null, createdAt: '2020-01-06T08:00:00.000Z' }] }],
+      groups: [{ id: 'g1', code: 'MAT-1', groupLetter: 'A', name: 'Calculo', level: 'Licenciatura', classroom: 'A1', period: '2020-1', schedule: { lunes: '07:00 - 08:00', martes: '07:00 - 08:00' }, attendanceRecords: [{ date: '2020-01-06T00:00:00.000Z', professorEntryAt: '2020-01-06T07:05:00.000Z', professorExitAt: '2020-01-06T08:00:00.000Z', portalSyncStatus: 'FAILED', portalSyncError: 'portal timeout', portalSyncedAt: null, createdAt: '2020-01-06T08:00:00.000Z' }] }],
     }) } as unknown as AttendanceBackendClient;
     const report = await new WeeklyAttendanceReportService(teacherRepository, source).getReport(teacher.id, '2020-01-06');
     expect(report.data.rows[0]?.cells.monday.status).toBe('TAKEN');
+    expect(report.data.rows[0]?.cells.monday.professorEntryAt).toBe('2020-01-06T07:05:00.000Z');
+    expect(report.data.rows[0]?.cells.monday.professorExitAt).toBe('2020-01-06T08:00:00.000Z');
     expect(report.data.rows[0]?.cells.monday.portalSyncStatus).toBe('FAILED');
     expect(report.data.rows[0]?.cells.tuesday.status).toBe('MISSING');
     expect(report.data.rows[0]?.completionRate).toBe(50);
@@ -127,8 +129,8 @@ describe('WeeklyAttendanceReportService', () => {
         period: '2026-1',
         schedule: { lunes: '07:00 - 08:00', miercoles: '07:00 - 08:00', viernes: '07:00 - 08:00' },
         attendanceRecords: [
-          { date: '2026-04-06T00:00:00.000Z', portalSyncStatus: 'COMPLETED', portalSyncError: null, portalSyncedAt: null, createdAt: '2026-04-06T08:00:00.000Z' },
-          { date: '2026-04-08T00:00:00.000Z', portalSyncStatus: 'COMPLETED', portalSyncError: null, portalSyncedAt: null, createdAt: '2026-04-08T08:00:00.000Z' },
+          { date: '2026-04-06T00:00:00.000Z', professorEntryAt: '2026-04-06T07:00:00.000Z', professorExitAt: '2026-04-06T08:00:00.000Z', portalSyncStatus: 'COMPLETED', portalSyncError: null, portalSyncedAt: null, createdAt: '2026-04-06T08:00:00.000Z' },
+          { date: '2026-04-08T00:00:00.000Z', professorEntryAt: '2026-04-08T07:00:00.000Z', professorExitAt: '2026-04-08T08:00:00.000Z', portalSyncStatus: 'COMPLETED', portalSyncError: null, portalSyncedAt: null, createdAt: '2026-04-08T08:00:00.000Z' },
         ],
       }],
     }) } as unknown as AttendanceBackendClient;

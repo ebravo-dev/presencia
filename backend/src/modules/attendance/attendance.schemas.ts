@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { AttendanceStatus } from '@prisma/client';
 
+const optionalIsoDateTimeSchema = z
+    .string()
+    .refine((value) => !Number.isNaN(Date.parse(value)), {
+        message: 'Debe ser ISO datetime',
+    })
+    .optional();
+
 /**
  * Schema for registering attendance.
  * Uses stable group identifiers (code + groupLetter + period) instead of
@@ -13,6 +20,8 @@ export const registerAttendanceSchema = z.object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha debe ser YYYY-MM-DD'),
     encryptedPassword: z.string().min(1, 'Encrypted password requerido'),
     forceUpload: z.boolean().optional(),
+    professorEntryAt: optionalIsoDateTimeSchema,
+    professorExitAt: optionalIsoDateTimeSchema,
     attendances: z.array(
         z.object({
             studentId: z.string().min(1, 'Student ID requerido'),

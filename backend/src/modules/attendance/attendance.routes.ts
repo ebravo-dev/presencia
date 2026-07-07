@@ -212,7 +212,16 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
         async (request, reply) => {
             try {
                 const validated = registerAttendanceSchema.parse(request.body);
-                const { code, groupLetter, period, date, attendances, encryptedPassword } = validated;
+                const {
+                    code,
+                    groupLetter,
+                    period,
+                    date,
+                    attendances,
+                    encryptedPassword,
+                    professorEntryAt,
+                    professorExitAt,
+                } = validated;
                 const professorId = (request as AuthenticatedRequest).professorId!;
 
                 // Resolve group by stable identifiers — no CUID needed from client
@@ -227,6 +236,10 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
 
                 const { group, attendanceProfessorId, isSubstitute } = resolvedGroup;
                 const groupId = group.id;
+                const professorAttendanceTimes = {
+                    ...(professorEntryAt ? { professorEntryAt: new Date(professorEntryAt) } : {}),
+                    ...(professorExitAt ? { professorExitAt: new Date(professorExitAt) } : {}),
+                };
 
                 // Create or update attendance record
                 const attendanceRecord = await prisma.attendanceRecord.upsert({
@@ -240,9 +253,11 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                         date: new Date(date),
                         groupId,
                         professorId: attendanceProfessorId,
+                        ...professorAttendanceTimes,
                     },
                     update: {
                         professorId: attendanceProfessorId,
+                        ...professorAttendanceTimes,
                     },
                 });
 
@@ -303,6 +318,8 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                             attendanceRecordId: attendanceRecord.id,
                             date,
                             groupId,
+                            professorEntryAt: attendanceRecord.professorEntryAt,
+                            professorExitAt: attendanceRecord.professorExitAt,
                             attendancesCount: attendances.length,
                             primaryProfessorId: attendanceProfessorId,
                             substituteProfessorId: professorId,
@@ -361,6 +378,8 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                         attendanceRecordId: attendanceRecord.id,
                         date: date,
                         groupId,
+                        professorEntryAt: refreshedRecord.professorEntryAt,
+                        professorExitAt: refreshedRecord.professorExitAt,
                         attendancesCount: attendances.length,
                         portalProcessedCount: uploadResult.processedCount,
                     },

@@ -1415,6 +1415,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       date: _selectedDateTime,
       attendances: attendances,
       encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
+      professorEntryAt: _entradaProfesor,
+      professorExitAt: _salidaProfesor,
     );
 
     // Cerrar diálogo

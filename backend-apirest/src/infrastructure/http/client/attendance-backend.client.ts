@@ -4,6 +4,8 @@ import type { JsonValue } from '../../../domain/types/uat.interfaces.js';
 
 export interface AttendanceSourceRecord {
   date: string;
+  professorEntryAt: string | null;
+  professorExitAt: string | null;
   portalSyncStatus: string;
   portalSyncError: string | null;
   portalSyncedAt: string | null;

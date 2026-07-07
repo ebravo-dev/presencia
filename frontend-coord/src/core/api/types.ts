@@ -21,7 +21,14 @@ export interface TeachersResponse { data: TeacherSummary[]; meta: { page: number
 export interface TeacherAssignmentsResponse { data: { teacher: TeacherSummary; assignments: Assignment[] }; meta: { generatedAt: string } }
 export type ReportCellStatus = 'TAKEN' | 'MISSING' | 'FUTURE' | 'NOT_SCHEDULED' | 'UNKNOWN_SCHEDULE' | 'SOURCE_UNAVAILABLE';
 export type ReportDay = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
-export interface ReportCell { date: string; status: ReportCellStatus; portalSyncStatus: string | null; portalSyncError: string | null }
+export interface ReportCell {
+  date: string;
+  status: ReportCellStatus;
+  professorEntryAt: string | null;
+  professorExitAt: string | null;
+  portalSyncStatus: string | null;
+  portalSyncError: string | null;
+}
 export interface ReportRow {
   id: string; groupId: string; groupCode: string; grade?: string | null; subject: string; classroom: string | null; educationLevel: string | null;
   period: string; startTime: string | null; endTime: string | null; rawSchedule: string;

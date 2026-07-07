@@ -70,5 +70,12 @@ describe('ReportsPage', () => {
 });
 
 function cell(date: string, status: 'TAKEN' | 'MISSING' | 'NOT_SCHEDULED') {
-  return { date, status, portalSyncStatus: status === 'TAKEN' ? 'COMPLETED' : null, portalSyncError: null };
+  return {
+    date,
+    status,
+    professorEntryAt: status === 'TAKEN' ? `${date}T07:05:00.000Z` : null,
+    professorExitAt: status === 'TAKEN' ? `${date}T08:55:00.000Z` : null,
+    portalSyncStatus: status === 'TAKEN' ? 'COMPLETED' : null,
+    portalSyncError: null,
+  };
 }

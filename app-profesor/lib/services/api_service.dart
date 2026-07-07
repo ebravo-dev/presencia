@@ -263,9 +263,9 @@ class ApiService {
           },
           options: requestOptions,
         );
-        sharedGroups = _dataList(sharedResponse.data)
-            .map((item) => Grupo.fromJson(_asMap(item)))
-            .toList();
+        sharedGroups = _dataList(
+          sharedResponse.data,
+        ).map((item) => Grupo.fromJson(_asMap(item))).toList();
       } on DioException catch (error) {
         Logger.error('No se pudieron cargar las clases compartidas', error);
       }
@@ -421,6 +421,8 @@ class ApiService {
     required DateTime date,
     required List<Map<String, dynamic>> attendances,
     required String encryptedPassword,
+    DateTime? professorEntryAt,
+    DateTime? professorExitAt,
     String? groupId,
     bool forceUpload = false,
   }) async {
@@ -431,6 +433,8 @@ class ApiService {
         code: code,
         date: date,
         attendances: attendances,
+        professorEntryAt: professorEntryAt,
+        professorExitAt: professorExitAt,
       );
     }
 
@@ -445,6 +449,10 @@ class ApiService {
               '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
           'encryptedPassword': encryptedPassword,
           'forceUpload': forceUpload,
+          if (professorEntryAt != null)
+            'professorEntryAt': professorEntryAt.toIso8601String(),
+          if (professorExitAt != null)
+            'professorExitAt': professorExitAt.toIso8601String(),
           'attendances': _normalizeAttendancesForBackend(attendances),
         },
         options: Options(headers: {'Authorization': 'Bearer $token'}),
@@ -468,6 +476,8 @@ class ApiService {
     required String code,
     required DateTime date,
     required List<Map<String, dynamic>> attendances,
+    DateTime? professorEntryAt,
+    DateTime? professorExitAt,
   }) async {
     try {
       final idGrupo = int.tryParse(groupId ?? '') ?? int.tryParse(code);
@@ -515,6 +525,10 @@ class ApiService {
         data: {
           'Id_Grupo': idGrupo,
           'Fec_Ini': formatUatWeekStart(date),
+          if (professorEntryAt != null)
+            'ProfessorEntryAt': professorEntryAt.toIso8601String(),
+          if (professorExitAt != null)
+            'ProfessorExitAt': professorExitAt.toIso8601String(),
           'Asistencia': asistencia,
         },
         options: Options(headers: {'X-UAT-Session-Id': token}),

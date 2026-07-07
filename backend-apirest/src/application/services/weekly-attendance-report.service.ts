@@ -201,17 +201,37 @@ function buildCell(
   records: AttendanceSourceRecord[],
   sourceUnavailable = false,
 ) {
-  if (slots.length === 0) return { date, status: 'NOT_SCHEDULED' as CellStatus, portalSyncStatus: null, portalSyncError: null };
+  if (slots.length === 0) return emptyCell(date, 'NOT_SCHEDULED');
   if (sourceUnavailable) {
-    return { date, status: 'SOURCE_UNAVAILABLE' as CellStatus, portalSyncStatus: null, portalSyncError: null };
+    return emptyCell(date, 'SOURCE_UNAVAILABLE');
   }
   const parsedSlots = slots.filter((slot) => slot.startTime && slot.endTime);
-  if (parsedSlots.length === 0) return { date, status: 'UNKNOWN_SCHEDULE' as CellStatus, portalSyncStatus: null, portalSyncError: null };
+  if (parsedSlots.length === 0) return emptyCell(date, 'UNKNOWN_SCHEDULE');
   const record = records.find((item) => item.date.slice(0, 10) === date);
-  if (record) return { date, status: 'TAKEN' as CellStatus, portalSyncStatus: record.portalSyncStatus, portalSyncError: record.portalSyncError };
+  if (record) {
+    return {
+      date,
+      status: 'TAKEN' as CellStatus,
+      professorEntryAt: record.professorEntryAt ?? null,
+      professorExitAt: record.professorExitAt ?? null,
+      portalSyncStatus: record.portalSyncStatus,
+      portalSyncError: record.portalSyncError,
+    };
+  }
   const lastEndTime = parsedSlots.reduce((latest, slot) => slot.endTime! > latest ? slot.endTime! : latest, '00:00');
   const status: CellStatus = `${date}T${lastEndTime}` < currentLocalDateTime() ? 'MISSING' : 'FUTURE';
-  return { date, status, portalSyncStatus: null, portalSyncError: null };
+  return emptyCell(date, status);
+}
+
+function emptyCell(date: string, status: CellStatus) {
+  return {
+    date,
+    status,
+    professorEntryAt: null,
+    professorExitAt: null,
+    portalSyncStatus: null,
+    portalSyncError: null,
+  };
 }
 
 interface NormalizedSlot { key: string; raw: string; startTime: string | null; endTime: string | null }

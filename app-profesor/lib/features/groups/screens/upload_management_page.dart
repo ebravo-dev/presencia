@@ -356,6 +356,8 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         date: registroActualizado.fecha,
         attendances: attendances,
         encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
+        professorEntryAt: registroActualizado.horaEntrada,
+        professorExitAt: registroActualizado.horaSalida,
       );
 
       result.fold((error) => Logger.error('Error al enviar $key: $error'), (_) {

@@ -323,6 +323,7 @@ function DocumentPreview({ report, fallbackTeacher }: { report: AttendanceReport
                   {days.map((day) => (
                     <td key={day.key} className="h-[66px] border-b border-r border-slate-300 text-center last:border-r-0">
                       <ReportMark cell={row.cells[day.key]} />
+                      <AttendanceTimes cell={row.cells[day.key]} />
                     </td>
                   ))}
                   <td className="h-[66px] border-b border-slate-300 text-center">
@@ -415,11 +416,29 @@ function RangeReportTable({ report }: { report: RangeReportResponse }) {
 function ReportMark({ cell }: { cell?: ReportCell }) {
   if (!cell) return <span className="text-lg font-medium text-slate-300" aria-label="Sin clase">—</span>;
   if (cell.status === 'NOT_SCHEDULED') return <span className="text-lg font-medium text-slate-300" aria-label="Sin clase">—</span>;
-  if (cell.status === 'TAKEN') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border-2 border-emerald-500 text-emerald-600" title={cell.portalSyncError || 'Asistencia registrada'} aria-label="Asistencia registrada"><Check size={14} strokeWidth={3} /></span>;
+  if (cell.status === 'TAKEN') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border-2 border-emerald-500 text-emerald-600" title={attendanceTitle(cell)} aria-label="Asistencia registrada"><Check size={14} strokeWidth={3} /></span>;
   if (cell.status === 'MISSING') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border-2 border-red-400 text-red-500" aria-label="Inasistencia"><X size={14} strokeWidth={3} /></span>;
   if (cell.status === 'FUTURE') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border border-slate-300 text-slate-400" aria-label="Clase futura" title="Clase futura"><Clock3 size={13} /></span>;
   if (cell.status === 'SOURCE_UNAVAILABLE') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border border-amber-400 text-amber-600" aria-label="Asistencia no disponible" title="Asistencia no disponible"><AlertTriangle size={13} /></span>;
   return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border border-amber-400 font-bold text-amber-600" aria-label="Horario no interpretable" title="Horario no interpretable">?</span>;
+}
+
+function AttendanceTimes({ cell }: { cell?: ReportCell }) {
+  if (!cell || cell.status !== 'TAKEN' || (!cell.professorEntryAt && !cell.professorExitAt)) return null;
+  return (
+    <span className="mt-1 block text-[7px] leading-3 text-slate-500">
+      E {formatTimeOnly(cell.professorEntryAt)}<br />
+      S {formatTimeOnly(cell.professorExitAt)}
+    </span>
+  );
+}
+
+function attendanceTitle(cell: ReportCell) {
+  const pieces = ['Asistencia registrada'];
+  if (cell.professorEntryAt) pieces.push(`Entrada: ${formatTimeOnly(cell.professorEntryAt)}`);
+  if (cell.professorExitAt) pieces.push(`Salida: ${formatTimeOnly(cell.professorExitAt)}`);
+  if (cell.portalSyncError) pieces.push(cell.portalSyncError);
+  return pieces.join(' | ');
 }
 
 function SummaryValue({ label, value, tone }: { label: string; value: string | number; tone?: 'green' | 'red' | 'brand' }) {
@@ -456,6 +475,7 @@ function isoWeekLabel(monday: string) {
   return `Semana ${weekNo}`;
 }
 function formatDateTime(value: string) { return new Date(value).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }); }
+function formatTimeOnly(value: string | null | undefined) { return value ? new Date(value).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '--:--'; }
 function dayDate(cell: ReportCell | undefined, weekStart: string, offset: number) { const value = cell?.date ?? addDays(weekStart, offset); return new Date(`${value}T12:00:00Z`).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }); }
 function formatRate(value: number | null | undefined) { return value == null ? 'N/D' : `${value}%`; }
 function formatRangeRate(value: number | null | undefined) { return value == null ? 'N/D' : `${value.toFixed(2)}%`; }
