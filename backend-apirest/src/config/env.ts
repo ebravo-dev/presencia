@@ -23,6 +23,18 @@ const envSchema = z.object({
     (value) => value === undefined || value === '' ? undefined : value,
     z.coerce.number().int().positive().optional(),
   ),
+  PRESENCIA_DEBUG_MODE: z.preprocess(
+    (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
+    z.boolean().default(false),
+  ),
+  PRESENCIA_DEBUG_CYCLE_ID: z.coerce.number().int().positive().default(150),
+  PRESENCIA_DEBUG_CYCLE_NAME: z.string().default('2026 - 1 PRIMAVERA'),
+  PRESENCIA_DEBUG_EXTRA_PROFESSORS: z.coerce.number().int().min(0).max(25).default(4),
+  PRESENCIA_DEBUG_EXTRA_PROFESSORS_JSON: z.string().optional(),
+  PRESENCIA_DEBUG_VERBOSE_LOGS: z.preprocess(
+    (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
+    z.boolean().default(false),
+  ),
   UAT_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(45),
   DATABASE_URL: z
     .string()

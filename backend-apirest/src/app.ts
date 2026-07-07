@@ -34,11 +34,12 @@ import { coordinationRoutes } from './presentation/http/routes/coordination.rout
 import { coordinatorAuthRoutes } from './presentation/http/routes/coordinator-auth.routes.js';
 import { internalCoordinationRoutes } from './presentation/http/routes/internal-coordination.routes.js';
 import { uatRoutes } from './presentation/http/routes/uat.routes.js';
+import type { DebugProfessorInput, HarvestDebugOptions } from './application/use-cases/harvest-teacher-data.use-case.js';
 
 export async function buildApp() {
   const fastify = Fastify({
     logger: {
-      level: env.NODE_ENV === 'development' ? 'debug' : 'info',
+      level: env.PRESENCIA_DEBUG_MODE || env.PRESENCIA_DEBUG_VERBOSE_LOGS ? 'debug' : env.NODE_ENV === 'development' ? 'debug' : 'info',
       transport:
         env.NODE_ENV === 'development'
           ? {
@@ -74,7 +75,12 @@ export async function buildApp() {
     subjectRepository,
     coordinationRepository,
     groupAssignmentRepository,
-    { preferredCycleId: env.UAT_ID_CICLO_ESCOLAR },
+    {
+      preferredCycleId: env.PRESENCIA_DEBUG_MODE ? env.PRESENCIA_DEBUG_CYCLE_ID : env.UAT_ID_CICLO_ESCOLAR,
+      debug: buildHarvestDebugOptions(),
+    },
+    undefined,
+    fastify.log,
   );
   const unsubscribeSync = new SyncTeacherDataListener(eventBus, harvestTeacherData, fastify.log).register();
   const coordinationService = new CoordinationService(
@@ -172,6 +178,28 @@ export async function buildApp() {
   });
 
   return fastify;
+}
+
+function buildHarvestDebugOptions(): HarvestDebugOptions {
+  return {
+    enabled: env.PRESENCIA_DEBUG_MODE,
+    cycleId: env.PRESENCIA_DEBUG_CYCLE_ID,
+    cycleName: env.PRESENCIA_DEBUG_CYCLE_NAME,
+    extraProfessorCount: env.PRESENCIA_DEBUG_EXTRA_PROFESSORS,
+    extraProfessors: parseDebugProfessors(env.PRESENCIA_DEBUG_EXTRA_PROFESSORS_JSON),
+    verboseLogs: env.PRESENCIA_DEBUG_MODE || env.PRESENCIA_DEBUG_VERBOSE_LOGS,
+  };
+}
+
+function parseDebugProfessors(value?: string): DebugProfessorInput[] | undefined {
+  if (!value?.trim()) return undefined;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return undefined;
+    return parsed.filter((item): item is DebugProfessorInput => typeof item === 'object' && item !== null);
+  } catch {
+    return undefined;
+  }
 }
 
 async function start(): Promise<void> {
