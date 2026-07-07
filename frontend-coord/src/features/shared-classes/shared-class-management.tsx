@@ -7,7 +7,7 @@ import { Badge, Button, Card, EmptyState, Skeleton } from '@/shared/components/u
 
 const REFRESH_INTERVAL_MS = 10_000;
 
-type SharedClassSortKey = 'subject' | 'semester' | 'group' | 'owner' | 'receiver' | 'cycle' | 'status';
+type SharedClassSortKey = 'subject' | 'period' | 'group' | 'owner' | 'receiver' | 'cycle' | 'status';
 type SortDirection = 'asc' | 'desc';
 
 function currentAcademicCycle(date = new Date()): { year: number; term: 1 | 2 | 3 } {
@@ -222,7 +222,7 @@ export function SharedClassManagement() {
               <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-white/5 dark:text-slate-400">
                 <tr>
                   <SortableHeader label="Materia" sortKey="subject" activeSort={sort} onSort={updateSort} />
-                  <SortableHeader label="N.º de semestre" sortKey="semester" activeSort={sort} onSort={updateSort} />
+                  <SortableHeader label="Periodo" sortKey="period" activeSort={sort} onSort={updateSort} />
                   <SortableHeader label="Grupo" sortKey="group" activeSort={sort} onSort={updateSort} />
                   <SortableHeader label="Titular" sortKey="owner" activeSort={sort} onSort={updateSort} />
                   <SortableHeader label="Profesor receptor" sortKey="receiver" activeSort={sort} onSort={updateSort} />
@@ -240,7 +240,9 @@ export function SharedClassManagement() {
                         {item.sourceAssignment.classroom || 'Sin salón'}
                       </p>
                     </td>
-                    <td className="px-5 py-3 font-semibold tabular-nums">{item.sourceAssignment.period || '-'}</td>
+                    <td className="px-5 py-3 font-semibold tabular-nums">
+                      {item.sourceAssignment.schoolCycleName || item.sourceAssignment.schoolCycleExternalId || '-'}
+                    </td>
                     <td className="px-5 py-3 font-semibold">{item.sourceAssignment.groupCode || '-'}</td>
                     <td className="px-5 py-3">{item.sourceAssignment.teacher.name}</td>
                     <td className="px-5 py-3">{item.assignedTeacher.name}</td>
@@ -305,7 +307,10 @@ function SortableHeader({
 function compareSharedClasses(a: SharedClassAssignment, b: SharedClassAssignment, key: SharedClassSortKey) {
   const values: Record<SharedClassSortKey, [string | number, string | number]> = {
     subject: [cleanAssignmentName(a.sourceAssignment.subject.name), cleanAssignmentName(b.sourceAssignment.subject.name)],
-    semester: [a.sourceAssignment.period || '', b.sourceAssignment.period || ''],
+    period: [
+      a.sourceAssignment.schoolCycleName || a.sourceAssignment.schoolCycleExternalId || '',
+      b.sourceAssignment.schoolCycleName || b.sourceAssignment.schoolCycleExternalId || '',
+    ],
     group: [a.sourceAssignment.groupCode || '', b.sourceAssignment.groupCode || ''],
     owner: [a.sourceAssignment.teacher.name, b.sourceAssignment.teacher.name],
     receiver: [a.assignedTeacher.name, b.assignedTeacher.name],
