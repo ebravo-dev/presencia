@@ -214,6 +214,7 @@ export interface UatPortalClientPort {
 export interface StoredUatSession {
   id: string;
   username: string;
+  credentialCipher: string;
   client: UatPortalClientPort;
   login: UatLoginResponse;
   createdAt: Date;

@@ -28,11 +28,13 @@ import type {
   UatSnapshotResponse,
 } from '../../domain/types/uat.interfaces.js';
 import type { UatClientFactory } from '../../infrastructure/http/client/uat-client.factory.js';
+import type { CredentialCipher } from '../../infrastructure/security/credential-cipher.js';
 
 export class UatService {
   constructor(
     private readonly sessionRepository: IUatSessionRepository,
     private readonly clientFactory: UatClientFactory,
+    private readonly credentialCipher: CredentialCipher,
   ) {}
 
   async createSession(credentials: UatCredentials): Promise<StoredUatSession> {
@@ -42,6 +44,7 @@ export class UatService {
     const session: StoredUatSession = {
       id: randomUUID(),
       username: credentials.username.trim().toLowerCase(),
+      credentialCipher: this.credentialCipher.encrypt(credentials.password),
       client,
       login,
       createdAt: now,

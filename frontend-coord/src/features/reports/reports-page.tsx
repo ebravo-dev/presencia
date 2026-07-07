@@ -318,7 +318,9 @@ function DocumentPreview({ report, fallbackTeacher }: { report: AttendanceReport
                   <th scope="row" className="border-b border-r border-slate-300 px-3 py-3 text-left align-middle last:border-b-0">
                     <span className="block font-extrabold tabular-nums">{row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : row.rawSchedule}</span>
                     <span className="mt-1 block font-semibold">{row.subject}</span>
-                    <span className="mt-0.5 block text-[8px] font-normal text-slate-500">Grupo {row.groupCode}{row.classroom ? ` · ${row.classroom}` : ''}</span>
+                    <span className="mt-0.5 block text-[8px] font-normal text-slate-500">
+                      Grupo {row.groupCode}{row.classroom ? ` · ${row.classroom}` : ''} · Ciclo {row.period}
+                    </span>
                   </th>
                   {days.map((day) => (
                     <td key={day.key} className="h-[66px] border-b border-r border-slate-300 text-center last:border-r-0">
@@ -395,7 +397,7 @@ function RangeReportTable({ report }: { report: RangeReportResponse }) {
             <th scope="row" className="border-b border-r border-slate-300 px-3 py-3 text-left align-middle last:border-b-0">
               <span className="block font-semibold leading-snug">{row.subject}</span>
               <span className="mt-0.5 block text-[8px] font-normal text-slate-500">
-                {row.rawSchedule || 'Sin horario'}{row.classroom ? ` · ${row.classroom}` : ''}
+                {row.rawSchedule || 'Sin horario'}{row.classroom ? ` · ${row.classroom}` : ''} · Ciclo {row.period}
               </span>
             </th>
             <td className="border-b border-r border-slate-300 text-center text-[12px]">{row.grade || '-'}</td>

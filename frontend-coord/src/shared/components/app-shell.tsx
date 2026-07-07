@@ -11,13 +11,13 @@ const navigation = [
   { to: '/', label: 'Resumen', icon: BarChart3 },
   { to: '/carga-academica', label: 'Carga académica', icon: BookOpenCheck },
   { to: '/infraestructura', label: 'Infraestructura', icon: Bluetooth },
-  { to: '/reportes/asistencia', label: 'Reporte semanal', icon: BarChart3 },
+  { to: '/reportes/asistencia', label: 'Reportes de asistencia', icon: BarChart3 },
 ];
 const pageTitles: Record<string, string> = {
   '/': 'Resumen institucional',
   '/carga-academica': 'Carga académica',
   '/infraestructura': 'Infraestructura BLE',
-  '/reportes/asistencia': 'Asistencia semanal',
+  '/reportes/asistencia': 'Reportes de asistencia',
 };
 
 export function AppShell() {

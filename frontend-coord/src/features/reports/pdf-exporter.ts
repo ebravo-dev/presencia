@@ -59,7 +59,7 @@ export async function exportReportPdf(report: AttendanceReportResponse): Promise
     theme: 'grid',
     head: [['Horario / Materia', ...days.map((day, index) => `${day.label}\n${formatDay(addDays(report.data.week.start, index))}`), 'Cumpl.\nSemana']],
     body: report.data.rows.map((row) => [
-      `${row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : row.rawSchedule}\n${row.subject}\nGrupo ${row.groupCode}${row.classroom ? ` · ${row.classroom}` : ''}`,
+      `${row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : row.rawSchedule}\n${row.subject}\nGrupo ${row.groupCode}${row.classroom ? ` · ${row.classroom}` : ''} · Ciclo ${row.period}`,
       ...days.map((day) => row.cells[day.key]?.status ?? 'NOT_SCHEDULED'),
       formatRate(row.completionRate),
     ]),
@@ -145,7 +145,7 @@ async function exportRangeReportPdf(report: RangeReportResponse): Promise<void> 
     theme: 'grid',
     head: [['Materia', 'Grado', 'Grupo', 'Dias de clase\nen el periodo', 'Dias de clase\nreportados', 'Porcentaje\nde asistencia']],
     body: report.data.rows.map((row) => [
-      `${row.subject}\n${row.rawSchedule || 'Sin horario'}${row.classroom ? ` · ${row.classroom}` : ''}`,
+      `${row.subject}\n${row.rawSchedule || 'Sin horario'}${row.classroom ? ` · ${row.classroom}` : ''} · Ciclo ${row.period}`,
       row.grade || '-',
       row.groupCode || '-',
       row.scheduledClassDays,

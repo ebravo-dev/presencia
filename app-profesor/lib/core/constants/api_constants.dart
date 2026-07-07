@@ -69,8 +69,7 @@ class ApiConstants {
   static const String uatCatalogoCiclos = '/api/uat/catalogos/ciclos-escolares';
   static const String uatControlGrupos =
       '/api/uat/profesor/control-asistencia/grupos';
-  static const String uatSharedClasses =
-      '/api/uat/profesor/clases-compartidas';
+  static const String uatSharedClasses = '/api/uat/profesor/clases-compartidas';
   static const String uatControlSemanas =
       '/api/uat/profesor/control-asistencia/semanas';
   static const String uatControlAsistenciaGrupo =
@@ -78,6 +77,9 @@ class ApiConstants {
   static const String uatControlGuardarAsistencias =
       '/api/uat/profesor/control-asistencia/asistencias';
   static const String uatAsistenciaGuardar = '/api/uat/asistencia/guardar';
+  static const String uatAttendanceBatches = '/api/uat/asistencia/lotes';
+  static const String uatAttendanceRecordStatuses =
+      '/api/uat/asistencia/registros/estado';
 
   // Legacy feature aliases retained only for compatibility.
   static const String professors = '/professors';

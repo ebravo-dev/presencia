@@ -10,6 +10,7 @@ import '../../../core/utils/utils.dart';
 import '../../../services/api_service.dart';
 import '../../../services/auth_storage_service.dart';
 import '../../../services/sync_service.dart';
+import '../../../services/attendance_batch_service.dart';
 import '../../../shared/models/grupo.dart';
 import 'grupo_detail_page.dart';
 
@@ -25,6 +26,8 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   final ApiService _apiService = ApiService();
   final AuthStorageService _authStorage = AuthStorageService();
   final SyncService _syncService = SyncService();
+  final AttendanceBatchService _attendanceBatchService =
+      AttendanceBatchService();
   List<AsistenciaRegistro> _pendientes = [];
   List<AsistenciaRegistro> _sincronizadas = [];
   // Keys (grupoId_date) of records that are currently syncing on the server
@@ -125,7 +128,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     final records = pendientes.map((r) {
       final dateStr =
           '${r.fecha.year}-${r.fecha.month.toString().padLeft(2, '0')}-${r.fecha.day.toString().padLeft(2, '0')}';
-      return {'groupId': r.grupoId, 'date': dateStr};
+      return {'clientRecordId': r.id, 'groupId': r.grupoId, 'date': dateStr};
     }).toList();
 
     final statusMap = await _apiService.checkSyncedRecordsStatus(
@@ -144,12 +147,10 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       final status = statusMap[key];
 
       if (status == 'COMPLETED') {
-        // Mark as synced only if local data matches what we sent.
-        // asistenciasSincronizadas is set at HTTP-send time (guardarSnapshotEnviado),
-        // so if user changed data after sending, the snapshot won't match → keep pending.
-        if (_snapshotMatchesCurrent(registro)) {
+        if (await _attendanceBatchService.markCompletedIfUnchanged(
+          registro.id,
+        )) {
           Logger.info('Reconciliación: marcando como sincronizada $key');
-          await _asistenciaService.marcarComoSincronizada(registro.id);
         } else {
           Logger.info(
             'Reconciliación: $key tiene cambios locales posteriores al envío, mantener como pendiente',
@@ -209,21 +210,6 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     }
   }
 
-  /// Returns true if the current attendance data matches what we last sent
-  /// (saved by guardarSnapshotEnviado at HTTP-send time).
-  /// If no snapshot exists (never sent), returns true so that a COMPLETED
-  /// status from the server is trusted (e.g. first-time sync or legacy data).
-  bool _snapshotMatchesCurrent(AsistenciaRegistro registro) {
-    final snapshot = registro.asistenciasSincronizadas;
-    if (snapshot == null) return true;
-    final current = registro.asistenciasAlumnos;
-    if (current.length != snapshot.length) return false;
-    for (final entry in current.entries) {
-      if (snapshot[entry.key] != entry.value) return false;
-    }
-    return true;
-  }
-
   // Get dates that have pending uploads
   Set<DateTime> get _pendingDates {
     return _pendientes.map((a) {
@@ -259,24 +245,18 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   }
 
   Future<void> _subirAsistencias() async {
-    if (_pendientes.isEmpty) return;
+    if (_pendientes.isEmpty || _isUploading) return;
 
-    // Check connectivity before starting
     final hasInternet = await _syncService.hasInternetConnection();
     if (!hasInternet) {
       if (mounted) {
-        HapticFeedback.heavyImpact();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Sin conexión a internet. Tienes ${_pendientes.length} registro${_pendientes.length == 1 ? '' : 's'} guardado${_pendientes.length == 1 ? '' : 's'} localmente. Cuando tengas conexión podrás sincronizarlos.',
+            content: const Text(
+              'Sin conexión. Las listas permanecen guardadas y se enviarán cuando vuelva internet.',
             ),
             backgroundColor: Colors.orange.shade800,
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 5),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
           ),
         );
       }
@@ -285,24 +265,19 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
 
     final token = _authStorage.getToken();
     final grupos = _authStorage.getGrupos() ?? [];
-
-    if (token == null) {
-      return;
-    }
+    if (token == null) return;
 
     setState(() => _isUploading = true);
     HapticFeedback.mediumImpact();
-
-    final pendientesSnapshot = List<AsistenciaRegistro>.from(_pendientes);
-    final total = pendientesSnapshot.length;
-
-    // Initialize 4 fixed steps
     _stepsNotifier.value = [
       _SyncStepData(
         label: 'Preparando registros',
         status: _StepStatus.inProgress,
       ),
-      _SyncStepData(label: 'Enviando al servidor', status: _StepStatus.pending),
+      _SyncStepData(
+        label: 'Entregando lote al servidor',
+        status: _StepStatus.pending,
+      ),
       _SyncStepData(
         label: 'Procesando en servidor',
         status: _StepStatus.pending,
@@ -310,198 +285,147 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       _SyncStepData(label: '¡Terminado!', status: _StepStatus.pending),
     ];
 
-    // ── Phase 1: Fire ALL HTTP uploads ─────────────────────────────
-    // Each POST registers attendance through the main backend.
+    final prepared = _attendanceBatchService.prepare(
+      List<AsistenciaRegistro>.from(_pendientes),
+      grupos,
+    );
+    final recordsById = prepared.recordsById;
+    final batchRecords = prepared.payload;
+
     _updateStep(0, _StepStatus.completed);
-    _updateStep(1, _StepStatus.inProgress);
 
-    int sentCount = 0;
-    int emptyCount = 0;
-    final sentRecords = <String, AsistenciaRegistro>{}; // key → registro
-
-    for (final reg in pendientesSnapshot) {
-      if (_disposed) break;
-      final grupo = _resolveGrupo(grupos, reg.grupoId);
-      if (grupo == null) {
-        Logger.error(
-          'Grupo no encontrado para registro ${reg.id} (grupoId: ${reg.grupoId})',
-        );
-        continue;
-      }
-
-      final registroActualizado = await _migrarRegistroSiNecesario(reg, grupo);
-      final attendances = _buildAttendances(registroActualizado, grupo);
-      Logger.info(
-        'Registro ${registroActualizado.id}: ${attendances.length} alumnos a enviar de ${registroActualizado.asistenciasAlumnos.length} locales',
+    if (batchRecords.isEmpty) {
+      _updateStep(
+        1,
+        _StepStatus.failed,
+        subtitle: 'No hay listas válidas para enviar.',
       );
+      _updateStep(2, _StepStatus.failed);
+      _updateStep(3, _StepStatus.failed);
+      if (mounted) setState(() => _isUploading = false);
+      return;
+    }
 
-      if (attendances.isEmpty) {
-        Logger.error(
-          'Sin alumnos mapeados para registro ${registroActualizado.id}, omitiendo',
-        );
-        emptyCount++;
-        continue;
-      }
+    _updateStep(
+      1,
+      _StepStatus.inProgress,
+      subtitle:
+          '${batchRecords.length} lista${batchRecords.length == 1 ? '' : 's'}',
+    );
 
-      final dateStr =
-          '${registroActualizado.fecha.year}-${registroActualizado.fecha.month.toString().padLeft(2, '0')}-${registroActualizado.fecha.day.toString().padLeft(2, '0')}';
-      final key = '${grupo.id}_$dateStr';
+    final submitResult = await _attendanceBatchService.submit(
+      token: token,
+      batch: prepared,
+    );
 
-      final result = await _apiService.uploadAttendance(
-        token: token,
-        groupId: grupo.id,
-        code: grupo.code ?? '',
-        groupLetter: grupo.groupLetter ?? '',
-        period: grupo.period ?? '',
-        date: registroActualizado.fecha,
-        attendances: attendances,
-        encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
+    String? batchId;
+    String? submitError;
+    submitResult.fold((error) => submitError = error, (response) {
+      final data = Map<String, dynamic>.from(response['data'] as Map);
+      batchId = data['id']?.toString();
+    });
+
+    if (batchId == null) {
+      _updateStep(
+        1,
+        _StepStatus.failed,
+        subtitle: submitError ?? 'El servidor no aceptó el lote.',
       );
-
-      result.fold((error) => Logger.error('Error al enviar $key: $error'), (_) {
-        sentCount++;
-        sentRecords[key] = registroActualizado;
-        _updateStep(
-          1,
-          _StepStatus.inProgress,
-          subtitle: '$sentCount de $total enviado${sentCount == 1 ? '' : 's'}',
-        );
-      });
-
-      // Save snapshot of what we sent so reconciliation can detect
-      // whether the user changed data after this upload.
-      if (sentRecords.containsKey(key)) {
-        await _asistenciaService.guardarSnapshotEnviado(registroActualizado.id);
-      }
+      _updateStep(2, _StepStatus.failed);
+      _updateStep(
+        3,
+        _StepStatus.failed,
+        subtitle: 'Las listas siguen guardadas para reintentar.',
+      );
+      if (mounted) setState(() => _isUploading = false);
+      return;
     }
 
     _updateStep(
       1,
       _StepStatus.completed,
-      subtitle:
-          '$sentCount enviado${sentCount == 1 ? '' : 's'}'
-          '${emptyCount > 0 ? ', $emptyCount sin cambios' : ''}',
+      subtitle: 'Lote recibido por el servidor',
     );
-
-    if (sentRecords.isEmpty) {
-      // Nothing was sent — everything was empty or failed to send
-      _updateStep(2, _StepStatus.completed);
-      _updateStep(3, _StepStatus.completed);
-      HapticFeedback.heavyImpact();
-      await Future.delayed(const Duration(seconds: 2));
-      await _cargarAsistencias();
-      if (mounted) setState(() => _isUploading = false);
-      return;
-    }
-
-    // Phase 2: REST response already confirms persistence in UAT.
     _updateStep(
       2,
       _StepStatus.inProgress,
-      subtitle: '0 de ${sentRecords.length} procesados...',
+      subtitle: 'Procesando en segundo plano...',
     );
 
-    String lastSseMessage = '';
-
-    final completedKeys = sentRecords.keys.toSet();
-    final failedKeys = <String>{};
     final deadline = DateTime.now().add(const Duration(minutes: 10));
+    var completed = 0;
+    var failed = 0;
+    var terminal = false;
 
-    for (final registro in sentRecords.values) {
-      await _asistenciaService.marcarComoSincronizada(registro.id);
-    }
-
-    while (completedKeys.length + failedKeys.length < sentRecords.length &&
-        DateTime.now().isBefore(deadline) &&
-        !_disposed) {
-      await Future.delayed(const Duration(seconds: 3));
-      if (_disposed) break;
-
-      final remainingRecords = sentRecords.entries
-          .where(
-            (e) =>
-                !completedKeys.contains(e.key) && !failedKeys.contains(e.key),
-          )
-          .map((e) {
-            final reg = e.value;
-            final dateStr =
-                '${reg.fecha.year}-${reg.fecha.month.toString().padLeft(2, '0')}-${reg.fecha.day.toString().padLeft(2, '0')}';
-            return {'groupId': reg.grupoId, 'date': dateStr};
-          })
-          .toList();
-
-      if (remainingRecords.isEmpty) break;
-
-      final statusMap = await _apiService.checkSyncedRecordsStatus(
+    while (!_disposed && DateTime.now().isBefore(deadline) && !terminal) {
+      final statusResult = await _apiService.getAttendanceBatchStatus(
         token: token,
-        records: remainingRecords,
+        batchId: batchId!,
       );
 
-      Logger.info('REST sync status: $statusMap');
+      await statusResult.fold((_) async {}, (response) async {
+        final data = Map<String, dynamic>.from(response['data'] as Map);
+        final jobs = data['jobs'] as List<dynamic>? ?? [];
+        completed = 0;
+        failed = 0;
 
-      for (final entry in statusMap.entries) {
-        if (entry.value == 'COMPLETED') {
-          completedKeys.add(entry.key);
-          final reg = sentRecords[entry.key];
-          if (reg != null) {
-            await _asistenciaService.marcarComoSincronizada(reg.id);
+        for (final rawJob in jobs) {
+          final job = Map<String, dynamic>.from(rawJob as Map);
+          final clientRecordId = job['clientRecordId']?.toString();
+          final status = job['status']?.toString();
+          if (status == 'COMPLETED') {
+            completed++;
+            final registro = recordsById[clientRecordId];
+            if (registro != null) {
+              await _attendanceBatchService.markCompletedIfUnchanged(
+                registro.id,
+              );
+            }
+          } else if (status == 'FAILED') {
+            failed++;
           }
-        } else if (entry.value == 'FAILED') {
-          failedKeys.add(entry.key);
         }
-      }
 
-      final done = completedKeys.length;
-      final failed = failedKeys.length;
-      String subtitle;
-      if (failed > 0) {
-        subtitle =
-            '$done completado${done == 1 ? '' : 's'}, $failed fallido${failed == 1 ? '' : 's'} de ${sentRecords.length}';
-      } else {
-        subtitle =
-            '$done de ${sentRecords.length} completado${done == 1 ? '' : 's'}';
-      }
-      if (lastSseMessage.isNotEmpty && done + failed < sentRecords.length) {
-        subtitle += '\n$lastSseMessage';
-      }
-      _updateStep(2, _StepStatus.inProgress, subtitle: subtitle);
+        final batchStatus = data['status']?.toString();
+        terminal = const {
+          'COMPLETED',
+          'PARTIAL',
+          'FAILED',
+        }.contains(batchStatus);
+        _updateStep(
+          2,
+          terminal && failed > 0 ? _StepStatus.failed : _StepStatus.inProgress,
+          subtitle:
+              '$completed completada${completed == 1 ? '' : 's'}, '
+              '$failed fallida${failed == 1 ? '' : 's'} de ${jobs.length}',
+        );
+      });
+
+      if (!terminal) await Future.delayed(const Duration(seconds: 3));
     }
 
-    // ── Phase 3: Final status ──────────────────────────────────────
-    final allComplete = completedKeys.length == sentRecords.length;
-
-    if (allComplete) {
+    if (completed == recordsById.length) {
       _updateStep(2, _StepStatus.completed);
       _updateStep(3, _StepStatus.completed);
       HapticFeedback.heavyImpact();
-      await Future.delayed(const Duration(seconds: 2));
-    } else if (completedKeys.isNotEmpty) {
-      _updateStep(
-        2,
-        failedKeys.isNotEmpty ? _StepStatus.failed : _StepStatus.completed,
-      );
+    } else if (terminal) {
       _updateStep(
         3,
         _StepStatus.failed,
-        subtitle:
-            '${completedKeys.length} de ${sentRecords.length} subidos. Los fallidos se pueden reintentar.',
+        subtitle: 'Las listas fallidas permanecen pendientes.',
       );
-      HapticFeedback.heavyImpact();
-      await Future.delayed(const Duration(seconds: 3));
     } else {
-      _updateStep(2, _StepStatus.failed);
       _updateStep(
         3,
-        _StepStatus.failed,
-        subtitle: 'Error al subir asistencias. Intenta de nuevo.',
+        _StepStatus.pending,
+        subtitle:
+            'El servidor continúa trabajando. Puedes cerrar la aplicación.',
       );
-      HapticFeedback.heavyImpact();
-      await Future.delayed(const Duration(seconds: 3));
     }
 
-    await _cargarAsistencias();
-    if (mounted) {
-      setState(() => _isUploading = false);
+    if (!_disposed) {
+      await _cargarAsistencias();
+      if (mounted) setState(() => _isUploading = false);
     }
   }
 
@@ -522,8 +446,6 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   }
 
   Widget _buildUploadingState() {
-    final palette = context.uatPalette;
-
     return ValueListenableBuilder<List<_SyncStepData>>(
       valueListenable: _stepsNotifier,
       builder: (context, steps, _) {
@@ -730,83 +652,6 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         ],
       ),
     );
-  }
-
-  Grupo? _resolveGrupo(List<Grupo> grupos, String grupoId) {
-    final direct = grupos.firstWhere(
-      (g) => g.id == grupoId,
-      orElse: () => const Grupo(
-        id: '',
-        group: '',
-        classroom: '',
-        name: '',
-        students: const [],
-      ),
-    );
-
-    if (direct.id.isNotEmpty) return direct;
-
-    final byLegacy = grupos.firstWhere(
-      (g) => g.identificadorUnico == grupoId,
-      orElse: () => const Grupo(
-        id: '',
-        group: '',
-        classroom: '',
-        name: '',
-        students: const [],
-      ),
-    );
-
-    return byLegacy.id.isNotEmpty ? byLegacy : null;
-  }
-
-  Future<AsistenciaRegistro> _migrarRegistroSiNecesario(
-    AsistenciaRegistro registro,
-    Grupo grupo,
-  ) async {
-    if (registro.grupoId == grupo.id) {
-      return registro;
-    }
-
-    final nuevoId =
-        '${grupo.id}_${registro.fecha.year}-${registro.fecha.month}-${registro.fecha.day}';
-    final actualizado = registro.copyWith(grupoId: grupo.id, id: nuevoId);
-    await _asistenciaService.guardarAsistencia(actualizado);
-    await _asistenciaService.eliminarAsistencia(registro.id);
-    return actualizado;
-  }
-
-  List<Map<String, dynamic>> _buildAttendances(
-    AsistenciaRegistro registro,
-    Grupo grupo,
-  ) {
-    final studentIdMap = <String, String>{};
-    for (final student in grupo.students) {
-      final studentId = student.id;
-      if (studentId != null && studentId.isNotEmpty) {
-        studentIdMap[studentId] = studentId;
-        studentIdMap[student.number.toString()] = studentId;
-        if (student.matricula != null) {
-          studentIdMap[student.matricula!] = studentId;
-        }
-      }
-    }
-
-    final attendances = <Map<String, dynamic>>[];
-    registro.asistenciasAlumnos.forEach((key, present) {
-      final studentId = studentIdMap[key];
-      if (studentId == null) {
-        return;
-      }
-      attendances.add({
-        'studentId': studentId,
-        'num_pase_lista': 1,
-        'num_dia': registro.fecha.weekday,
-        'sn_asistencia': present,
-      });
-    });
-
-    return attendances;
   }
 
   void _showPendingDetailsModal() {

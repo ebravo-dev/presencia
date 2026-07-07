@@ -124,3 +124,65 @@ model CoordinatorSession {
   @@index([userId])
   @@index([expiresAt])
 }
+
+model AttendanceUploadBatch {
+  id               String                      @id @default(cuid())
+  ownerUsername    String                      @map("owner_username")
+  idempotencyKey   String                      @map("idempotency_key")
+  credentialCipher String?                     @map("credential_cipher")
+  status           AttendanceUploadBatchStatus @default(PENDING)
+  totalRecords     Int                         @map("total_records")
+  completedRecords Int                         @default(0) @map("completed_records")
+  failedRecords    Int                         @default(0) @map("failed_records")
+  createdAt        DateTime                    @default(now()) @map("created_at")
+  updatedAt        DateTime                    @updatedAt @map("updated_at")
+  completedAt      DateTime?                   @map("completed_at")
+
+  jobs AttendanceUploadJob[]
+
+  @@unique([ownerUsername, idempotencyKey])
+  @@index([ownerUsername, createdAt])
+  @@index([status, createdAt])
+  @@map("attendance_upload_batches")
+}
+
+model AttendanceUploadJob {
+  id             String                    @id @default(cuid())
+  batchId        String                    @map("batch_id")
+  ownerUsername  String                    @map("owner_username")
+  clientRecordId String                    @map("client_record_id")
+  idGrupo        Int                       @map("id_grupo")
+  fechaInicio    String                    @map("fecha_inicio")
+  attendances    Json
+  payloadHash    String                    @map("payload_hash")
+  status         AttendanceUploadJobStatus @default(PENDING)
+  attempts       Int                       @default(0)
+  nextAttemptAt  DateTime                  @default(now()) @map("next_attempt_at")
+  lockedAt       DateTime?                 @map("locked_at")
+  error          String?
+  createdAt      DateTime                  @default(now()) @map("created_at")
+  updatedAt      DateTime                  @updatedAt @map("updated_at")
+  completedAt    DateTime?                 @map("completed_at")
+
+  batch AttendanceUploadBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, clientRecordId])
+  @@index([ownerUsername, clientRecordId, createdAt])
+  @@index([status, nextAttemptAt, createdAt])
+  @@map("attendance_upload_jobs")
+}
+
+enum AttendanceUploadBatchStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
+enum AttendanceUploadJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}

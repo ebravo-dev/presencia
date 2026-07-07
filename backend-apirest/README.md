@@ -46,6 +46,7 @@ PORT=3100
 UAT_BASE_URL=https://administracionescolar.uat.edu.mx
 UAT_HTTP_TIMEOUT_MS=30000
 UAT_SESSION_TTL_MINUTES=45
+ATTENDANCE_JOB_ENCRYPTION_SECRET=un-secreto-estable-de-al-menos-32-caracteres
 DATABASE_URL=postgresql://usuario:password@postgres:5432/presencia_coordination?schema=public
 DATABASE_MIGRATION_MAX_ATTEMPTS=10
 DATABASE_MIGRATION_RETRY_MS=3000
@@ -277,6 +278,14 @@ Aplica primero las migraciones y luego crea dos profesores y una clase de prueba
 npm run prisma:deploy
 npm run seed:shared-class
 ```
+
+## Cola durable de asistencias
+
+`POST /api/uat/asistencia/lotes` persiste el lote completo en PostgreSQL y responde `202 Accepted`.
+Un worker procesa una lista a la vez por profesor, reintenta errores transitorios con backoff y recupera jobs
+interrumpidos. La clave `ATTENDANCE_JOB_ENCRYPTION_SECRET` cifra las credenciales necesarias para reautenticar
+contra UAT; debe conservarse estable entre despliegues. El cliente puede consultar el lote y reconciliar sus
+registros locales después de cerrar o reiniciar la aplicación.
 
 Para probar el acceso con cuentas UAT reales:
 

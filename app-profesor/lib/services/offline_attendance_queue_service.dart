@@ -1,11 +1,11 @@
 import 'dart:async';
 
 import '../core/utils/utils.dart';
-import '../shared/models/asistencia_registro.dart';
 import '../shared/models/grupo.dart';
 import 'api_service.dart';
 import 'asistencia_local_service.dart';
 import 'auth_storage_service.dart';
+import 'attendance_batch_service.dart';
 
 class OfflineAttendanceQueueResult {
   final int pending;
@@ -34,6 +34,10 @@ class OfflineAttendanceQueueService {
   final _asistenciaService = AsistenciaLocalService();
   final _authStorage = AuthStorageService();
   final _apiService = ApiService();
+  late final _batchService = AttendanceBatchService(
+    apiService: _apiService,
+    localService: _asistenciaService,
+  );
 
   Timer? _timer;
   bool _syncing = false;
@@ -63,7 +67,7 @@ class OfflineAttendanceQueueService {
 
     _syncing = true;
     try {
-      final pending = _asistenciaService.obtenerAsistenciasPendientes();
+      var pending = _asistenciaService.obtenerAsistenciasPendientes();
       if (pending.isEmpty) {
         return const OfflineAttendanceQueueResult(
           pending: 0,
@@ -74,15 +78,8 @@ class OfflineAttendanceQueueService {
       }
 
       final token = _authStorage.getToken();
-      final password = _authStorage.getEncryptedPassword();
       final groups = _authStorage.getGrupos() ?? const <Grupo>[];
-      if (token == null ||
-          token.isEmpty ||
-          password == null ||
-          password.isEmpty) {
-        Logger.info(
-          'Cola offline pausada: falta sesión o contraseña guardada para subir ${pending.length} asistencia(s)',
-        );
+      if (token == null || token.isEmpty) {
         return OfflineAttendanceQueueResult(
           pending: pending.length,
           uploaded: 0,
@@ -91,58 +88,67 @@ class OfflineAttendanceQueueService {
         );
       }
 
+      final statusRecords = pending.map((record) {
+        final date =
+            '${record.fecha.year}-${record.fecha.month.toString().padLeft(2, '0')}-${record.fecha.day.toString().padLeft(2, '0')}';
+        return {
+          'clientRecordId': record.id,
+          'groupId': record.grupoId,
+          'date': date,
+        };
+      }).toList();
+      final statuses = await _apiService.checkSyncedRecordsStatus(
+        token: token,
+        records: statusRecords,
+      );
+
       var uploaded = 0;
-      var skipped = 0;
-      var failed = 0;
-
-      for (final registro in pending) {
-        final group = _resolveGroup(registro, groups);
-        if (group == null) {
-          skipped++;
-          Logger.info('Cola offline: grupo no encontrado para ${registro.id}');
-          continue;
-        }
-
-        final attendances = _buildAttendances(registro, group);
-        if (attendances.isEmpty) {
-          skipped++;
-          Logger.info('Cola offline: sin alumnos mapeados para ${registro.id}');
-          continue;
-        }
-
-        final result = await _apiService.uploadAttendance(
-          token: token,
-          groupId: group.id,
-          code: group.code ?? registro.grupoCode ?? '',
-          groupLetter:
-              group.groupLetter ??
-              registro.grupoGroupLetter ??
-              group.grupoLetra,
-          period: group.period ?? registro.grupoPeriod ?? '',
-          date: registro.fecha,
-          attendances: attendances,
-          encryptedPassword: password,
-        );
-
-        await result.fold(
-          (error) async {
-            failed++;
-            Logger.info(
-              'Cola offline: ${registro.id} seguirá pendiente: $error',
-            );
-          },
-          (_) async {
+      for (final record in pending) {
+        final date =
+            '${record.fecha.year}-${record.fecha.month.toString().padLeft(2, '0')}-${record.fecha.day.toString().padLeft(2, '0')}';
+        if (statuses['${record.grupoId}_$date'] == 'COMPLETED') {
+          if (await _batchService.markCompletedIfUnchanged(record.id)) {
             uploaded++;
-            await _asistenciaService.marcarComoSincronizada(registro.id);
-          },
+          }
+        }
+      }
+
+      pending = _asistenciaService.obtenerAsistenciasPendientes();
+      if (pending.isEmpty) {
+        return OfflineAttendanceQueueResult(
+          pending: 0,
+          uploaded: uploaded,
+          skipped: 0,
+          failed: 0,
         );
       }
 
-      if (uploaded > 0 || failed > 0 || skipped > 0) {
-        Logger.info(
-          'Cola offline procesada: $uploaded subidas, $failed fallidas, $skipped omitidas',
+      final prepared = _batchService.prepare(pending, groups);
+      final batchRecords = prepared.payload;
+      final skipped = prepared.skipped;
+
+      if (batchRecords.isEmpty) {
+        return OfflineAttendanceQueueResult(
+          pending: pending.length,
+          uploaded: uploaded,
+          skipped: skipped,
+          failed: 0,
         );
       }
+
+      final result = await _batchService.submit(token: token, batch: prepared);
+      var failed = 0;
+      await result.fold(
+        (error) async {
+          failed = batchRecords.length;
+          Logger.info('Cola offline: el servidor no aceptó el lote: $error');
+        },
+        (_) async {
+          Logger.info(
+            'Cola offline: lote de ${prepared.recordsById.length} lista(s) entregado al servidor',
+          );
+        },
+      );
 
       return OfflineAttendanceQueueResult(
         pending: pending.length,
@@ -165,55 +171,5 @@ class OfflineAttendanceQueueService {
     } finally {
       _syncing = false;
     }
-  }
-
-  Grupo? _resolveGroup(AsistenciaRegistro registro, List<Grupo> groups) {
-    for (final group in groups) {
-      if (group.id == registro.grupoId) return group;
-    }
-
-    for (final group in groups) {
-      final sameStableIdentity =
-          registro.grupoCode != null &&
-          registro.grupoGroupLetter != null &&
-          registro.grupoPeriod != null &&
-          group.code == registro.grupoCode &&
-          group.groupLetter == registro.grupoGroupLetter &&
-          group.period == registro.grupoPeriod;
-      if (sameStableIdentity) return group;
-    }
-
-    return null;
-  }
-
-  List<Map<String, dynamic>> _buildAttendances(
-    AsistenciaRegistro registro,
-    Grupo group,
-  ) {
-    final studentIdMap = <String, String>{};
-    for (final student in group.students) {
-      final studentId = student.id;
-      if (studentId == null || studentId.isEmpty) continue;
-
-      studentIdMap[studentId] = studentId;
-      studentIdMap[student.number.toString()] = studentId;
-      final matricula = student.matricula;
-      if (matricula != null && matricula.isNotEmpty) {
-        studentIdMap[matricula] = studentId;
-      }
-    }
-
-    final attendances = <Map<String, dynamic>>[];
-    registro.asistenciasAlumnos.forEach((key, present) {
-      final studentId = studentIdMap[key];
-      if (studentId == null) return;
-
-      attendances.add({
-        'studentId': studentId,
-        'status': present ? 'PRESENT' : 'ABSENT',
-      });
-    });
-
-    return attendances;
   }
 }

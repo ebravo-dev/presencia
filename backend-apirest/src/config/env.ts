@@ -30,6 +30,10 @@ const envSchema = z.object({
   ),
   ATTENDANCE_BACKEND_URL: z.string().url().default('http://localhost:3000'),
   ATTENDANCE_BACKEND_SERVICE_TOKEN: z.string().min(32).default('development-internal-service-token-change-me'),
+  ATTENDANCE_JOB_ENCRYPTION_SECRET: z.preprocess(
+    (value) => value === undefined || value === '' ? undefined : value,
+    z.string().min(32).optional(),
+  ),
   COORDINATION_WEB_DIST: z.string().optional(),
 });
 

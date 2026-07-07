@@ -12,6 +12,7 @@ import { CoordinationService } from './application/services/coordination.service
 import { CoordinatorAuthService } from './application/services/coordinator-auth.service.js';
 import { WeeklyAttendanceReportService } from './application/services/weekly-attendance-report.service.js';
 import { SharedClassService } from './application/services/shared-class.service.js';
+import { AttendanceUploadService } from './application/services/attendance-upload.service.js';
 import { UatService } from './application/services/uat.service.js';
 import { HarvestTeacherDataUseCase } from './application/use-cases/harvest-teacher-data.use-case.js';
 import { env } from './config/env.js';
@@ -26,6 +27,9 @@ import { PrismaGroupAssignmentRepository } from './infrastructure/persistence/pr
 import { PrismaSubjectRepository } from './infrastructure/persistence/prisma/prisma-subject.repository.js';
 import { PrismaSharedClassAssignmentRepository } from './infrastructure/persistence/prisma/prisma-shared-class-assignment.repository.js';
 import { PrismaTeacherRepository } from './infrastructure/persistence/prisma/prisma-teacher.repository.js';
+import { PrismaAttendanceUploadRepository } from './infrastructure/persistence/prisma/prisma-attendance-upload.repository.js';
+import { CredentialCipher } from './infrastructure/security/credential-cipher.js';
+import { AttendanceUploadWorker } from './infrastructure/jobs/attendance-upload.worker.js';
 import { coordinationRoutes } from './presentation/http/routes/coordination.routes.js';
 import { coordinatorAuthRoutes } from './presentation/http/routes/coordinator-auth.routes.js';
 import { uatRoutes } from './presentation/http/routes/uat.routes.js';
@@ -48,7 +52,19 @@ export async function buildApp() {
 
   const sessionRepository = new MemoryUatSessionStore();
   const clientFactory = new UatClientFactory();
-  const uatService = new UatService(sessionRepository, clientFactory);
+  const credentialCipher = new CredentialCipher(
+    env.ATTENDANCE_JOB_ENCRYPTION_SECRET ?? env.COORDINATION_JWT_SECRET,
+  );
+  const uatService = new UatService(sessionRepository, clientFactory, credentialCipher);
+  const attendanceUploadRepository = new PrismaAttendanceUploadRepository(prisma);
+  const attendanceUploadService = new AttendanceUploadService(attendanceUploadRepository);
+  const attendanceUploadWorker = new AttendanceUploadWorker(
+    attendanceUploadRepository,
+    clientFactory,
+    credentialCipher,
+    fastify.log,
+  );
+  await attendanceUploadWorker.start();
   const teacherRepository = new PrismaTeacherRepository(prisma);
   const subjectRepository = new PrismaSubjectRepository(prisma);
   const coordinationRepository = new PrismaCoordinationRepository(prisma);
@@ -84,6 +100,7 @@ export async function buildApp() {
 
   fastify.addHook('onClose', async () => {
     unsubscribeSync();
+    await attendanceUploadWorker.stop();
     await prisma.$disconnect();
   });
 
@@ -128,6 +145,8 @@ export async function buildApp() {
     uatService,
     eventBus,
     sharedClassService,
+    attendanceUploadService,
+    attendanceUploadWorker,
   });
 
   await fastify.register(coordinatorAuthRoutes, { authService: coordinatorAuthService });
