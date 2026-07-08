@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../core/constants/api_constants.dart';
 import '../core/utils/utils.dart';
 import '../shared/models/grupo.dart';
 import 'api_service.dart';
@@ -85,6 +86,24 @@ class OfflineAttendanceQueueService {
           uploaded: 0,
           skipped: pending.length,
           failed: 0,
+        );
+      }
+
+      final debugSkipUpload =
+          ApiConstants.presenciaDebugMode ||
+          ApiConstants.skipApiRestAttendanceUpload;
+      if (debugSkipUpload) {
+        final result = await _batchService.submitDebugReportOnly(
+          token: token,
+          records: pending,
+          groups: groups,
+          encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
+        );
+        return OfflineAttendanceQueueResult(
+          pending: pending.length,
+          uploaded: result.uploaded,
+          skipped: result.skipped,
+          failed: result.failed,
         );
       }
 

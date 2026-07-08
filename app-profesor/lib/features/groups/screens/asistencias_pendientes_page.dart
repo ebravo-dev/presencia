@@ -269,7 +269,10 @@ class _AsistenciasPendientesPageState
     );
 
     final attendances = _buildAttendances(registroActualizado, grupo);
-    if (attendances.isEmpty) {
+    final debugSkipUpload =
+        ApiConstants.presenciaDebugMode ||
+        ApiConstants.skipApiRestAttendanceUpload;
+    if (attendances.isEmpty && !debugSkipUpload) {
       // No hay alumnos mapeados — probablemente IDs no coinciden.
       // NO marcar como sincronizada: no se subio nada realmente.
       if (showSnackbars && mounted) {
@@ -295,6 +298,10 @@ class _AsistenciasPendientesPageState
       date: registroActualizado.fecha,
       attendances: attendances,
       encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
+      groupName: grupo.name,
+      classroom: grupo.classroom,
+      level: grupo.level,
+      schedule: grupo.schedule,
       professorEntryAt: registroActualizado.horaEntrada,
       professorExitAt: registroActualizado.horaSalida,
     );
@@ -343,26 +350,16 @@ class _AsistenciasPendientesPageState
 
     final direct = grupos.firstWhere(
       (g) => g.id == grupoId,
-      orElse: () => const Grupo(
-        id: '',
-        group: '',
-        classroom: '',
-        name: '',
-        students: const [],
-      ),
+      orElse: () =>
+          const Grupo(id: '', group: '', classroom: '', name: '', students: []),
     );
 
     if (direct.id.isNotEmpty) return direct;
 
     final byLegacy = grupos.firstWhere(
       (g) => g.identificadorUnico == grupoId,
-      orElse: () => const Grupo(
-        id: '',
-        group: '',
-        classroom: '',
-        name: '',
-        students: const [],
-      ),
+      orElse: () =>
+          const Grupo(id: '', group: '', classroom: '', name: '', students: []),
     );
 
     return byLegacy.id.isNotEmpty ? byLegacy : null;

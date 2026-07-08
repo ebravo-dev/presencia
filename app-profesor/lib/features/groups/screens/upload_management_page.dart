@@ -253,7 +253,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         ApiConstants.skipApiRestAttendanceUpload;
 
     final hasInternet = await _syncService.hasInternetConnection();
-    if (!hasInternet && !debugSkipUpload) {
+    if (!hasInternet) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -290,14 +290,49 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       _SyncStepData(label: '¡Terminado!', status: _StepStatus.pending),
     ];
 
+    _updateStep(0, _StepStatus.completed);
+
+    if (debugSkipUpload) {
+      _updateStep(
+        1,
+        _StepStatus.inProgress,
+        subtitle:
+            '${_pendientes.length} lista${_pendientes.length == 1 ? '' : 's'} en modo debug',
+      );
+      final debugResult = await _attendanceBatchService.submitDebugReportOnly(
+        token: token,
+        records: List<AsistenciaRegistro>.from(_pendientes),
+        groups: grupos,
+        encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
+      );
+      _updateStep(
+        1,
+        debugResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
+        subtitle:
+            '${debugResult.uploaded} registrada${debugResult.uploaded == 1 ? '' : 's'} para reportes, '
+            '${debugResult.skipped} omitida${debugResult.skipped == 1 ? '' : 's'}, '
+            '${debugResult.failed} fallida${debugResult.failed == 1 ? '' : 's'}',
+      );
+      _updateStep(
+        2,
+        debugResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
+      );
+      _updateStep(
+        3,
+        debugResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
+      );
+      HapticFeedback.heavyImpact();
+      await _cargarAsistencias();
+      if (mounted) setState(() => _isUploading = false);
+      return;
+    }
+
     final prepared = _attendanceBatchService.prepare(
       List<AsistenciaRegistro>.from(_pendientes),
       grupos,
     );
     final recordsById = prepared.recordsById;
     final batchRecords = prepared.payload;
-
-    _updateStep(0, _StepStatus.completed);
 
     if (batchRecords.isEmpty) {
       _updateStep(
