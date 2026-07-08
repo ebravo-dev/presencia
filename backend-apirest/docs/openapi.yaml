@@ -405,6 +405,69 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UatDataResponse"
+  /api/uat/asistencia/lotes:
+    post:
+      summary: Entrega un lote idempotente a la cola durable de asistencia
+      description: Persiste todas las listas antes de responder. El procesamiento continúa aunque el cliente se desconecte.
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [records]
+              properties:
+                records:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: object
+                    required: [clientRecordId, Id_Grupo, Fec_Ini, Asistencia]
+                    properties:
+                      clientRecordId: { type: string, maxLength: 160 }
+                      Id_Grupo: { type: integer, minimum: 1 }
+                      Fec_Ini: { type: string, example: "06/07/2026" }
+                      Asistencia:
+                        type: array
+                        items: { $ref: "#/components/schemas/AsistenciaAlumnoInput" }
+      responses:
+        "202": { description: Lote persistido y aceptado por el worker }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/uat/asistencia/lotes/{batchId}:
+    get:
+      summary: Consulta el progreso de un lote de asistencia
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+        - name: batchId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Estado del lote y cada lista }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/uat/asistencia/registros/estado:
+    post:
+      summary: Reconcilia registros locales después de cerrar o reiniciar la app
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientRecordIds]
+              properties:
+                clientRecordIds:
+                  type: array
+                  maxItems: 200
+                  items: { type: string }
+      responses:
+        "200": { description: Último estado conocido por registro local }
   /api/coordinacion/resumen:
     get:
       tags: [Coordinacion]

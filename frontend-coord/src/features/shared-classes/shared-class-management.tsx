@@ -1,11 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronDown, Search, ShieldCheck, Trash2, UserRoundPlus, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronDown, Search, ShieldCheck, Trash2, UserRoundPlus, X } from 'lucide-react';
 import { type FormEvent, type KeyboardEvent, useMemo, useState } from 'react';
 import { coordinationApi } from '@/core/api/coordination.api';
 import type { Assignment, SharedClassAssignment } from '@/core/api/types';
 import { Badge, Button, Card, EmptyState, Skeleton } from '@/shared/components/ui';
 
 const REFRESH_INTERVAL_MS = 10_000;
+
+type SharedClassSortKey = 'subject' | 'period' | 'group' | 'owner' | 'receiver' | 'cycle' | 'status';
+type SortDirection = 'asc' | 'desc';
 
 function currentAcademicCycle(date = new Date()): { year: number; term: 1 | 2 | 3 } {
   const month = date.getMonth() + 1;
@@ -19,13 +22,17 @@ function cycleLabel(year: number, term: number) {
   return `${year}-${term} ${season}`;
 }
 
-export function SharedClassManagement({ sourceTeacherId }: { sourceTeacherId?: string | null }) {
+export function SharedClassManagement() {
   const queryClient = useQueryClient();
   const initialCycle = useMemo(() => currentAcademicCycle(), []);
   const [selectedGroup, setSelectedGroup] = useState('');
   const [selectedReceiver, setSelectedReceiver] = useState('');
   const [schoolCycleYear, setSchoolCycleYear] = useState(initialCycle.year);
   const [schoolCycleTerm, setSchoolCycleTerm] = useState<1 | 2 | 3>(initialCycle.term);
+  const [sort, setSort] = useState<{ key: SharedClassSortKey; direction: SortDirection }>({
+    key: 'cycle',
+    direction: 'desc',
+  });
 
   const sharedClassOptions = useQuery({
     queryKey: ['shared-classes', 'options'],
@@ -38,11 +45,23 @@ export function SharedClassManagement({ sourceTeacherId }: { sourceTeacherId?: s
   });
 
   const sourceAssignments = useMemo(() => {
-    const assignments = sharedClassOptions.data?.data.assignments ?? [];
-    return sourceTeacherId
-      ? assignments.filter((assignment) => assignment.teacher.id === sourceTeacherId)
-      : assignments;
-  }, [sharedClassOptions.data, sourceTeacherId]);
+    return sharedClassOptions.data?.data.assignments ?? [];
+  }, [sharedClassOptions.data]);
+
+  const sortedSharedClasses = useMemo(() => {
+    const items = [...(sharedClasses.data?.data ?? [])];
+    return items.sort((a, b) => {
+      const result = compareSharedClasses(a, b, sort.key);
+      return sort.direction === 'asc' ? result : -result;
+    });
+  }, [sharedClasses.data, sort]);
+
+  const updateSort = (key: SharedClassSortKey) => {
+    setSort((current) => ({
+      key,
+      direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc',
+    }));
+  };
 
   const selectedGroupOwner = useMemo(() => {
     const assignment = sourceAssignments.find((item) => item.id === selectedGroup);
@@ -199,26 +218,32 @@ export function SharedClassManagement({ sourceTeacherId }: { sourceTeacherId?: s
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-left text-sm">
+            <table className="w-full min-w-[1120px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-white/5 dark:text-slate-400">
                 <tr>
-                  <th className="px-5 py-3">Grupo</th>
-                  <th className="px-5 py-3">Titular</th>
-                  <th className="px-5 py-3">Profesor receptor</th>
-                  <th className="px-5 py-3">Ciclo</th>
-                  <th className="px-5 py-3">Estado</th>
+                  <SortableHeader label="Materia" sortKey="subject" activeSort={sort} onSort={updateSort} />
+                  <SortableHeader label="Periodo" sortKey="period" activeSort={sort} onSort={updateSort} />
+                  <SortableHeader label="Grupo" sortKey="group" activeSort={sort} onSort={updateSort} />
+                  <SortableHeader label="Titular" sortKey="owner" activeSort={sort} onSort={updateSort} />
+                  <SortableHeader label="Profesor receptor" sortKey="receiver" activeSort={sort} onSort={updateSort} />
+                  <SortableHeader label="Ciclo" sortKey="cycle" activeSort={sort} onSort={updateSort} />
+                  <SortableHeader label="Estado" sortKey="status" activeSort={sort} onSort={updateSort} />
                   <th className="px-5 py-3 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {sharedClasses.data.data.map((item) => (
+                {sortedSharedClasses.map((item) => (
                   <tr key={item.id} className="border-t border-slate-100 dark:border-[#2e3138]">
                     <td className="px-5 py-3">
                       <b>{cleanAssignmentName(item.sourceAssignment.subject.name)}</b>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {item.sourceAssignment.groupCode || '-'} - {item.sourceAssignment.classroom || 'Sin salon'}
+                        {item.sourceAssignment.classroom || 'Sin salón'}
                       </p>
                     </td>
+                    <td className="px-5 py-3 font-semibold tabular-nums">
+                      {item.sourceAssignment.schoolCycleName || item.sourceAssignment.schoolCycleExternalId || '-'}
+                    </td>
+                    <td className="px-5 py-3 font-semibold">{item.sourceAssignment.groupCode || '-'}</td>
                     <td className="px-5 py-3">{item.sourceAssignment.teacher.name}</td>
                     <td className="px-5 py-3">{item.assignedTeacher.name}</td>
                     <td className="px-5 py-3 text-xs font-semibold">
@@ -246,6 +271,55 @@ export function SharedClassManagement({ sourceTeacherId }: { sourceTeacherId?: s
       </Card>
     </section>
   );
+}
+
+function SortableHeader({
+  label,
+  sortKey,
+  activeSort,
+  onSort,
+}: {
+  label: string;
+  sortKey: SharedClassSortKey;
+  activeSort: { key: SharedClassSortKey; direction: SortDirection };
+  onSort: (key: SharedClassSortKey) => void;
+}) {
+  const active = activeSort.key === sortKey;
+  const Icon = !active ? ArrowUpDown : activeSort.direction === 'asc' ? ArrowUp : ArrowDown;
+
+  return (
+    <th
+      className="px-3 py-2"
+      aria-sort={!active ? 'none' : activeSort.direction === 'asc' ? 'ascending' : 'descending'}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="group flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left font-semibold transition hover:bg-slate-200/70 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8102E]/30 dark:hover:bg-white/10 dark:hover:text-slate-100"
+      >
+        <span>{label}</span>
+        <Icon size={13} className={active ? 'text-[#C8102E]' : 'text-slate-300 group-hover:text-slate-500'} />
+      </button>
+    </th>
+  );
+}
+
+function compareSharedClasses(a: SharedClassAssignment, b: SharedClassAssignment, key: SharedClassSortKey) {
+  const values: Record<SharedClassSortKey, [string | number, string | number]> = {
+    subject: [cleanAssignmentName(a.sourceAssignment.subject.name), cleanAssignmentName(b.sourceAssignment.subject.name)],
+    period: [
+      a.sourceAssignment.schoolCycleName || a.sourceAssignment.schoolCycleExternalId || '',
+      b.sourceAssignment.schoolCycleName || b.sourceAssignment.schoolCycleExternalId || '',
+    ],
+    group: [a.sourceAssignment.groupCode || '', b.sourceAssignment.groupCode || ''],
+    owner: [a.sourceAssignment.teacher.name, b.sourceAssignment.teacher.name],
+    receiver: [a.assignedTeacher.name, b.assignedTeacher.name],
+    cycle: [a.schoolCycleYear * 10 + a.schoolCycleTerm, b.schoolCycleYear * 10 + b.schoolCycleTerm],
+    status: [a.active ? 1 : 0, b.active ? 1 : 0],
+  };
+  const [left, right] = values[key];
+  if (typeof left === 'number' && typeof right === 'number') return left - right;
+  return String(left).localeCompare(String(right), 'es', { numeric: true, sensitivity: 'base' });
 }
 
 function ClassAssignmentCombobox({

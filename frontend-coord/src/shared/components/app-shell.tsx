@@ -10,12 +10,12 @@ import { Button, cn } from './ui';
 const navigation = [
   { to: '/', label: 'Resumen', icon: BarChart3 },
   { to: '/carga-academica', label: 'Carga académica', icon: BookOpenCheck },
-  { to: '/reportes/asistencia', label: 'Reporte semanal', icon: BarChart3 },
+  { to: '/reportes/asistencia', label: 'Reportes de asistencia', icon: BarChart3 },
 ];
 const pageTitles: Record<string, string> = {
   '/': 'Resumen institucional',
   '/carga-academica': 'Carga académica',
-  '/reportes/asistencia': 'Asistencia semanal',
+  '/reportes/asistencia': 'Reportes de asistencia',
 };
 
 export function AppShell() {

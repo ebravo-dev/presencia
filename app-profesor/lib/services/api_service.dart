@@ -677,6 +677,59 @@ class ApiService {
     }
   }
 
+  /// Hands an entire set of pending attendance records to the durable server queue.
+  /// A successful response means ownership was transferred to the server, not that
+  /// every record has already reached UAT.
+  Future<Either<String, Map<String, dynamic>>> submitAttendanceBatch({
+    required String token,
+    required List<Map<String, dynamic>> records,
+  }) async {
+    if (!_usesBackendApiRest) {
+      return const Left(
+        'La cola durable requiere configurar PRESENCIA_API_BASE_URL con backend-apirest.',
+      );
+    }
+    try {
+      final response = await _presenceDio.post(
+        ApiConstants.uatAttendanceBatches,
+        data: {'records': records},
+        options: Options(headers: {'X-UAT-Session-Id': token}),
+      );
+      return Right(_asMap(response.data));
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error('Error entregando lote de asistencias: $errorMessage', e);
+      return Left(errorMessage);
+    } catch (e, stackTrace) {
+      Logger.error(
+        'Error inesperado entregando lote de asistencias',
+        e,
+        stackTrace,
+      );
+      return Left(_cleanException(e));
+    }
+  }
+
+  Future<Either<String, Map<String, dynamic>>> getAttendanceBatchStatus({
+    required String token,
+    required String batchId,
+  }) async {
+    if (!_usesBackendApiRest) {
+      return const Left('La cola durable no está disponible en este servidor.');
+    }
+    try {
+      final response = await _presenceDio.get(
+        '${ApiConstants.uatAttendanceBatches}/$batchId',
+        options: Options(headers: {'X-UAT-Session-Id': token}),
+      );
+      return Right(_asMap(response.data));
+    } on DioException catch (e) {
+      return Left(_handleDioError(e));
+    } catch (e) {
+      return Left(_cleanException(e));
+    }
+  }
+
   Future<Either<String, Map<String, dynamic>>>
   _uploadAttendanceViaBackendApiRest({
     required String token,
@@ -858,6 +911,35 @@ class ApiService {
     if (records.isEmpty) return {};
 
     try {
+      if (_usesBackendApiRest) {
+        final recordsWithIds = records
+            .where((record) => record['clientRecordId']?.isNotEmpty == true)
+            .toList();
+        if (recordsWithIds.isEmpty) return {};
+        final response = await _presenceDio.post(
+          ApiConstants.uatAttendanceRecordStatuses,
+          data: {
+            'clientRecordIds': recordsWithIds
+                .map((record) => record['clientRecordId'])
+                .toList(),
+          },
+          options: Options(headers: {'X-UAT-Session-Id': token}),
+        );
+        final data = _asMap(response.data)['data'] as List<dynamic>? ?? [];
+        final lookupKeys = {
+          for (final record in recordsWithIds)
+            record['clientRecordId']!: '${record['groupId']}_${record['date']}',
+        };
+        final statuses = <String, String>{};
+        for (final item in data) {
+          final map = Map<String, dynamic>.from(item as Map);
+          final lookupKey = lookupKeys[map['clientRecordId']?.toString()];
+          final status = map['status']?.toString();
+          if (lookupKey != null && status != null) statuses[lookupKey] = status;
+        }
+        return statuses;
+      }
+
       final response = await _presenceDio.post(
         '/attendance/check-synced',
         data: {'records': records},

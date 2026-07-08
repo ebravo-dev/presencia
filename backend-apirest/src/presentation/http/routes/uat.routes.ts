@@ -4,7 +4,10 @@ import type { UatStudentService } from '../../../application/services/uat-studen
 import type { IDomainEventBus } from '../../../domain/events/domain-event-bus.js';
 import type { SharedClassService } from '../../../application/services/shared-class.service.js';
 import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
+import type { AttendanceUploadService } from '../../../application/services/attendance-upload.service.js';
+import type { AttendanceUploadWorker } from '../../../infrastructure/jobs/attendance-upload.worker.js';
 import { AsistenciaController } from '../controllers/asistencia.controller.js';
+import { AttendanceUploadController } from '../controllers/attendance-upload.controller.js';
 import { CatalogoController } from '../controllers/catalogo.controller.js';
 import { ConsultaController } from '../controllers/consulta.controller.js';
 import { SessionController } from '../controllers/session.controller.js';
@@ -19,11 +22,13 @@ export interface UatRoutesOptions {
   eventBus: IDomainEventBus;
   sharedClassService: SharedClassService;
   attendanceBackendClient: AttendanceBackendClient;
+  attendanceUploadService: AttendanceUploadService;
+  attendanceUploadWorker: AttendanceUploadWorker;
 }
 
 export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   fastify,
-  { uatService, uatStudentService, eventBus, sharedClassService, attendanceBackendClient },
+  { uatService, uatStudentService, eventBus, sharedClassService, attendanceBackendClient, attendanceUploadService, attendanceUploadWorker },
 ) => {
   const authUat = buildAuthUatHook(uatService);
   const authUatStudent = buildAuthUatStudentHook(uatStudentService);
@@ -32,6 +37,7 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   const consultaController = new ConsultaController(uatService);
   const catalogoController = new CatalogoController(uatService);
   const asistenciaController = new AsistenciaController(uatService, attendanceBackendClient);
+  const attendanceUploadController = new AttendanceUploadController(attendanceUploadService, attendanceUploadWorker);
   const sharedClassController = new SharedClassController(sharedClassService);
 
   fastify.post('/api/uat/sessions', sessionController.create);
@@ -64,4 +70,7 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   );
   fastify.post('/api/uat/profesor/control-asistencia/asistencias', { preHandler: authUat }, asistenciaController.guardar);
   fastify.post('/api/uat/asistencia/guardar', { preHandler: authUat }, asistenciaController.guardar);
+  fastify.post('/api/uat/asistencia/lotes', { preHandler: authUat }, attendanceUploadController.submit);
+  fastify.post('/api/uat/asistencia/registros/estado', { preHandler: authUat }, attendanceUploadController.recordStatuses);
+  fastify.get('/api/uat/asistencia/lotes/:batchId', { preHandler: authUat }, attendanceUploadController.status);
 };

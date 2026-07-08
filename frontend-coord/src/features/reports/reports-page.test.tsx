@@ -36,6 +36,7 @@ describe('ReportsPage', () => {
     expect(screen.getAllByLabelText('Sin clase')).toHaveLength(4);
     expect(screen.getByText('Cumpl.')).toBeInTheDocument();
     expect(screen.getAllByText('50%')).toHaveLength(2);
+    expect(screen.getByText(/Ciclo 2026-2/)).toBeInTheDocument();
   });
   it('permite cambiar a reporte por rango con columnas agregadas por materia', async () => {
     server.use(
@@ -66,6 +67,7 @@ describe('ReportsPage', () => {
     expect(screen.getByText('Grupo')).toBeInTheDocument();
     expect(screen.getByText('Horas cubiertas')).toBeInTheDocument();
     expect(screen.getAllByText('72.73%')).toHaveLength(2);
+    expect(screen.getByText(/Ciclo 2026-1/)).toBeInTheDocument();
   });
 });
 

@@ -125,6 +125,30 @@ export interface StudentDeviceBinding {
   }>;
 }
 
+export interface InfrastructureSummaryResponse {
+  data: {
+    counts: {
+      beacons: number;
+      studentDeviceBindings: number;
+      studentBleAttendances: number;
+      activeSubstitutions: number;
+    };
+    recentBindings: StudentDeviceBinding[];
+    recentBeacons: Beacon[];
+    recentSubstitutions: Array<{
+      id: string;
+      group: {
+        name: string;
+        groupLetter: string | null;
+        classroom: string | null;
+      };
+      primaryProfessor: { name: string };
+      substituteProfessor: { name: string };
+    }>;
+  };
+  meta: { generatedAt: string };
+}
+
 export interface ProfessorOption {
   id: string;
   externalId?: string;

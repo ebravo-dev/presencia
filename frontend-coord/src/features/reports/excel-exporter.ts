@@ -30,15 +30,15 @@ export async function exportReportExcel(report: AttendanceReportResponse): Promi
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet(`Semana ${report.data.week.isoWeek}`, { views: [{ state: 'frozen', ySplit: 4 }] });
-  sheet.mergeCells('A1:K1');
+  sheet.mergeCells('A1:L1');
   sheet.getCell('A1').value = 'FACULTAD DE INGENIERÍA TAMPICO · Reporte semanal de asistencia';
   sheet.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
   sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF111111' } };
-  sheet.mergeCells('A2:K2');
+  sheet.mergeCells('A2:L2');
   sheet.getCell('A2').value = `${report.data.teacher.name} · Semana ${report.data.week.isoWeek} (${report.data.week.start} a ${report.data.week.end})`;
 
   sheet.addRow([]);
-  sheet.addRow(['Hora', 'Materia', 'Grupo', 'Salón', ...days.map((day) => day.label), 'Cumplimiento']);
+  sheet.addRow(['Hora', 'Materia', 'Grupo', 'Salón', 'Ciclo', ...days.map((day) => day.label), 'Cumplimiento']);
   sheet.getRow(4).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   sheet.getRow(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC8102E' } };
 
@@ -48,23 +48,24 @@ export async function exportReportExcel(report: AttendanceReportResponse): Promi
       reportRow.subject,
       reportRow.groupCode,
       reportRow.classroom || '—',
+      reportRow.period,
       ...days.map((day) => hourCellLabel(reportRow.cells[day.key], hourIndex)),
       hourIndex === 0 ? formatRate(reportRow.completionRate) : '',
     ]);
 
-    days.forEach((day, index) => styleStatusCell(row.getCell(index + 5), reportRow.cells[day.key]?.hourSlots?.[hourIndex]?.status ?? 'NOT_SCHEDULED'));
-    const rateCell = row.getCell(days.length + 5);
+    days.forEach((day, index) => styleStatusCell(row.getCell(index + 6), reportRow.cells[day.key]?.hourSlots?.[hourIndex]?.status ?? 'NOT_SCHEDULED'));
+    const rateCell = row.getCell(days.length + 6);
     rateCell.alignment = { horizontal: 'center', vertical: 'middle' };
     rateCell.font = { bold: true, color: { argb: reportRow.completionRate == null ? 'FF64748B' : 'FFC8102E' } };
 
     if (hourIndex === 0 && rowSpan > 1) {
       const startRow = row.number;
       const endRow = row.number + rowSpan - 1;
-      [1, 2, 3, 4, days.length + 5].forEach((column) => sheet.mergeCells(startRow, column, endRow, column));
+      [1, 2, 3, 4, 5, days.length + 6].forEach((column) => sheet.mergeCells(startRow, column, endRow, column));
     }
   }
 
-  sheet.columns = [{ width: 16 }, { width: 38 }, { width: 14 }, { width: 14 }, ...days.map(() => ({ width: 13 })), { width: 14 }];
+  sheet.columns = [{ width: 16 }, { width: 38 }, { width: 14 }, { width: 14 }, { width: 16 }, ...days.map(() => ({ width: 13 })), { width: 14 }];
   const buffer = await workbook.xlsx.writeBuffer();
   download(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), filename(report, 'xlsx'));
 }
@@ -75,21 +76,24 @@ async function exportRangeReportExcel(report: RangeReportResponse): Promise<void
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet('Rango', { views: [{ state: 'frozen', ySplit: 4 }] });
-  sheet.mergeCells('A1:F1');
+  sheet.mergeCells('A1:I1');
   sheet.getCell('A1').value = 'FACULTAD DE INGENIERIA TAMPICO · Reporte de asistencia por rango';
   sheet.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
   sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF111111' } };
-  sheet.mergeCells('A2:F2');
+  sheet.mergeCells('A2:I2');
   sheet.getCell('A2').value = `${report.data.teacher.name} · ${report.data.range.start} a ${report.data.range.end}`;
 
   sheet.addRow([]);
-  sheet.addRow(['Materia', 'Grado', 'Grupo', 'Horas programadas', 'Horas cubiertas', 'Porcentaje de asistencia']);
+  sheet.addRow(['Materia', 'Horario', 'Salón', 'Ciclo', 'Grado', 'Grupo', 'Horas programadas', 'Horas cubiertas', 'Porcentaje de asistencia']);
   sheet.getRow(4).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   sheet.getRow(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC8102E' } };
 
   for (const reportRow of report.data.rows) {
     const row = sheet.addRow([
       reportRow.subject,
+      reportRow.rawSchedule || 'Sin horario',
+      reportRow.classroom || '—',
+      reportRow.period,
       reportRow.grade || '-',
       reportRow.groupCode || '-',
       reportRow.scheduledClassDays,
@@ -97,15 +101,15 @@ async function exportRangeReportExcel(report: RangeReportResponse): Promise<void
       formatRangeRate(reportRow.attendanceRate),
     ]);
 
-    row.getCell(6).alignment = { horizontal: 'center', vertical: 'middle' };
-    row.getCell(6).font = { bold: true };
+    row.getCell(9).alignment = { horizontal: 'center', vertical: 'middle' };
+    row.getCell(9).font = { bold: true };
     if (reportRow.attendanceRate === 0) {
-      row.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
-      row.getCell(6).font = { bold: true, color: { argb: 'FF000000' } };
+      row.getCell(9).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+      row.getCell(9).font = { bold: true, color: { argb: 'FF000000' } };
     }
   }
 
-  sheet.columns = [{ width: 46 }, { width: 10 }, { width: 10 }, { width: 24 }, { width: 24 }, { width: 22 }];
+  sheet.columns = [{ width: 38 }, { width: 18 }, { width: 14 }, { width: 16 }, { width: 10 }, { width: 10 }, { width: 24 }, { width: 24 }, { width: 22 }];
   const buffer = await workbook.xlsx.writeBuffer();
   download(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), rangeFilename(report, 'xlsx'));
 }

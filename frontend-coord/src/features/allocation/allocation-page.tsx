@@ -100,7 +100,10 @@ export function AllocationPage() {
   }, [detail.data, cycle, level]);
 
   return (
-    <div className="grid min-h-[calc(100vh-9rem)] gap-5 xl:grid-cols-[360px_1fr]">
+    <div className="space-y-6">
+      <SharedClassManagement />
+
+      <div className="grid min-h-[calc(100vh-9rem)] gap-5 xl:grid-cols-[360px_1fr]">
       <Card className="flex min-h-[640px] flex-col overflow-hidden">
         <div className="border-b border-slate-200 p-4 dark:border-[#2e3138]">
           <label className="relative block">
@@ -293,10 +296,10 @@ export function AllocationPage() {
               </div>
             )}
 
-            <SharedClassManagement sourceTeacherId={selectedId} />
           </div>
         )}
       </section>
+      </div>
     </div>
   );
 }

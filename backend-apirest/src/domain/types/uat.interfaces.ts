@@ -305,6 +305,7 @@ export interface StoredUatSessionBase {
 export interface StoredUatSession extends StoredUatSessionBase {
   id: string;
   username: string;
+  credentialCipher: string;
   client: UatPortalClientPort;
   login: UatLoginResponse;
 }
