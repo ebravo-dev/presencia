@@ -64,7 +64,7 @@ describe('ReportsPage', () => {
     expect(await screen.findByText('Calculo')).toBeInTheDocument();
     expect(screen.getByText('Grado')).toBeInTheDocument();
     expect(screen.getByText('Grupo')).toBeInTheDocument();
-    expect(screen.getByText('Reportadas')).toBeInTheDocument();
+    expect(screen.getByText('Horas cubiertas')).toBeInTheDocument();
     expect(screen.getAllByText('72.73%')).toHaveLength(2);
   });
 });
@@ -75,6 +75,15 @@ function cell(date: string, status: 'TAKEN' | 'MISSING' | 'NOT_SCHEDULED') {
     status,
     professorEntryAt: status === 'TAKEN' ? `${date}T07:05:00.000Z` : null,
     professorExitAt: status === 'TAKEN' ? `${date}T08:55:00.000Z` : null,
+    scheduledHours: status === 'NOT_SCHEDULED' ? 0 : 2,
+    attendedHours: status === 'TAKEN' ? 2 : 0,
+    coverageRate: status === 'TAKEN' ? 100 : null,
+    hourSlots: status === 'NOT_SCHEDULED'
+      ? []
+      : [
+          { index: 0, startTime: '07:00', endTime: '08:00', status },
+          { index: 1, startTime: '08:00', endTime: '09:00', status },
+        ],
     portalSyncStatus: status === 'TAKEN' ? 'COMPLETED' : null,
     portalSyncError: null,
   };

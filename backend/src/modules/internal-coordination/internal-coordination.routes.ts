@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { AttendanceStatus, PortalSyncStatus } from '@prisma/client';
 import { z } from 'zod';
 import { env } from '../../core/config/env.js';
 import { prisma } from '../../core/database/prisma.js';
@@ -8,6 +9,7 @@ import {
   normalizeClassroomDisplay,
   serializeBeacon,
 } from '../beacons/beacons.service.js';
+import { attendanceDateFromServerNow, serverLocalHourMinute, serverNow } from '../../core/time/server-time.js';
 
 const querySchema = z.object({
   professorEmail: z.string().email().transform((value) => value.toLowerCase()),
@@ -49,6 +51,53 @@ const substitutionSchema = z.object({
 });
 
 const substitutionUpdateSchema = substitutionSchema.partial();
+
+const debugAttendanceSchema = z.object({
+  professorEmail: z.string().email().transform((value) => value.toLowerCase()),
+  professorName: z.string().trim().optional().nullable().transform((value) => value || null),
+  code: z.string().trim().min(1),
+  groupLetter: z.string().trim().default(''),
+  period: z.string().trim().min(1),
+  groupName: z.string().trim().optional().nullable().transform((value) => value || null),
+  classroom: z.string().trim().optional().nullable().transform((value) => value || null),
+  level: z.string().trim().optional().nullable().transform((value) => value || null),
+  schedule: z.record(z.unknown()).optional().nullable().transform((value) => value || null),
+  createMissingGroup: z.boolean().optional().default(false),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  professorEntryAt: dateStringSchema,
+  professorExitAt: dateStringSchema,
+  roomBeaconUuid: z.string().trim().optional().nullable().transform((value) => value || null),
+  roomBeaconRssi: z.number().int().optional().nullable().transform((value) => value ?? null),
+  roomBeaconDistance: z.number().optional().nullable().transform((value) => value ?? null),
+  roomBeaconAddress: z.string().trim().optional().nullable().transform((value) => value || null),
+  attendances: z.array(z.object({
+    studentId: z.string().trim().min(1),
+    status: z.nativeEnum(AttendanceStatus),
+  })).optional().default([]),
+});
+
+function debugCurrentClassSchedule(now: Date): Record<string, string> {
+  const durationHours = Math.max(1, env.DEBUG_EXTRA_CLASS_HOURS);
+  const start = new Date(now.getTime() - 10 * 60 * 1000);
+  const end = new Date(start.getTime() + durationHours * 60 * 60 * 1000);
+  const value = `${serverLocalHourMinute(start)}-${serverLocalHourMinute(end)}`;
+  return {
+    monday: value,
+    lunes: value,
+    tuesday: value,
+    martes: value,
+    wednesday: value,
+    miercoles: value,
+    thursday: value,
+    jueves: value,
+    friday: value,
+    viernes: value,
+    saturday: value,
+    sabado: value,
+    sunday: value,
+    domingo: value,
+  };
+}
 
 function parseDate(value: string | null | undefined): Date | null {
   return value ? new Date(value) : null;
@@ -193,6 +242,190 @@ export async function internalCoordinationRoutes(fastify: FastifyInstance): Prom
       return reply.send({ data: professor });
     },
   );
+
+  fastify.post('/internal/coordination/debug-attendance', async (request, reply) => {
+    const parsed = debugAttendanceSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'VALIDATION_ERROR', details: parsed.error.flatten() });
+    }
+
+    let professor = await prisma.professor.findUnique({
+      where: { institutionalEmail: parsed.data.professorEmail },
+      select: { id: true, institutionalEmail: true },
+    });
+
+    if (!professor && parsed.data.createMissingGroup) {
+      professor = await prisma.professor.create({
+        data: {
+          institutionalEmail: parsed.data.professorEmail,
+          name: parsed.data.professorName ?? parsed.data.professorEmail.split('@')[0] ?? parsed.data.professorEmail,
+          lastSyncPeriod: parsed.data.period,
+        },
+        select: { id: true, institutionalEmail: true },
+      });
+    }
+
+    if (!professor) {
+      return reply.code(404).send({ error: 'PROFESSOR_NOT_SYNCED', message: 'Profesor no sincronizado en backend principal.' });
+    }
+
+    let group = await prisma.group.findFirst({
+      where: {
+        professorId: professor.id,
+        code: parsed.data.code,
+        groupLetter: parsed.data.groupLetter,
+        period: parsed.data.period,
+      },
+      select: { id: true, code: true, groupLetter: true, period: true },
+    });
+
+    const serverTimestamp = serverNow();
+    const debugSchedule = parsed.data.createMissingGroup
+      ? debugCurrentClassSchedule(serverTimestamp)
+      : parsed.data.schedule;
+
+    if (!group && parsed.data.createMissingGroup) {
+      group = await prisma.group.create({
+        data: {
+          professorId: professor.id,
+          code: parsed.data.code,
+          groupLetter: parsed.data.groupLetter,
+          period: parsed.data.period,
+          name: parsed.data.groupName ?? `DEBUG ${parsed.data.code}`,
+          classroom: parsed.data.classroom ?? 'DEBUG',
+          level: parsed.data.level ?? 'DEBUG',
+          schedule: (debugSchedule ?? {}) as any,
+        },
+        select: { id: true, code: true, groupLetter: true, period: true },
+      });
+
+      request.log.info({
+        professorEmail: parsed.data.professorEmail,
+        groupId: group.id,
+        code: parsed.data.code,
+        groupLetter: parsed.data.groupLetter,
+        period: parsed.data.period,
+      }, 'debug group created for coordination reports');
+    }
+
+    if (group && parsed.data.createMissingGroup) {
+      group = await prisma.group.update({
+        where: { id: group.id },
+        data: {
+          name: parsed.data.groupName ?? `DEBUG ${parsed.data.code}`,
+          classroom: parsed.data.classroom ?? 'DEBUG',
+          level: parsed.data.level ?? 'DEBUG',
+          schedule: (debugSchedule ?? {}) as any,
+        },
+        select: { id: true, code: true, groupLetter: true, period: true },
+      });
+    }
+
+    if (!group) {
+      return reply.code(404).send({
+        error: 'GROUP_NOT_SYNCED',
+        message: `Grupo no sincronizado (code: ${parsed.data.code}, group: ${parsed.data.groupLetter}, period: ${parsed.data.period}).`,
+      });
+    }
+
+    const recordDate = attendanceDateFromServerNow(serverTimestamp);
+    const existingRecord = await prisma.attendanceRecord.findUnique({
+      where: {
+        date_groupId: {
+          date: recordDate,
+          groupId: group.id,
+        },
+      },
+      select: {
+        id: true,
+        professorEntryAt: true,
+      },
+    });
+    const attendanceRecord = await prisma.attendanceRecord.upsert({
+      where: {
+        date_groupId: {
+          date: recordDate,
+          groupId: group.id,
+        },
+      },
+      create: {
+        date: recordDate,
+        groupId: group.id,
+        professorId: professor.id,
+        professorEntryAt: serverTimestamp,
+        professorExitAt: parsed.data.professorExitAt ? serverTimestamp : null,
+        roomBeaconUuid: parsed.data.roomBeaconUuid,
+        roomBeaconRssi: parsed.data.roomBeaconRssi,
+        roomBeaconDistance: parsed.data.roomBeaconDistance,
+        roomBeaconAddress: parsed.data.roomBeaconAddress,
+        portalSyncStatus: PortalSyncStatus.NOT_REQUESTED,
+        portalSyncError: 'DEBUG_REPORT_ONLY: registro visible en reportes sin enviar al portal/API REST.',
+        portalSyncedAt: null,
+      },
+      update: {
+        professorId: professor.id,
+        professorEntryAt: existingRecord?.professorEntryAt ?? serverTimestamp,
+        ...(parsed.data.professorExitAt ? { professorExitAt: serverTimestamp } : {}),
+        roomBeaconUuid: parsed.data.roomBeaconUuid,
+        roomBeaconRssi: parsed.data.roomBeaconRssi,
+        roomBeaconDistance: parsed.data.roomBeaconDistance,
+        roomBeaconAddress: parsed.data.roomBeaconAddress,
+        portalSyncStatus: PortalSyncStatus.NOT_REQUESTED,
+        portalSyncError: 'DEBUG_REPORT_ONLY: registro visible en reportes sin enviar al portal/API REST.',
+        portalSyncedAt: null,
+      },
+    });
+
+    const groupStudents = await prisma.student.findMany({
+      where: { groupId: group.id },
+      select: { id: true, matricula: true },
+    });
+    const validStudentIds = new Set(groupStudents.flatMap((student) => [student.id, student.matricula]));
+    let savedAttendances = 0;
+
+    for (const attendance of parsed.data.attendances) {
+      if (!validStudentIds.has(attendance.studentId)) continue;
+      const student = groupStudents.find((item) => item.id === attendance.studentId || item.matricula === attendance.studentId);
+      if (!student) continue;
+
+      await prisma.attendance.upsert({
+        where: {
+          studentId_attendanceRecordId: {
+            studentId: student.id,
+            attendanceRecordId: attendanceRecord.id,
+          },
+        },
+        create: {
+          studentId: student.id,
+          attendanceRecordId: attendanceRecord.id,
+          status: attendance.status,
+        },
+        update: {
+          status: attendance.status,
+        },
+      });
+      savedAttendances += 1;
+    }
+
+    request.log.info({
+      professorEmail: parsed.data.professorEmail,
+      groupId: group.id,
+      date: recordDate.toISOString().slice(0, 10),
+      savedAttendances,
+    }, 'debug attendance stored for coordination reports');
+
+    return reply.code(201).send({
+      data: {
+        attendanceRecordId: attendanceRecord.id,
+        groupId: group.id,
+        date: recordDate.toISOString().slice(0, 10),
+        debug: true,
+        reportVisible: true,
+        savedAttendances,
+      },
+      message: 'Modo debug: asistencia registrada en backend principal para reportes, sin enviar al portal/API REST.',
+    });
+  });
 
   fastify.get('/internal/coordination/beacons', async (_request, reply) => {
     const beacons = await prisma.beacon.findMany({ orderBy: { classroom: 'asc' } });

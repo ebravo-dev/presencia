@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../core/constants/api_constants.dart';
 import '../core/permissions/permission_service.dart';
 import '../core/utils/utils.dart';
 import '../shared/models/asistencia_registro.dart';
@@ -52,17 +53,51 @@ class TeacherBeaconAttendanceService {
       _activeGroup = currentGroup;
       _roomBeaconUuid = await _loadRoomBeaconUuid(currentGroup);
 
-      final granted = await PermissionService.requestBluetoothPermissions();
-      if (!granted) {
-        Logger.info('[BeaconFlow] Permisos Bluetooth no concedidos');
-        return;
-      }
-
       final existing = _asistenciaService.obtenerAsistenciaPorGrupoYFecha(
         currentGroup.id,
         DateTime.now(),
       );
       _professorEntryRecorded = existing?.horaEntrada != null;
+
+      if (ApiConstants.presenciaDebugMode &&
+          ApiConstants.debugSimulateRoomBeacon) {
+        final simulatedUuid =
+            _roomBeaconUuid ?? ApiConstants.debugExtraBeaconUuid;
+        final detection = AltBeaconDetection(
+          uuid: simulatedUuid,
+          rssi: -48,
+          distance: 1.2,
+          bluetoothAddress: 'DEBUG:BE:AC:ON',
+        );
+
+        if (_professorEntryRecorded && existing?.horaEntrada != null) {
+          Logger.info(
+            '[BeaconFlow][DEBUG] Entrada local existente para '
+            '${currentGroup.classroom}; reenviando a reportes.',
+          );
+          await _syncProfessorEntryToBackend(
+            currentGroup,
+            existing!.horaEntrada!,
+            detection,
+          );
+          _roomEntryHandled = true;
+          return;
+        }
+
+        Logger.info(
+          '[BeaconFlow][DEBUG] Simulando deteccion de beacon de salon '
+          '${currentGroup.classroom}: $simulatedUuid',
+        );
+        await _recordProfessorEntry(currentGroup, detection);
+        _roomEntryHandled = true;
+        return;
+      }
+
+      final granted = await PermissionService.requestBluetoothPermissions();
+      if (!granted) {
+        Logger.info('[BeaconFlow] Permisos Bluetooth no concedidos');
+        return;
+      }
 
       if (_professorEntryRecorded) {
         if (_scanStudentBeaconsAfterRoomEntry) {
@@ -180,6 +215,14 @@ class TeacherBeaconAttendanceService {
 
     await _asistenciaService.guardarAsistencia(registro);
 
+    await _syncProfessorEntryToBackend(grupo, detectedAt, detection);
+  }
+
+  Future<void> _syncProfessorEntryToBackend(
+    Grupo grupo,
+    DateTime detectedAt,
+    AltBeaconDetection detection,
+  ) async {
     final token = _authStorage.getToken();
     if (token != null &&
         grupo.code != null &&
@@ -190,6 +233,10 @@ class TeacherBeaconAttendanceService {
         code: grupo.code!,
         groupLetter: grupo.groupLetter!,
         period: grupo.period!,
+        groupName: grupo.name,
+        classroom: grupo.classroom,
+        level: grupo.level,
+        schedule: grupo.schedule,
         detectedAt: detectedAt,
         beaconUuid: detection.uuid,
         rssi: detection.rssi,
@@ -330,7 +377,6 @@ class TeacherBeaconAttendanceService {
 
   Future<String?> _loadRoomBeaconUuid(Grupo grupo) async {
     final cached = _authStorage.getBeaconUuidForClassroom(grupo.classroom);
-    if (cached != null && cached.isNotEmpty) return cached;
 
     final result = await _apiService.resolveClassroomBeacons(
       classrooms: [grupo.classroom],

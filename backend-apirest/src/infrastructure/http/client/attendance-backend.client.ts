@@ -53,6 +53,29 @@ export class AttendanceBackendClient {
     }
   }
 
+  async recordDebugAttendance(input: {
+    professorEmail: string;
+    professorName?: string | null;
+    code: string;
+    groupLetter: string;
+    period: string;
+    groupName?: string | null;
+    classroom?: string | null;
+    level?: string | null;
+    schedule?: Record<string, unknown> | null;
+    createMissingGroup?: boolean;
+    date: string;
+    professorEntryAt?: string | null;
+    professorExitAt?: string | null;
+    roomBeaconUuid?: string | null;
+    roomBeaconRssi?: number | null;
+    roomBeaconDistance?: number | null;
+    roomBeaconAddress?: string | null;
+    attendances?: Array<{ studentId: string; status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' }>;
+  }) {
+    return this.request(() => this.http.post('/internal/coordination/debug-attendance', input));
+  }
+
   async listBeacons() {
     return this.request(() => this.http.get('/internal/coordination/beacons'));
   }

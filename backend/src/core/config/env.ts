@@ -19,6 +19,8 @@ const envSchema = z.object({
     // Server
     PORT: z.coerce.number().default(3000),
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+    APP_TIME_ZONE: z.string().default('America/Mexico_City'),
+    DEBUG_EXTRA_CLASS_HOURS: z.coerce.number().int().positive().default(4),
 
     // UAT Portal
     UAT_PORTAL_URL: z.string().url().default('https://administracionescolar.uat.edu.mx'),

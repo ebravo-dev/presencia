@@ -15,6 +15,7 @@ import { substitutionsRoutes } from './modules/substitutions/index.js';
 import { internalCoordinationRoutes } from './modules/internal-coordination/index.js';
 import { superUserRoutes } from './modules/super-user/index.js';
 import { sessionService } from './core/security/index.js';
+import { SERVER_TIME_ZONE, serverLocalDateString, serverNow } from './core/time/server-time.js';
 import fastifyStatic from '@fastify/static';
 import path from 'path';
 
@@ -85,8 +86,18 @@ async function registerRoutes(): Promise<void> {
     fastify.get('/health', async () => {
         return {
             status: 'ok',
-            timestamp: new Date().toISOString(),
+            timestamp: serverNow().toISOString(),
+            timezone: SERVER_TIME_ZONE,
             environment: env.NODE_ENV,
+        };
+    });
+
+    fastify.get('/time', async () => {
+        const now = serverNow();
+        return {
+            now: now.toISOString(),
+            timezone: SERVER_TIME_ZONE,
+            localDate: serverLocalDateString(now),
         };
     });
 

@@ -37,8 +37,18 @@ export interface ReportCell {
   status: ReportCellStatus;
   professorEntryAt: string | null;
   professorExitAt: string | null;
+  scheduledHours: number;
+  attendedHours: number;
+  coverageRate: number | null;
+  hourSlots: ReportHourSlot[];
   portalSyncStatus: string | null;
   portalSyncError: string | null;
+}
+export interface ReportHourSlot {
+  index: number;
+  startTime: string;
+  endTime: string;
+  status: ReportCellStatus;
 }
 export interface ReportRow {
   id: string; groupId: string; groupCode: string; grade?: string | null; subject: string; classroom: string | null; educationLevel: string | null;

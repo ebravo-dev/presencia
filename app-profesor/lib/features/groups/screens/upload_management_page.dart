@@ -5,6 +5,7 @@ import 'package:table_calendar/table_calendar.dart';
 
 import '../../../services/asistencia_local_service.dart';
 import '../../../shared/models/asistencia_registro.dart';
+import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/uat_colors.dart';
 import '../../../core/utils/utils.dart';
 import '../../../services/api_service.dart';
@@ -261,9 +262,13 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   Future<void> _subirAsistencias() async {
     if (_pendientes.isEmpty) return;
 
+    final debugSkipUpload =
+        ApiConstants.presenciaDebugMode ||
+        ApiConstants.skipApiRestAttendanceUpload;
+
     // Check connectivity before starting
     final hasInternet = await _syncService.hasInternetConnection();
-    if (!hasInternet) {
+    if (!hasInternet && !debugSkipUpload) {
       if (mounted) {
         HapticFeedback.heavyImpact();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -335,7 +340,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         'Registro ${registroActualizado.id}: ${attendances.length} alumnos a enviar de ${registroActualizado.asistenciasAlumnos.length} locales',
       );
 
-      if (attendances.isEmpty) {
+      if (attendances.isEmpty && !debugSkipUpload) {
         Logger.error(
           'Sin alumnos mapeados para registro ${registroActualizado.id}, omitiendo',
         );
@@ -382,7 +387,8 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       _StepStatus.completed,
       subtitle:
           '$sentCount enviado${sentCount == 1 ? '' : 's'}'
-          '${emptyCount > 0 ? ', $emptyCount sin cambios' : ''}',
+          '${emptyCount > 0 ? ', $emptyCount sin cambios' : ''}'
+          '${debugSkipUpload ? ' (debug: reportes, sin UAT)' : ''}',
     );
 
     if (sentRecords.isEmpty) {

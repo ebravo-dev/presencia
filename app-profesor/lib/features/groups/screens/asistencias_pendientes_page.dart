@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/models/asistencia_registro.dart';
 import '../../../shared/models/grupo.dart';
+import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/uat_colors.dart';
 import '../../../services/asistencia_local_service.dart';
 import '../../../services/api_service.dart';
@@ -311,14 +312,19 @@ class _AsistenciasPendientesPageState
         }
         return false;
       },
-      (_) async {
+      (response) async {
         await _asistenciaService.marcarComoSincronizada(registroActualizado.id);
         if (showSnackbars && mounted) {
+          final isDebugUpload =
+              response['skippedApiRestUpload'] == true ||
+              ApiConstants.presenciaDebugMode ||
+              ApiConstants.skipApiRestAttendanceUpload;
+          final message = isDebugUpload
+              ? 'Modo debug: asistencia registrada para reportes. No se envio a UAT.'
+              : 'Asistencia del ${_formatearFecha(registroActualizado.fecha)} sincronizada';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                'Asistencia del ${_formatearFecha(registroActualizado.fecha)} sincronizada',
-              ),
+              content: Text(message),
               backgroundColor: Colors.green,
               behavior: SnackBarBehavior.floating,
             ),

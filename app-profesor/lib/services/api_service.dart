@@ -13,6 +13,7 @@ import '../shared/models/sync_status.dart';
 
 class ApiService {
   late final Dio _presenceDio;
+  late final Dio _attendanceBackendDio;
 
   /// Callback que se dispara cuando el servidor retorna 401.
   void Function()? onSessionExpired;
@@ -21,6 +22,24 @@ class ApiService {
     _presenceDio = Dio(
       BaseOptions(
         baseUrl: ApiConstants.presenceApiBaseUrl,
+        headers: const {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        connectTimeout: Duration(
+          milliseconds: ApiConstants.presenceTimeoutDuration,
+        ),
+        receiveTimeout: Duration(
+          milliseconds: ApiConstants.presenceTimeoutDuration,
+        ),
+        sendTimeout: Duration(
+          milliseconds: ApiConstants.presenceTimeoutDuration,
+        ),
+      ),
+    );
+    _attendanceBackendDio = Dio(
+      BaseOptions(
+        baseUrl: ApiConstants.attendanceBackendBaseUrl,
         headers: const {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -64,7 +83,15 @@ class ApiService {
   bool get _usesBackendApiRest {
     final uri = Uri.tryParse(ApiConstants.presenceApiBaseUrl);
     if (uri == null) return false;
-    return uri.host.contains('backendapirest') || uri.port == 3100;
+    return uri.host.contains('backendapirest') ||
+        uri.host.contains('backendrestapi') ||
+        uri.port == 3100;
+  }
+
+  bool get _skipApiRestAttendanceUpload {
+    return _usesBackendApiRest &&
+        (ApiConstants.presenciaDebugMode ||
+            ApiConstants.skipApiRestAttendanceUpload);
   }
 
   Future<Either<String, LoginResponse>> loginProfesor({
@@ -154,6 +181,44 @@ class ApiService {
     return loginProfesor(email: email, password: encryptedPassword);
   }
 
+  Future<String?> _refreshBackendApiRestSession() async {
+    final authStorage = AuthStorageService();
+    final profesor = authStorage.getProfesor();
+    final password = authStorage.getEncryptedPassword();
+
+    if (profesor == null ||
+        profesor.institutionalEmail.isEmpty ||
+        password == null ||
+        password.isEmpty) {
+      Logger.error(
+        'No se pudo renovar sesion UAT: faltan profesor o contrasena guardada.',
+      );
+      return null;
+    }
+
+    Logger.info(
+      'Renovando sesion UAT para API REST: ${profesor.institutionalEmail}',
+    );
+    final result = await _loginProfesorViaBackendApiRest(
+      email: profesor.institutionalEmail,
+      password: password,
+    );
+
+    String? refreshedToken;
+    await result.fold(
+      (error) async {
+        Logger.error('No se pudo renovar sesion UAT: $error');
+      },
+      (login) async {
+        refreshedToken = login.token;
+        await authStorage.saveToken(login.token);
+        await authStorage.saveProfesor(login.profesor);
+      },
+    );
+
+    return refreshedToken;
+  }
+
   /// Obtiene las clases asignadas al profesor autenticado
   /// Usa el backend principal como gateway hacia backend-apirest.
   /// Retorna tupla (grupos, beacons) donde beacons es la lista cruda del server
@@ -184,7 +249,8 @@ class ApiService {
       Logger.info(
         'Clases obtenidas: ${grupos.length}, Beacons: ${beacons.length}',
       );
-      return Right((grupos: grupos, beacons: beacons));
+      final debugData = withDebugCurrentClass(grupos, beacons);
+      return Right(debugData);
     } on DioException catch (e) {
       final errorMessage = _handleDioError(e);
       Logger.error('Error de conexión obteniendo clases: $errorMessage', e);
@@ -285,10 +351,12 @@ class ApiService {
         );
       }
 
+      var beacons = await _resolveBeaconsForGroups(grupos);
+      final debugData = withDebugCurrentClass(grupos, beacons);
       Logger.info(
-        'Clases obtenidas: ${gruposPortal.length} oficiales y ${sharedGroups.length} compartidas',
+        'Clases obtenidas: ${gruposPortal.length} oficiales, ${sharedGroups.length} compartidas, beacons: ${debugData.beacons.length}',
       );
-      return Right((grupos: grupos, beacons: const <Map<String, dynamic>>[]));
+      return Right(debugData);
     } on DioException catch (e) {
       final errorMessage = _handleDioError(e);
       Logger.error('Error de conexion obteniendo clases UAT: $errorMessage', e);
@@ -297,6 +365,117 @@ class ApiService {
       Logger.error('Error inesperado obteniendo clases UAT', e, stackTrace);
       return Left(_cleanException(e));
     }
+  }
+
+  ({List<Grupo> grupos, List<Map<String, dynamic>> beacons})
+  withDebugCurrentClass(
+    List<Grupo> grupos,
+    List<Map<String, dynamic>> beacons,
+  ) {
+    if (!ApiConstants.presenciaDebugMode ||
+        !ApiConstants.debugExtraCurrentClass) {
+      return (grupos: grupos, beacons: beacons);
+    }
+
+    final now = DateTime.now();
+    final debugClassHours = ApiConstants.debugExtraClassHours < 1
+        ? 1
+        : ApiConstants.debugExtraClassHours;
+    final start = now.subtract(const Duration(minutes: 10));
+    final end = start.add(Duration(hours: debugClassHours));
+    final scheduleValue = '${_formatHour(start)}-${_formatHour(end)}';
+    final dayKeys = _debugAllDayKeys();
+    final schedule = <String, String?>{
+      for (final key in dayKeys) key: scheduleValue,
+    };
+
+    final debugGroup = Grupo(
+      id: ApiConstants.debugExtraClassCode,
+      code: ApiConstants.debugExtraClassCode,
+      groupLetter: ApiConstants.debugExtraClassGroupLetter,
+      period: ApiConstants.debugExtraClassPeriod,
+      group: ApiConstants.debugExtraClassGroupLetter,
+      classroom: ApiConstants.debugExtraClassroom,
+      name: ApiConstants.debugExtraClassName,
+      level: 'DEBUG',
+      students: const [
+        Alumno(
+          id: '99000101',
+          matricula: 'DEBUG001',
+          number: 1,
+          name: 'Alumno Debug 1',
+        ),
+        Alumno(
+          id: '99000102',
+          matricula: 'DEBUG002',
+          number: 2,
+          name: 'Alumno Debug 2',
+        ),
+        Alumno(
+          id: '99000103',
+          matricula: 'DEBUG003',
+          number: 3,
+          name: 'Alumno Debug 3',
+        ),
+      ],
+      studentsCount: 3,
+      schedule: schedule,
+      source: 'DEBUG',
+    );
+
+    final filteredGroups = grupos
+        .where((grupo) => grupo.code != ApiConstants.debugExtraClassCode)
+        .toList();
+    final filteredBeacons = beacons.where((beacon) {
+      final classroom = beacon['classroom']?.toString();
+      final classroomKey = beacon['classroomKey']?.toString();
+      return classroom != ApiConstants.debugExtraClassroom &&
+          classroomKey !=
+              AuthStorageService.classroomKey(ApiConstants.debugExtraClassroom);
+    }).toList();
+
+    final debugBeacon = {
+      'classroom': ApiConstants.debugExtraClassroom,
+      'classroomKey': AuthStorageService.classroomKey(
+        ApiConstants.debugExtraClassroom,
+      ),
+      'uuid': ApiConstants.debugExtraBeaconUuid,
+      'source': 'DEBUG',
+    };
+
+    Logger.info(
+      '[DEBUG] Materia extra actual agregada: '
+      '${debugGroup.name}, salon=${debugGroup.classroom}, '
+      'horario=$scheduleValue, beacon=${ApiConstants.debugExtraBeaconUuid}',
+    );
+
+    return (
+      grupos: [debugGroup, ...filteredGroups],
+      beacons: [debugBeacon, ...filteredBeacons],
+    );
+  }
+
+  List<String> _debugAllDayKeys() {
+    return const [
+      'monday',
+      'lunes',
+      'tuesday',
+      'martes',
+      'wednesday',
+      'miercoles',
+      'jueves',
+      'thursday',
+      'friday',
+      'viernes',
+      'saturday',
+      'sabado',
+      'sunday',
+      'domingo',
+    ];
+  }
+
+  String _formatHour(DateTime value) {
+    return '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
   }
 
   Future<List<Alumno>> _loadAlumnosForGroup({
@@ -421,16 +600,45 @@ class ApiService {
     required DateTime date,
     required List<Map<String, dynamic>> attendances,
     required String encryptedPassword,
+    String? groupName,
+    String? classroom,
+    String? level,
+    Map<String, String?>? schedule,
     DateTime? professorEntryAt,
     DateTime? professorExitAt,
     String? groupId,
     bool forceUpload = false,
   }) async {
+    if (_skipApiRestAttendanceUpload) {
+      return _uploadAttendanceViaBackendApiRest(
+        token: token,
+        groupId: groupId,
+        code: code,
+        groupLetter: groupLetter,
+        period: period,
+        groupName: groupName,
+        classroom: classroom,
+        level: level,
+        schedule: schedule,
+        date: date,
+        attendances: attendances,
+        professorEntryAt: professorEntryAt,
+        professorExitAt: professorExitAt,
+        debugReportOnly: true,
+      );
+    }
+
     if (_usesBackendApiRest) {
       return _uploadAttendanceViaBackendApiRest(
         token: token,
         groupId: groupId,
         code: code,
+        groupLetter: groupLetter,
+        period: period,
+        groupName: groupName,
+        classroom: classroom,
+        level: level,
+        schedule: schedule,
         date: date,
         attendances: attendances,
         professorEntryAt: professorEntryAt,
@@ -474,10 +682,18 @@ class ApiService {
     required String token,
     String? groupId,
     required String code,
+    String groupLetter = '',
+    String period = '',
+    String? groupName,
+    String? classroom,
+    String? level,
+    Map<String, String?>? schedule,
     required DateTime date,
     required List<Map<String, dynamic>> attendances,
     DateTime? professorEntryAt,
     DateTime? professorExitAt,
+    bool debugReportOnly = false,
+    bool retrySession = true,
   }) async {
     try {
       final idGrupo = int.tryParse(groupId ?? '') ?? int.tryParse(code);
@@ -516,8 +732,21 @@ class ApiService {
         });
       }
 
-      if (asistencia.isEmpty) {
+      if (asistencia.isEmpty && !debugReportOnly) {
         return const Left('No hay alumnos validos para subir asistencia.');
+      }
+
+      final formattedDate =
+          '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+      if (debugReportOnly) {
+        Logger.info(
+          '[DEBUG] Registrando asistencia para reportes sin enviar a UAT/API REST externa. '
+          'groupId=$idGrupo, code=$code, groupLetter=$groupLetter, period=$period, '
+          'date=$formattedDate, alumnos=${asistencia.length}, '
+          'professorEntryAt=${professorEntryAt?.toIso8601String()}, '
+          'professorExitAt=${professorExitAt?.toIso8601String()}',
+        );
       }
 
       final response = await _presenceDio.post(
@@ -525,6 +754,18 @@ class ApiService {
         data: {
           'Id_Grupo': idGrupo,
           'Fec_Ini': formatUatWeekStart(date),
+          if (debugReportOnly) ...{
+            'DebugReportOnly': true,
+            'Code': code,
+            'GroupLetter': groupLetter,
+            'Period': period,
+            if (groupName != null) 'GroupName': groupName,
+            if (classroom != null) 'Classroom': classroom,
+            if (level != null) 'Level': level,
+            if (schedule != null) 'Schedule': schedule,
+            'CreateMissingGroup': true,
+            'Date': formattedDate,
+          },
           if (professorEntryAt != null)
             'ProfessorEntryAt': professorEntryAt.toIso8601String(),
           if (professorExitAt != null)
@@ -534,8 +775,40 @@ class ApiService {
         options: Options(headers: {'X-UAT-Session-Id': token}),
       );
 
-      return Right(_asMap(response.data));
+      final responseMap = _asMap(response.data);
+      if (debugReportOnly) {
+        responseMap['debug'] = true;
+        responseMap['skippedApiRestUpload'] = true;
+        responseMap['reportVisible'] = true;
+      }
+      return Right(responseMap);
     } on DioException catch (e) {
+      if (e.response?.statusCode == 401 &&
+          retrySession &&
+          _usesBackendApiRest) {
+        final refreshedToken = await _refreshBackendApiRestSession();
+        if (refreshedToken != null && refreshedToken.isNotEmpty) {
+          Logger.info('Reintentando subida con sesion UAT renovada.');
+          return _uploadAttendanceViaBackendApiRest(
+            token: refreshedToken,
+            groupId: groupId,
+            code: code,
+            groupLetter: groupLetter,
+            period: period,
+            groupName: groupName,
+            classroom: classroom,
+            level: level,
+            schedule: schedule,
+            date: date,
+            attendances: attendances,
+            professorEntryAt: professorEntryAt,
+            professorExitAt: professorExitAt,
+            debugReportOnly: debugReportOnly,
+            retrySession: false,
+          );
+        }
+      }
+
       final errorMessage = _handleDioError(e);
       Logger.error('Error subiendo asistencia UAT: $errorMessage', e);
       return Left(errorMessage);
@@ -645,13 +918,21 @@ class ApiService {
 
       if (normalizedClassrooms.isEmpty) return const Right([]);
 
-      final response = await _presenceDio.post(
+      Logger.info(
+        'Resolviendo beacons en backend principal para ${normalizedClassrooms.length} salones',
+      );
+
+      final response = await _attendanceBackendDio.post(
         '/api/beacons/resolve',
         data: {'classrooms': normalizedClassrooms},
       );
 
       if (response.statusCode == 200) {
         final data = response.data['data'] as List<dynamic>? ?? [];
+        final missing = response.data['missing'] as List<dynamic>? ?? [];
+        Logger.info(
+          'Beacons resueltos: ${data.length}, salones sin beacon: ${missing.length}',
+        );
         return Right(
           data.map((item) => Map<String, dynamic>.from(item as Map)).toList(),
         );
@@ -666,6 +947,23 @@ class ApiService {
       Logger.error('Error inesperado obteniendo beacons', e, stackTrace);
       return Left('Error inesperado: ${e.toString()}');
     }
+  }
+
+  Future<List<Map<String, dynamic>>> _resolveBeaconsForGroups(
+    List<Grupo> grupos,
+  ) async {
+    final classrooms = grupos
+        .map((grupo) => grupo.classroom)
+        .where((classroom) => classroom.trim().isNotEmpty)
+        .toSet()
+        .toList();
+    if (classrooms.isEmpty) return const <Map<String, dynamic>>[];
+
+    final result = await resolveClassroomBeacons(classrooms: classrooms);
+    return result.fold((error) {
+      Logger.error('No se pudieron resolver beacons de grupos: $error');
+      return const <Map<String, dynamic>>[];
+    }, (beacons) => beacons);
   }
 
   Future<Either<String, List<Map<String, dynamic>>>>
@@ -711,13 +1009,69 @@ class ApiService {
     required String code,
     required String groupLetter,
     required String period,
+    String? groupName,
+    String? classroom,
+    String? level,
+    Map<String, String?>? schedule,
     required DateTime detectedAt,
     required String beaconUuid,
     int? rssi,
     double? distance,
     String? bluetoothAddress,
+    bool retrySession = true,
   }) async {
     try {
+      if (_skipApiRestAttendanceUpload) {
+        final idGrupo = int.tryParse(code);
+        if (idGrupo != null && idGrupo > 0) {
+          final formattedDate =
+              '${detectedAt.year.toString().padLeft(4, '0')}-${detectedAt.month.toString().padLeft(2, '0')}-${detectedAt.day.toString().padLeft(2, '0')}';
+          Logger.info(
+            '[DEBUG] Registrando entrada del profesor para reportes sin enviar a UAT/API REST externa. '
+            'code=$code groupLetter=$groupLetter period=$period detectedAt=${detectedAt.toIso8601String()} beaconUuid=$beaconUuid',
+          );
+
+          final response = await _presenceDio.post(
+            ApiConstants.uatAsistenciaGuardar,
+            data: {
+              'Id_Grupo': idGrupo,
+              'Fec_Ini': formatUatWeekStart(detectedAt),
+              'DebugReportOnly': true,
+              'Code': code,
+              'GroupLetter': groupLetter,
+              'Period': period,
+              if (groupName != null) 'GroupName': groupName,
+              if (classroom != null) 'Classroom': classroom,
+              if (level != null) 'Level': level,
+              if (schedule != null) 'Schedule': schedule,
+              'CreateMissingGroup': true,
+              'Date': formattedDate,
+              'ProfessorEntryAt': detectedAt.toIso8601String(),
+              'Asistencia': <Map<String, dynamic>>[],
+            },
+            options: Options(headers: {'X-UAT-Session-Id': token}),
+          );
+
+          final responseMap = _asMap(response.data);
+          responseMap['debug'] = true;
+          responseMap['skippedApiRestUpload'] = true;
+          responseMap['reportVisible'] = true;
+          return Right(responseMap);
+        }
+
+        Logger.info(
+          '[DEBUG] Entrada profesor marcada localmente; no se pudo derivar Id_Grupo numerico para reportes. '
+          'code=$code groupLetter=$groupLetter period=$period detectedAt=${detectedAt.toIso8601String()} beaconUuid=$beaconUuid',
+        );
+        return Right({
+          'debug': true,
+          'skippedApiRestUpload': true,
+          'reportVisible': false,
+          'message':
+              'Modo debug: entrada del profesor marcada localmente; se registrara en reportes al subir asistencia.',
+        });
+      }
+
       final response = await _presenceDio.post(
         '/attendance/professor-entry',
         data: {
@@ -741,6 +1095,33 @@ class ApiService {
 
       return Left(response.data['message'] ?? 'Error registrando entrada');
     } on DioException catch (e) {
+      if (e.response?.statusCode == 401 &&
+          retrySession &&
+          _usesBackendApiRest) {
+        final refreshedToken = await _refreshBackendApiRestSession();
+        if (refreshedToken != null && refreshedToken.isNotEmpty) {
+          Logger.info(
+            'Reintentando registro de entrada con sesion UAT renovada.',
+          );
+          return recordProfessorBeaconEntry(
+            token: refreshedToken,
+            code: code,
+            groupLetter: groupLetter,
+            period: period,
+            groupName: groupName,
+            classroom: classroom,
+            level: level,
+            schedule: schedule,
+            detectedAt: detectedAt,
+            beaconUuid: beaconUuid,
+            rssi: rssi,
+            distance: distance,
+            bluetoothAddress: bluetoothAddress,
+            retrySession: false,
+          );
+        }
+      }
+
       final errorMessage = _handleDioError(e);
       Logger.error('Error registrando entrada por beacon: $errorMessage', e);
       return Left(errorMessage);

@@ -36,6 +36,19 @@ import { internalCoordinationRoutes } from './presentation/http/routes/internal-
 import { uatRoutes } from './presentation/http/routes/uat.routes.js';
 import type { DebugProfessorInput, HarvestDebugOptions } from './application/use-cases/harvest-teacher-data.use-case.js';
 
+const SERVER_TIME_ZONE = env.APP_TIME_ZONE;
+
+function serverLocalDateString(value = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: SERVER_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(value);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
 export async function buildApp() {
   const fastify = Fastify({
     logger: {
@@ -138,13 +151,24 @@ export async function buildApp() {
     activeUatSessions: await uatService.getActiveSessionCount(),
     activeUatStudentSessions: await uatStudentService.getActiveSessionCount(),
     timestamp: new Date().toISOString(),
+    timezone: SERVER_TIME_ZONE,
   }));
+
+  fastify.get('/time', async () => {
+    const now = new Date();
+    return {
+      now: now.toISOString(),
+      timezone: SERVER_TIME_ZONE,
+      localDate: serverLocalDateString(now),
+    };
+  });
 
   await fastify.register(uatRoutes, {
     uatService,
     uatStudentService,
     eventBus,
     sharedClassService,
+    attendanceBackendClient,
   });
 
   await fastify.register(coordinatorAuthRoutes, { authService: coordinatorAuthService });

@@ -154,7 +154,7 @@ export async function superUserRoutes(fastify: FastifyInstance) {
     );
 }
 
-function requireSuperUser(request: FastifyRequest, reply: FastifyReply) {
+async function requireSuperUser(request: FastifyRequest, reply: FastifyReply) {
     const cookies = parseCookies(request.headers.cookie);
     const user = superUserService.authenticate(cookies[SUPER_USER_COOKIE]);
     if (!user) {

@@ -1,7 +1,9 @@
 import { jsPDF } from 'jspdf';
 import autoTable, { type CellHookData } from 'jspdf-autotable';
 import fiuatLogo from '@/assets/fiuat-logo.png';
-import type { AttendanceReportResponse, RangeReportResponse, ReportCellStatus, ReportDay, WeeklyReportResponse } from '@/core/api/types';
+import type { AttendanceReportResponse, RangeReportResponse, ReportCellStatus, ReportDay, ReportRow, WeeklyReportResponse } from '@/core/api/types';
+
+const REPORT_TIME_ZONE = 'America/Mexico_City';
 
 const days: Array<{ key: ReportDay; label: string }> = [
   { key: 'monday', label: 'Lunes' },
@@ -53,15 +55,18 @@ export async function exportReportPdf(report: AttendanceReportResponse): Promise
   doc.text(`Coordinación: ${report.data.teacher.coordinations?.[0]?.name || 'Coordinación Académica'}`, 108, 50);
   doc.text(`Correo: ${report.data.teacher.email || '—'}`, 18, 55);
 
+  const weeklyRows = weeklyHourRows(report.data.rows);
   autoTable(doc, {
     startY: 63,
     margin: { left: 14, right: 14 },
     theme: 'grid',
     head: [['Horario / Materia', ...days.map((day, index) => `${day.label}\n${formatDay(addDays(report.data.week.start, index))}`), 'Cumpl.\nSemana']],
-    body: report.data.rows.map((row) => [
-      `${row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : row.rawSchedule}\n${row.subject}\nGrupo ${row.groupCode}${row.classroom ? ` · ${row.classroom}` : ''}`,
-      ...days.map((day) => row.cells[day.key]?.status ?? 'NOT_SCHEDULED'),
-      formatRate(row.completionRate),
+    body: weeklyRows.map(({ row, hourIndex }) => [
+      hourIndex === 0
+        ? `${row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : row.rawSchedule}\n${row.subject}\nGrupo ${row.groupCode}${row.classroom ? ` · ${row.classroom}` : ''}`
+        : '',
+      ...days.map((day) => row.cells[day.key]?.hourSlots?.[hourIndex]?.status ?? 'NOT_SCHEDULED'),
+      hourIndex === 0 ? formatRate(row.completionRate) : '',
     ]),
     styles: { font: 'helvetica', fontSize: 6.5, cellPadding: 2.2, valign: 'middle', lineColor: [203, 213, 225], lineWidth: 0.2 },
     headStyles: { fillColor: [241, 245, 249], textColor: [51, 65, 85], fontStyle: 'bold', halign: 'center', minCellHeight: 12 },
@@ -75,7 +80,7 @@ export async function exportReportPdf(report: AttendanceReportResponse): Promise
     didParseCell: (data) => {
       if (data.section === 'body' && data.column.index > 0 && data.column.index <= days.length) data.cell.text = [];
     },
-    didDrawCell: (data) => drawStatusMark(doc, data, report),
+    didDrawCell: (data) => drawStatusMark(doc, data, weeklyRows),
   });
 
   const finalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 70;
@@ -143,7 +148,7 @@ async function exportRangeReportPdf(report: RangeReportResponse): Promise<void> 
     startY: 63,
     margin: { left: 14, right: 14 },
     theme: 'grid',
-    head: [['Materia', 'Grado', 'Grupo', 'Dias de clase\nen el periodo', 'Dias de clase\nreportados', 'Porcentaje\nde asistencia']],
+    head: [['Materia', 'Grado', 'Grupo', 'Horas\nprogramadas', 'Horas\ncubiertas', 'Porcentaje\nde asistencia']],
     body: report.data.rows.map((row) => [
       `${row.subject}\n${row.rawSchedule || 'Sin horario'}${row.classroom ? ` · ${row.classroom}` : ''}`,
       row.grade || '-',
@@ -185,9 +190,9 @@ async function exportRangeReportPdf(report: RangeReportResponse): Promise<void> 
   doc.text('Resumen de asistencia', 18, summaryY + 5);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
-  doc.text(`Dias programados: ${report.data.summary.scheduledClassDays}`, 18, summaryY + 12);
-  doc.text(`Dias reportados: ${report.data.summary.reportedClassDays}`, 64, summaryY + 12);
-  doc.text(`Pendientes: ${report.data.summary.missingClassDays}`, 111, summaryY + 12);
+  doc.text(`Horas programadas: ${report.data.summary.scheduledClassDays}`, 18, summaryY + 12);
+  doc.text(`Horas cubiertas: ${report.data.summary.reportedClassDays}`, 64, summaryY + 12);
+  doc.text(`Horas faltantes: ${report.data.summary.missingClassDays}`, 111, summaryY + 12);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(200, 16, 46);
   doc.text(`Asistencia: ${formatRangeRate(report.data.summary.attendanceRate)}`, 151, summaryY + 12);
@@ -195,17 +200,20 @@ async function exportRangeReportPdf(report: RangeReportResponse): Promise<void> 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139);
   doc.setFontSize(6.5);
-  doc.text('Porcentaje = dias de clase reportados / dias de clase en el periodo.', 14, 290);
+  doc.text('Porcentaje = horas cubiertas / horas programadas.', 14, 290);
   doc.text(`Zona horaria: ${report.meta.timezone}`, 196, 290, { align: 'right' });
   doc.save(rangeFilename(report));
 }
 
-function drawStatusMark(doc: jsPDF, data: CellHookData, report: WeeklyReportResponse): void {
+function drawStatusMark(doc: jsPDF, data: CellHookData, rows: ReturnType<typeof weeklyHourRows>): void {
   if (data.section !== 'body' || data.column.index === 0) return;
   const day = days[data.column.index - 1];
-  const row = report.data.rows[data.row.index];
+  const displayRow = rows[data.row.index];
+  const row = displayRow?.row;
   if (!day || !row) return;
-  const status = row.cells[day.key]?.status ?? 'NOT_SCHEDULED';
+  const cell = row.cells[day.key];
+  const hourSlot = cell?.hourSlots?.[displayRow.hourIndex];
+  const status = hourSlot?.status ?? 'NOT_SCHEDULED';
   const x = data.cell.x + data.cell.width / 2;
   const y = data.cell.y + data.cell.height / 2;
   doc.setLineWidth(0.55);
@@ -221,6 +229,18 @@ function drawStatusMark(doc: jsPDF, data: CellHookData, report: WeeklyReportResp
   } else {
     drawQuestion(doc, x, y, status);
   }
+  if (hourSlot) {
+    doc.setFontSize(4.8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`${hourSlot.startTime}-${hourSlot.endTime}`, x, y + 5.6, { align: 'center' });
+  }
+}
+
+function weeklyHourRows(rows: ReportRow[]) {
+  return rows.flatMap((row) => {
+    const rowSpan = Math.max(1, ...days.map((day) => row.cells[day.key]?.hourSlots?.length ?? 0));
+    return Array.from({ length: rowSpan }, (_, hourIndex) => ({ row, hourIndex, rowSpan }));
+  });
 }
 
 function drawQuestion(doc: jsPDF, x: number, y: number, _status: ReportCellStatus): void {
@@ -232,7 +252,7 @@ async function loadLogo(): Promise<Uint8Array | null> {
 }
 function addDays(value: string, amount: number) { const date = new Date(`${value}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + amount); return date.toISOString().slice(0, 10); }
 function formatDay(value: string) { return new Date(`${value}T12:00:00Z`).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }); }
-function formatDate(value: string) { return new Date(value).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }); }
+function formatDate(value: string) { return new Date(value).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', timeZone: REPORT_TIME_ZONE }); }
 function formatRange(start: string, end: string) { return `${formatDay(start)} – ${formatDay(end)}`; }
 function formatRate(value: number | null | undefined) { return value == null ? 'N/D' : `${value}%`; }
 function formatRangeRate(value: number | null | undefined) { return value == null ? 'N/D' : `${value.toFixed(2)}%`; }

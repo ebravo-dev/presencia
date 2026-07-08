@@ -8,6 +8,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().positive().default(3100),
+  APP_TIME_ZONE: z.string().default('America/Mexico_City'),
   UAT_BASE_URL: z
     .string()
     .url()

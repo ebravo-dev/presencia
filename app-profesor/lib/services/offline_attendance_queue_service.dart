@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../core/utils/utils.dart';
+import '../core/constants/api_constants.dart';
 import '../shared/models/asistencia_registro.dart';
 import '../shared/models/grupo.dart';
 import 'api_service.dart';
@@ -104,7 +105,10 @@ class OfflineAttendanceQueueService {
         }
 
         final attendances = _buildAttendances(registro, group);
-        if (attendances.isEmpty) {
+        final debugSkipUpload =
+            ApiConstants.presenciaDebugMode ||
+            ApiConstants.skipApiRestAttendanceUpload;
+        if (attendances.isEmpty && !debugSkipUpload) {
           skipped++;
           Logger.info('Cola offline: sin alumnos mapeados para ${registro.id}');
           continue;

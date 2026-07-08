@@ -91,8 +91,8 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
         password: password,
       );
 
-      result.fold(
-        (error) {
+      await result.fold(
+        (error) async {
           Logger.error('Error en login: $error');
           state = state.copyWith(
             status: ProfesorAuthStatus.error,
@@ -148,10 +148,18 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
       if (!forceRefresh) {
         final cachedGrupos = _authStorage.getGrupos();
         if (cachedGrupos != null && cachedGrupos.isNotEmpty) {
-          Logger.info(
-            '💾 ${cachedGrupos.length} clases cargadas desde cache local',
+          final debugData = _apiService.withDebugCurrentClass(
+            cachedGrupos,
+            _authStorage.getBeacons() ?? const <Map<String, dynamic>>[],
           );
-          state = state.copyWith(grupos: cachedGrupos, isLoadingGroups: false);
+          Logger.info(
+            '💾 ${debugData.grupos.length} clases cargadas desde cache local',
+          );
+          await _authStorage.saveBeacons(debugData.beacons);
+          state = state.copyWith(
+            grupos: debugData.grupos,
+            isLoadingGroups: false,
+          );
           return; // No hacer petición HTTP
         }
       }
@@ -165,17 +173,22 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
 
       final result = await _apiService.getGruposProfesor(state.token!);
 
-      result.fold(
-        (error) {
+      await result.fold(
+        (error) async {
           Logger.error('Error cargando clases: $error');
           // Si falla, intentar usar cache como fallback
           final cachedGrupos = _authStorage.getGrupos();
           if (cachedGrupos != null && cachedGrupos.isNotEmpty) {
-            Logger.info(
-              '⚠️ Usando cache como fallback: ${cachedGrupos.length} clases',
+            final debugData = _apiService.withDebugCurrentClass(
+              cachedGrupos,
+              _authStorage.getBeacons() ?? const <Map<String, dynamic>>[],
             );
+            Logger.info(
+              '⚠️ Usando cache como fallback: ${debugData.grupos.length} clases',
+            );
+            await _authStorage.saveBeacons(debugData.beacons);
             state = state.copyWith(
-              grupos: cachedGrupos,
+              grupos: debugData.grupos,
               isLoadingGroups: false,
             );
           } else {
@@ -201,10 +214,18 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
       // Intentar usar cache como fallback en caso de error
       final cachedGrupos = _authStorage.getGrupos();
       if (cachedGrupos != null && cachedGrupos.isNotEmpty) {
-        Logger.info(
-          '⚠️ Usando cache como fallback tras error: ${cachedGrupos.length} clases',
+        final debugData = _apiService.withDebugCurrentClass(
+          cachedGrupos,
+          _authStorage.getBeacons() ?? const <Map<String, dynamic>>[],
         );
-        state = state.copyWith(grupos: cachedGrupos, isLoadingGroups: false);
+        Logger.info(
+          '⚠️ Usando cache como fallback tras error: ${debugData.grupos.length} clases',
+        );
+        await _authStorage.saveBeacons(debugData.beacons);
+        state = state.copyWith(
+          grupos: debugData.grupos,
+          isLoadingGroups: false,
+        );
       } else {
         state = state.copyWith(isLoadingGroups: false);
       }

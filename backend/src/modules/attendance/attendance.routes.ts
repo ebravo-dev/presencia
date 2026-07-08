@@ -4,6 +4,7 @@ import { jwtService, rsaService, sessionService } from '../../core/security/inde
 import { AttendanceStatus, PortalSyncStatus, SyncStatus } from '@prisma/client';
 import { uatRestSyncService } from '../uat-rest/index.js';
 import { findBeaconByClassroom } from '../beacons/beacons.service.js';
+import { attendanceDateFromServerNow, serverNow } from '../../core/time/server-time.js';
 import {
     registerAttendanceSchema,
     attendanceHistoryQuerySchema,
@@ -236,21 +237,31 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
 
                 const { group, attendanceProfessorId, isSubstitute } = resolvedGroup;
                 const groupId = group.id;
+                const recordDate = new Date(date);
+                const existingRecord = await prisma.attendanceRecord.findUnique({
+                    where: {
+                        date_groupId: {
+                            date: recordDate,
+                            groupId,
+                        },
+                    },
+                });
+                const attendanceServerTimestamp = serverNow();
                 const professorAttendanceTimes = {
-                    ...(professorEntryAt ? { professorEntryAt: new Date(professorEntryAt) } : {}),
-                    ...(professorExitAt ? { professorExitAt: new Date(professorExitAt) } : {}),
+                    ...(professorEntryAt && !existingRecord?.professorEntryAt ? { professorEntryAt: attendanceServerTimestamp } : {}),
+                    ...(professorExitAt ? { professorExitAt: attendanceServerTimestamp } : {}),
                 };
 
                 // Create or update attendance record
                 const attendanceRecord = await prisma.attendanceRecord.upsert({
                     where: {
                         date_groupId: {
-                            date: new Date(date),
+                            date: recordDate,
                             groupId,
                         },
                     },
                     create: {
-                        date: new Date(date),
+                        date: recordDate,
                         groupId,
                         professorId: attendanceProfessorId,
                         ...professorAttendanceTimes,
@@ -402,7 +413,9 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
             try {
                 const validated = professorBeaconEntrySchema.parse(request.body);
                 const professorId = (request as AuthenticatedRequest).professorId!;
-                const { code, groupLetter, period, date, detectedAt, beaconUuid, rssi, distance, bluetoothAddress } = validated;
+                const { code, groupLetter, period, beaconUuid, rssi, distance, bluetoothAddress } = validated;
+                const detectedAt = serverNow();
+                const recordDate = attendanceDateFromServerNow(detectedAt);
 
                 const resolvedGroup = await resolveProfessorGroup({ professorId, code, groupLetter, period });
                 if (!resolvedGroup) {
@@ -432,25 +445,37 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                     });
                 }
 
+                const existingRecord = await prisma.attendanceRecord.findUnique({
+                    where: {
+                        date_groupId: {
+                            date: recordDate,
+                            groupId: group.id,
+                        },
+                    },
+                });
+                const professorEntryUpdate = existingRecord?.professorEntryAt
+                    ? {}
+                    : { professorEntryAt: detectedAt };
+
                 const attendanceRecord = await prisma.attendanceRecord.upsert({
                     where: {
                         date_groupId: {
-                            date: new Date(date),
+                            date: recordDate,
                             groupId: group.id,
                         },
                     },
                     create: {
-                        date: new Date(date),
+                        date: recordDate,
                         groupId: group.id,
                         professorId: attendanceProfessorId,
-                        professorEntryAt: new Date(detectedAt),
+                        professorEntryAt: detectedAt,
                         roomBeaconUuid: beaconUuid,
                         roomBeaconRssi: rssi,
                         roomBeaconDistance: distance,
                         roomBeaconAddress: bluetoothAddress,
                     },
                     update: {
-                        professorEntryAt: new Date(detectedAt),
+                        ...professorEntryUpdate,
                         roomBeaconUuid: beaconUuid,
                         roomBeaconRssi: rssi,
                         roomBeaconDistance: distance,
@@ -462,7 +487,7 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                     data: {
                         attendanceRecordId: attendanceRecord.id,
                         groupId: group.id,
-                        date,
+                        date: recordDate.toISOString().slice(0, 10),
                         professorEntryAt: attendanceRecord.professorEntryAt,
                     },
                     message: 'Entrada del profesor registrada por beacon',

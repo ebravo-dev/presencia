@@ -13,6 +13,7 @@ const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'
 type ReportDay = typeof DAYS[number];
 type CellStatus = 'TAKEN' | 'MISSING' | 'FUTURE' | 'NOT_SCHEDULED' | 'UNKNOWN_SCHEDULE' | 'SOURCE_UNAVAILABLE';
 type ReportAvailability = 'READY' | 'NOT_SYNCED' | 'IDENTITY_UNAVAILABLE' | 'ATTENDANCE_SOURCE_UNAVAILABLE';
+const MEXICO_CITY_OFFSET = '-06:00';
 
 interface ReportTeacher {
   id: string;
@@ -162,19 +163,16 @@ function buildRangeRow(
 ) {
   const schedule = normalizeSchedule(group.schedule);
   const scheduledDates = dates
-    .filter(({ day }) => schedule[day].length > 0)
-    .map(({ date }) => date);
-  const scheduledDateSet = new Set(scheduledDates);
-  const reportedDates = new Set(
-    sourceUnavailable
-      ? []
-      : group.attendanceRecords
-        .map((record) => record.date.slice(0, 10))
-        .filter((date) => scheduledDateSet.has(date)),
-  );
+    .map(({ day, date }) => ({ date, slots: schedule[day] }))
+    .filter(({ slots }) => slots.length > 0);
   const displaySchedule = scheduleForDisplay(DAYS.flatMap((day) => schedule[day]));
-  const scheduledClassDays = scheduledDates.length;
-  const reportedClassDays = reportedDates.size;
+  const scheduledClassDays = scheduledDates.reduce((total, item) => total + scheduledHoursForSlots(item.slots), 0);
+  const reportedClassDays = sourceUnavailable
+    ? 0
+    : scheduledDates.reduce((total, item) => {
+        const record = group.attendanceRecords.find((attendanceRecord) => attendanceRecord.date.slice(0, 10) === item.date);
+        return total + attendedHoursForRecord(item.date, item.slots, record);
+      }, 0);
   const groupParts = parseGroupParts(group.groupLetter || '');
 
   return {
@@ -202,39 +200,56 @@ function buildCell(
   sourceUnavailable = false,
 ) {
   if (slots.length === 0) return emptyCell(date, 'NOT_SCHEDULED');
-  if (sourceUnavailable) {
-    return emptyCell(date, 'SOURCE_UNAVAILABLE');
-  }
   const parsedSlots = slots.filter((slot) => slot.startTime && slot.endTime);
   if (parsedSlots.length === 0) return emptyCell(date, 'UNKNOWN_SCHEDULE');
+  const scheduledHours = scheduledHoursForSlots(parsedSlots);
+  if (sourceUnavailable) {
+    return emptyCell(date, 'SOURCE_UNAVAILABLE', scheduledHours, buildHourSlots(date, parsedSlots, undefined, 'SOURCE_UNAVAILABLE'));
+  }
   const record = records.find((item) => item.date.slice(0, 10) === date);
   if (record) {
+    const hourSlots = buildHourSlots(date, parsedSlots, record);
+    const attendedHours = hourSlots.filter((slot) => slot.status === 'TAKEN').length;
     return {
       date,
-      status: 'TAKEN' as CellStatus,
+      status: attendedHours > 0 ? 'TAKEN' as CellStatus : 'MISSING' as CellStatus,
       professorEntryAt: record.professorEntryAt ?? null,
       professorExitAt: record.professorExitAt ?? null,
+      scheduledHours,
+      attendedHours,
+      coverageRate: scheduledHours === 0 ? null : roundPercentage(attendedHours, scheduledHours),
+      hourSlots,
       portalSyncStatus: record.portalSyncStatus,
       portalSyncError: record.portalSyncError,
     };
   }
   const lastEndTime = parsedSlots.reduce((latest, slot) => slot.endTime! > latest ? slot.endTime! : latest, '00:00');
   const status: CellStatus = `${date}T${lastEndTime}` < currentLocalDateTime() ? 'MISSING' : 'FUTURE';
-  return emptyCell(date, status);
+  return emptyCell(date, status, scheduledHours, buildHourSlots(date, parsedSlots));
 }
 
-function emptyCell(date: string, status: CellStatus) {
+function emptyCell(date: string, status: CellStatus, scheduledHours = 0, hourSlots: ReportHourSlot[] = []) {
   return {
     date,
     status,
     professorEntryAt: null,
     professorExitAt: null,
+    scheduledHours,
+    attendedHours: 0,
+    coverageRate: null,
+    hourSlots,
     portalSyncStatus: null,
     portalSyncError: null,
   };
 }
 
 interface NormalizedSlot { key: string; raw: string; startTime: string | null; endTime: string | null }
+interface ReportHourSlot {
+  index: number;
+  startTime: string;
+  endTime: string;
+  status: CellStatus;
+}
 function normalizeSchedule(value: unknown): Record<ReportDay, NormalizedSlot[]> {
   const record = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
   const sourceKeys: Record<ReportDay, string[]> = {
@@ -341,9 +356,9 @@ function reportResponse(
   rows.sort((a, b) => (a.startTime ?? '99:99').localeCompare(b.startTime ?? '99:99') || a.subject.localeCompare(b.subject));
   const cells = rows.flatMap((row) => Object.values(row.cells));
   const summary = {
-    scheduled: cells.filter((cell) => !['NOT_SCHEDULED', 'UNKNOWN_SCHEDULE'].includes(cell.status)).length,
-    taken: cells.filter((cell) => cell.status === 'TAKEN').length,
-    missing: cells.filter((cell) => cell.status === 'MISSING').length,
+    scheduled: cells.reduce((total, cell) => total + cell.scheduledHours, 0),
+    taken: cells.reduce((total, cell) => total + cell.attendedHours, 0),
+    missing: cells.reduce((total, cell) => total + (cell.status === 'MISSING' ? Math.max(0, cell.scheduledHours - cell.attendedHours) : 0), 0),
     future: cells.filter((cell) => cell.status === 'FUTURE').length,
     unknownSchedule: cells.filter((cell) => cell.status === 'UNKNOWN_SCHEDULE').length,
     sourceUnavailable: cells.filter((cell) => cell.status === 'SOURCE_UNAVAILABLE').length,
@@ -394,9 +409,131 @@ function rangeReportResponse(
 
 function completionRateForCells(cells: Record<ReportDay, ReturnType<typeof buildCell>>): number | null {
   const values = Object.values(cells);
-  const taken = values.filter((cell) => cell.status === 'TAKEN').length;
-  const missing = values.filter((cell) => cell.status === 'MISSING').length;
+  const taken = values.reduce((total, cell) => total + cell.attendedHours, 0);
+  const missing = values.reduce((total, cell) => total + (cell.status === 'MISSING' ? Math.max(0, cell.scheduledHours - cell.attendedHours) : 0), 0);
   return taken + missing === 0 ? null : Math.round((taken / (taken + missing)) * 100);
+}
+
+function scheduledHoursForSlots(slots: NormalizedSlot[]): number {
+  return slots.reduce((total, slot) => total + Math.ceil(slotDurationMinutes(slot) / 60), 0);
+}
+
+function attendedHoursForRecord(date: string, slots: NormalizedSlot[], record?: AttendanceSourceRecord): number {
+  return buildHourSlots(date, slots, record).filter((slot) => slot.status === 'TAKEN').length;
+}
+
+function buildHourSlots(
+  date: string,
+  slots: NormalizedSlot[],
+  record?: AttendanceSourceRecord,
+  forcedStatus?: CellStatus,
+): ReportHourSlot[] {
+  const scheduled = slots
+    .flatMap((slot) => splitSlotIntoHourBlocks(date, slot))
+    .map((slot, index) => ({ ...slot, index }));
+  if (scheduled.length === 0) return [];
+  if (forcedStatus) {
+    return scheduled.map((slot) => ({
+      index: slot.index,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      status: forcedStatus,
+    }));
+  }
+  if (!record?.professorEntryAt) {
+    return scheduled.map((slot) => ({
+      index: slot.index,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      status: slot.end.getTime() < nowInMexicoCityComparable().getTime() ? 'MISSING' : 'FUTURE',
+    }));
+  }
+
+  const entry = new Date(record.professorEntryAt);
+  const exit = record.professorExitAt ? new Date(record.professorExitAt) : new Date();
+  if (Number.isNaN(entry.getTime()) || Number.isNaN(exit.getTime()) || exit <= entry) {
+    return scheduled.map((slot) => ({
+      index: slot.index,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      status: slot.end.getTime() < nowInMexicoCityComparable().getTime() ? 'MISSING' : 'FUTURE',
+    }));
+  }
+
+  const overlapped = scheduled.map((slot) => {
+    const overlapStart = Math.max(entry.getTime(), slot.start.getTime());
+    const overlapEnd = Math.min(exit.getTime(), slot.end.getTime());
+    return {
+      ...slot,
+      overlapMinutes: Math.max(0, overlapEnd - overlapStart) / 60000,
+    };
+  });
+  const attendedCount = Math.min(
+    scheduled.length,
+    Math.ceil(overlapped.reduce((total, slot) => total + slot.overlapMinutes, 0) / 60),
+  );
+  const takenIndexes = new Set(overlapped.filter((slot) => slot.overlapMinutes > 0).slice(0, attendedCount).map((slot) => slot.index));
+
+  return scheduled.map((slot) => ({
+    index: slot.index,
+    startTime: slot.startTime,
+    endTime: slot.endTime,
+    status: takenIndexes.has(slot.index)
+      ? 'TAKEN'
+      : slot.end.getTime() < nowInMexicoCityComparable().getTime() ? 'MISSING' : 'FUTURE',
+  }));
+}
+
+function splitSlotIntoHourBlocks(date: string, slot: NormalizedSlot) {
+  if (!slot.startTime || !slot.endTime) return [];
+  const start = localDateTime(date, slot.startTime);
+  let end = localDateTime(date, slot.endTime);
+  if (end <= start) end = new Date(end.getTime() + 24 * 60 * 60 * 1000);
+
+  const blocks: Array<{ index: number; start: Date; end: Date; startTime: string; endTime: string }> = [];
+  let cursor = start;
+  while (cursor < end) {
+    const blockEnd = new Date(Math.min(cursor.getTime() + 60 * 60 * 1000, end.getTime()));
+    blocks.push({
+      index: 0,
+      start: cursor,
+      end: blockEnd,
+      startTime: formatMexicoCityTime(cursor),
+      endTime: formatMexicoCityTime(blockEnd),
+    });
+    cursor = blockEnd;
+  }
+  return blocks;
+}
+
+function slotDurationMinutes(slot: NormalizedSlot): number {
+  if (!slot.startTime || !slot.endTime) return 0;
+  const start = minutesOfDay(slot.startTime);
+  let end = minutesOfDay(slot.endTime);
+  if (end <= start) end += 24 * 60;
+  return Math.max(0, end - start);
+}
+
+function localDateTime(date: string, time: string): Date {
+  return new Date(`${date}T${time}:00.000${MEXICO_CITY_OFFSET}`);
+}
+
+function nowInMexicoCityComparable(): Date {
+  return new Date();
+}
+
+function formatMexicoCityTime(value: Date): string {
+  return new Intl.DateTimeFormat('es-MX', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'America/Mexico_City',
+  }).format(value);
+}
+
+function minutesOfDay(value: string): number {
+  const [hour, minute] = value.split(':').map((part) => Number.parseInt(part, 10));
+  return (Number.isFinite(hour) ? hour : 0) * 60 + (Number.isFinite(minute) ? minute : 0);
 }
 
 function cycleForWeek(weekStart: string): string {
