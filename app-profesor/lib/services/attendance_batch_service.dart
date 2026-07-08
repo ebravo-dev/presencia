@@ -217,13 +217,18 @@ class AttendanceBatchService {
     AsistenciaRegistro record,
     Grupo group,
   ) {
-    final students = <String, ({int id, int listNumber})>{};
+    final students = <String, ({String id, int? numericId, int listNumber})>{};
     for (final entry in group.students.asMap().entries) {
       final student = entry.value;
-      final id = int.tryParse(student.id ?? '');
-      if (id == null || id <= 0) continue;
-      final mapped = (id: id, listNumber: entry.key + 1);
-      students[student.id!] = mapped;
+      final id = student.id;
+      if (id == null || id.isEmpty) continue;
+      final parsedId = int.tryParse(id);
+      final mapped = (
+        id: id,
+        numericId: parsedId != null && parsedId > 0 ? parsedId : null,
+        listNumber: entry.key + 1,
+      );
+      students[id] = mapped;
       students[student.number.toString()] = mapped;
       final matricula = student.matricula;
       if (matricula != null && matricula.isNotEmpty) {
@@ -236,10 +241,12 @@ class AttendanceBatchService {
       final student = students[key];
       if (student == null) return;
       attendances.add({
-        'id_alumno': student.id,
+        'studentId': student.id,
+        if (student.numericId != null) 'id_alumno': student.numericId,
         'num_pase_lista': student.listNumber,
         'num_dia': record.fecha.weekday,
         'sn_asistencia': present,
+        'status': present ? 'PRESENT' : 'ABSENT',
       });
     });
     return attendances;

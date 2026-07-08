@@ -89,9 +89,8 @@ class ApiService {
   }
 
   bool get _skipApiRestAttendanceUpload {
-    return _usesBackendApiRest &&
-        (ApiConstants.presenciaDebugMode ||
-            ApiConstants.skipApiRestAttendanceUpload);
+    return ApiConstants.presenciaDebugMode ||
+        ApiConstants.skipApiRestAttendanceUpload;
   }
 
   Future<Either<String, LoginResponse>> loginProfesor({
@@ -610,7 +609,7 @@ class ApiService {
     bool forceUpload = false,
   }) async {
     if (_skipApiRestAttendanceUpload) {
-      return _uploadAttendanceViaBackendApiRest(
+      return _uploadDebugAttendanceDirectlyToBackend(
         token: token,
         groupId: groupId,
         code: code,
@@ -624,7 +623,6 @@ class ApiService {
         attendances: attendances,
         professorEntryAt: professorEntryAt,
         professorExitAt: professorExitAt,
-        debugReportOnly: true,
       );
     }
 
@@ -726,6 +724,101 @@ class ApiService {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
+      return Left(_cleanException(e));
+    }
+  }
+
+  Future<Either<String, Map<String, dynamic>>>
+  _uploadDebugAttendanceDirectlyToBackend({
+    required String token,
+    String? groupId,
+    required String code,
+    String groupLetter = '',
+    String period = '',
+    String? groupName,
+    String? classroom,
+    String? level,
+    Map<String, String?>? schedule,
+    required DateTime date,
+    required List<Map<String, dynamic>> attendances,
+    DateTime? professorEntryAt,
+    DateTime? professorExitAt,
+    String? roomBeaconUuid,
+    int? roomBeaconRssi,
+    double? roomBeaconDistance,
+    String? roomBeaconAddress,
+  }) async {
+    try {
+      final profesor = AuthStorageService().getProfesor();
+      final professorEmail = profesor?.institutionalEmail ?? '';
+      if (professorEmail.isEmpty) {
+        return const Left(
+          'Modo debug: no hay profesor guardado para registrar reportes.',
+        );
+      }
+
+      final formattedDate =
+          '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      final debugAttendances = _normalizeAttendancesForDebugBackend(
+        attendances,
+      );
+
+      Logger.info(
+        '[DEBUG] Registrando asistencia directamente en backend principal, '
+        'sin backend-apirest/UAT. groupId=$groupId, code=$code, '
+        'groupLetter=$groupLetter, period=$period, date=$formattedDate, '
+        'alumnos=${debugAttendances.length}, '
+        'professorEntryAt=${professorEntryAt?.toIso8601String()}, '
+        'professorExitAt=${professorExitAt?.toIso8601String()}',
+      );
+
+      final response = await _attendanceBackendDio.post(
+        '/internal/coordination/debug-attendance',
+        data: {
+          'professorEmail': professorEmail,
+          'professorName': profesor?.name,
+          'code': code,
+          'groupLetter': groupLetter,
+          'period': period,
+          if (groupName != null) 'groupName': groupName,
+          if (classroom != null) 'classroom': classroom,
+          if (level != null) 'level': level,
+          if (schedule != null) 'schedule': schedule,
+          'createMissingGroup': true,
+          'date': formattedDate,
+          if (professorEntryAt != null)
+            'professorEntryAt': professorEntryAt.toIso8601String(),
+          if (professorExitAt != null)
+            'professorExitAt': professorExitAt.toIso8601String(),
+          if (roomBeaconUuid != null) 'roomBeaconUuid': roomBeaconUuid,
+          if (roomBeaconRssi != null) 'roomBeaconRssi': roomBeaconRssi,
+          if (roomBeaconDistance != null)
+            'roomBeaconDistance': roomBeaconDistance,
+          if (roomBeaconAddress != null) 'roomBeaconAddress': roomBeaconAddress,
+          'attendances': debugAttendances,
+        },
+        options: Options(headers: {'X-Debug-Session-Id': token}),
+      );
+
+      final responseMap = _asMap(response.data);
+      responseMap['debug'] = true;
+      responseMap['skippedApiRestUpload'] = true;
+      responseMap['reportVisible'] = true;
+      return Right(responseMap);
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error(
+        'Error registrando asistencia debug en backend principal: '
+        '$errorMessage',
+        e,
+      );
+      return Left(errorMessage);
+    } catch (e, stackTrace) {
+      Logger.error(
+        'Error inesperado registrando asistencia debug en backend principal',
+        e,
+        stackTrace,
+      );
       return Left(_cleanException(e));
     }
   }
@@ -890,6 +983,37 @@ class ApiService {
           final studentId = attendance['studentId']?.toString();
           return studentId != null && studentId.isNotEmpty;
         })
+        .toList();
+  }
+
+  List<Map<String, dynamic>> _normalizeAttendancesForDebugBackend(
+    List<Map<String, dynamic>> attendances,
+  ) {
+    const validStatuses = {'PRESENT', 'ABSENT', 'LATE', 'EXCUSED'};
+
+    return attendances
+        .map((attendance) {
+          final studentId =
+              attendance['studentId']?.toString() ??
+              attendance['id']?.toString() ??
+              attendance['matricula']?.toString() ??
+              attendance['id_alumno']?.toString() ??
+              attendance['idAlumno']?.toString();
+          if (studentId == null || studentId.isEmpty) return null;
+
+          final rawStatus = attendance['status']?.toString().toUpperCase();
+          final status = rawStatus != null && validStatuses.contains(rawStatus)
+              ? rawStatus
+              : (attendance['sn_asistencia'] == true ||
+                    attendance['snAsistencia'] == true ||
+                    attendance['present'] == true ||
+                    attendance['isPresent'] == true)
+              ? 'PRESENT'
+              : 'ABSENT';
+
+          return {'studentId': studentId, 'status': status};
+        })
+        .whereType<Map<String, dynamic>>()
         .toList();
   }
 
@@ -1104,54 +1228,27 @@ class ApiService {
   }) async {
     try {
       if (_skipApiRestAttendanceUpload) {
-        final idGrupo = int.tryParse(code);
-        if (idGrupo != null && idGrupo > 0) {
-          final formattedDate =
-              '${detectedAt.year.toString().padLeft(4, '0')}-${detectedAt.month.toString().padLeft(2, '0')}-${detectedAt.day.toString().padLeft(2, '0')}';
-          Logger.info(
-            '[DEBUG] Registrando entrada del profesor para reportes sin enviar a UAT/API REST externa. '
-            'code=$code groupLetter=$groupLetter period=$period detectedAt=${detectedAt.toIso8601String()} beaconUuid=$beaconUuid',
-          );
-
-          final response = await _presenceDio.post(
-            ApiConstants.uatAsistenciaGuardar,
-            data: {
-              'Id_Grupo': idGrupo,
-              'Fec_Ini': formatUatWeekStart(detectedAt),
-              'DebugReportOnly': true,
-              'Code': code,
-              'GroupLetter': groupLetter,
-              'Period': period,
-              if (groupName != null) 'GroupName': groupName,
-              if (classroom != null) 'Classroom': classroom,
-              if (level != null) 'Level': level,
-              if (schedule != null) 'Schedule': schedule,
-              'CreateMissingGroup': true,
-              'Date': formattedDate,
-              'ProfessorEntryAt': detectedAt.toIso8601String(),
-              'Asistencia': <Map<String, dynamic>>[],
-            },
-            options: Options(headers: {'X-UAT-Session-Id': token}),
-          );
-
-          final responseMap = _asMap(response.data);
-          responseMap['debug'] = true;
-          responseMap['skippedApiRestUpload'] = true;
-          responseMap['reportVisible'] = true;
-          return Right(responseMap);
-        }
-
         Logger.info(
-          '[DEBUG] Entrada profesor marcada localmente; no se pudo derivar Id_Grupo numerico para reportes. '
+          '[DEBUG] Registrando entrada del profesor directamente en backend principal, sin backend-apirest/UAT. '
           'code=$code groupLetter=$groupLetter period=$period detectedAt=${detectedAt.toIso8601String()} beaconUuid=$beaconUuid',
         );
-        return Right({
-          'debug': true,
-          'skippedApiRestUpload': true,
-          'reportVisible': false,
-          'message':
-              'Modo debug: entrada del profesor marcada localmente; se registrara en reportes al subir asistencia.',
-        });
+        return _uploadDebugAttendanceDirectlyToBackend(
+          token: token,
+          code: code,
+          groupLetter: groupLetter,
+          period: period,
+          groupName: groupName,
+          classroom: classroom,
+          level: level,
+          schedule: schedule,
+          date: detectedAt,
+          attendances: const [],
+          professorEntryAt: detectedAt,
+          roomBeaconUuid: beaconUuid,
+          roomBeaconRssi: rssi,
+          roomBeaconDistance: distance,
+          roomBeaconAddress: bluetoothAddress,
+        );
       }
 
       final response = await _presenceDio.post(
