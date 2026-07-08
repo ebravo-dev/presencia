@@ -47,6 +47,38 @@ export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> =
     controller.rangeReport,
   );
 
+  // Compatibilidad temporal para bundles viejos de frontend-coord.
+  // La administracion nueva vive en /superUsuario en el backend principal,
+  // pero estas rutas evitan 404 mientras se propaga el nuevo frontend.
+  fastify.get('/api/coordinacion/infraestructura/resumen', controller.infrastructureSummary);
+  fastify.get('/api/coordinacion/infraestructura/beacons', controller.beacons);
+  fastify.post('/api/coordinacion/infraestructura/beacons', { preHandler: requireWriteCoordinator }, controller.createBeacon);
+  fastify.put<{ Params: { id: string } }>('/api/coordinacion/infraestructura/beacons/:id', { preHandler: requireWriteCoordinator }, controller.updateBeacon);
+  fastify.delete<{ Params: { id: string } }>('/api/coordinacion/infraestructura/beacons/:id', { preHandler: requireWriteCoordinator }, controller.deleteBeacon);
+  fastify.get('/api/coordinacion/infraestructura/alumnos-vinculados', controller.studentDeviceBindings);
+  fastify.delete<{ Params: { matricula: string } }>(
+    '/api/coordinacion/infraestructura/alumnos-vinculados/:matricula',
+    { preHandler: requireWriteCoordinator },
+    controller.deleteStudentDeviceBinding,
+  );
+  fastify.get('/api/coordinacion/infraestructura/sustituciones/opciones', controller.substitutionOptions);
+  fastify.get('/api/coordinacion/infraestructura/sustituciones', controller.substituteAssignments);
+  fastify.post(
+    '/api/coordinacion/infraestructura/sustituciones',
+    { preHandler: requireWriteCoordinator },
+    controller.createSubstituteAssignment,
+  );
+  fastify.put<{ Params: { id: string } }>(
+    '/api/coordinacion/infraestructura/sustituciones/:id',
+    { preHandler: requireWriteCoordinator },
+    controller.updateSubstituteAssignment,
+  );
+  fastify.delete<{ Params: { id: string } }>(
+    '/api/coordinacion/infraestructura/sustituciones/:id',
+    { preHandler: requireWriteCoordinator },
+    controller.deleteSubstituteAssignment,
+  );
+
   fastify.get('/api/coordinacion/clases-compartidas/opciones', controller.sharedClassOptions);
   fastify.get('/api/coordinacion/clases-compartidas', controller.sharedClasses);
   fastify.post('/api/coordinacion/clases-compartidas', { preHandler: requireWriteCoordinator }, controller.createSharedClass);
