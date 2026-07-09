@@ -14,6 +14,7 @@ const optionalIsoDateTimeSchema = z
  * volatile DB CUIDs, so uploads survive DB resets or group re-creation.
  */
 export const registerAttendanceSchema = z.object({
+    groupId: z.string().min(1, 'Group ID requerido').optional(),
     code: z.string().min(1, 'Group code requerido'),
     groupLetter: z.string().min(1, 'Group letter requerido'),
     period: z.string().min(1, 'Period requerido'),
@@ -33,6 +34,7 @@ export const registerAttendanceSchema = z.object({
 export type RegisterAttendanceRequest = z.infer<typeof registerAttendanceSchema>;
 
 export const professorBeaconEntrySchema = z.object({
+    groupId: z.string().min(1, 'Group ID requerido').optional(),
     code: z.string().min(1, 'Group code requerido'),
     groupLetter: z.string().min(1, 'Group letter requerido'),
     period: z.string().min(1, 'Period requerido'),
@@ -49,6 +51,7 @@ export const professorBeaconEntrySchema = z.object({
 export type ProfessorBeaconEntryRequest = z.infer<typeof professorBeaconEntrySchema>;
 
 export const professorExitSchema = z.object({
+    groupId: z.string().min(1, 'Group ID requerido').optional(),
     code: z.string().min(1, 'Group code requerido'),
     groupLetter: z.string().min(1, 'Group letter requerido'),
     period: z.string().min(1, 'Period requerido'),
@@ -61,6 +64,7 @@ export const professorExitSchema = z.object({
 export type ProfessorExitRequest = z.infer<typeof professorExitSchema>;
 
 export const studentBeaconDetectionsSchema = z.object({
+    groupId: z.string().min(1, 'Group ID requerido').optional(),
     code: z.string().min(1, 'Group code requerido'),
     groupLetter: z.string().min(1, 'Group letter requerido'),
     period: z.string().min(1, 'Period requerido'),
@@ -84,6 +88,7 @@ export const studentBeaconDetectionsSchema = z.object({
 export type StudentBeaconDetectionsRequest = z.infer<typeof studentBeaconDetectionsSchema>;
 
 export const studentBeaconBindingsSchema = z.object({
+    groupId: z.string().min(1, 'Group ID requerido').optional(),
     code: z.string().min(1, 'Group code requerido'),
     groupLetter: z.string().min(1, 'Group letter requerido'),
     period: z.string().min(1, 'Period requerido'),

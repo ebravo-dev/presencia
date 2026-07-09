@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, Bluetooth, Bug, Database, KeyRound, Link2, Lock, LogOut, ShieldCheck, Trash2, UserCog } from 'lucide-react';
+import { Activity, Bluetooth, Bug, Copy, Database, KeyRound, Link2, Lock, LogOut, Pencil, PlusCircle, ShieldCheck, Trash2, UserCog } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
 import { superUserApi } from '@/core/api/coordination.api';
-import type { Beacon, CoordinatorAccount, DebugScheduleInput, ScheduleDay } from '@/core/api/types';
+import type { Beacon, CoordinatorAccount, DebugClassResponse, DebugScheduleInput, ScheduleDay } from '@/core/api/types';
 import { Button, Card, EmptyState, Skeleton, cn } from '@/shared/components/ui';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 
@@ -254,6 +254,7 @@ function StudentBindingAdmin() {
 
 type DebugDay = Extract<ScheduleDay, 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'>;
 type DebugScheduleSlot = { startTime: string; endTime: string };
+type DebugClass = DebugClassResponse['data'][number];
 
 const DEBUG_DAYS: Array<{ key: DebugDay; label: string }> = [
   { key: 'monday', label: 'Lunes' },
@@ -277,6 +278,7 @@ const defaultDebugSchedule: Record<DebugDay, DebugScheduleSlot[]> = {
 
 function DebugAdmin() {
   const queryClient = useQueryClient();
+  const [editingDebugClass, setEditingDebugClass] = useState<DebugClass | null>(null);
   const [classForm, setClassForm] = useState({
     professorEmail: 'debug.profesor@uat.edu.mx',
     professorName: 'Profesor Debug',
@@ -301,13 +303,31 @@ function DebugAdmin() {
     if (current !== undefined) setToleranceMinutes(String(current));
   }, [settings.data?.data.teacherAttendanceToleranceMinutes, status.data?.data.settings.teacherAttendanceToleranceMinutes]);
 
-  const createClass = useMutation({
-    mutationFn: () => superUserApi.createDebugClass({
-      ...classForm,
-      period: classForm.period || undefined,
-      schedule: compactDebugSchedule(schedule),
-    }),
+  const saveClass = useMutation({
+    mutationFn: () => {
+      const payload = {
+        code: classForm.code,
+        groupLetter: classForm.groupLetter,
+        period: classForm.period || undefined,
+        name: classForm.name,
+        level: classForm.level,
+        classroom: classForm.classroom,
+        schedule: compactDebugSchedule(schedule),
+      };
+      if (editingDebugClass) {
+        return superUserApi.updateDebugClass(editingDebugClass.id, {
+          ...payload,
+          ...(classForm.beaconUuid.trim() ? { beaconUuid: classForm.beaconUuid.trim() } : {}),
+        });
+      }
+      return superUserApi.createDebugClass({
+        ...classForm,
+        period: classForm.period || undefined,
+        schedule: payload.schedule,
+      });
+    },
     onSuccess: async () => {
+      if (editingDebugClass) resetClassEditor();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['super-user', 'debug'] }),
         queryClient.invalidateQueries({ queryKey: ['super-user', 'beacons'] }),
@@ -349,6 +369,51 @@ function DebugAdmin() {
   };
 
   const enabled = status.data?.data.enabled ?? false;
+  const startClassEdit = (item: DebugClass) => {
+    setEditingDebugClass(item);
+    setClassForm({
+      professorEmail: item.professor.institutionalEmail,
+      professorName: item.professor.name,
+      code: item.code,
+      groupLetter: item.groupLetter,
+      period: item.period,
+      name: item.name,
+      level: item.level,
+      classroom: item.classroom,
+      beaconUuid: '',
+    });
+    setSchedule(debugScheduleFromApi(item.schedule));
+  };
+  const duplicateClass = (item: DebugClass) => {
+    setEditingDebugClass(null);
+    setClassForm({
+      professorEmail: item.professor.institutionalEmail,
+      professorName: item.professor.name,
+      code: nextDebugCode(item.code, classes.data?.data.map((debugClass) => debugClass.code) ?? []),
+      groupLetter: item.groupLetter,
+      period: item.period,
+      name: `${item.name} copia`,
+      level: item.level,
+      classroom: item.classroom,
+      beaconUuid: '11111111-2222-4333-8444-555555555555',
+    });
+    setSchedule(debugScheduleFromApi(item.schedule));
+  };
+  const resetClassEditor = () => {
+    setEditingDebugClass(null);
+    setClassForm({
+      professorEmail: 'debug.profesor@uat.edu.mx',
+      professorName: 'Profesor Debug',
+      code: '990001',
+      groupLetter: 'DBG',
+      period: '',
+      name: 'DEBUG ASISTENCIA',
+      level: 'DEBUG',
+      classroom: 'DEBUG-101',
+      beaconUuid: '11111111-2222-4333-8444-555555555555',
+    });
+    setSchedule(defaultDebugSchedule);
+  };
 
   return (
     <div className="space-y-4">
@@ -376,21 +441,24 @@ function DebugAdmin() {
         <Card className="p-5">
           <div className="mb-4 flex items-center gap-3">
             <div className="rounded-xl bg-blue-50 p-2.5 text-blue-700"><Database size={21} /></div>
-            <div><h2 className="font-bold">Crear clase debug</h2><p className="text-sm text-slate-500">Materia, salón, beacon y horarios para pruebas.</p></div>
+            <div className="min-w-0 flex-1"><h2 className="font-bold">{editingDebugClass ? 'Editar materia debug' : 'Crear materia debug'}</h2><p className="text-sm text-slate-500">Materia, salón, beacon y horarios para pruebas.</p></div>
+            <Button type="button" variant="ghost" className="px-2 py-1 text-xs" onClick={resetClassEditor}><PlusCircle size={14} />Nueva</Button>
           </div>
-          <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); createClass.mutate(); }}>
-            <label className="block text-sm font-semibold">Profesor<input className="field mt-1" value={classForm.professorEmail} onChange={(event) => setClassForm((current) => ({ ...current, professorEmail: event.target.value }))} /></label>
-            <label className="block text-sm font-semibold">Nombre profesor<input className="field mt-1" value={classForm.professorName} onChange={(event) => setClassForm((current) => ({ ...current, professorName: event.target.value }))} /></label>
+          {editingDebugClass && <p className="mb-3 rounded-lg bg-amber-50 p-3 text-xs font-semibold text-amber-800">Editando la clase de {editingDebugClass.professor.name}. El profesor no se cambia desde aquí; solo la configuración de la materia.</p>}
+          <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); saveClass.mutate(); }}>
+            <label className="block text-sm font-semibold">Profesor<input className="field mt-1" value={classForm.professorEmail} disabled={Boolean(editingDebugClass)} onChange={(event) => setClassForm((current) => ({ ...current, professorEmail: event.target.value }))} /></label>
+            <label className="block text-sm font-semibold">Nombre profesor<input className="field mt-1" value={classForm.professorName} disabled={Boolean(editingDebugClass)} onChange={(event) => setClassForm((current) => ({ ...current, professorName: event.target.value }))} /></label>
             <label className="block text-sm font-semibold">Materia<input className="field mt-1" value={classForm.name} onChange={(event) => setClassForm((current) => ({ ...current, name: event.target.value }))} /></label>
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm font-semibold">Código<input className="field mt-1" value={classForm.code} onChange={(event) => setClassForm((current) => ({ ...current, code: event.target.value }))} /></label>
               <label className="block text-sm font-semibold">Grupo<input className="field mt-1" value={classForm.groupLetter} onChange={(event) => setClassForm((current) => ({ ...current, groupLetter: event.target.value }))} /></label>
             </div>
+            {!editingDebugClass && <p className="text-xs font-semibold text-slate-500">Si el código ya existe para este maestro, se creará otra materia con el siguiente código disponible.</p>}
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm font-semibold">Salón<input className="field mt-1" value={classForm.classroom} onChange={(event) => setClassForm((current) => ({ ...current, classroom: event.target.value }))} /></label>
               <label className="block text-sm font-semibold">Periodo<input className="field mt-1" value={classForm.period} onChange={(event) => setClassForm((current) => ({ ...current, period: event.target.value }))} placeholder={status.data?.data.period ?? '2026-2'} /></label>
             </div>
-            <label className="block text-sm font-semibold">Beacon UUID<input className="field mt-1 font-mono text-xs" value={classForm.beaconUuid} onChange={(event) => setClassForm((current) => ({ ...current, beaconUuid: event.target.value }))} /></label>
+            <label className="block text-sm font-semibold">Beacon UUID<input className="field mt-1 font-mono text-xs" value={classForm.beaconUuid} onChange={(event) => setClassForm((current) => ({ ...current, beaconUuid: event.target.value }))} placeholder={editingDebugClass ? 'Opcional: nuevo UUID para este salón' : undefined} /></label>
             <div className="space-y-2">
               <p className="text-sm font-bold">Horarios</p>
               {DEBUG_DAYS.map((day) => (
@@ -409,11 +477,14 @@ function DebugAdmin() {
                 </div>
               ))}
             </div>
-            <Button type="submit" disabled={createClass.isPending || !hasAnyDebugSchedule(schedule)}>
-              {createClass.isPending ? 'Guardando...' : 'Guardar clase debug'}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={saveClass.isPending || !hasAnyDebugSchedule(schedule)}>
+                {saveClass.isPending ? 'Guardando...' : editingDebugClass ? 'Guardar cambios' : 'Guardar clase debug'}
+              </Button>
+              {editingDebugClass && <Button type="button" variant="secondary" onClick={resetClassEditor}>Cancelar edición</Button>}
+            </div>
           </form>
-          {createClass.isError && <p className="mt-3 text-sm font-semibold text-red-600">No se pudo crear la clase debug.</p>}
+          {saveClass.isError && <p className="mt-3 text-sm font-semibold text-red-600">No se pudo guardar la clase debug.</p>}
           <form className="mt-5 border-t border-slate-200 pt-4 dark:border-[#2e3138]" onSubmit={(event) => { event.preventDefault(); updateSettings.mutate(); }}>
             <label className="block text-sm font-semibold">Tolerancia de profesor en minutos<input type="number" min={0} max={120} className="field mt-1" value={toleranceMinutes} onChange={(event) => setToleranceMinutes(event.target.value)} /></label>
             <Button type="submit" className="mt-3" variant="secondary" disabled={updateSettings.isPending}>
@@ -428,8 +499,8 @@ function DebugAdmin() {
           {classes.isLoading ? <div className="p-5"><Skeleton className="h-24" /></div> : !classes.data?.data.length ? <div className="p-5"><EmptyState icon={<Database />} title="Sin clases debug" description="Crea una clase para probar el flujo completo." /></div> : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-[#15181d]"><tr><th className="px-5 py-3">Materia</th><th className="px-5 py-3">Profesor</th><th className="px-5 py-3">Salón</th><th className="px-5 py-3">Alumnos</th><th className="px-5 py-3">Registros</th></tr></thead>
-                <tbody>{classes.data.data.map((item) => <tr key={item.id} className="border-t border-slate-100 dark:border-[#1f2229]"><td className="px-5 py-3"><b>{item.name}</b><p className="text-xs text-slate-500">{item.code} {item.groupLetter} · {item.period}</p></td><td className="px-5 py-3">{item.professor.name}<p className="text-xs text-slate-500">{item.professor.institutionalEmail}</p></td><td className="px-5 py-3">{item.classroom}</td><td className="px-5 py-3">{item.students.length}</td><td className="px-5 py-3">{item.attendanceRecords.length}</td></tr>)}</tbody>
+                <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-[#15181d]"><tr><th className="px-5 py-3">Materia</th><th className="px-5 py-3">Profesor</th><th className="px-5 py-3">Salón</th><th className="px-5 py-3">Horario desplegado</th><th className="px-5 py-3">Alumnos</th><th className="px-5 py-3">Registros</th><th className="px-5 py-3 text-right">Acciones</th></tr></thead>
+                <tbody>{classes.data.data.map((item) => <tr key={item.id} className={cn('border-t border-slate-100 align-top dark:border-[#1f2229]', editingDebugClass?.id === item.id && 'bg-amber-50/60 dark:bg-amber-950/10')}><td className="px-5 py-4"><b>{item.name}</b><p className="text-xs text-slate-500">{item.code} {item.groupLetter} · {item.period}</p></td><td className="px-5 py-4">{item.professor.name}<p className="text-xs text-slate-500">{item.professor.institutionalEmail}</p></td><td className="px-5 py-4">{item.classroom}</td><td className="px-5 py-4">{renderDebugSchedule(item.schedule)}</td><td className="px-5 py-4">{item.students.length}</td><td className="px-5 py-4">{item.attendanceRecords.length}</td><td className="px-5 py-4"><div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => startClassEdit(item)}><Pencil size={14} />Editar</Button><Button variant="ghost" onClick={() => duplicateClass(item)}><Copy size={14} />Duplicar</Button></div></td></tr>)}</tbody>
               </table>
             </div>
           )}
@@ -469,6 +540,75 @@ function compactDebugSchedule(schedule: Record<DebugDay, DebugScheduleSlot[]>): 
       ] as const)
       .filter(([, slots]) => slots.length > 0),
   ) as DebugScheduleInput;
+}
+
+function debugScheduleFromApi(value: Record<string, unknown>): Record<DebugDay, DebugScheduleSlot[]> {
+  return Object.fromEntries(
+    DEBUG_DAYS.map((day) => [day.key, readDebugSlots(value[day.key])]),
+  ) as Record<DebugDay, DebugScheduleSlot[]>;
+}
+
+function readDebugSlots(value: unknown): DebugScheduleSlot[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((slot) => {
+    if (typeof slot === 'string') {
+      const match = slot.match(/\b([0-2]?\d:[0-5]\d)\s*(?:-|a)\s*([0-2]?\d:[0-5]\d)\b/i);
+      return match?.[1] && match[2] ? [{ startTime: padDebugTime(match[1]), endTime: padDebugTime(match[2]) }] : [];
+    }
+    if (!slot || typeof slot !== 'object') return [];
+    const record = slot as { startTime?: unknown; endTime?: unknown };
+    return typeof record.startTime === 'string' && typeof record.endTime === 'string'
+      ? [{ startTime: record.startTime, endTime: record.endTime }]
+      : [];
+  });
+}
+
+function renderDebugSchedule(value: Record<string, unknown>) {
+  const parts = DEBUG_DAYS.flatMap((day) => {
+    const slots = readDebugSlots(value[day.key]);
+    if (!slots.length) return [];
+    return [{ day: day.label, slots }];
+  });
+  if (!parts.length) return <span className="text-xs text-slate-400">Sin horario</span>;
+  return (
+    <div className="grid gap-1.5">
+      {parts.map((item) => (
+        <div key={item.day} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 dark:border-[#2e3138] dark:bg-[#15181d]">
+          <p className="text-[11px] font-black uppercase tracking-wide text-slate-500">{item.day}</p>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {item.slots.map((slot, index) => (
+              <span key={`${item.day}-${slot.startTime}-${slot.endTime}-${index}`} className="rounded-md bg-white px-2 py-1 font-mono text-[11px] font-bold text-slate-700 ring-1 ring-slate-200 dark:bg-[#1a1d23] dark:text-slate-200 dark:ring-[#2e3138]">
+                {slot.startTime}-{slot.endTime}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function nextDebugCode(code: string, existingCodes: string[]): string {
+  const existing = new Set(existingCodes);
+  const match = code.match(/^(.*?)(\d+)$/);
+  if (!match) {
+    for (let index = 2; index < 10_000; index += 1) {
+      const candidate = `${code}-${index}`;
+      if (!existing.has(candidate)) return candidate;
+    }
+    return `${code}-${Date.now()}`;
+  }
+  const [, prefix, numeric] = match;
+  for (let next = Number(numeric) + 1; next < 1_000_000; next += 1) {
+    const candidate = `${prefix}${String(next).padStart(numeric.length, '0')}`;
+    if (!existing.has(candidate)) return candidate;
+  }
+  return `${prefix}${Date.now()}`;
+}
+
+function padDebugTime(value: string): string {
+  const [hours, minutes] = value.split(':');
+  return `${hours.padStart(2, '0')}:${minutes}`;
 }
 
 function hasAnyDebugSchedule(schedule: Record<DebugDay, DebugScheduleSlot[]>): boolean {

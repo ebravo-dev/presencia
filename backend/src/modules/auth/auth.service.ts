@@ -362,14 +362,19 @@ export class AuthService {
             data: {
                 professorId,
                 status: 'COMPLETED',
-                totalGroups: 1,
+                totalGroups: await prisma.group.count({ where: { professorId, period } }),
                 currentGroup: 1,
-                currentGroupName: `Modo debug: materia ${group.name} lista con ${students.length} alumnos`,
+                currentGroupName: `Modo debug: materias listas para ${professor.institutionalEmail}`,
                 completedAt: new Date(),
             },
         });
 
-        return { groupsCount: 1, studentsCount: students.length };
+        const [groupsCount, studentsCount] = await Promise.all([
+            prisma.group.count({ where: { professorId, period } }),
+            prisma.student.count({ where: { group: { professorId, period } } }),
+        ]);
+
+        return { groupsCount, studentsCount };
     }
 }
 

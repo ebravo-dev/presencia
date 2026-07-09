@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../../core/database/prisma.js';
 import { jwtService, sessionService } from '../../core/security/index.js';
 import { normalizeClassroomKey, serializeBeacon } from '../beacons/beacons.service.js';
+import { env } from '../../core/config/env.js';
 
 const studentDeviceBinding = (prisma as any).studentDeviceBinding;
 const substituteAssignment = (prisma as any).substituteAssignment;
@@ -60,6 +61,15 @@ type ProfessorSummary = {
     institutionalEmail: string;
 };
 
+function uniqueGroupsById(groups: GroupRow[]) {
+    const seen = new Set<string>();
+    return groups.filter((group) => {
+        if (seen.has(group.id)) return false;
+        seen.add(group.id);
+        return true;
+    });
+}
+
 function formatGroupForApp(params: {
     group: GroupRow;
     bindingByMatricula: Map<string, string>;
@@ -93,6 +103,7 @@ function formatGroupForApp(params: {
             number: index + 1,
         })),
         studentsCount: group._count.students,
+        source: group.level === 'DEBUG' ? 'DEBUG' : isSubstitute ? 'SUBSTITUTE' : 'OFFICIAL',
         isSubstitute,
         substituteAssignmentId,
         primaryProfessor,
@@ -229,6 +240,17 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
                 orderBy: { name: 'asc' },
             }) as GroupRow[];
 
+            const debugGroups = env.PRESENCIA_DEBUG_MODE
+                ? await prisma.group.findMany({
+                    where: {
+                        level: 'DEBUG',
+                        NOT: { professorId: request.professorId },
+                    },
+                    select: groupSelect,
+                    orderBy: [{ professor: { name: 'asc' } }, { name: 'asc' }],
+                }) as GroupRow[]
+                : [];
+
             const now = new Date();
             const substituteAssignments = await substituteAssignment.findMany({
                 where: {
@@ -264,7 +286,7 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
             const substituteGroups = substituteAssignments
                 .map((assignment) => assignment.group)
                 .filter((group) => !groups.some((ownedGroup) => ownedGroup.id === group.id));
-            const allGroups = [...groups, ...substituteGroups];
+            const allGroups = uniqueGroupsById([...groups, ...debugGroups, ...substituteGroups]);
 
             const matriculas = Array.from(
                 new Set(allGroups.flatMap(group => group.students.map(student => student.matricula)))

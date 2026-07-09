@@ -48,6 +48,16 @@ export const superUserApi = {
     beaconUuid?: string;
     schedule?: DebugScheduleInput;
   }) => (await superApi.post('/superUsuario/debug/classes', input)).data,
+  updateDebugClass: async (id: string, input: Partial<{
+    code: string;
+    groupLetter: string;
+    period: string;
+    name: string;
+    level: string;
+    classroom: string;
+    beaconUuid: string;
+    schedule: DebugScheduleInput;
+  }>) => (await superApi.put(`/superUsuario/debug/classes/${id}`, input)).data,
   debugStudentAttendance: async () => (await superApi.get<DebugStudentAttendanceResponse>('/superUsuario/debug/student-attendance')).data,
   debugFlowLogs: async () => (await superApi.get<DebugFlowLogsResponse>('/superUsuario/debug/flow-logs')).data,
 };

@@ -649,6 +649,7 @@ class ApiService {
       final response = await _presenceDio.post(
         ApiConstants.attendance,
         data: {
+          if (groupId != null && groupId.isNotEmpty) 'groupId': groupId,
           'code': code,
           'groupLetter': groupLetter,
           'period': period,

@@ -160,7 +160,8 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
             grupos: debugData.grupos,
             isLoadingGroups: false,
           );
-          return; // No hacer petición HTTP
+          // Mostrar cache al instante, pero continuar con una descarga en
+          // segundo plano para ver materias debug agregadas desde el dashboard.
         }
       }
 

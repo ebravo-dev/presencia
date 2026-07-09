@@ -63,6 +63,17 @@ export const debugClassCreateSchema = z.object({
     students: z.array(debugClassStudentSchema).min(1).max(80).optional(),
 });
 
+export const debugClassUpdateSchema = z.object({
+    code: z.string().trim().min(1).optional(),
+    groupLetter: z.string().trim().optional(),
+    period: z.string().trim().min(1).optional(),
+    name: z.string().trim().min(1).optional(),
+    level: z.string().trim().min(1).optional(),
+    classroom: z.string().trim().min(1).optional(),
+    beaconUuid: z.string().trim().min(8).optional(),
+    schedule: debugClassScheduleSchema.optional(),
+});
+
 export const debugSettingsUpdateSchema = z.object({
     teacherAttendanceToleranceMinutes: z.number().int().min(0).max(120),
 });
@@ -70,6 +81,7 @@ export const debugSettingsUpdateSchema = z.object({
 export type CoordinatorCreateInput = z.infer<typeof coordinatorCreateSchema>;
 export type CoordinatorUpdateInput = z.infer<typeof coordinatorUpdateSchema>;
 export type DebugClassCreateInput = z.infer<typeof debugClassCreateSchema>;
+export type DebugClassUpdateInput = z.infer<typeof debugClassUpdateSchema>;
 export type DebugSettingsUpdateInput = z.infer<typeof debugSettingsUpdateSchema>;
 
 function minutesOfDay(value: string): number {

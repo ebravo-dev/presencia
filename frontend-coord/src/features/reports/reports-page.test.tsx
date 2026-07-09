@@ -31,9 +31,9 @@ describe('ReportsPage', () => {
     await user.click(await screen.findByRole('button', { name: /Ada Lovelace/i }));
     expect(await screen.findByLabelText('Vista previa del reporte de Ada Lovelace')).toBeInTheDocument();
     expect(screen.getByText('Sábado')).toBeInTheDocument();
-    expect(screen.getByLabelText('Asistencia registrada')).toBeInTheDocument();
-    expect(screen.getByLabelText('Inasistencia')).toBeInTheDocument();
-    expect(screen.getAllByLabelText('Sin clase')).toHaveLength(4);
+    expect(screen.getAllByLabelText('Asistencia registrada')).toHaveLength(2);
+    expect(screen.getAllByLabelText('Inasistencia')).toHaveLength(2);
+    expect(screen.getAllByLabelText('Sin clase')).toHaveLength(8);
     expect(screen.getByText('Cumpl.')).toBeInTheDocument();
     expect(screen.getAllByText('50%')).toHaveLength(2);
     expect(screen.getByText(/Ciclo 2026-2/)).toBeInTheDocument();

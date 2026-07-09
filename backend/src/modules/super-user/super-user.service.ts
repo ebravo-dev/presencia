@@ -15,7 +15,7 @@ import {
     getAttendanceSettings,
     updateAttendanceSettings,
 } from '../settings/attendance-settings.service.js';
-import type { CoordinatorCreateInput, CoordinatorUpdateInput, DebugClassCreateInput, DebugSettingsUpdateInput } from './super-user.schemas.js';
+import type { CoordinatorCreateInput, CoordinatorUpdateInput, DebugClassCreateInput, DebugClassUpdateInput, DebugSettingsUpdateInput } from './super-user.schemas.js';
 
 const studentDeviceBinding = (prisma as any).studentDeviceBinding;
 const DEBUG_DAY_ALIASES = {
@@ -242,7 +242,7 @@ export class SuperUserService {
                 },
             },
             orderBy: [{ updatedAt: 'desc' }],
-            take: 100,
+            take: 500,
         });
 
         return { data: groups, meta: { generatedAt: new Date().toISOString() } };
@@ -270,17 +270,15 @@ export class SuperUserService {
         });
 
         const schedule = this.normalizeDebugSchedule(input.schedule ?? this.defaultDebugSchedule()) as any;
-        const group = await prisma.group.upsert({
-            where: {
-                code_groupLetter_professorId_period: {
-                    code: input.code,
-                    groupLetter: input.groupLetter,
-                    professorId: professor.id,
-                    period,
-                },
-            },
-            create: {
-                code: input.code,
+        const code = await this.resolveDebugClassCode({
+            requestedCode: input.code,
+            groupLetter: input.groupLetter,
+            professorId: professor.id,
+            period,
+        });
+        const group = await prisma.group.create({
+            data: {
+                code,
                 groupLetter: input.groupLetter,
                 period,
                 name: input.name,
@@ -288,12 +286,6 @@ export class SuperUserService {
                 classroom: input.classroom,
                 schedule,
                 professorId: professor.id,
-            },
-            update: {
-                name: input.name,
-                level: input.level,
-                classroom: input.classroom,
-                schedule,
             },
         });
 
@@ -343,6 +335,53 @@ export class SuperUserService {
                 studentsCount: students.length,
             },
         };
+    }
+
+    async updateDebugClass(id: string, input: DebugClassUpdateInput) {
+        const current = await prisma.group.findFirst({
+            where: {
+                id,
+                OR: [
+                    { level: 'DEBUG' },
+                    { code: { startsWith: '990' } },
+                    { classroom: { startsWith: 'DEBUG' } },
+                ],
+            },
+        });
+        if (!current) return null;
+
+        const classroom = input.classroom ?? current.classroom;
+        if (input.beaconUuid) {
+            await prisma.beacon.upsert({
+                where: { uuid: input.beaconUuid },
+                create: { uuid: input.beaconUuid, classroom },
+                update: { classroom },
+            });
+        }
+
+        const group = await prisma.group.update({
+            where: { id },
+            data: {
+                code: input.code ?? current.code,
+                groupLetter: input.groupLetter ?? current.groupLetter,
+                period: input.period ?? current.period,
+                name: input.name ?? current.name,
+                level: input.level ?? current.level,
+                classroom,
+                schedule: input.schedule === undefined ? current.schedule as any : this.normalizeDebugSchedule(input.schedule) as any,
+            },
+            include: {
+                professor: { select: { id: true, name: true, institutionalEmail: true } },
+                students: { orderBy: { name: 'asc' } },
+                attendanceRecords: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 5,
+                    include: { attendances: true, studentBeaconDetections: true },
+                },
+            },
+        });
+
+        return { data: group, meta: { generatedAt: new Date().toISOString() } };
     }
 
     async listDebugStudentAttendance() {
@@ -478,6 +517,39 @@ export class SuperUserService {
         }
 
         return [];
+    }
+
+    private async resolveDebugClassCode(input: {
+        requestedCode: string;
+        groupLetter: string;
+        professorId: string;
+        period: string;
+    }): Promise<string> {
+        let candidate = input.requestedCode;
+        for (let attempt = 0; attempt < 10_000; attempt += 1) {
+            const existing = await prisma.group.findUnique({
+                where: {
+                    code_groupLetter_professorId_period: {
+                        code: candidate,
+                        groupLetter: input.groupLetter,
+                        professorId: input.professorId,
+                        period: input.period,
+                    },
+                },
+                select: { id: true },
+            });
+            if (!existing) return candidate;
+            candidate = this.nextDebugClassCode(candidate);
+        }
+
+        return `${input.requestedCode}-${Date.now()}`;
+    }
+
+    private nextDebugClassCode(code: string): string {
+        const match = code.match(/^(.*?)(\d+)$/);
+        if (!match) return `${code}-2`;
+        const [, prefix, numeric] = match;
+        return `${prefix}${String(Number(numeric) + 1).padStart(numeric.length, '0')}`;
     }
 
     private parseScheduleSlot(value: string): { raw: string; startTime: string; endTime: string } | null {

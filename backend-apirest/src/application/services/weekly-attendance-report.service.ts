@@ -364,16 +364,17 @@ function reportResponse(
 ) {
   rows.sort((a, b) => (a.startTime ?? '99:99').localeCompare(b.startTime ?? '99:99') || a.subject.localeCompare(b.subject));
   const cells = rows.flatMap((row) => Object.values(row.cells));
+  const hourTotals = attendanceHourTotals(cells);
   const summary = {
     scheduled: cells.reduce((total, cell) => total + cell.scheduledHours, 0),
-    taken: cells.reduce((total, cell) => total + cell.attendedHours, 0),
-    missing: cells.reduce((total, cell) => total + (cell.status === 'MISSING' ? Math.max(0, cell.scheduledHours - cell.attendedHours) : 0), 0),
+    taken: hourTotals.taken,
+    missing: hourTotals.missing,
     future: cells.filter((cell) => cell.status === 'FUTURE').length,
     unknownSchedule: cells.filter((cell) => cell.status === 'UNKNOWN_SCHEDULE').length,
     sourceUnavailable: cells.filter((cell) => cell.status === 'SOURCE_UNAVAILABLE').length,
     completionRate: 0,
   };
-  summary.completionRate = summary.taken + summary.missing === 0 ? 0 : Math.round((summary.taken / (summary.taken + summary.missing)) * 100);
+  summary.completionRate = completionRateForHours(summary.taken, hourTotals.scheduled) ?? 0;
   return {
     data: {
       availability,
@@ -417,10 +418,36 @@ function rangeReportResponse(
 }
 
 function completionRateForCells(cells: Record<ReportDay, ReturnType<typeof buildCell>>): number | null {
-  const values = Object.values(cells);
-  const taken = values.reduce((total, cell) => total + cell.attendedHours, 0);
-  const missing = values.reduce((total, cell) => total + (cell.status === 'MISSING' ? Math.max(0, cell.scheduledHours - cell.attendedHours) : 0), 0);
-  return taken + missing === 0 ? null : Math.round((taken / (taken + missing)) * 100);
+  const { taken, scheduled } = attendanceHourTotals(Object.values(cells));
+  return completionRateForHours(taken, scheduled);
+}
+
+function attendanceHourTotals(cells: Array<{ hourSlots: ReportHourSlot[] }>) {
+  // A day cell is TAKEN as soon as any of its blocks is covered. Calculate
+  // totals from the blocks so a partially covered multi-hour class keeps its
+  // remaining hours as absences. Future blocks stay marked as FUTURE, but are
+  // still part of the weekly total used for the completion percentage.
+  return cells
+    .flatMap((cell) => cell.hourSlots)
+    .reduce(
+      (totals, slot) => {
+        if (slot.status === 'TAKEN' || slot.status === 'LATE') {
+          totals.scheduled += 1;
+          totals.taken += 1;
+        }
+        if (slot.status === 'MISSING') {
+          totals.scheduled += 1;
+          totals.missing += 1;
+        }
+        if (slot.status === 'FUTURE') totals.scheduled += 1;
+        return totals;
+      },
+      { scheduled: 0, taken: 0, missing: 0 },
+    );
+}
+
+function completionRateForHours(taken: number, scheduled: number): number | null {
+  return scheduled === 0 ? null : roundPercentage(taken, scheduled);
 }
 
 function scheduledHoursForSlots(slots: NormalizedSlot[]): number {

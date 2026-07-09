@@ -5,6 +5,7 @@ import {
     coordinatorCreateSchema,
     coordinatorUpdateSchema,
     debugClassCreateSchema,
+    debugClassUpdateSchema,
     debugSettingsUpdateSchema,
     superUserBeaconSchema,
     superUserBeaconUpdateSchema,
@@ -179,6 +180,22 @@ export async function superUserRoutes(fastify: FastifyInstance) {
         if (!parsed.success) return sendValidationError(reply, parsed.error.errors.map((issue) => issue.message));
 
         return reply.code(201).send(await superUserService.createDebugClass(parsed.data));
+    });
+
+    fastify.put<{ Params: { id: string } }>('/api/superUsuario/debug/classes/:id', { preHandler: requireSuperUser }, async (request, reply) => {
+        const parsed = debugClassUpdateSchema.safeParse(request.body);
+        if (!parsed.success) return sendValidationError(reply, parsed.error.errors.map((issue) => issue.message));
+
+        const updated = await superUserService.updateDebugClass(request.params.id, parsed.data);
+        if (!updated) {
+            return reply.code(404).send({
+                statusCode: 404,
+                error: 'Not Found',
+                message: 'Clase debug no encontrada',
+            });
+        }
+
+        return reply.send(updated);
     });
 
     fastify.get('/api/superUsuario/debug/student-attendance', { preHandler: requireSuperUser }, async (_request, reply) => {

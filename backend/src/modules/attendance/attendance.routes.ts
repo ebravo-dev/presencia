@@ -66,10 +66,40 @@ function activeSubstitutionWindow(now: Date) {
 
 async function resolveProfessorGroup(params: {
     professorId: string;
+    groupId?: string;
     code: string;
     groupLetter: string;
     period: string;
 }): Promise<ResolvedAttendanceGroup | null> {
+    if (params.groupId) {
+        const groupById = await prisma.group.findFirst({
+            where: {
+                id: params.groupId,
+                OR: [
+                    { professorId: params.professorId },
+                    ...(env.PRESENCIA_DEBUG_MODE ? [{ level: 'DEBUG' }] : []),
+                ],
+            },
+            select: {
+                id: true,
+                code: true,
+                groupLetter: true,
+                period: true,
+                name: true,
+                classroom: true,
+                professorId: true,
+            },
+        });
+
+        if (groupById) {
+            return {
+                group: groupById,
+                attendanceProfessorId: groupById.professorId,
+                isSubstitute: false,
+            };
+        }
+    }
+
     const ownedGroup = await prisma.group.findFirst({
         where: {
             code: params.code,
@@ -94,6 +124,35 @@ async function resolveProfessorGroup(params: {
             attendanceProfessorId: ownedGroup.professorId,
             isSubstitute: false,
         };
+    }
+
+    if (env.PRESENCIA_DEBUG_MODE) {
+        const debugGroup = await prisma.group.findFirst({
+            where: {
+                code: params.code,
+                groupLetter: params.groupLetter,
+                period: params.period,
+                level: 'DEBUG',
+            },
+            select: {
+                id: true,
+                code: true,
+                groupLetter: true,
+                period: true,
+                name: true,
+                classroom: true,
+                professorId: true,
+            },
+            orderBy: { updatedAt: 'desc' },
+        });
+
+        if (debugGroup) {
+            return {
+                group: debugGroup,
+                attendanceProfessorId: debugGroup.professorId,
+                isSubstitute: false,
+            };
+        }
     }
 
     const assignment = await substituteAssignment.findFirst({
@@ -148,6 +207,17 @@ async function canAccessGroup(params: {
     });
 
     if (ownedGroup) return true;
+
+    if (env.PRESENCIA_DEBUG_MODE) {
+        const debugGroup = await prisma.group.findFirst({
+            where: {
+                id: params.groupId,
+                level: 'DEBUG',
+            },
+            select: { id: true },
+        });
+        if (debugGroup) return true;
+    }
 
     const assignment = await substituteAssignment.findFirst({
         where: {
@@ -217,6 +287,7 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
             try {
                 const validated = registerAttendanceSchema.parse(request.body);
                 const {
+                    groupId: requestedGroupId,
                     code,
                     groupLetter,
                     period,
@@ -229,7 +300,7 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                 const professorId = (request as AuthenticatedRequest).professorId!;
 
                 // Resolve group by stable identifiers — no CUID needed from client
-                const resolvedGroup = await resolveProfessorGroup({ professorId, code, groupLetter, period });
+                const resolvedGroup = await resolveProfessorGroup({ professorId, groupId: requestedGroupId, code, groupLetter, period });
                 if (!resolvedGroup) {
                     return reply.code(404).send({
                         statusCode: 404,
@@ -450,11 +521,11 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
             try {
                 const validated = professorBeaconEntrySchema.parse(request.body);
                 const professorId = (request as AuthenticatedRequest).professorId!;
-                const { code, groupLetter, period, beaconUuid, rssi, distance, bluetoothAddress } = validated;
+                const { groupId: requestedGroupId, code, groupLetter, period, beaconUuid, rssi, distance, bluetoothAddress } = validated;
                 const detectedAt = serverNow();
                 const recordDate = attendanceDateFromServerNow(detectedAt);
 
-                const resolvedGroup = await resolveProfessorGroup({ professorId, code, groupLetter, period });
+                const resolvedGroup = await resolveProfessorGroup({ professorId, groupId: requestedGroupId, code, groupLetter, period });
                 if (!resolvedGroup) {
                     return reply.code(404).send({
                         statusCode: 404,
@@ -546,11 +617,11 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
             try {
                 const validated = professorExitSchema.parse(request.body);
                 const professorId = (request as AuthenticatedRequest).professorId!;
-                const { code, groupLetter, period } = validated;
+                const { groupId: requestedGroupId, code, groupLetter, period } = validated;
                 const detectedAt = serverNow();
                 const recordDate = attendanceDateFromServerNow(detectedAt);
 
-                const resolvedGroup = await resolveProfessorGroup({ professorId, code, groupLetter, period });
+                const resolvedGroup = await resolveProfessorGroup({ professorId, groupId: requestedGroupId, code, groupLetter, period });
                 if (!resolvedGroup) {
                     return reply.code(404).send({
                         statusCode: 404,
@@ -615,9 +686,9 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
             try {
                 const validated = studentBeaconDetectionsSchema.parse(request.body);
                 const professorId = (request as AuthenticatedRequest).professorId!;
-                const { code, groupLetter, period, date, detections } = validated;
+                const { groupId: requestedGroupId, code, groupLetter, period, date, detections } = validated;
 
-                const resolvedGroup = await resolveProfessorGroup({ professorId, code, groupLetter, period });
+                const resolvedGroup = await resolveProfessorGroup({ professorId, groupId: requestedGroupId, code, groupLetter, period });
                 if (!resolvedGroup) {
                     return reply.code(404).send({
                         statusCode: 404,
@@ -758,9 +829,9 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
             try {
                 const validated = studentBeaconBindingsSchema.parse(request.body);
                 const professorId = (request as AuthenticatedRequest).professorId!;
-                const { code, groupLetter, period } = validated;
+                const { groupId: requestedGroupId, code, groupLetter, period } = validated;
 
-                const resolvedGroup = await resolveProfessorGroup({ professorId, code, groupLetter, period });
+                const resolvedGroup = await resolveProfessorGroup({ professorId, groupId: requestedGroupId, code, groupLetter, period });
                 if (!resolvedGroup) {
                     return reply.code(404).send({
                         statusCode: 404,
