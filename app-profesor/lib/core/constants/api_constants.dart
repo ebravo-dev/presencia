@@ -7,7 +7,7 @@ class ApiConstants {
   // --dart-define=API_BASE_URL=http://10.0.2.2:3000
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://backendapirest.149828.xyz/',
+    defaultValue: 'https://backendasistencia.duckdns.org/',
   );
   static const String presenceApiBaseUrl = String.fromEnvironment(
     'PRESENCIA_API_BASE_URL',

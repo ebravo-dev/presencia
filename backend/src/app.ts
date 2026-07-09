@@ -22,7 +22,7 @@ import path from 'path';
 // Create Fastify instance
 const fastify = Fastify({
     logger: {
-        level: env.NODE_ENV === 'development' ? 'debug' : 'info',
+        level: env.PRESENCIA_DEBUG_MODE || env.PRESENCIA_DEBUG_VERBOSE_LOGS || env.NODE_ENV === 'development' ? 'debug' : 'info',
         transport: env.NODE_ENV === 'development'
             ? {
                 target: 'pino-pretty',
@@ -89,6 +89,7 @@ async function registerRoutes(): Promise<void> {
             timestamp: serverNow().toISOString(),
             timezone: SERVER_TIME_ZONE,
             environment: env.NODE_ENV,
+            debugMode: env.PRESENCIA_DEBUG_MODE,
         };
     });
 

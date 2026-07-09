@@ -125,6 +125,99 @@ export interface StudentDeviceBinding {
   }>;
 }
 
+export interface DebugStatusResponse {
+  data: {
+    enabled: boolean;
+    period: string;
+    classHours: number;
+    apiRestPolicy: string;
+  };
+  meta: { generatedAt: string };
+}
+
+export interface DebugClassResponse {
+  data: Array<{
+    id: string;
+    code: string;
+    groupLetter: string;
+    period: string;
+    name: string;
+    level: string;
+    classroom: string;
+    schedule: Record<string, unknown>;
+    professor: { id: string; name: string; institutionalEmail: string };
+    students: Array<{ id: string; matricula: string; name: string; beaconUuid: string | null }>;
+    attendanceRecords: Array<{
+      id: string;
+      date: string;
+      professorEntryAt: string | null;
+      professorExitAt: string | null;
+      portalSyncStatus: string;
+      portalSyncError: string | null;
+      attendances: unknown[];
+      studentBeaconDetections: unknown[];
+    }>;
+  }>;
+  meta: { generatedAt: string };
+}
+
+export interface DebugStudentAttendanceResponse {
+  data: Array<{
+    id: string;
+    date: string;
+    professorEntryAt: string | null;
+    professorExitAt: string | null;
+    portalSyncStatus: string;
+    portalSyncError: string | null;
+    createdAt: string;
+    professor: { id: string; name: string; institutionalEmail: string };
+    group: { id: string; code: string; groupLetter: string; period: string; name: string; classroom: string };
+    attendances: Array<{
+      id: string;
+      status: string;
+      createdAt: string;
+      student: { id: string; matricula: string; name: string; beaconUuid: string | null };
+    }>;
+    studentBeaconDetections: Array<{
+      id: string;
+      beaconUuid: string;
+      detectedAt: string;
+      rssi: number | null;
+      bluetoothAddress: string | null;
+      student: { id: string; matricula: string; name: string };
+    }>;
+  }>;
+  meta: { generatedAt: string };
+}
+
+export interface DebugFlowLogsResponse {
+  data: {
+    syncJobs: Array<{
+      id: string;
+      status: string;
+      currentGroupName: string | null;
+      error: string | null;
+      startedAt: string;
+      completedAt: string | null;
+      professor: { id: string; name: string; institutionalEmail: string };
+    }>;
+    attendanceRecords: Array<{
+      id: string;
+      date: string;
+      professorEntryAt: string | null;
+      professorExitAt: string | null;
+      portalSyncStatus: string;
+      portalSyncError: string | null;
+      createdAt: string;
+      professor: { id: string; name: string; institutionalEmail: string };
+      group: { id: string; code: string; groupLetter: string; period: string; name: string; classroom: string };
+      _count: { attendances: number; studentBeaconDetections: number };
+    }>;
+    recentBindings: StudentDeviceBinding[];
+  };
+  meta: { generatedAt: string };
+}
+
 export interface InfrastructureSummaryResponse {
   data: {
     counts: {

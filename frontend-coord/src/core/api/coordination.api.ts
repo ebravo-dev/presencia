@@ -1,5 +1,5 @@
 import { api, superApi } from './client';
-import type { Assignment, Beacon, CoordinatorAccount, CoordinatorUser, InfrastructureSummaryResponse, OverviewResponse, ProfessorOption, RangeReportResponse, SharedClassAssignment, StudentDeviceBinding, SuperUser, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
+import type { Assignment, Beacon, CoordinatorAccount, CoordinatorUser, DebugClassResponse, DebugFlowLogsResponse, DebugStatusResponse, DebugStudentAttendanceResponse, InfrastructureSummaryResponse, OverviewResponse, ProfessorOption, RangeReportResponse, SharedClassAssignment, StudentDeviceBinding, SuperUser, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
 
 export const coordinationApi = {
   login: async (input: { email: string; password: string }) => (await api.post<{ data: { user: CoordinatorUser; expiresAt: string } }>('/coordinacion/auth/login', input)).data,
@@ -32,4 +32,19 @@ export const superUserApi = {
   deleteBeacon: async (id: string) => { await superApi.delete(`/superUsuario/beacons/${id}`); },
   studentDeviceBindings: async (params: { q?: string }) => (await superApi.get<{ data: StudentDeviceBinding[] }>('/superUsuario/alumnos-vinculados', { params })).data,
   deleteStudentDeviceBinding: async (matricula: string) => { await superApi.delete(`/superUsuario/alumnos-vinculados/${encodeURIComponent(matricula)}`); },
+  debugStatus: async () => (await superApi.get<DebugStatusResponse>('/superUsuario/debug/status')).data,
+  debugClasses: async () => (await superApi.get<DebugClassResponse>('/superUsuario/debug/classes')).data,
+  createDebugClass: async (input: {
+    professorEmail: string;
+    professorName?: string;
+    code?: string;
+    groupLetter?: string;
+    period?: string;
+    name?: string;
+    level?: string;
+    classroom?: string;
+    beaconUuid?: string;
+  }) => (await superApi.post('/superUsuario/debug/classes', input)).data,
+  debugStudentAttendance: async () => (await superApi.get<DebugStudentAttendanceResponse>('/superUsuario/debug/student-attendance')).data,
+  debugFlowLogs: async () => (await superApi.get<DebugFlowLogsResponse>('/superUsuario/debug/flow-logs')).data,
 };

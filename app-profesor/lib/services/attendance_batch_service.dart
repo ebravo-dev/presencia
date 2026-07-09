@@ -175,6 +175,65 @@ class AttendanceBatchService {
     );
   }
 
+  Future<DebugAttendanceBatchResult> submitDirectToBackend({
+    required String token,
+    required List<AsistenciaRegistro> records,
+    required List<Grupo> groups,
+    String encryptedPassword = '',
+  }) async {
+    var uploaded = 0;
+    var skipped = 0;
+    var failed = 0;
+
+    for (final record in records) {
+      final group = _resolveGroup(record, groups);
+      if (group == null) {
+        skipped++;
+        continue;
+      }
+
+      final attendances = _buildAttendances(record, group);
+      if (attendances.isEmpty) {
+        skipped++;
+        continue;
+      }
+
+      final result = await _apiService.uploadAttendance(
+        token: token,
+        groupId: group.id,
+        code: group.code ?? record.grupoCode ?? '',
+        groupLetter:
+            group.groupLetter ?? record.grupoGroupLetter ?? group.group,
+        period: group.period ?? record.grupoPeriod ?? '',
+        date: record.fecha,
+        attendances: attendances,
+        encryptedPassword: encryptedPassword,
+        groupName: group.name,
+        classroom: group.classroom,
+        level: group.level,
+        schedule: group.schedule,
+        professorEntryAt: record.horaEntrada,
+        professorExitAt: record.horaSalida,
+      );
+
+      await result.fold(
+        (_) async {
+          failed++;
+        },
+        (_) async {
+          await _localService.marcarComoSincronizada(record.id);
+          uploaded++;
+        },
+      );
+    }
+
+    return DebugAttendanceBatchResult(
+      uploaded: uploaded,
+      skipped: skipped,
+      failed: failed,
+    );
+  }
+
   /// Completes the local record only when it still matches the snapshot that
   /// was accepted by the server. Later edits remain pending as a new revision.
   Future<bool> markCompletedIfUnchanged(String clientRecordId) async {

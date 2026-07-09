@@ -23,5 +23,26 @@ export const coordinatorUpdateSchema = z.object({
 export const superUserBeaconSchema = beaconSchema;
 export const superUserBeaconUpdateSchema = beaconUpdateSchema;
 
+export const debugClassStudentSchema = z.object({
+    matricula: z.string().trim().min(1),
+    name: z.string().trim().min(1),
+    attendanceUuid: z.string().trim().min(8),
+});
+
+export const debugClassCreateSchema = z.object({
+    professorEmail: z.string().email(),
+    professorName: z.string().trim().min(1).optional(),
+    code: z.string().trim().min(1).default('990001'),
+    groupLetter: z.string().trim().default('DBG'),
+    period: z.string().trim().min(1).optional(),
+    name: z.string().trim().min(1).default('DEBUG ASISTENCIA'),
+    level: z.string().trim().min(1).default('DEBUG'),
+    classroom: z.string().trim().min(1).default('DEBUG-101'),
+    beaconUuid: z.string().trim().min(8).default('11111111-2222-4333-8444-555555555555'),
+    schedule: z.record(z.unknown()).optional(),
+    students: z.array(debugClassStudentSchema).min(1).max(80).optional(),
+});
+
 export type CoordinatorCreateInput = z.infer<typeof coordinatorCreateSchema>;
 export type CoordinatorUpdateInput = z.infer<typeof coordinatorUpdateSchema>;
+export type DebugClassCreateInput = z.infer<typeof debugClassCreateSchema>;

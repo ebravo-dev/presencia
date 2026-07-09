@@ -107,6 +107,21 @@ class OfflineAttendanceQueueService {
         );
       }
 
+      if (!_apiService.usesBackendApiRest) {
+        final result = await _batchService.submitDirectToBackend(
+          token: token,
+          records: pending,
+          groups: groups,
+          encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
+        );
+        return OfflineAttendanceQueueResult(
+          pending: pending.length,
+          uploaded: result.uploaded,
+          skipped: result.skipped,
+          failed: result.failed,
+        );
+      }
+
       final statusRecords = pending.map((record) {
         final date =
             '${record.fecha.year}-${record.fecha.month.toString().padLeft(2, '0')}-${record.fecha.day.toString().padLeft(2, '0')}';

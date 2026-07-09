@@ -15,6 +15,7 @@ import { StudentSessionController } from '../controllers/student-session.control
 import { SharedClassController } from '../controllers/shared-class.controller.js';
 import { buildAuthUatHook } from '../hooks/auth-uat.hook.js';
 import { buildAuthUatStudentHook } from '../hooks/auth-uat-student.hook.js';
+import { env } from '../../../config/env.js';
 
 export interface UatRoutesOptions {
   uatService: UatService;
@@ -30,6 +31,21 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   fastify,
   { uatService, uatStudentService, eventBus, sharedClassService, attendanceBackendClient, attendanceUploadService, attendanceUploadWorker },
 ) => {
+  fastify.addHook('preHandler', async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return;
+
+    const path = request.url.split('?')[0] ?? request.url;
+    const isTeacherLogin = request.method === 'POST' && path === '/api/uat/sessions';
+    const isStudentLogin = request.method === 'POST' && path === '/api/uat/alumnos/sessions';
+    if (isTeacherLogin || isStudentLogin) return;
+
+    return reply.code(423).send({
+      error: 'DEBUG_MODE_API_REST_DISABLED',
+      message:
+        'Modo debug activo: backend-apirest solo permite login. Consultas, scraping y subida de asistencia estan deshabilitadas para no tocar datos reales.',
+    });
+  });
+
   const authUat = buildAuthUatHook(uatService);
   const authUatStudent = buildAuthUatStudentHook(uatStudentService);
   const sessionController = new SessionController(uatService, eventBus);

@@ -4,6 +4,7 @@ import { SuperUserService } from './super-user.service.js';
 import {
     coordinatorCreateSchema,
     coordinatorUpdateSchema,
+    debugClassCreateSchema,
     superUserBeaconSchema,
     superUserBeaconUpdateSchema,
     superUserLoginSchema,
@@ -152,6 +153,29 @@ export async function superUserRoutes(fastify: FastifyInstance) {
             return reply.code(204).send();
         }
     );
+
+    fastify.get('/api/superUsuario/debug/status', { preHandler: requireSuperUser }, async (_request, reply) => {
+        return reply.send(superUserService.getDebugStatus());
+    });
+
+    fastify.get('/api/superUsuario/debug/classes', { preHandler: requireSuperUser }, async (_request, reply) => {
+        return reply.send(await superUserService.listDebugClasses());
+    });
+
+    fastify.post('/api/superUsuario/debug/classes', { preHandler: requireSuperUser }, async (request, reply) => {
+        const parsed = debugClassCreateSchema.safeParse(request.body);
+        if (!parsed.success) return sendValidationError(reply, parsed.error.errors.map((issue) => issue.message));
+
+        return reply.code(201).send(await superUserService.createDebugClass(parsed.data));
+    });
+
+    fastify.get('/api/superUsuario/debug/student-attendance', { preHandler: requireSuperUser }, async (_request, reply) => {
+        return reply.send(await superUserService.listDebugStudentAttendance());
+    });
+
+    fastify.get('/api/superUsuario/debug/flow-logs', { preHandler: requireSuperUser }, async (_request, reply) => {
+        return reply.send(await superUserService.listDebugFlowLogs());
+    });
 }
 
 async function requireSuperUser(request: FastifyRequest, reply: FastifyReply) {

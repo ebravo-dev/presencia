@@ -5,6 +5,7 @@ import { AttendanceStatus, PortalSyncStatus, SyncStatus } from '@prisma/client';
 import { uatRestSyncService } from '../uat-rest/index.js';
 import { findBeaconByClassroom } from '../beacons/beacons.service.js';
 import { attendanceDateFromServerNow, serverNow } from '../../core/time/server-time.js';
+import { env } from '../../core/config/env.js';
 import {
     registerAttendanceSchema,
     attendanceHistoryQuerySchema,
@@ -301,6 +302,40 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                         statusCode: 500,
                         error: 'Internal Server Error',
                         message: 'No se pudo leer el registro de asistencia',
+                    });
+                }
+
+                if (env.PRESENCIA_DEBUG_MODE) {
+                    await prisma.attendanceRecord.update({
+                        where: { id: refreshedRecord.id },
+                        data: {
+                            portalSyncStatus: PortalSyncStatus.NOT_REQUESTED,
+                            portalSyncError: 'DEBUG_BACKEND_ONLY: visible en reportes; no se envio al portal/API REST.',
+                            portalSyncedAt: null,
+                        },
+                    });
+
+                    request.log.info({
+                        professorId: attendanceProfessorId,
+                        attendanceRecordId: refreshedRecord.id,
+                        groupId,
+                        attendancesCount: attendances.length,
+                        professorEntryAt: refreshedRecord.professorEntryAt,
+                        professorExitAt: refreshedRecord.professorExitAt,
+                    }, 'Modo debug: asistencia guardada solo en backend principal.');
+
+                    return reply.code(201).send({
+                        data: {
+                            attendanceRecordId: attendanceRecord.id,
+                            date,
+                            groupId,
+                            professorEntryAt: refreshedRecord.professorEntryAt,
+                            professorExitAt: refreshedRecord.professorExitAt,
+                            attendancesCount: attendances.length,
+                            debug: true,
+                            reportVisible: true,
+                        },
+                        message: 'Modo debug: asistencia registrada localmente en backend, sin enviar a UAT/API REST.',
                     });
                 }
 

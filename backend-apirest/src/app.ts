@@ -90,7 +90,11 @@ export async function buildApp() {
     credentialCipher,
     fastify.log,
   );
-  await attendanceUploadWorker.start();
+  if (env.PRESENCIA_DEBUG_MODE) {
+    fastify.log.warn('Modo debug activo: worker de subida UAT deshabilitado.');
+  } else {
+    await attendanceUploadWorker.start();
+  }
   const teacherRepository = new PrismaTeacherRepository(prisma);
   const subjectRepository = new PrismaSubjectRepository(prisma);
   const coordinationRepository = new PrismaCoordinationRepository(prisma);

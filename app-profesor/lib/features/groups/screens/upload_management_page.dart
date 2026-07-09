@@ -327,6 +327,41 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       return;
     }
 
+    if (!_apiService.usesBackendApiRest) {
+      _updateStep(
+        1,
+        _StepStatus.inProgress,
+        subtitle:
+            '${_pendientes.length} lista${_pendientes.length == 1 ? '' : 's'} al backend principal',
+      );
+      final directResult = await _attendanceBatchService.submitDirectToBackend(
+        token: token,
+        records: List<AsistenciaRegistro>.from(_pendientes),
+        groups: grupos,
+        encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
+      );
+      _updateStep(
+        1,
+        directResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
+        subtitle:
+            '${directResult.uploaded} subida${directResult.uploaded == 1 ? '' : 's'}, '
+            '${directResult.skipped} omitida${directResult.skipped == 1 ? '' : 's'}, '
+            '${directResult.failed} fallida${directResult.failed == 1 ? '' : 's'}',
+      );
+      _updateStep(
+        2,
+        directResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
+      );
+      _updateStep(
+        3,
+        directResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
+      );
+      HapticFeedback.heavyImpact();
+      await _cargarAsistencias();
+      if (mounted) setState(() => _isUploading = false);
+      return;
+    }
+
     final prepared = _attendanceBatchService.prepare(
       List<AsistenciaRegistro>.from(_pendientes),
       grupos,

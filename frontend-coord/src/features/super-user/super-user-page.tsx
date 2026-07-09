@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bluetooth, KeyRound, Link2, Lock, LogOut, ShieldCheck, Trash2, UserCog } from 'lucide-react';
+import { Activity, Bluetooth, Bug, Database, KeyRound, Link2, Lock, LogOut, ShieldCheck, Trash2, UserCog } from 'lucide-react';
 import { FormEvent, useState } from 'react';
 import { superUserApi } from '@/core/api/coordination.api';
 import type { Beacon, CoordinatorAccount } from '@/core/api/types';
@@ -7,7 +7,7 @@ import { Button, Card, EmptyState, Skeleton, cn } from '@/shared/components/ui';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 
 const REFRESH_INTERVAL_MS = 10_000;
-type Section = 'coordinators' | 'beacons' | 'students';
+type Section = 'coordinators' | 'beacons' | 'students' | 'debug';
 
 export function SuperUserPage() {
   const session = useQuery({ queryKey: ['super-user', 'me'], queryFn: superUserApi.me, retry: false });
@@ -100,11 +100,13 @@ function SuperUserConsole() {
           <SectionButton current={section} value="coordinators" onClick={setSection} icon={<UserCog size={17} />} label="Coordinadores" />
           <SectionButton current={section} value="beacons" onClick={setSection} icon={<Bluetooth size={17} />} label="Beacons" />
           <SectionButton current={section} value="students" onClick={setSection} icon={<Link2 size={17} />} label="Alumnos vinculados" />
+          <SectionButton current={section} value="debug" onClick={setSection} icon={<Bug size={17} />} label="Debug" />
         </div>
 
         {section === 'coordinators' && <CoordinatorAdmin />}
         {section === 'beacons' && <BeaconAdmin />}
         {section === 'students' && <StudentBindingAdmin />}
+        {section === 'debug' && <DebugAdmin />}
       </div>
     </main>
   );
@@ -248,4 +250,110 @@ function StudentBindingAdmin() {
       {bindings.isLoading ? <div className="p-5"><Skeleton className="h-32" /></div> : !bindings.data?.data.length ? <div className="p-5"><EmptyState icon={<Link2 />} title="Sin alumnos vinculados" description="Los alumnos aparecerán cuando vinculen su celular desde la app." /></div> : <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-[#15181d]"><tr><th className="px-5 py-3">Matrícula</th><th className="px-5 py-3">UUID</th><th className="px-5 py-3">Alumno / grupo</th><th className="px-5 py-3">Dispositivo</th><th className="px-5 py-3 text-right">Acciones</th></tr></thead><tbody>{bindings.data.data.map((binding) => <tr key={binding.id} className="border-t border-slate-100 dark:border-[#1f2229]"><td className="px-5 py-3 font-semibold">{binding.matricula}</td><td className="px-5 py-3 font-mono text-xs">{binding.attendanceUuid}</td><td className="px-5 py-3">{binding.students.length ? binding.students.map((student) => <div key={student.id} className="mb-1 last:mb-0"><b>{student.name}</b><p className="text-xs text-slate-500">{student.group.name} · {student.group.classroom || 'Sin salón'} · {student.group.professor.name}</p></div>) : <span className="text-slate-400">No aparece en grupos sincronizados</span>}</td><td className="px-5 py-3">{binding.platform || '-'}<p className="text-xs text-slate-500">{binding.deviceInfo || ''}</p></td><td className="px-5 py-3 text-right"><Button variant="ghost" onClick={() => remove.mutate(binding.matricula)}><Trash2 size={16} /></Button></td></tr>)}</tbody></table></div>}
     </Card>
   );
+}
+
+function DebugAdmin() {
+  const queryClient = useQueryClient();
+  const status = useQuery({ queryKey: ['super-user', 'debug', 'status'], queryFn: superUserApi.debugStatus, refetchInterval: REFRESH_INTERVAL_MS });
+  const classes = useQuery({ queryKey: ['super-user', 'debug', 'classes'], queryFn: superUserApi.debugClasses, refetchInterval: REFRESH_INTERVAL_MS });
+  const attendance = useQuery({ queryKey: ['super-user', 'debug', 'attendance'], queryFn: superUserApi.debugStudentAttendance, refetchInterval: REFRESH_INTERVAL_MS });
+  const logs = useQuery({ queryKey: ['super-user', 'debug', 'logs'], queryFn: superUserApi.debugFlowLogs, refetchInterval: REFRESH_INTERVAL_MS });
+  const createClass = useMutation({
+    mutationFn: () => superUserApi.createDebugClass({
+      professorEmail: 'debug.profesor@uat.edu.mx',
+      professorName: 'Profesor Debug',
+      code: '990001',
+      groupLetter: 'DBG',
+      name: 'DEBUG ASISTENCIA',
+      classroom: 'DEBUG-101',
+      beaconUuid: '11111111-2222-4333-8444-555555555555',
+    }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['super-user', 'debug'] }),
+        queryClient.invalidateQueries({ queryKey: ['super-user', 'beacons'] }),
+        queryClient.invalidateQueries({ queryKey: ['super-user', 'bindings'] }),
+      ]);
+    },
+  });
+
+  const enabled = status.data?.data.enabled ?? false;
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-red-50 p-2.5 text-[#C8102E]"><Bug size={21} /></div>
+            <div>
+              <h2 className="font-bold">Modo debug de backend</h2>
+              <p className="text-sm text-slate-500">{status.data?.data.apiRestPolicy ?? 'Cargando estado...'}</p>
+            </div>
+          </div>
+          <span className={cn('rounded-full px-3 py-1 text-xs font-black uppercase', enabled ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800')}>
+            {enabled ? 'Activo' : 'Release real'}
+          </span>
+        </div>
+        <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+          <InfoBox label="Periodo" value={status.data?.data.period ?? '-'} />
+          <InfoBox label="Horas clase debug" value={String(status.data?.data.classHours ?? '-')} />
+          <InfoBox label="Actualizado" value={status.data?.meta.generatedAt ? new Date(status.data.meta.generatedAt).toLocaleTimeString('es-MX') : '-'} />
+        </div>
+      </Card>
+
+      <div className="grid gap-4 xl:grid-cols-[380px_1fr]">
+        <Card className="p-5">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="rounded-xl bg-blue-50 p-2.5 text-blue-700"><Database size={21} /></div>
+            <div><h2 className="font-bold">Clase debug base</h2><p className="text-sm text-slate-500">Crea profesor, materia, alumnos, beacon y UUIDs locales.</p></div>
+          </div>
+          <Button disabled={createClass.isPending} onClick={() => createClass.mutate()}>
+            {createClass.isPending ? 'Creando...' : 'Crear/actualizar clase debug'}
+          </Button>
+          {createClass.isError && <p className="mt-3 text-sm font-semibold text-red-600">No se pudo crear la clase debug.</p>}
+        </Card>
+
+        <Card className="overflow-hidden">
+          <div className="border-b border-slate-200 p-5 dark:border-[#1f2229]"><h2 className="font-bold">Clases debug en base</h2></div>
+          {classes.isLoading ? <div className="p-5"><Skeleton className="h-24" /></div> : !classes.data?.data.length ? <div className="p-5"><EmptyState icon={<Database />} title="Sin clases debug" description="Crea una clase para probar el flujo completo." /></div> : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-[#15181d]"><tr><th className="px-5 py-3">Materia</th><th className="px-5 py-3">Profesor</th><th className="px-5 py-3">Salón</th><th className="px-5 py-3">Alumnos</th><th className="px-5 py-3">Registros</th></tr></thead>
+                <tbody>{classes.data.data.map((item) => <tr key={item.id} className="border-t border-slate-100 dark:border-[#1f2229]"><td className="px-5 py-3"><b>{item.name}</b><p className="text-xs text-slate-500">{item.code} {item.groupLetter} · {item.period}</p></td><td className="px-5 py-3">{item.professor.name}<p className="text-xs text-slate-500">{item.professor.institutionalEmail}</p></td><td className="px-5 py-3">{item.classroom}</td><td className="px-5 py-3">{item.students.length}</td><td className="px-5 py-3">{item.attendanceRecords.length}</td></tr>)}</tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card className="overflow-hidden">
+          <div className="border-b border-slate-200 p-5 dark:border-[#1f2229]"><h2 className="font-bold">Asistencia de alumnos</h2><p className="text-sm text-slate-500">Últimos registros recibidos del maestro.</p></div>
+          {attendance.isLoading ? <div className="p-5"><Skeleton className="h-28" /></div> : !attendance.data?.data.length ? <div className="p-5"><EmptyState icon={<Activity />} title="Sin asistencias" description="Cuando la app de profesor suba datos aparecerán aquí." /></div> : (
+            <div className="max-h-[520px] overflow-auto">
+              {attendance.data.data.map((record) => <div key={record.id} className="border-b border-slate-100 p-5 text-sm last:border-b-0 dark:border-[#1f2229]"><b>{record.group.name}</b><p className="text-xs text-slate-500">{record.professor.name} · {new Date(record.date).toLocaleDateString('es-MX')} · {record.portalSyncStatus}</p><p className="mt-2 text-xs text-slate-500">Entrada: {formatDateTime(record.professorEntryAt)} · Salida: {formatDateTime(record.professorExitAt)}</p><div className="mt-3 flex flex-wrap gap-2">{record.attendances.map((attendanceItem) => <span key={attendanceItem.id} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs dark:bg-[#15181d]">{attendanceItem.student.name}: {attendanceItem.status}</span>)}</div></div>)}
+            </div>
+          )}
+        </Card>
+
+        <Card className="overflow-hidden">
+          <div className="border-b border-slate-200 p-5 dark:border-[#1f2229]"><h2 className="font-bold">Logs de flujo</h2><p className="text-sm text-slate-500">Sync jobs, registros del maestro y vínculos recientes.</p></div>
+          {logs.isLoading ? <div className="p-5"><Skeleton className="h-28" /></div> : (
+            <div className="max-h-[520px] overflow-auto text-sm">
+              {logs.data?.data.syncJobs.map((job) => <div key={job.id} className="border-b border-slate-100 p-4 dark:border-[#1f2229]"><b>{job.status}</b> · {job.professor.name}<p className="text-xs text-slate-500">{job.currentGroupName || job.error || 'Sin detalle'} · {formatDateTime(job.startedAt)}</p></div>)}
+              {logs.data?.data.attendanceRecords.map((record) => <div key={record.id} className="border-b border-slate-100 p-4 dark:border-[#1f2229]"><b>{record.group.name}</b><p className="text-xs text-slate-500">{record.portalSyncStatus} · alumnos: {record._count.attendances} · BLE: {record._count.studentBeaconDetections}</p></div>)}
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function InfoBox({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-[#2e3138] dark:bg-[#15181d]"><p className="text-xs font-bold uppercase text-slate-400">{label}</p><p className="mt-1 font-semibold">{value}</p></div>;
+}
+
+function formatDateTime(value: string | null) {
+  return value ? new Date(value).toLocaleString('es-MX') : '-';
 }

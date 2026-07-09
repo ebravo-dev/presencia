@@ -20,6 +20,16 @@ const envSchema = z.object({
     PORT: z.coerce.number().default(3000),
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
     APP_TIME_ZONE: z.string().default('America/Mexico_City'),
+    PRESENCIA_DEBUG_MODE: z.preprocess(
+        (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
+        z.boolean().default(false),
+    ),
+    PRESENCIA_DEBUG_VERBOSE_LOGS: z.preprocess(
+        (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
+        z.boolean().default(false),
+    ),
+    PRESENCIA_DEBUG_PERIOD: z.string().default('2026 - 2 VERANO'),
+    PRESENCIA_DEBUG_CLASS_HOURS: z.coerce.number().int().positive().default(4),
     DEBUG_EXTRA_CLASS_HOURS: z.coerce.number().int().positive().default(4),
 
     // UAT Portal

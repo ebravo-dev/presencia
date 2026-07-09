@@ -88,6 +88,8 @@ class ApiService {
         uri.port == 3100;
   }
 
+  bool get usesBackendApiRest => _usesBackendApiRest;
+
   bool get _skipApiRestAttendanceUpload {
     return ApiConstants.presenciaDebugMode ||
         ApiConstants.skipApiRestAttendanceUpload;
