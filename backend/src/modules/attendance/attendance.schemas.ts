@@ -48,6 +48,18 @@ export const professorBeaconEntrySchema = z.object({
 
 export type ProfessorBeaconEntryRequest = z.infer<typeof professorBeaconEntrySchema>;
 
+export const professorExitSchema = z.object({
+    code: z.string().min(1, 'Group code requerido'),
+    groupLetter: z.string().min(1, 'Group letter requerido'),
+    period: z.string().min(1, 'Period requerido'),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha debe ser YYYY-MM-DD'),
+    detectedAt: z.string().refine((value) => !Number.isNaN(Date.parse(value)), {
+        message: 'detectedAt debe ser ISO datetime',
+    }),
+});
+
+export type ProfessorExitRequest = z.infer<typeof professorExitSchema>;
+
 export const studentBeaconDetectionsSchema = z.object({
     code: z.string().min(1, 'Group code requerido'),
     groupLetter: z.string().min(1, 'Group letter requerido'),

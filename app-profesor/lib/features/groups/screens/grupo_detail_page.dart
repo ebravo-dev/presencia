@@ -11,7 +11,6 @@ import '../../../services/asistencia_local_service.dart';
 import '../../../services/api_service.dart';
 import '../../../services/ble_beacon_verification_service.dart';
 import '../../../services/student_attendance_ble_service.dart';
-import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/uat_colors.dart';
 import '../../../core/permissions/permission_service.dart';
 import '../../../core/utils/utils.dart';
@@ -952,7 +951,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                           _salidaProfesor = DateTime.now();
                         });
                         _guardarAsistencia();
-                        _sincronizarDebugSalidaParaReportes();
+                        _sincronizarSalidaProfesor();
                       } else {
                         _mostrarMensajeHorario(_getMensajeVentanaSalida());
                       }
@@ -1321,37 +1320,26 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     await _asistenciaService.guardarAsistencia(registro);
   }
 
-  Future<void> _sincronizarDebugSalidaParaReportes() async {
-    if (!ApiConstants.presenciaDebugMode &&
-        !ApiConstants.skipApiRestAttendanceUpload) {
-      return;
-    }
-
+  Future<void> _sincronizarSalidaProfesor() async {
     final token = _authStorage.getToken();
     if (token == null || token.isEmpty) return;
 
-    final result = await _apiService.uploadAttendance(
+    final salida = _salidaProfesor;
+    if (salida == null) return;
+
+    final result = await _apiService.recordProfessorExit(
       token: token,
-      groupId: widget.grupo.id,
       code: widget.grupo.code ?? '',
       groupLetter: widget.grupo.groupLetter ?? widget.grupo.grupoLetra,
       period: widget.grupo.period ?? '',
-      date: _selectedDateTime,
-      attendances: _buildAttendancesForUpload(),
-      encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
-      groupName: widget.grupo.name,
-      classroom: widget.grupo.classroom,
-      level: widget.grupo.level,
-      schedule: widget.grupo.schedule,
-      professorEntryAt: _entradaProfesor,
-      professorExitAt: _salidaProfesor,
+      detectedAt: salida,
     );
 
     result.fold(
       (error) => Logger.error(
-        'No se pudo sincronizar salida debug para reportes: $error',
+        'No se pudo registrar salida del profesor en backend: $error',
       ),
-      (_) => Logger.info('Salida debug sincronizada para reportes.'),
+      (_) => Logger.info('Salida del profesor registrada en backend.'),
     );
   }
 
@@ -1363,16 +1351,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     await _guardarAsistencia();
     if (!mounted) return;
 
-    final debugSkipUpload =
-        ApiConstants.presenciaDebugMode ||
-        ApiConstants.skipApiRestAttendanceUpload;
-
     final token = _authStorage.getToken();
     final attendances = _buildAttendancesForUpload();
 
-    if (token == null ||
-        token.isEmpty ||
-        (attendances.isEmpty && !debugSkipUpload)) {
+    if (token == null || token.isEmpty || attendances.isEmpty) {
       if (mounted) {
         _mostrarDialogoErrorSincronizacion();
       }
@@ -1479,8 +1461,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         );
         if (mounted) {
           _mostrarDialogoExito(
-            debugUpload:
-                response['skippedApiRestUpload'] == true || debugSkipUpload,
+            debugUpload: response['skippedApiRestUpload'] == true,
           );
         }
       },

@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import '../core/constants/api_constants.dart';
 import '../core/utils/utils.dart';
 import '../shared/models/grupo.dart';
 import 'api_service.dart';
@@ -89,106 +88,17 @@ class OfflineAttendanceQueueService {
         );
       }
 
-      final debugSkipUpload =
-          ApiConstants.presenciaDebugMode ||
-          ApiConstants.skipApiRestAttendanceUpload;
-      if (debugSkipUpload) {
-        final result = await _batchService.submitDebugReportOnly(
-          token: token,
-          records: pending,
-          groups: groups,
-          encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
-        );
-        return OfflineAttendanceQueueResult(
-          pending: pending.length,
-          uploaded: result.uploaded,
-          skipped: result.skipped,
-          failed: result.failed,
-        );
-      }
-
-      if (!_apiService.usesBackendApiRest) {
-        final result = await _batchService.submitDirectToBackend(
-          token: token,
-          records: pending,
-          groups: groups,
-          encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
-        );
-        return OfflineAttendanceQueueResult(
-          pending: pending.length,
-          uploaded: result.uploaded,
-          skipped: result.skipped,
-          failed: result.failed,
-        );
-      }
-
-      final statusRecords = pending.map((record) {
-        final date =
-            '${record.fecha.year}-${record.fecha.month.toString().padLeft(2, '0')}-${record.fecha.day.toString().padLeft(2, '0')}';
-        return {
-          'clientRecordId': record.id,
-          'groupId': record.grupoId,
-          'date': date,
-        };
-      }).toList();
-      final statuses = await _apiService.checkSyncedRecordsStatus(
+      final result = await _batchService.submitDirectToBackend(
         token: token,
-        records: statusRecords,
+        records: pending,
+        groups: groups,
+        encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
       );
-
-      var uploaded = 0;
-      for (final record in pending) {
-        final date =
-            '${record.fecha.year}-${record.fecha.month.toString().padLeft(2, '0')}-${record.fecha.day.toString().padLeft(2, '0')}';
-        if (statuses['${record.grupoId}_$date'] == 'COMPLETED') {
-          if (await _batchService.markCompletedIfUnchanged(record.id)) {
-            uploaded++;
-          }
-        }
-      }
-
-      pending = _asistenciaService.obtenerAsistenciasPendientes();
-      if (pending.isEmpty) {
-        return OfflineAttendanceQueueResult(
-          pending: 0,
-          uploaded: uploaded,
-          skipped: 0,
-          failed: 0,
-        );
-      }
-
-      final prepared = _batchService.prepare(pending, groups);
-      final batchRecords = prepared.payload;
-      final skipped = prepared.skipped;
-
-      if (batchRecords.isEmpty) {
-        return OfflineAttendanceQueueResult(
-          pending: pending.length,
-          uploaded: uploaded,
-          skipped: skipped,
-          failed: 0,
-        );
-      }
-
-      final result = await _batchService.submit(token: token, batch: prepared);
-      var failed = 0;
-      await result.fold(
-        (error) async {
-          failed = batchRecords.length;
-          Logger.info('Cola offline: el servidor no aceptó el lote: $error');
-        },
-        (_) async {
-          Logger.info(
-            'Cola offline: lote de ${prepared.recordsById.length} lista(s) entregado al servidor',
-          );
-        },
-      );
-
       return OfflineAttendanceQueueResult(
         pending: pending.length,
-        uploaded: uploaded,
-        skipped: skipped,
-        failed: failed,
+        uploaded: result.uploaded,
+        skipped: result.skipped,
+        failed: result.failed,
       );
     } catch (e, stackTrace) {
       Logger.error(

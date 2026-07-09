@@ -10,11 +10,13 @@ import {
     registerAttendanceSchema,
     attendanceHistoryQuerySchema,
     professorBeaconEntrySchema,
+    professorExitSchema,
     studentBeaconDetectionsSchema,
     studentBeaconBindingsSchema,
     type RegisterAttendanceRequest,
     type AttendanceHistoryQuery,
     type ProfessorBeaconEntryRequest,
+    type ProfessorExitRequest,
     type StudentBeaconDetectionsRequest,
     type StudentBeaconBindingsRequest,
 } from './attendance.schemas.js';
@@ -250,7 +252,7 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                 const attendanceServerTimestamp = serverNow();
                 const professorAttendanceTimes = {
                     ...(professorEntryAt && !existingRecord?.professorEntryAt ? { professorEntryAt: attendanceServerTimestamp } : {}),
-                    ...(professorExitAt ? { professorExitAt: attendanceServerTimestamp } : {}),
+                    ...(professorExitAt && !existingRecord?.professorExitAt ? { professorExitAt: attendanceServerTimestamp } : {}),
                 };
 
                 // Create or update attendance record
@@ -536,6 +538,75 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                 });
             }
         }
+    );
+
+    fastify.post<{ Body: ProfessorExitRequest }>(
+        '/attendance/professor-exit',
+        async (request, reply) => {
+            try {
+                const validated = professorExitSchema.parse(request.body);
+                const professorId = (request as AuthenticatedRequest).professorId!;
+                const { code, groupLetter, period } = validated;
+                const detectedAt = serverNow();
+                const recordDate = attendanceDateFromServerNow(detectedAt);
+
+                const resolvedGroup = await resolveProfessorGroup({ professorId, code, groupLetter, period });
+                if (!resolvedGroup) {
+                    return reply.code(404).send({
+                        statusCode: 404,
+                        error: 'Not Found',
+                        message: `Grupo no encontrado (code: ${code}, group: ${groupLetter}, period: ${period})`,
+                    });
+                }
+
+                const { group, attendanceProfessorId } = resolvedGroup;
+                const existingRecord = await prisma.attendanceRecord.findUnique({
+                    where: {
+                        date_groupId: {
+                            date: recordDate,
+                            groupId: group.id,
+                        },
+                    },
+                });
+
+                const attendanceRecord = await prisma.attendanceRecord.upsert({
+                    where: {
+                        date_groupId: {
+                            date: recordDate,
+                            groupId: group.id,
+                        },
+                    },
+                    create: {
+                        date: recordDate,
+                        groupId: group.id,
+                        professorId: attendanceProfessorId,
+                        professorEntryAt: null,
+                        professorExitAt: detectedAt,
+                    },
+                    update: {
+                        professorId: attendanceProfessorId,
+                        professorExitAt: existingRecord?.professorExitAt ?? detectedAt,
+                    },
+                });
+
+                return reply.code(201).send({
+                    data: {
+                        attendanceRecordId: attendanceRecord.id,
+                        groupId: group.id,
+                        professorEntryAt: attendanceRecord.professorEntryAt,
+                        professorExitAt: attendanceRecord.professorExitAt,
+                    },
+                    message: 'Salida del profesor registrada con hora del servidor',
+                });
+            } catch (error) {
+                request.log.error(error);
+                return reply.code(500).send({
+                    statusCode: 500,
+                    error: 'Internal Server Error',
+                    message: 'Error registrando salida del profesor',
+                });
+            }
+        },
     );
 
     fastify.post<{ Body: StudentBeaconDetectionsRequest }>(

@@ -5,7 +5,6 @@ import 'package:table_calendar/table_calendar.dart';
 
 import '../../../services/asistencia_local_service.dart';
 import '../../../shared/models/asistencia_registro.dart';
-import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/uat_colors.dart';
 import '../../../core/utils/utils.dart';
 import '../../../services/api_service.dart';
@@ -248,10 +247,6 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   Future<void> _subirAsistencias() async {
     if (_pendientes.isEmpty || _isUploading) return;
 
-    final debugSkipUpload =
-        ApiConstants.presenciaDebugMode ||
-        ApiConstants.skipApiRestAttendanceUpload;
-
     final hasInternet = await _syncService.hasInternetConnection();
     if (!hasInternet) {
       if (mounted) {
@@ -292,213 +287,38 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
 
     _updateStep(0, _StepStatus.completed);
 
-    if (debugSkipUpload) {
-      _updateStep(
-        1,
-        _StepStatus.inProgress,
-        subtitle:
-            '${_pendientes.length} lista${_pendientes.length == 1 ? '' : 's'} en modo debug',
-      );
-      final debugResult = await _attendanceBatchService.submitDebugReportOnly(
-        token: token,
-        records: List<AsistenciaRegistro>.from(_pendientes),
-        groups: grupos,
-        encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
-      );
-      _updateStep(
-        1,
-        debugResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
-        subtitle:
-            '${debugResult.uploaded} registrada${debugResult.uploaded == 1 ? '' : 's'} para reportes, '
-            '${debugResult.skipped} omitida${debugResult.skipped == 1 ? '' : 's'}, '
-            '${debugResult.failed} fallida${debugResult.failed == 1 ? '' : 's'}',
-      );
-      _updateStep(
-        2,
-        debugResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
-      );
-      _updateStep(
-        3,
-        debugResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
-      );
-      HapticFeedback.heavyImpact();
-      await _cargarAsistencias();
-      if (mounted) setState(() => _isUploading = false);
-      return;
-    }
-
-    if (!_apiService.usesBackendApiRest) {
-      _updateStep(
-        1,
-        _StepStatus.inProgress,
-        subtitle:
-            '${_pendientes.length} lista${_pendientes.length == 1 ? '' : 's'} al backend principal',
-      );
-      final directResult = await _attendanceBatchService.submitDirectToBackend(
-        token: token,
-        records: List<AsistenciaRegistro>.from(_pendientes),
-        groups: grupos,
-        encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
-      );
-      _updateStep(
-        1,
-        directResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
-        subtitle:
-            '${directResult.uploaded} subida${directResult.uploaded == 1 ? '' : 's'}, '
-            '${directResult.skipped} omitida${directResult.skipped == 1 ? '' : 's'}, '
-            '${directResult.failed} fallida${directResult.failed == 1 ? '' : 's'}',
-      );
-      _updateStep(
-        2,
-        directResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
-      );
-      _updateStep(
-        3,
-        directResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
-      );
-      HapticFeedback.heavyImpact();
-      await _cargarAsistencias();
-      if (mounted) setState(() => _isUploading = false);
-      return;
-    }
-
-    final prepared = _attendanceBatchService.prepare(
-      List<AsistenciaRegistro>.from(_pendientes),
-      grupos,
-    );
-    final recordsById = prepared.recordsById;
-    final batchRecords = prepared.payload;
-
-    if (batchRecords.isEmpty) {
-      _updateStep(
-        1,
-        _StepStatus.failed,
-        subtitle: 'No hay listas válidas para enviar.',
-      );
-      _updateStep(2, _StepStatus.failed);
-      _updateStep(3, _StepStatus.failed);
-      if (mounted) setState(() => _isUploading = false);
-      return;
-    }
-
     _updateStep(
       1,
       _StepStatus.inProgress,
       subtitle:
-          '${batchRecords.length} lista${batchRecords.length == 1 ? '' : 's'}',
+          '${_pendientes.length} lista${_pendientes.length == 1 ? '' : 's'} al backend principal',
     );
-
-    final submitResult = await _attendanceBatchService.submit(
+    final directResult = await _attendanceBatchService.submitDirectToBackend(
       token: token,
-      batch: prepared,
+      records: List<AsistenciaRegistro>.from(_pendientes),
+      groups: grupos,
+      encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
     );
-
-    String? batchId;
-    String? submitError;
-    submitResult.fold((error) => submitError = error, (response) {
-      final data = Map<String, dynamic>.from(response['data'] as Map);
-      batchId = data['id']?.toString();
-    });
-
-    if (batchId == null) {
-      _updateStep(
-        1,
-        _StepStatus.failed,
-        subtitle: submitError ?? 'El servidor no aceptó el lote.',
-      );
-      _updateStep(2, _StepStatus.failed);
-      _updateStep(
-        3,
-        _StepStatus.failed,
-        subtitle: 'Las listas siguen guardadas para reintentar.',
-      );
-      if (mounted) setState(() => _isUploading = false);
-      return;
-    }
-
     _updateStep(
       1,
-      _StepStatus.completed,
+      directResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
       subtitle:
-          'Lote recibido por el servidor'
-          '${debugSkipUpload ? ' (debug: reportes, sin UAT)' : ''}',
+          '${directResult.uploaded} subida${directResult.uploaded == 1 ? '' : 's'}, '
+          '${directResult.skipped} omitida${directResult.skipped == 1 ? '' : 's'}, '
+          '${directResult.failed} fallida${directResult.failed == 1 ? '' : 's'}',
     );
     _updateStep(
       2,
-      _StepStatus.inProgress,
-      subtitle: 'Procesando en segundo plano...',
+      directResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
     );
-
-    final deadline = DateTime.now().add(const Duration(minutes: 10));
-    var completed = 0;
-    var failed = 0;
-    var terminal = false;
-
-    while (!_disposed && DateTime.now().isBefore(deadline) && !terminal) {
-      final statusResult = await _apiService.getAttendanceBatchStatus(
-        token: token,
-        batchId: batchId!,
-      );
-
-      await statusResult.fold((_) async {}, (response) async {
-        final data = Map<String, dynamic>.from(response['data'] as Map);
-        final jobs = data['jobs'] as List<dynamic>? ?? [];
-        completed = 0;
-        failed = 0;
-
-        for (final rawJob in jobs) {
-          final job = Map<String, dynamic>.from(rawJob as Map);
-          final clientRecordId = job['clientRecordId']?.toString();
-          final status = job['status']?.toString();
-          if (status == 'COMPLETED') {
-            completed++;
-            final registro = recordsById[clientRecordId];
-            if (registro != null) {
-              await _attendanceBatchService.markCompletedIfUnchanged(
-                registro.id,
-              );
-            }
-          } else if (status == 'FAILED') {
-            failed++;
-          }
-        }
-
-        final batchStatus = data['status']?.toString();
-        terminal = const {
-          'COMPLETED',
-          'PARTIAL',
-          'FAILED',
-        }.contains(batchStatus);
-        _updateStep(
-          2,
-          terminal && failed > 0 ? _StepStatus.failed : _StepStatus.inProgress,
-          subtitle:
-              '$completed completada${completed == 1 ? '' : 's'}, '
-              '$failed fallida${failed == 1 ? '' : 's'} de ${jobs.length}',
-        );
-      });
-
-      if (!terminal) await Future.delayed(const Duration(seconds: 3));
-    }
-
-    if (completed == recordsById.length) {
-      _updateStep(2, _StepStatus.completed);
-      _updateStep(3, _StepStatus.completed);
-      HapticFeedback.heavyImpact();
-    } else if (terminal) {
-      _updateStep(
-        3,
-        _StepStatus.failed,
-        subtitle: 'Las listas fallidas permanecen pendientes.',
-      );
-    } else {
-      _updateStep(
-        3,
-        _StepStatus.pending,
-        subtitle:
-            'El servidor continúa trabajando. Puedes cerrar la aplicación.',
-      );
-    }
+    _updateStep(
+      3,
+      directResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
+      subtitle: directResult.failed > 0
+          ? 'Las listas fallidas permanecen pendientes.'
+          : null,
+    );
+    HapticFeedback.heavyImpact();
 
     if (!_disposed) {
       await _cargarAsistencias();

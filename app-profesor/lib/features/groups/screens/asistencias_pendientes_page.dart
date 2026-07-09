@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/models/asistencia_registro.dart';
 import '../../../shared/models/grupo.dart';
-import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/uat_colors.dart';
 import '../../../services/asistencia_local_service.dart';
 import '../../../services/api_service.dart';
@@ -269,10 +268,7 @@ class _AsistenciasPendientesPageState
     );
 
     final attendances = _buildAttendances(registroActualizado, grupo);
-    final debugSkipUpload =
-        ApiConstants.presenciaDebugMode ||
-        ApiConstants.skipApiRestAttendanceUpload;
-    if (attendances.isEmpty && !debugSkipUpload) {
+    if (attendances.isEmpty) {
       // No hay alumnos mapeados — probablemente IDs no coinciden.
       // NO marcar como sincronizada: no se subio nada realmente.
       if (showSnackbars && mounted) {
@@ -322,10 +318,7 @@ class _AsistenciasPendientesPageState
       (response) async {
         await _asistenciaService.marcarComoSincronizada(registroActualizado.id);
         if (showSnackbars && mounted) {
-          final isDebugUpload =
-              response['skippedApiRestUpload'] == true ||
-              ApiConstants.presenciaDebugMode ||
-              ApiConstants.skipApiRestAttendanceUpload;
+          final isDebugUpload = response['skippedApiRestUpload'] == true;
           final message = isDebugUpload
               ? 'Modo debug: asistencia registrada para reportes. No se envio a UAT.'
               : 'Asistencia del ${_formatearFecha(registroActualizado.fecha)} sincronizada';

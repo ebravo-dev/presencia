@@ -21,7 +21,7 @@ class ApiService {
   ApiService({this.onSessionExpired}) {
     _presenceDio = Dio(
       BaseOptions(
-        baseUrl: ApiConstants.presenceApiBaseUrl,
+        baseUrl: ApiConstants.baseUrl,
         headers: const {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -39,7 +39,7 @@ class ApiService {
     );
     _attendanceBackendDio = Dio(
       BaseOptions(
-        baseUrl: ApiConstants.attendanceBackendBaseUrl,
+        baseUrl: ApiConstants.baseUrl,
         headers: const {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -81,18 +81,17 @@ class ApiService {
   String ensureEncryptedPassword(String value) => value;
 
   bool get _usesBackendApiRest {
-    final uri = Uri.tryParse(ApiConstants.presenceApiBaseUrl);
-    if (uri == null) return false;
-    return uri.host.contains('backendapirest') ||
-        uri.host.contains('backendrestapi') ||
-        uri.port == 3100;
+    // La app de profesor siempre consume el backend principal. Ese backend
+    // orquesta debug/release y decide cuándo hablar con backend-apirest.
+    return false;
   }
 
   bool get usesBackendApiRest => _usesBackendApiRest;
 
   bool get _skipApiRestAttendanceUpload {
-    return ApiConstants.presenciaDebugMode ||
-        ApiConstants.skipApiRestAttendanceUpload;
+    // El modo debug ya no se decide en el cliente. El backend principal
+    // responde con data.debug=true cuando guarda solo para reportes.
+    return false;
   }
 
   Future<Either<String, LoginResponse>> loginProfesor({
@@ -666,7 +665,15 @@ class ApiService {
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
 
-      return Right(Map<String, dynamic>.from(response.data as Map));
+      final responseMap = Map<String, dynamic>.from(response.data as Map);
+      final responseData = responseMap['data'];
+      if (responseData is Map && responseData['debug'] == true) {
+        responseMap['debug'] = true;
+        responseMap['skippedApiRestUpload'] = true;
+        responseMap['reportVisible'] = responseData['reportVisible'] == true;
+      }
+
+      return Right(responseMap);
     } on DioException catch (e) {
       final errorMessage = _handleDioError(e);
       Logger.error('Error de conexion subiendo asistencia: $errorMessage', e);
@@ -1309,6 +1316,46 @@ class ApiService {
     } catch (e, stackTrace) {
       Logger.error(
         'Error inesperado registrando entrada por beacon',
+        e,
+        stackTrace,
+      );
+      return Left('Error inesperado: ${e.toString()}');
+    }
+  }
+
+  Future<Either<String, Map<String, dynamic>>> recordProfessorExit({
+    required String token,
+    required String code,
+    required String groupLetter,
+    required String period,
+    required DateTime detectedAt,
+  }) async {
+    try {
+      final response = await _presenceDio.post(
+        '/attendance/professor-exit',
+        data: {
+          'code': code,
+          'groupLetter': groupLetter,
+          'period': period,
+          'date':
+              '${detectedAt.year.toString().padLeft(4, '0')}-${detectedAt.month.toString().padLeft(2, '0')}-${detectedAt.day.toString().padLeft(2, '0')}',
+          'detectedAt': detectedAt.toIso8601String(),
+        },
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return Right(response.data as Map<String, dynamic>);
+      }
+
+      return Left(response.data['message'] ?? 'Error registrando salida');
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error('Error registrando salida del profesor: $errorMessage', e);
+      return Left(errorMessage);
+    } catch (e, stackTrace) {
+      Logger.error(
+        'Error inesperado registrando salida del profesor',
         e,
         stackTrace,
       );
