@@ -30,7 +30,7 @@ export interface Assignment {
 export interface OverviewResponse { data: { counts: { teachers: number; subjects: number; coordinations: number; assignments: number }; coordinations: CoordinationSummary[] }; meta: { generatedAt: string } }
 export interface TeachersResponse { data: TeacherSummary[]; meta: { page: number; pageSize: number; total: number; totalPages: number } }
 export interface TeacherAssignmentsResponse { data: { teacher: TeacherSummary; assignments: Assignment[] }; meta: { generatedAt: string } }
-export type ReportCellStatus = 'TAKEN' | 'MISSING' | 'FUTURE' | 'NOT_SCHEDULED' | 'UNKNOWN_SCHEDULE' | 'SOURCE_UNAVAILABLE';
+export type ReportCellStatus = 'TAKEN' | 'LATE' | 'MISSING' | 'FUTURE' | 'NOT_SCHEDULED' | 'UNKNOWN_SCHEDULE' | 'SOURCE_UNAVAILABLE';
 export type ReportDay = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
 export interface ReportCell {
   date: string;
@@ -129,11 +129,23 @@ export interface DebugStatusResponse {
   data: {
     enabled: boolean;
     period: string;
-    classHours: number;
+    settings: DebugSettings;
     apiRestPolicy: string;
   };
   meta: { generatedAt: string };
 }
+
+export interface DebugSettings {
+  teacherAttendanceToleranceMinutes: number;
+}
+
+export interface DebugSettingsResponse {
+  data: DebugSettings;
+  meta: { generatedAt: string };
+}
+
+export type DebugScheduleSlotInput = { startTime: string; endTime: string };
+export type DebugScheduleInput = Partial<Record<ScheduleDay, DebugScheduleSlotInput[]>>;
 
 export interface DebugClassResponse {
   data: Array<{

@@ -11,9 +11,22 @@ import {
     BeaconInput,
     BeaconUpdateInput,
 } from '../beacons/beacons.service.js';
-import type { CoordinatorCreateInput, CoordinatorUpdateInput, DebugClassCreateInput } from './super-user.schemas.js';
+import {
+    getAttendanceSettings,
+    updateAttendanceSettings,
+} from '../settings/attendance-settings.service.js';
+import type { CoordinatorCreateInput, CoordinatorUpdateInput, DebugClassCreateInput, DebugSettingsUpdateInput } from './super-user.schemas.js';
 
 const studentDeviceBinding = (prisma as any).studentDeviceBinding;
+const DEBUG_DAY_ALIASES = {
+    monday: ['monday', 'lunes'],
+    tuesday: ['tuesday', 'martes'],
+    wednesday: ['wednesday', 'miercoles'],
+    thursday: ['thursday', 'jueves'],
+    friday: ['friday', 'viernes'],
+    saturday: ['saturday', 'sabado'],
+    sunday: ['sunday', 'domingo'],
+} as const;
 
 export interface SuperUserIdentity {
     role: 'SUPER_USER';
@@ -181,16 +194,31 @@ export class SuperUserService {
         return true;
     }
 
-    getDebugStatus() {
+    async getDebugStatus() {
+        const settings = await getAttendanceSettings();
         return {
             data: {
                 enabled: env.PRESENCIA_DEBUG_MODE,
                 period: env.PRESENCIA_DEBUG_PERIOD,
-                classHours: env.PRESENCIA_DEBUG_CLASS_HOURS || env.DEBUG_EXTRA_CLASS_HOURS,
+                settings,
                 apiRestPolicy: env.PRESENCIA_DEBUG_MODE
                     ? 'Solo login. Scraping, consultas y subida real deshabilitadas.'
                     : 'Flujo real habilitado.',
             },
+            meta: { generatedAt: new Date().toISOString() },
+        };
+    }
+
+    async getDebugSettings() {
+        return {
+            data: await getAttendanceSettings(),
+            meta: { generatedAt: new Date().toISOString() },
+        };
+    }
+
+    async updateDebugSettings(input: DebugSettingsUpdateInput) {
+        return {
+            data: await updateAttendanceSettings(input),
             meta: { generatedAt: new Date().toISOString() },
         };
     }
@@ -241,7 +269,7 @@ export class SuperUserService {
             update: { classroom: input.classroom },
         });
 
-        const schedule = (input.schedule ?? this.defaultDebugSchedule()) as any;
+        const schedule = this.normalizeDebugSchedule(input.schedule ?? this.defaultDebugSchedule()) as any;
         const group = await prisma.group.upsert({
             where: {
                 code_groupLetter_professorId_period: {
@@ -405,19 +433,65 @@ export class SuperUserService {
 
     private defaultDebugSchedule() {
         const duration = Math.max(1, env.PRESENCIA_DEBUG_CLASS_HOURS || env.DEBUG_EXTRA_CLASS_HOURS);
-        const value = `08:00-${String(8 + duration).padStart(2, '0')}:00`;
+        const endHour = Math.min(23, 8 + duration);
+        const value = [{ startTime: '08:00', endTime: `${String(endHour).padStart(2, '0')}:00` }];
         return {
             monday: value,
-            lunes: value,
             tuesday: value,
-            martes: value,
             wednesday: value,
-            miercoles: value,
             thursday: value,
-            jueves: value,
             friday: value,
-            viernes: value,
         };
+    }
+
+    private normalizeDebugSchedule(schedule: Record<string, unknown>) {
+        const normalized: Record<string, Array<{ raw: string; startTime: string; endTime: string }>> = {};
+        for (const [day, aliases] of Object.entries(DEBUG_DAY_ALIASES)) {
+            const source = aliases.map((alias) => schedule[alias]).find((value) => value !== undefined);
+            const slots = this.normalizeDebugDaySlots(source);
+            for (const alias of aliases) {
+                normalized[alias] = slots;
+            }
+        }
+        return normalized;
+    }
+
+    private normalizeDebugDaySlots(value: unknown): Array<{ raw: string; startTime: string; endTime: string }> {
+        if (Array.isArray(value)) {
+            return value
+                .map((item) => {
+                    if (typeof item === 'string') return this.parseScheduleSlot(item);
+                    if (typeof item !== 'object' || item === null) return null;
+                    const record = item as { startTime?: unknown; endTime?: unknown };
+                    const startTime = typeof record.startTime === 'string' ? record.startTime : null;
+                    const endTime = typeof record.endTime === 'string' ? record.endTime : null;
+                    return startTime && endTime ? { raw: `${startTime}-${endTime}`, startTime, endTime } : null;
+                })
+                .filter((item): item is { raw: string; startTime: string; endTime: string } => item !== null);
+        }
+
+        if (typeof value === 'string') {
+            return value
+                .split(/[;\n]+/)
+                .map((item) => this.parseScheduleSlot(item))
+                .filter((item): item is { raw: string; startTime: string; endTime: string } => item !== null);
+        }
+
+        return [];
+    }
+
+    private parseScheduleSlot(value: string): { raw: string; startTime: string; endTime: string } | null {
+        const trimmed = value.trim();
+        const match = trimmed.match(/\b([0-2]?\d:[0-5]\d)\s*(?:-|a)\s*([0-2]?\d:[0-5]\d)\b/i);
+        if (!match?.[1] || !match[2]) return null;
+        const startTime = this.padTime(match[1]);
+        const endTime = this.padTime(match[2]);
+        return { raw: `${startTime}-${endTime}`, startTime, endTime };
+    }
+
+    private padTime(value: string): string {
+        const [hours, minutes] = value.split(':');
+        return `${hours.padStart(2, '0')}:${minutes}`;
     }
 
     private defaultDebugStudents() {

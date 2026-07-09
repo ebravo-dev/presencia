@@ -278,13 +278,14 @@ export class AuthService {
 
         const beaconUuid = '11111111-2222-4333-8444-555555555555';
         const classroom = 'DEBUG-101';
-        await prisma.beacon.upsert({
+        const existingBeacon = await prisma.beacon.findUnique({
             where: { uuid: beaconUuid },
-            create: { uuid: beaconUuid, classroom },
-            update: { classroom },
         });
+        if (!existingBeacon) {
+            await prisma.beacon.create({ data: { uuid: beaconUuid, classroom } });
+        }
 
-        const group = await prisma.group.upsert({
+        let group = await prisma.group.findUnique({
             where: {
                 code_groupLetter_professorId_period: {
                     code: '990001',
@@ -293,23 +294,22 @@ export class AuthService {
                     period,
                 },
             },
-            create: {
-                code: '990001',
-                groupLetter: 'DBG',
-                name: `DEBUG ASISTENCIA ${duration}H`,
-                level: 'DEBUG',
-                classroom,
-                schedule,
-                period,
-                professorId,
-            },
-            update: {
-                name: `DEBUG ASISTENCIA ${duration}H`,
-                level: 'DEBUG',
-                classroom,
-                schedule,
-            },
         });
+
+        if (!group) {
+            group = await prisma.group.create({
+                data: {
+                    code: '990001',
+                    groupLetter: 'DBG',
+                    name: `DEBUG ASISTENCIA ${duration}H`,
+                    level: 'DEBUG',
+                    classroom,
+                    schedule,
+                    period,
+                    professorId,
+                },
+            });
+        }
 
         const students = [
             ['DBG0001', 'Alumno Debug Uno', '22222222-0001-4333-8444-555555555555'],

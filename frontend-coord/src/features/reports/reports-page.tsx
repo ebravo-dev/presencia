@@ -441,6 +441,7 @@ function ReportMark({ cell, hourSlot }: { cell?: ReportCell; hourSlot?: ReportHo
   if (!status) return <span className="text-lg font-medium text-slate-300" aria-label="Sin clase">—</span>;
   if (status === 'NOT_SCHEDULED') return <span className="text-lg font-medium text-slate-300" aria-label="Sin clase">—</span>;
   if (status === 'TAKEN') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border-2 border-emerald-500 text-emerald-600" title={attendanceTitle(cell, hourSlot)} aria-label="Asistencia registrada"><Check size={14} strokeWidth={3} /></span>;
+  if (status === 'LATE') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border-2 border-amber-400 text-amber-600" title={attendanceTitle(cell, hourSlot, 'Retardo')} aria-label="Retardo"><Clock3 size={13} strokeWidth={3} /></span>;
   if (status === 'MISSING') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border-2 border-red-400 text-red-500" aria-label="Inasistencia"><X size={14} strokeWidth={3} /></span>;
   if (status === 'FUTURE') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border border-slate-300 text-slate-400" aria-label="Clase futura" title="Clase futura"><Clock3 size={13} /></span>;
   if (status === 'SOURCE_UNAVAILABLE') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border border-amber-400 text-amber-600" aria-label="Asistencia no disponible" title="Asistencia no disponible"><AlertTriangle size={13} /></span>;
@@ -452,8 +453,8 @@ function HourSlotLabel({ hourSlot }: { hourSlot?: ReportHourSlot }) {
   return <span className="mt-1 block text-[7px] font-semibold leading-3 text-slate-500">{hourSlot.startTime}-{hourSlot.endTime}</span>;
 }
 
-function attendanceTitle(cell?: ReportCell, hourSlot?: ReportHourSlot) {
-  const pieces = ['Asistencia registrada'];
+function attendanceTitle(cell?: ReportCell, hourSlot?: ReportHourSlot, label = 'Asistencia registrada') {
+  const pieces = [label];
   if (hourSlot) pieces.push(`Hora: ${hourSlot.startTime}-${hourSlot.endTime}`);
   if (cell?.professorEntryAt) pieces.push(`Entrada: ${formatTimeOnly(cell.professorEntryAt)}`);
   if (cell?.professorExitAt) pieces.push(`Salida: ${formatTimeOnly(cell.professorExitAt)}`);

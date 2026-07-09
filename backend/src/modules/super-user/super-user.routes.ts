@@ -5,6 +5,7 @@ import {
     coordinatorCreateSchema,
     coordinatorUpdateSchema,
     debugClassCreateSchema,
+    debugSettingsUpdateSchema,
     superUserBeaconSchema,
     superUserBeaconUpdateSchema,
     superUserLoginSchema,
@@ -155,7 +156,18 @@ export async function superUserRoutes(fastify: FastifyInstance) {
     );
 
     fastify.get('/api/superUsuario/debug/status', { preHandler: requireSuperUser }, async (_request, reply) => {
-        return reply.send(superUserService.getDebugStatus());
+        return reply.send(await superUserService.getDebugStatus());
+    });
+
+    fastify.get('/api/superUsuario/debug/settings', { preHandler: requireSuperUser }, async (_request, reply) => {
+        return reply.send(await superUserService.getDebugSettings());
+    });
+
+    fastify.put('/api/superUsuario/debug/settings', { preHandler: requireSuperUser }, async (request, reply) => {
+        const parsed = debugSettingsUpdateSchema.safeParse(request.body);
+        if (!parsed.success) return sendValidationError(reply, parsed.error.errors.map((issue) => issue.message));
+
+        return reply.send(await superUserService.updateDebugSettings(parsed.data));
     });
 
     fastify.get('/api/superUsuario/debug/classes', { preHandler: requireSuperUser }, async (_request, reply) => {

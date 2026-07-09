@@ -10,6 +10,7 @@ import {
   serializeBeacon,
 } from '../beacons/beacons.service.js';
 import { attendanceDateFromServerNow, serverLocalHourMinute, serverNow } from '../../core/time/server-time.js';
+import { getAttendanceSettings } from '../settings/attendance-settings.service.js';
 
 const querySchema = z.object({
   professorEmail: z.string().email().transform((value) => value.toLowerCase()),
@@ -242,6 +243,13 @@ export async function internalCoordinationRoutes(fastify: FastifyInstance): Prom
       return reply.send({ data: professor });
     },
   );
+
+  fastify.get('/internal/coordination/attendance-settings', async (_request, reply) => {
+    return reply.send({
+      data: await getAttendanceSettings(),
+      meta: { generatedAt: new Date().toISOString() },
+    });
+  });
 
   fastify.post('/internal/coordination/debug-attendance', async (request, reply) => {
     const parsed = debugAttendanceSchema.safeParse(request.body);

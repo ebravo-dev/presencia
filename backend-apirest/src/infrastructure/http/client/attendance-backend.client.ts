@@ -31,6 +31,10 @@ export interface AttendanceSourceProfessor {
   groups: AttendanceSourceGroup[];
 }
 
+export interface AttendanceSettings {
+  teacherAttendanceToleranceMinutes: number;
+}
+
 export class AttendanceBackendUnavailableError extends Error {}
 
 export class AttendanceBackendClient {
@@ -50,6 +54,15 @@ export class AttendanceBackendClient {
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 404) return null;
       throw new AttendanceBackendUnavailableError('No fue posible consultar el backend de asistencia.', { cause: error });
+    }
+  }
+
+  async getAttendanceSettings(): Promise<AttendanceSettings> {
+    try {
+      const response = await this.http.get<{ data: AttendanceSettings }>('/internal/coordination/attendance-settings');
+      return response.data.data;
+    } catch (error) {
+      throw new AttendanceBackendUnavailableError('No fue posible consultar la configuración de asistencia.', { cause: error });
     }
   }
 

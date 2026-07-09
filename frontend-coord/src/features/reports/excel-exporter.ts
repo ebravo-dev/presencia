@@ -12,6 +12,7 @@ const days: Array<{ key: ReportDay; label: string }> = [
 
 const statusLabels: Record<ReportCellStatus, string> = {
   TAKEN: '✓',
+  LATE: 'R',
   MISSING: '✕',
   FUTURE: '○',
   NOT_SCHEDULED: '—',
@@ -120,7 +121,7 @@ function styleStatusCell(cell: ExcelJS.Cell, status: ReportCellStatus): void {
     bold: true,
     size: 12,
     color: {
-      argb: status === 'TAKEN' ? 'FF16A34A' : status === 'MISSING' ? 'FFDC2626' : status === 'SOURCE_UNAVAILABLE' ? 'FFD97706' : 'FF64748B',
+      argb: status === 'TAKEN' ? 'FF16A34A' : status === 'LATE' ? 'FFD97706' : status === 'MISSING' ? 'FFDC2626' : status === 'SOURCE_UNAVAILABLE' ? 'FFD97706' : 'FF64748B',
     },
   };
 }

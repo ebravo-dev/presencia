@@ -220,6 +220,8 @@ function drawStatusMark(doc: jsPDF, data: CellHookData, rows: ReturnType<typeof 
 
   if (status === 'TAKEN') {
     doc.setDrawColor(34, 197, 94); doc.circle(x, y, 2.2); doc.line(x - 1.1, y, x - 0.25, y + 0.9); doc.line(x - 0.25, y + 0.9, x + 1.25, y - 1);
+  } else if (status === 'LATE') {
+    doc.setDrawColor(217, 119, 6); doc.circle(x, y, 2.2); doc.setFontSize(5); doc.setTextColor(217, 119, 6); doc.text('R', x, y + 1.5, { align: 'center' });
   } else if (status === 'MISSING') {
     doc.setDrawColor(248, 113, 113); doc.circle(x, y, 2.2); doc.line(x - 1, y - 1, x + 1, y + 1); doc.line(x + 1, y - 1, x - 1, y + 1);
   } else if (status === 'NOT_SCHEDULED') {

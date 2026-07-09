@@ -5,15 +5,17 @@ import type { ITeacherRepository } from '../../domain/repositories/teacher.repos
 import {
   AttendanceBackendUnavailableError,
   type AttendanceBackendClient,
+  type AttendanceSettings,
   type AttendanceSourceGroup,
   type AttendanceSourceRecord,
 } from '../../infrastructure/http/client/attendance-backend.client.js';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
 type ReportDay = typeof DAYS[number];
-type CellStatus = 'TAKEN' | 'MISSING' | 'FUTURE' | 'NOT_SCHEDULED' | 'UNKNOWN_SCHEDULE' | 'SOURCE_UNAVAILABLE';
+type CellStatus = 'TAKEN' | 'LATE' | 'MISSING' | 'FUTURE' | 'NOT_SCHEDULED' | 'UNKNOWN_SCHEDULE' | 'SOURCE_UNAVAILABLE';
 type ReportAvailability = 'READY' | 'NOT_SYNCED' | 'IDENTITY_UNAVAILABLE' | 'ATTENDANCE_SOURCE_UNAVAILABLE';
 const MEXICO_CITY_OFFSET = '-06:00';
+const DEFAULT_TEACHER_ATTENDANCE_TOLERANCE_MINUTES = 10;
 
 interface ReportTeacher {
   id: string;
@@ -50,6 +52,7 @@ export class WeeklyAttendanceReportService {
     const weekEnd = weekDates.at(-1)?.date ?? weekStart;
     const academicCycle = cycleForWeek(weekStart);
     if (!teacher.email) return emptyReport(teacher, weekStart, weekEnd, 'IDENTITY_UNAVAILABLE');
+    const settings = await getAttendanceSettingsOrDefault(this.source);
 
     let sourceProfessor;
     try {
@@ -64,7 +67,7 @@ export class WeeklyAttendanceReportService {
 
     const rows = sourceProfessor.groups
       .filter((group) => matchesAcademicCycle(group.period, academicCycle))
-      .flatMap((group) => buildRows(group, weekDates));
+      .flatMap((group) => buildRows(group, weekDates, false, settings.teacherAttendanceToleranceMinutes));
     return reportResponse(toReportTeacher(teacher), weekStart, weekEnd, 'READY', rows);
   }
 
@@ -72,6 +75,7 @@ export class WeeklyAttendanceReportService {
     const teacher = await this.teachers.findById(teacherId);
     if (!teacher) throw new ApiError(404, 'TEACHER_NOT_FOUND', `No existe el profesor ${teacherId}.`);
     if (!teacher.email) return emptyRangeReport(teacher, startDate, endDate, 'IDENTITY_UNAVAILABLE');
+    const settings = await getAttendanceSettingsOrDefault(this.source);
 
     const academicCycles = cyclesForRange(startDate, endDate);
     let sourceProfessor;
@@ -88,7 +92,7 @@ export class WeeklyAttendanceReportService {
     const dates = datesForRange(startDate, endDate);
     const rows = sourceProfessor.groups
       .filter((group) => matchesAnyAcademicCycle(group.period, academicCycles))
-      .map((group) => buildRangeRow(group, dates))
+      .map((group) => buildRangeRow(group, dates, false, settings.teacherAttendanceToleranceMinutes))
       .filter((row) => row.scheduledClassDays > 0);
     return rangeReportResponse(toReportTeacher(teacher), startDate, endDate, 'READY', rows);
   }
@@ -104,9 +108,10 @@ export class WeeklyAttendanceReportService {
     if (!assignments?.length) return emptyReport(teacher, weekStart, weekEnd, availability);
 
     const academicCycle = cycleForWeek(weekStart);
+    const settings = await getAttendanceSettingsOrDefault(this.source);
     const rows = assignments
       .filter((assignment) => assignmentMatchesAcademicCycle(assignment, academicCycle))
-      .flatMap((assignment) => buildRows(toLocalReportGroup(assignment), weekDates, true));
+      .flatMap((assignment) => buildRows(toLocalReportGroup(assignment), weekDates, true, settings.teacherAttendanceToleranceMinutes));
     return reportResponse(toReportTeacher(teacher), weekStart, weekEnd, availability, rows);
   }
 
@@ -121,9 +126,10 @@ export class WeeklyAttendanceReportService {
     if (!assignments?.length) return emptyRangeReport(teacher, startDate, endDate, availability);
 
     const dates = datesForRange(startDate, endDate);
+    const settings = await getAttendanceSettingsOrDefault(this.source);
     const rows = assignments
       .filter((assignment) => assignmentMatchesAnyAcademicCycle(assignment, academicCycles))
-      .map((assignment) => buildRangeRow(toLocalReportGroup(assignment), dates, true))
+      .map((assignment) => buildRangeRow(toLocalReportGroup(assignment), dates, true, settings.teacherAttendanceToleranceMinutes))
       .filter((row) => row.scheduledClassDays > 0);
     return rangeReportResponse(toReportTeacher(teacher), startDate, endDate, availability, rows);
   }
@@ -133,6 +139,7 @@ function buildRows(
   group: ReportSourceGroup | AttendanceSourceGroup,
   dates: Array<{ day: ReportDay; date: string }>,
   sourceUnavailable = false,
+  toleranceMinutes = DEFAULT_TEACHER_ATTENDANCE_TOLERANCE_MINUTES,
 ) {
   const schedule = normalizeSchedule(group.schedule);
   const slots = DAYS.flatMap((day) => schedule[day]);
@@ -140,7 +147,7 @@ function buildRows(
 
   const cells = Object.fromEntries(dates.map(({ day, date }) => [
     day,
-    buildCell(date, schedule[day], group.attendanceRecords, sourceUnavailable),
+    buildCell(date, schedule[day], group.attendanceRecords, sourceUnavailable, toleranceMinutes),
   ])) as Record<ReportDay, ReturnType<typeof buildCell>>;
   const displaySchedule = scheduleForDisplay(slots);
   const groupParts = parseGroupParts(group.groupLetter || '');
@@ -160,6 +167,7 @@ function buildRangeRow(
   group: ReportSourceGroup | AttendanceSourceGroup,
   dates: Array<{ day: ReportDay; date: string }>,
   sourceUnavailable = false,
+  toleranceMinutes = DEFAULT_TEACHER_ATTENDANCE_TOLERANCE_MINUTES,
 ) {
   const schedule = normalizeSchedule(group.schedule);
   const scheduledDates = dates
@@ -171,7 +179,7 @@ function buildRangeRow(
     ? 0
     : scheduledDates.reduce((total, item) => {
         const record = group.attendanceRecords.find((attendanceRecord) => attendanceRecord.date.slice(0, 10) === item.date);
-        return total + attendedHoursForRecord(item.date, item.slots, record);
+        return total + attendedHoursForRecord(item.date, item.slots, record, toleranceMinutes);
       }, 0);
   const groupParts = parseGroupParts(group.groupLetter || '');
 
@@ -198,6 +206,7 @@ function buildCell(
   slots: NormalizedSlot[],
   records: AttendanceSourceRecord[],
   sourceUnavailable = false,
+  toleranceMinutes = DEFAULT_TEACHER_ATTENDANCE_TOLERANCE_MINUTES,
 ) {
   if (slots.length === 0) return emptyCell(date, 'NOT_SCHEDULED');
   const parsedSlots = slots.filter((slot) => slot.startTime && slot.endTime);
@@ -208,8 +217,8 @@ function buildCell(
   }
   const record = records.find((item) => item.date.slice(0, 10) === date);
   if (record) {
-    const hourSlots = buildHourSlots(date, parsedSlots, record);
-    const attendedHours = hourSlots.filter((slot) => slot.status === 'TAKEN').length;
+    const hourSlots = buildHourSlots(date, parsedSlots, record, undefined, toleranceMinutes);
+    const attendedHours = hourSlots.filter((slot) => slot.status === 'TAKEN' || slot.status === 'LATE').length;
     return {
       date,
       status: attendedHours > 0 ? 'TAKEN' as CellStatus : 'MISSING' as CellStatus,
@@ -418,8 +427,13 @@ function scheduledHoursForSlots(slots: NormalizedSlot[]): number {
   return slots.reduce((total, slot) => total + Math.ceil(slotDurationMinutes(slot) / 60), 0);
 }
 
-function attendedHoursForRecord(date: string, slots: NormalizedSlot[], record?: AttendanceSourceRecord): number {
-  return buildHourSlots(date, slots, record).filter((slot) => slot.status === 'TAKEN').length;
+function attendedHoursForRecord(
+  date: string,
+  slots: NormalizedSlot[],
+  record?: AttendanceSourceRecord,
+  toleranceMinutes = DEFAULT_TEACHER_ATTENDANCE_TOLERANCE_MINUTES,
+): number {
+  return buildHourSlots(date, slots, record, undefined, toleranceMinutes).filter((slot) => slot.status === 'TAKEN' || slot.status === 'LATE').length;
 }
 
 function buildHourSlots(
@@ -427,6 +441,7 @@ function buildHourSlots(
   slots: NormalizedSlot[],
   record?: AttendanceSourceRecord,
   forcedStatus?: CellStatus,
+  toleranceMinutes = DEFAULT_TEACHER_ATTENDANCE_TOLERANCE_MINUTES,
 ): ReportHourSlot[] {
   const scheduled = slots
     .flatMap((slot) => splitSlotIntoHourBlocks(date, slot))
@@ -460,28 +475,47 @@ function buildHourSlots(
     }));
   }
 
-  const overlapped = scheduled.map((slot) => {
-    const overlapStart = Math.max(entry.getTime(), slot.start.getTime());
-    const overlapEnd = Math.min(exit.getTime(), slot.end.getTime());
-    return {
-      ...slot,
-      overlapMinutes: Math.max(0, overlapEnd - overlapStart) / 60000,
-    };
-  });
-  const attendedCount = Math.min(
-    scheduled.length,
-    Math.ceil(overlapped.reduce((total, slot) => total + slot.overlapMinutes, 0) / 60),
-  );
-  const takenIndexes = new Set(overlapped.filter((slot) => slot.overlapMinutes > 0).slice(0, attendedCount).map((slot) => slot.index));
+  const toleranceMs = Math.max(0, toleranceMinutes) * 60 * 1000;
 
   return scheduled.map((slot) => ({
     index: slot.index,
     startTime: slot.startTime,
     endTime: slot.endTime,
-    status: takenIndexes.has(slot.index)
-      ? 'TAKEN'
-      : slot.end.getTime() < nowInMexicoCityComparable().getTime() ? 'MISSING' : 'FUTURE',
+    status: statusForHourSlot(slot, entry, exit, toleranceMs),
   }));
+}
+
+function statusForHourSlot(
+  slot: { start: Date; end: Date },
+  entry: Date,
+  exit: Date,
+  toleranceMs: number,
+): CellStatus {
+  const overlapsSlot = exit.getTime() > slot.start.getTime() && entry.getTime() < slot.end.getTime();
+  if (!overlapsSlot) return slot.end.getTime() < nowInMexicoCityComparable().getTime() ? 'MISSING' : 'FUTURE';
+
+  const arrivedOnTime = entry.getTime() <= slot.start.getTime() + toleranceMs;
+  const stayedThroughEnd = exit.getTime() >= slot.end.getTime();
+  return arrivedOnTime && stayedThroughEnd ? 'TAKEN' : 'LATE';
+}
+
+async function getAttendanceSettingsOrDefault(source: AttendanceBackendClient): Promise<AttendanceSettings> {
+  const fallback = { teacherAttendanceToleranceMinutes: DEFAULT_TEACHER_ATTENDANCE_TOLERANCE_MINUTES };
+  const client = source as AttendanceBackendClient & { getAttendanceSettings?: () => Promise<AttendanceSettings> };
+  if (!client.getAttendanceSettings) return fallback;
+
+  try {
+    const settings = await client.getAttendanceSettings();
+    const tolerance = Number(settings.teacherAttendanceToleranceMinutes);
+    return {
+      teacherAttendanceToleranceMinutes: Number.isFinite(tolerance)
+        ? Math.max(0, Math.min(120, Math.round(tolerance)))
+        : fallback.teacherAttendanceToleranceMinutes,
+    };
+  } catch (error) {
+    if (error instanceof AttendanceBackendUnavailableError) return fallback;
+    throw error;
+  }
 }
 
 function splitSlotIntoHourBlocks(date: string, slot: NormalizedSlot) {
