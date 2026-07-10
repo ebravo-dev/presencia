@@ -2,12 +2,16 @@ import argon2 from 'argon2';
 import { prisma } from '../infrastructure/persistence/prisma/prisma.client.js';
 
 const provisionOnlyIfConfigured = process.argv.includes('--if-configured');
-const coordinators = readCoordinators();
+const superAdminOnly = process.argv.includes('--superadmin-only');
+const coordinators = readCoordinators({ superAdminOnly });
 
-if (provisionOnlyIfConfigured && coordinators.length === 0) {
+if (superAdminOnly && coordinators.length === 0) {
+  console.error('Define SUPERADMIN_EMAIL y SUPERADMIN_PASSWORD en el entorno de backend-apirest.');
+  process.exitCode = 1;
+} else if (provisionOnlyIfConfigured && coordinators.length === 0) {
   console.log('Provision de coordinador omitida: no se configuraron credenciales.');
 } else if (coordinators.length === 0) {
-  console.error('Define COORDINATORS_JSON o las variables COORDINATOR_EMAIL, COORDINATOR_NAME y COORDINATOR_PASSWORD.');
+  console.error('Define COORDINATORS_JSON, COORDINATOR_EMAIL/COORDINATOR_PASSWORD o SUPERADMIN_EMAIL/SUPERADMIN_PASSWORD.');
   process.exitCode = 1;
 } else {
   for (const coordinator of coordinators) {
@@ -30,29 +34,33 @@ if (provisionOnlyIfConfigured && coordinators.length === 0) {
 await prisma.$disconnect();
 
 type CoordinatorSeed = { email: string; name: string; password: string; role: 'COORDINATOR' | 'READ_ONLY' };
+type ReadCoordinatorOptions = { superAdminOnly?: boolean };
 
-function readCoordinators(): CoordinatorSeed[] {
+function readCoordinators(options: ReadCoordinatorOptions = {}): CoordinatorSeed[] {
   const values: unknown[] = [];
-  const json = process.env.COORDINATORS_JSON?.trim();
 
-  if (json) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(json);
-    } catch {
-      throw new Error('COORDINATORS_JSON debe contener JSON valido.');
+  if (!options.superAdminOnly) {
+    const json = process.env.COORDINATORS_JSON?.trim();
+
+    if (json) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(json);
+      } catch {
+        throw new Error('COORDINATORS_JSON debe contener JSON valido.');
+      }
+      if (!Array.isArray(parsed)) throw new Error('COORDINATORS_JSON debe ser un arreglo.');
+      values.push(...parsed);
     }
-    if (!Array.isArray(parsed)) throw new Error('COORDINATORS_JSON debe ser un arreglo.');
-    values.push(...parsed);
-  }
 
-  const legacyValues = [
-    process.env.COORDINATOR_EMAIL,
-    process.env.COORDINATOR_NAME,
-    process.env.COORDINATOR_PASSWORD,
-  ];
-  if (legacyValues.some(Boolean)) {
-    values.push({ email: legacyValues[0], name: legacyValues[1], password: legacyValues[2] });
+    const legacyValues = [
+      process.env.COORDINATOR_EMAIL,
+      process.env.COORDINATOR_NAME,
+      process.env.COORDINATOR_PASSWORD,
+    ];
+    if (legacyValues.some(Boolean)) {
+      values.push({ email: legacyValues[0], name: legacyValues[1], password: legacyValues[2] });
+    }
   }
 
   const superAdminEmail = firstEnv('SUPERADMIN_EMAIL', 'SUPER_ADMIN_EMAIL');
