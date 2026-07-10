@@ -16,8 +16,8 @@ import {
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { coordinationApi } from '@/core/api/coordination.api';
-import type { InfrastructureSummaryResponse, OverviewResponse } from '@/core/api/types';
-import { Badge, Button, Card, EmptyState, Skeleton, cn } from '@/shared/components/ui';
+import type { InfrastructureSummaryResponse, OverviewResponse, SharedClassAssignment } from '@/core/api/types';
+import { Badge, Card, EmptyState, Skeleton, cn } from '@/shared/components/ui';
 
 export function DashboardPage() {
   const overview = useQuery({
@@ -32,15 +32,21 @@ export function DashboardPage() {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
+  const sharedClasses = useQuery({
+    queryKey: ['coordination', 'shared-classes'],
+    queryFn: coordinationApi.sharedClasses,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
 
-  if (overview.isLoading) return <DashboardSkeleton />;
+  if (overview.isLoading || sharedClasses.isLoading) return <DashboardSkeleton />;
 
   if (overview.isError || !overview.data) {
     return (
       <EmptyState
         icon={<RefreshCw size={34} />}
         title="No pudimos cargar el resumen"
-        description="Verifica la conexion con el servicio de coordinacion."
+        description="Verifica la conexión con el servicio de coordinación."
       />
     );
   }
@@ -49,6 +55,7 @@ export function DashboardPage() {
     <DashboardContent
       overview={overview.data}
       infrastructure={infrastructure.data ?? emptyInfrastructureSummary()}
+      sharedClasses={sharedClasses.data?.data ?? []}
     />
   );
 }
@@ -56,12 +63,15 @@ export function DashboardPage() {
 function DashboardContent({
   overview,
   infrastructure,
+  sharedClasses,
 }: {
   overview: OverviewResponse;
   infrastructure: InfrastructureSummaryResponse;
+  sharedClasses: SharedClassAssignment[];
 }) {
   const { counts } = overview.data;
   const operational = infrastructure.data;
+  const activeCoverages = sharedClasses.filter((assignment) => assignment.active);
 
   return (
     <div className="space-y-6">
@@ -70,54 +80,46 @@ function DashboardContent({
         <div className="absolute bottom-0 right-1/3 h-36 w-36 rounded-full bg-blue-500/10 blur-3xl" />
         <div className="relative p-6 sm:p-8">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.18em] text-red-300">
-            <CalendarCheck2 size={15} /> Supervision docente
+            <CalendarCheck2 size={15} /> Supervisión docente
           </div>
           <h2 className="mt-3 max-w-2xl text-2xl font-bold tracking-tight sm:text-3xl">
             Todo listo para revisar la asistencia de tus profesores
           </h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-            Consulta reportes, valida la carga academica y atiende sustituciones desde un solo lugar.
+            Consulta reportes, valida la carga académica y atiende coberturas desde un solo lugar.
           </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Button asChild className="bg-white text-slate-950 hover:bg-slate-100">
-              <Link to="/reportes/asistencia">Generar reporte <ArrowRight size={17} /></Link>
-            </Button>
-            <Button asChild variant="secondary" className="border-white/15 bg-white/10 text-white hover:border-white/25 hover:bg-white/15">
-              <Link to="/carga-academica">Ver carga academica</Link>
-            </Button>
-          </div>
         </div>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          label="Profesores indexados"
+          label="Profesores"
           value={counts.teachers}
           note="Disponibles para consulta"
           icon={<Users size={21} />}
           accent="bg-red-50 text-[#C8102E] dark:bg-red-950/30 dark:text-red-400"
         />
         <MetricCard
-          label="Grupos mapeados"
+          label="Grupos"
           value={counts.assignments}
           note={`${formatNumber(counts.subjects)} materias descubiertas`}
           icon={<GraduationCap size={21} />}
           accent="bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400"
         />
         <MetricCard
-          label="Beacons de salon"
+          label="Beacons de salón"
           value={operational.counts.beacons}
           note="Espacios listos para presencia"
           icon={<Bluetooth size={21} />}
           accent="bg-cyan-50 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-400"
         />
         <MetricCard
-          label="Sustituciones activas"
-          value={operational.counts.activeSubstitutions}
-          note={operational.counts.activeSubstitutions ? 'Requieren seguimiento' : 'Sin incidencias vigentes'}
+          label="Estatus de asignaciones docentes"
+          value={activeCoverages.length}
+          note={activeCoverages.length ? 'Coberturas de cátedra vigentes' : 'Sin coberturas de cátedra vigentes'}
           icon={<ShieldCheck size={21} />}
           accent="bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
-          alert={operational.counts.activeSubstitutions > 0}
+          alert={activeCoverages.length > 0}
         />
       </section>
 
@@ -125,8 +127,8 @@ function DashboardContent({
         <Card className="overflow-hidden">
           <SectionHeading
             eyebrow="Flujo de trabajo"
-            title="Accesos rapidos"
-            description="Las tareas mas frecuentes de coordinacion, a un clic."
+            title="Accesos rápidos"
+            description="Las tareas más frecuentes de coordinación, a un clic."
           />
           <div className="grid gap-3 p-4 sm:grid-cols-3 sm:p-5">
             <QuickAction
@@ -153,7 +155,7 @@ function DashboardContent({
           </div>
 
           <div className="border-t border-slate-100 p-5 dark:border-[#1f2229]">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Senales operativas</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Señales operativas</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <OperationalSignal
                 icon={<Building2 size={17} />}
@@ -176,36 +178,36 @@ function DashboardContent({
 
         <Card className="overflow-hidden">
           <SectionHeading
-            eyebrow="Atencion"
-            title="Sustituciones vigentes"
-            description="Cambios que pueden afectar quien registra asistencia."
-            action={<Link to="/superUsuario" className="text-xs font-semibold text-[#C8102E] hover:underline">Gestionar</Link>}
+            eyebrow="Atención"
+            title="Coberturas de cátedra vigentes"
+            description="Asignaciones vigentes que pueden afectar quién registra asistencia."
+            action={<Link to="/carga-academica" className="text-xs font-semibold text-[#C8102E] hover:underline">Gestionar</Link>}
           />
-          {operational.recentSubstitutions.length === 0 ? (
+          {activeCoverages.length === 0 ? (
             <div className="grid min-h-64 place-items-center p-6 text-center">
               <div>
                 <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">
                   <CheckCircle2 size={24} />
                 </div>
-                <p className="mt-3 font-semibold">Sin sustituciones activas</p>
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">No hay cambios docentes que atender.</p>
+                <p className="mt-3 font-semibold">Sin coberturas de cátedra vigentes</p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">No hay asignaciones docentes vigentes que atender.</p>
               </div>
             </div>
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-[#1f2229]">
-              {operational.recentSubstitutions.slice(0, 4).map((assignment) => (
+              {activeCoverages.slice(0, 4).map((assignment) => (
                 <div key={assignment.id} className="p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate font-semibold">{assignment.group.name}</p>
+                      <p className="truncate font-semibold">{assignment.sourceAssignment.subject.name}</p>
                       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        {assignment.group.groupLetter || 'Grupo'} - {assignment.group.classroom || 'Sin salon'}
+                        {assignment.sourceAssignment.groupCode || assignment.sourceAssignment.externalGroupId} - {assignment.sourceAssignment.classroom || 'Sin salón'}
                       </p>
                     </div>
-                    <Badge tone="warning">Activa</Badge>
+                    <Badge tone="warning">Vigente</Badge>
                   </div>
                   <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
-                    <b>{assignment.substituteProfessor.name}</b> cubre a {assignment.primaryProfessor.name}
+                    <b>{assignment.assignedTeacher.name}</b> cubre a {assignment.sourceAssignment.teacher.name}
                   </p>
                 </div>
               ))}
