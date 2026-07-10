@@ -1,15 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowRight,
-  AlertTriangle,
   BarChart3,
-  BellRing,
   Bluetooth,
   BookOpenCheck,
   Building2,
   CalendarCheck2,
   CheckCircle2,
-  Clock3,
   GraduationCap,
   RefreshCw,
   ShieldCheck,
@@ -22,28 +19,28 @@ import { coordinationApi } from '@/core/api/coordination.api';
 import type { InfrastructureSummaryResponse, OverviewResponse } from '@/core/api/types';
 import { Badge, Button, Card, EmptyState, Skeleton, cn } from '@/shared/components/ui';
 
-const REFRESH_INTERVAL_MS = 10_000;
-
 export function DashboardPage() {
   const overview = useQuery({
     queryKey: ['coordination', 'overview'],
     queryFn: coordinationApi.overview,
-    refetchInterval: REFRESH_INTERVAL_MS,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
   const infrastructure = useQuery({
     queryKey: ['coordination', 'infrastructure-summary'],
     queryFn: coordinationApi.infrastructureSummary,
-    refetchInterval: REFRESH_INTERVAL_MS,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
-  if (overview.isLoading || infrastructure.isLoading) return <DashboardSkeleton />;
+  if (overview.isLoading) return <DashboardSkeleton />;
 
   if (overview.isError || !overview.data) {
     return (
       <EmptyState
         icon={<RefreshCw size={34} />}
         title="No pudimos cargar el resumen"
-        description="Verifica la conexión con los servicios de coordinación y asistencia."
+        description="Verifica la conexion con el servicio de coordinacion."
       />
     );
   }
@@ -52,7 +49,6 @@ export function DashboardPage() {
     <DashboardContent
       overview={overview.data}
       infrastructure={infrastructure.data ?? emptyInfrastructureSummary()}
-      infrastructureUnavailable={infrastructure.isError || !infrastructure.data}
     />
   );
 }
@@ -60,71 +56,35 @@ export function DashboardPage() {
 function DashboardContent({
   overview,
   infrastructure,
-  infrastructureUnavailable,
 }: {
   overview: OverviewResponse;
   infrastructure: InfrastructureSummaryResponse;
-  infrastructureUnavailable: boolean;
 }) {
-  const { counts, coordinations } = overview.data;
+  const { counts } = overview.data;
   const operational = infrastructure.data;
-  const lastUpdate = latestDate(overview.meta.generatedAt, infrastructure.meta.generatedAt);
-  const configuredForAttendance = operational.counts.beacons > 0 && counts.assignments > 0;
 
   return (
     <div className="space-y-6">
-      {infrastructureUnavailable && (
-        <Card className="border-amber-200 bg-amber-50/80 p-4 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 shrink-0" size={19} />
-            <div>
-              <p className="text-sm font-semibold">Infraestructura temporalmente no disponible</p>
-              <p className="mt-1 text-xs leading-5 text-amber-800/80 dark:text-amber-200/80">
-                El resumen academico cargo correctamente; beacons, dispositivos y sustituciones se muestran en cero hasta que responda el backend principal.
-              </p>
-            </div>
-          </div>
-        </Card>
-      )}
-
       <section className="relative overflow-hidden rounded-2xl bg-[#17191f] text-white shadow-lg shadow-slate-900/10">
         <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full bg-[#C8102E]/30 blur-3xl" />
         <div className="absolute bottom-0 right-1/3 h-36 w-36 rounded-full bg-blue-500/10 blur-3xl" />
-        <div className="relative grid lg:grid-cols-[1fr_330px]">
-          <div className="p-6 sm:p-8">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.18em] text-red-300">
-              <CalendarCheck2 size={15} /> Supervisión docente
-            </div>
-            <h2 className="mt-3 max-w-2xl text-2xl font-bold tracking-tight sm:text-3xl">
-              Todo listo para revisar la asistencia de tus profesores
-            </h2>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-              Consulta reportes, valida la carga académica y atiende sustituciones desde un solo lugar.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Button asChild className="bg-white text-slate-950 hover:bg-slate-100">
-                <Link to="/reportes/asistencia">Generar reporte <ArrowRight size={17} /></Link>
-              </Button>
-              <Button asChild variant="secondary" className="border-white/15 bg-white/10 text-white hover:border-white/25 hover:bg-white/15">
-                <Link to="/carga-academica">Ver carga académica</Link>
-              </Button>
-            </div>
+        <div className="relative p-6 sm:p-8">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.18em] text-red-300">
+            <CalendarCheck2 size={15} /> Supervision docente
           </div>
-          <div className="border-t border-white/10 bg-white/[.04] p-6 lg:border-l lg:border-t-0">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Estado del monitoreo</p>
-            <div className="mt-4 flex items-center gap-3">
-              <div className={cn('grid h-11 w-11 place-items-center rounded-full', configuredForAttendance ? 'bg-emerald-400/15 text-emerald-300' : 'bg-amber-400/15 text-amber-300')}>
-                {configuredForAttendance ? <CheckCircle2 size={23} /> : <BellRing size={22} />}
-              </div>
-              <div>
-                <p className="font-bold">{configuredForAttendance ? 'Operación activa' : 'Configuración pendiente'}</p>
-                <p className="text-xs text-slate-400">Datos actualizados automáticamente</p>
-              </div>
-            </div>
-            <div className="mt-6 border-t border-white/10 pt-4">
-              <div className="flex items-center gap-2 text-xs text-slate-400"><Clock3 size={14} /> Última actualización</div>
-              <p className="mt-1 text-sm font-semibold">{formatDateTime(lastUpdate)}</p>
-            </div>
+          <h2 className="mt-3 max-w-2xl text-2xl font-bold tracking-tight sm:text-3xl">
+            Todo listo para revisar la asistencia de tus profesores
+          </h2>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
+            Consulta reportes, valida la carga academica y atiende sustituciones desde un solo lugar.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Button asChild className="bg-white text-slate-950 hover:bg-slate-100">
+              <Link to="/reportes/asistencia">Generar reporte <ArrowRight size={17} /></Link>
+            </Button>
+            <Button asChild variant="secondary" className="border-white/15 bg-white/10 text-white hover:border-white/25 hover:bg-white/15">
+              <Link to="/carga-academica">Ver carga academica</Link>
+            </Button>
           </div>
         </div>
       </section>
@@ -145,7 +105,7 @@ function DashboardContent({
           accent="bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400"
         />
         <MetricCard
-          label="Beacons de salón"
+          label="Beacons de salon"
           value={operational.counts.beacons}
           note="Espacios listos para presencia"
           icon={<Bluetooth size={21} />}
@@ -165,8 +125,8 @@ function DashboardContent({
         <Card className="overflow-hidden">
           <SectionHeading
             eyebrow="Flujo de trabajo"
-            title="Accesos rápidos"
-            description="Las tareas más frecuentes de coordinación, a un clic."
+            title="Accesos rapidos"
+            description="Las tareas mas frecuentes de coordinacion, a un clic."
           />
           <div className="grid gap-3 p-4 sm:grid-cols-3 sm:p-5">
             <QuickAction
@@ -193,7 +153,7 @@ function DashboardContent({
           </div>
 
           <div className="border-t border-slate-100 p-5 dark:border-[#1f2229]">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Señales operativas</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Senales operativas</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <OperationalSignal
                 icon={<Building2 size={17} />}
@@ -216,9 +176,9 @@ function DashboardContent({
 
         <Card className="overflow-hidden">
           <SectionHeading
-            eyebrow="Atención"
+            eyebrow="Atencion"
             title="Sustituciones vigentes"
-            description="Cambios que pueden afectar quién registra asistencia."
+            description="Cambios que pueden afectar quien registra asistencia."
             action={<Link to="/superUsuario" className="text-xs font-semibold text-[#C8102E] hover:underline">Gestionar</Link>}
           />
           {operational.recentSubstitutions.length === 0 ? (
@@ -239,7 +199,7 @@ function DashboardContent({
                     <div className="min-w-0">
                       <p className="truncate font-semibold">{assignment.group.name}</p>
                       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        {assignment.group.groupLetter || 'Grupo'} · {assignment.group.classroom || 'Sin salón'}
+                        {assignment.group.groupLetter || 'Grupo'} - {assignment.group.classroom || 'Sin salon'}
                       </p>
                     </div>
                     <Badge tone="warning">Activa</Badge>
@@ -252,60 +212,6 @@ function DashboardContent({
             </div>
           )}
         </Card>
-      </section>
-
-      <section>
-        <div className="mb-4 flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-[#C8102E]">Cobertura académica</p>
-            <h2 className="mt-1 text-lg font-bold">Carga por coordinación</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Compara profesores, materias y grupos registrados.</p>
-          </div>
-          <Button asChild variant="ghost" className="self-start sm:self-auto">
-            <Link to="/carga-academica">Explorar carga <ArrowRight size={16} /></Link>
-          </Button>
-        </div>
-        {coordinations.length === 0 ? (
-          <EmptyState icon={<Building2 size={34} />} title="Aún no hay coordinaciones" description="La cobertura aparecerá cuando se sincronicen profesores." />
-        ) : (
-          <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-left text-sm">
-                <thead className="border-b border-slate-200/80 bg-slate-50 text-xs uppercase tracking-wide text-slate-500 dark:border-[#1f2229] dark:bg-[#15181d] dark:text-slate-500">
-                  <tr>
-                    <th className="px-5 py-3">Coordinación</th>
-                    <th className="px-5 py-3 text-right">Profesores</th>
-                    <th className="px-5 py-3 text-right">Materias</th>
-                    <th className="px-5 py-3 text-right">Grupos</th>
-                    <th className="px-5 py-3">Volumen relativo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {coordinations.map((item) => {
-                    const maxAssignments = Math.max(...coordinations.map((coordination) => coordination.assignmentCount), 1);
-                    const width = Math.max(5, Math.round((item.assignmentCount / maxAssignments) * 100));
-                    return (
-                      <tr key={item.id} className="border-b border-slate-100 last:border-0 dark:border-[#1f2229]">
-                        <td className="px-5 py-4">
-                          <p className="font-semibold">{item.shortName || item.name}</p>
-                          <p className="mt-0.5 text-xs text-slate-400">{item.name}</p>
-                        </td>
-                        <td className="px-5 py-4 text-right tabular-nums">{formatNumber(item.teacherCount)}</td>
-                        <td className="px-5 py-4 text-right tabular-nums">{formatNumber(item.subjectCount)}</td>
-                        <td className="px-5 py-4 text-right font-semibold tabular-nums">{formatNumber(item.assignmentCount)}</td>
-                        <td className="w-52 px-5 py-4">
-                          <div className="h-2 rounded-full bg-slate-100 dark:bg-[#2e3138]">
-                            <div className="h-2 rounded-full bg-gradient-to-r from-[#C8102E] to-red-400" style={{ width: `${width}%` }} />
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        )}
       </section>
     </div>
   );
@@ -393,14 +299,6 @@ function OperationalSignal({ icon, value, label }: { icon: ReactNode; value: num
       </div>
     </div>
   );
-}
-
-function latestDate(...values: string[]) {
-  return values.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? new Date().toISOString();
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }
 
 function formatNumber(value: number) {
