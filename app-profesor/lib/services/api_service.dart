@@ -81,9 +81,7 @@ class ApiService {
   String ensureEncryptedPassword(String value) => value;
 
   bool get _usesBackendApiRest {
-    // La app de profesor siempre consume el backend principal. Ese backend
-    // orquesta debug/release y decide cuándo hablar con backend-apirest.
-    return false;
+    return ApiConstants.useBackendApiRest;
   }
 
   bool get usesBackendApiRest => _usesBackendApiRest;

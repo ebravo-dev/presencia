@@ -1,3 +1,9 @@
+/*
+  El scraping del portal de alumnos UAT está desactivado temporalmente.
+  Se conserva esta implementación para retomarla en una iteración posterior.
+*/
+
+/*
 import 'dart:convert';
 import 'dart:io';
 
@@ -263,3 +269,4 @@ class StudentAuthService {
     return '';
   }
 }
+*/

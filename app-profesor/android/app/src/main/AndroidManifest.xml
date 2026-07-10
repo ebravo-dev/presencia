@@ -54,13 +54,9 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        <!-- Remove AltBeacon entry points that can schedule work after the UI closes.
-             BeaconService itself remains supplied by the library for activity-bound ranging. -->
+        <!-- Prevent AltBeacon from rescheduling scans outside the visible app. -->
         <receiver
             android:name="org.altbeacon.beacon.startup.StartupBroadcastReceiver"
-            tools:node="remove" />
-        <service
-            android:name="org.altbeacon.beacon.service.ScanJob"
             tools:node="remove" />
         <service
             android:name="org.altbeacon.bluetooth.BluetoothTestJob"

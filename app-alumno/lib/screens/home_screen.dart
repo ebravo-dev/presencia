@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import '../services/attendance_session_service.dart';
 import '../services/ble_advertiser_service.dart';
 import '../services/local_storage_service.dart';
-import '../services/student_auth_service.dart';
 import 'history_screen.dart';
 
 const _background = Color(0xFF0B0F14);
@@ -23,14 +22,12 @@ class HomeScreen extends StatefulWidget {
   final LocalStorageService storage;
   final BleAdvertiserService bleService;
   final AttendanceSessionService attendanceSession;
-  final StudentAuthService studentAuthService;
 
   const HomeScreen({
     super.key,
     required this.storage,
     required this.bleService,
     required this.attendanceSession,
-    required this.studentAuthService,
   });
 
   @override
@@ -43,9 +40,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _statusText = 'Listo para pasar lista';
   String? _lastConfirmationId;
   int _historyCount = 0;
-  bool _syncingData = false;
-  String? _syncMessage;
-  bool _syncHasError = false;
 
   StreamSubscription<AdvertiserState>? _advertiserSubscription;
   StreamSubscription<String>? _confirmationSubscription;
@@ -192,9 +186,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   children: [
                     _Header(
                       matricula: widget.storage.matricula,
-                      syncing: _syncingData,
                       onOpenHistory: _openHistory,
-                      onSync: _syncingData ? null : _syncUatData,
                     ),
                     const SizedBox(height: 24),
                     _StatusPanel(
@@ -222,14 +214,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       body: _helpBody,
                       icon: _helpIcon,
                     ),
-                    if (_syncMessage != null) ...[
-                      const SizedBox(height: 14),
-                      _SyncFeedback(
-                        message: _syncMessage!,
-                        syncing: _syncingData,
-                        hasError: _syncHasError,
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -260,41 +244,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await widget.attendanceSession.stop();
     } else {
       await widget.attendanceSession.start();
-    }
-  }
-
-  Future<void> _syncUatData() async {
-    if (_syncingData) return;
-    setState(() {
-      _syncingData = true;
-      _syncHasError = false;
-      _syncMessage = 'Sincronizando datos UAT...';
-    });
-
-    try {
-      await widget.studentAuthService.syncAcademicInfo(widget.storage);
-      if (!mounted) return;
-      setState(() {
-        _syncingData = false;
-        _syncHasError = false;
-        _syncMessage = 'Tus datos UAT están actualizados.';
-      });
-    } on StudentAuthException {
-      if (!mounted) return;
-      setState(() {
-        _syncingData = false;
-        _syncHasError = true;
-        _syncMessage =
-            'No pudimos sincronizar tus datos UAT. Inténtalo de nuevo.';
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _syncingData = false;
-        _syncHasError = true;
-        _syncMessage =
-            'No pudimos sincronizar tus datos UAT. Inténtalo de nuevo.';
-      });
     }
   }
 
@@ -365,16 +314,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
 class _Header extends StatelessWidget {
   final String matricula;
-  final bool syncing;
   final VoidCallback onOpenHistory;
-  final VoidCallback? onSync;
 
-  const _Header({
-    required this.matricula,
-    required this.syncing,
-    required this.onOpenHistory,
-    required this.onSync,
-  });
+  const _Header({required this.matricula, required this.onOpenHistory});
 
   @override
   Widget build(BuildContext context) {
@@ -422,13 +364,6 @@ class _Header extends StatelessWidget {
           tooltip: 'Historial',
           icon: Icons.history_rounded,
           onPressed: onOpenHistory,
-        ),
-        const SizedBox(width: 4),
-        _HeaderAction(
-          tooltip: 'Sincronizar datos UAT',
-          icon: Icons.cloud_sync_rounded,
-          onPressed: onSync,
-          loading: syncing,
         ),
       ],
     );
@@ -773,59 +708,6 @@ class _HelpPanel extends StatelessWidget {
                   ),
                 ),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SyncFeedback extends StatelessWidget {
-  final String message;
-  final bool syncing;
-  final bool hasError;
-
-  const _SyncFeedback({
-    required this.message,
-    required this.syncing,
-    required this.hasError,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = hasError ? _danger : _blue;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _panelSoft,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF1D2936)),
-      ),
-      child: Row(
-        children: [
-          if (syncing)
-            SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(color: color, strokeWidth: 2.2),
-            )
-          else
-            Icon(
-              hasError ? Icons.refresh_rounded : Icons.cloud_done_rounded,
-              color: color,
-              size: 22,
-            ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.78),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                height: 1.35,
-              ),
             ),
           ),
         ],

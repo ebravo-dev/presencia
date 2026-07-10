@@ -2,11 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class SetupScreen extends StatefulWidget {
-  final Future<void> Function({
-    required String username,
-    required String password,
-  })
-  onComplete;
+  final Future<void> Function(String matricula) onComplete;
 
   const SetupScreen({super.key, required this.onComplete});
 
@@ -15,35 +11,26 @@ class SetupScreen extends StatefulWidget {
 }
 
 class _SetupScreenState extends State<SetupScreen> {
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
+  final _matriculaController = TextEditingController();
   bool _loading = false;
   String? _errorText;
-  bool _obscurePassword = true;
 
   @override
   void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
+    _matriculaController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
-    final username = _emailController.text.trim().toLowerCase();
-    final password = _passwordController.text;
+    final matricula = _matriculaController.text.trim().toUpperCase();
 
-    if (username.isEmpty) {
-      setState(() => _errorText = 'Ingresa tu correo institucional');
+    if (matricula.isEmpty) {
+      setState(() => _errorText = 'Ingresa tu matrícula');
       return;
     }
 
-    if (!username.contains('@')) {
-      setState(() => _errorText = 'Ingresa un correo institucional válido');
-      return;
-    }
-
-    if (password.isEmpty) {
-      setState(() => _errorText = 'Ingresa tu contraseña');
+    if (matricula.length < 5) {
+      setState(() => _errorText = 'Revisa que tu matrícula esté completa');
       return;
     }
 
@@ -55,13 +42,12 @@ class _SetupScreenState extends State<SetupScreen> {
     HapticFeedback.mediumImpact();
 
     try {
-      await widget.onComplete(username: username, password: password);
+      await widget.onComplete(matricula);
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _errorText =
-            'No pudimos iniciar sesión. Revisa tus datos e inténtalo de nuevo.';
+        _errorText = 'No pudimos vincular este celular. Inténtalo de nuevo.';
       });
     }
   }
@@ -84,7 +70,7 @@ class _SetupScreenState extends State<SetupScreen> {
                     const _BrandHeader(),
                     SizedBox(height: constraints.maxHeight < 700 ? 44 : 84),
                     const Text(
-                      'Inicia sesión',
+                      'Vincula tu celular',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 34,
@@ -94,7 +80,7 @@ class _SetupScreenState extends State<SetupScreen> {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Usa tu cuenta institucional de la UAT para pasar lista y mantener tus datos actualizados.',
+                      'Tu matrícula quedará asociada a este dispositivo. Un cambio de celular deberá ser autorizado por un maestro.',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.62),
                         fontSize: 15,
@@ -103,34 +89,9 @@ class _SetupScreenState extends State<SetupScreen> {
                     ),
                     const SizedBox(height: 34),
                     TextField(
-                      controller: _emailController,
+                      controller: _matriculaController,
                       enabled: !_loading,
-                      keyboardType: TextInputType.emailAddress,
-                      textCapitalization: TextCapitalization.none,
-                      autocorrect: false,
-                      textInputAction: TextInputAction.next,
-                      onChanged: (_) {
-                        if (_errorText != null) {
-                          setState(() => _errorText = null);
-                        }
-                      },
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: 'Correo institucional',
-                        hintText: 'tu.correo@alumnos.uat.edu.mx',
-                        prefixIcon: Icon(Icons.alternate_email_rounded),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: _passwordController,
-                      enabled: !_loading,
-                      obscureText: _obscurePassword,
+                      textCapitalization: TextCapitalization.characters,
                       textInputAction: TextInputAction.done,
                       onSubmitted: (_) => _loading ? null : _submit(),
                       onChanged: (_) {
@@ -138,34 +99,36 @@ class _SetupScreenState extends State<SetupScreen> {
                           setState(() => _errorText = null);
                         }
                       },
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'[a-zA-Z0-9]'),
+                        ),
+                        LengthLimitingTextInputFormatter(14),
+                        TextInputFormatter.withFunction((oldValue, newValue) {
+                          return newValue.copyWith(
+                            text: newValue.text.toUpperCase(),
+                            selection: newValue.selection,
+                          );
+                        }),
+                      ],
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 16,
+                        fontSize: 18,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
                       decoration: InputDecoration(
-                        labelText: 'Contraseña',
+                        labelText: 'Matrícula',
+                        hintText: 'A2130587',
                         errorText: _errorText,
-                        prefixIcon: const Icon(Icons.lock_rounded),
-                        suffixIcon: IconButton(
-                          onPressed: _loading
-                              ? null
-                              : () => setState(
-                                  () => _obscurePassword = !_obscurePassword,
-                                ),
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_rounded
-                                : Icons.visibility_off_rounded,
-                          ),
-                        ),
+                        prefixIcon: const Icon(Icons.badge_rounded),
                       ),
                     ),
                     const SizedBox(height: 18),
                     const _InfoStrip(
-                      icon: Icons.school_rounded,
-                      text: 'Tu matrícula se obtiene automáticamente.',
+                      icon: Icons.verified_user_rounded,
+                      text:
+                          'Este vínculo ayuda a evitar registros desde otro celular.',
                     ),
                     const SizedBox(height: 28),
                     SizedBox(
@@ -178,11 +141,11 @@ class _SetupScreenState extends State<SetupScreen> {
                                 height: 20,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2.4,
-                                  color: Color(0xFF07110D),
+                                  color: Colors.white,
                                 ),
                               )
                             : const Icon(Icons.arrow_forward_rounded),
-                        label: Text(_loading ? 'Ingresando' : 'Continuar'),
+                        label: Text(_loading ? 'Vinculando' : 'Continuar'),
                       ),
                     ),
                     const SizedBox(height: 24),

@@ -5,7 +5,7 @@ import '../config/app_environment.dart';
 import 'local_storage_service.dart';
 
 class StudentDeviceBindingService {
-  static const String baseUrl = AppEnvironment.presenceApiBaseUrl;
+  static const String baseUrl = AppEnvironment.studentBindingApiBaseUrl;
   static const Duration _timeout = Duration(
     milliseconds: AppEnvironment.apiTimeoutMs,
   );
