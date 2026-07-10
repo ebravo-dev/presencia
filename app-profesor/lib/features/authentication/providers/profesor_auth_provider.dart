@@ -324,6 +324,21 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
             profesor: profesor,
             token: token,
           );
+          if (_apiService.usesBackendApiRest) {
+            final password = _authStorage.getEncryptedPassword();
+            if (password != null && password.isNotEmpty) {
+              final portalSync = await _apiService.syncPortalHistory(
+                email: profesor.institutionalEmail,
+                password: password,
+              );
+              portalSync.fold(
+                (error) => Logger.error(
+                  'No se pudo sincronizar historial con el portal: $error',
+                ),
+                (_) {},
+              );
+            }
+          }
           // Cargar grupos del profesor
           await _loadGrupos();
         } else {
