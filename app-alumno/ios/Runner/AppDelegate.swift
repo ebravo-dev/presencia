@@ -20,6 +20,7 @@ import UIKit
   private var isAdvertising = false
   private var activeAttendanceUuid: String?
   private var attendanceUuidValue: Data?
+  private var waitingForGattService = false
 
   private var locationManager: CLLocationManager?
   private var pendingLocationPermissionResult: FlutterResult?
@@ -176,12 +177,12 @@ import UIKit
     configurePeripheralManager()
     activeAttendanceUuid = uuid.uuidString
     attendanceUuidValue = uuid.uuidString.data(using: .utf8)
-    configureAttendanceGattService()
     pendingAdvertisementData = [
       CBAdvertisementDataServiceUUIDsKey: [attendanceServiceUuid],
       CBAdvertisementDataLocalNameKey: "Presencia"
     ]
-    triggerAdvertisingIfPossible()
+    waitingForGattService = true
+    configureAttendanceGattService()
   }
 
   private func stopBeacon() {
@@ -190,12 +191,13 @@ import UIKit
     pendingAdvertisementData = nil
     activeAttendanceUuid = nil
     attendanceUuidValue = nil
+    waitingForGattService = false
     isAdvertising = false
     advertiserChannel?.invokeMethod("onAdvertisingStateChanged", arguments: false)
   }
 
   private func configureAttendanceGattService() {
-    guard let manager = peripheralManager else { return }
+    guard let manager = peripheralManager, manager.state == .poweredOn else { return }
     manager.removeAllServices()
 
     let uuidCharacteristic = CBMutableCharacteristic(
@@ -219,6 +221,7 @@ import UIKit
     guard
       let manager = peripheralManager,
       manager.state == .poweredOn,
+      !waitingForGattService,
       let data = pendingAdvertisementData
     else {
       return
@@ -399,7 +402,6 @@ extension AppDelegate: CBPeripheralManagerDelegate {
       if activeAttendanceUuid != nil {
         configureAttendanceGattService()
       }
-      triggerAdvertisingIfPossible()
     case .poweredOff:
       state = "poweredOff"
       isAdvertising = false
@@ -423,6 +425,21 @@ extension AppDelegate: CBPeripheralManagerDelegate {
       pendingAdvertisementData = nil
     }
     advertiserChannel?.invokeMethod("onAdvertisingStateChanged", arguments: isAdvertising)
+  }
+
+  func peripheralManager(_ peripheral: CBPeripheralManager, didAdd service: CBService, error: Error?) {
+    guard service.uuid == attendanceServiceUuid else { return }
+
+    if error != nil {
+      waitingForGattService = false
+      pendingAdvertisementData = nil
+      isAdvertising = false
+      advertiserChannel?.invokeMethod("onAdvertisingStateChanged", arguments: false)
+      return
+    }
+
+    waitingForGattService = false
+    triggerAdvertisingIfPossible()
   }
 
   func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {

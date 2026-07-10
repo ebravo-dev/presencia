@@ -62,6 +62,7 @@ class BleAdvertiserService : Service() {
     private var prefs: SharedPreferences? = null
     private var activeUuid: String? = null
     private var attendanceCharacteristic: BluetoothGattCharacteristic? = null
+    private var waitingForGattService = false
     private val advertiser by lazy {
         (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager)
             .adapter
@@ -91,6 +92,16 @@ class BleAdvertiserService : Service() {
 
         override fun onServiceAdded(status: Int, service: BluetoothGattService) {
             Log.i(TAG, "Attendance GATT service added status=$status service=${service.uuid}")
+            if (service.uuid != SERVICE_UUID || !waitingForGattService) return
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                Log.e(TAG, "Could not register attendance GATT service: $status")
+                waitingForGattService = false
+                onAdvertisingStateChanged?.invoke(false)
+                stopSelf()
+                return
+            }
+            waitingForGattService = false
+            startBleAdvertising()
         }
 
         override fun onCharacteristicReadRequest(
@@ -206,7 +217,10 @@ class BleAdvertiserService : Service() {
         ).apply {
             value = uuidBytes
         }
-        server.addService(
+        gattServer = server
+
+        waitingForGattService = true
+        val serviceAdded = server.addService(
             BluetoothGattService(SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY).apply {
                 addCharacteristic(
                     attendanceCharacteristic
@@ -220,7 +234,22 @@ class BleAdvertiserService : Service() {
                 )
             }
         )
-        gattServer = server
+        if (!serviceAdded) {
+            Log.e(TAG, "Could not enqueue attendance GATT service")
+            waitingForGattService = false
+            onAdvertisingStateChanged?.invoke(false)
+            stopSelf()
+        }
+    }
+
+    private fun startBleAdvertising() {
+        val bleAdvertiser = advertiser
+        if (bleAdvertiser == null) {
+            Log.e(TAG, "BLE advertising unsupported")
+            onAdvertisingStateChanged?.invoke(false)
+            stopSelf()
+            return
+        }
 
         val settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
@@ -244,6 +273,7 @@ class BleAdvertiserService : Service() {
         gattServer = null
         activeUuid = null
         attendanceCharacteristic = null
+        waitingForGattService = false
         onAdvertisingStateChanged?.invoke(false)
     }
 
