@@ -25,8 +25,8 @@ En produccion la SPA se ejecuta en su propio contenedor Nginx, puerto `8080`.
 El `compose.coordination.yaml` de la raiz crea `frontend-coord` y
 `backend-apirest` en
 la misma red. Nginx reenvia `/api` al hostname interno configurado en
-`BACKEND_API_UPSTREAM`, reenvia `/api/superUsuario` al backend principal con
-`ATTENDANCE_BACKEND_UPSTREAM` y aplica fallback SPA para `/coordinacion`.
+`BACKEND_API_UPSTREAM`; `backend-apirest` atiende tambien `/api/superUsuario`
+y aplica fallback SPA para `/coordinacion`.
 
 En Dokploy asigna el dominio publico del panel al servicio
 `frontend-coord:8080`; el proxy entre ambos contenedores permanece privado.

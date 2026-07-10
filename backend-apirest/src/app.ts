@@ -37,6 +37,7 @@ import { AttendanceUploadWorker } from './infrastructure/jobs/attendance-upload.
 import { coordinationRoutes } from './presentation/http/routes/coordination.routes.js';
 import { coordinatorAuthRoutes } from './presentation/http/routes/coordinator-auth.routes.js';
 import { internalCoordinationRoutes } from './presentation/http/routes/internal-coordination.routes.js';
+import { superUserRoutes } from './presentation/http/routes/super-user.routes.js';
 import { uatRoutes } from './presentation/http/routes/uat.routes.js';
 import type { DebugProfessorInput, HarvestDebugOptions } from './application/use-cases/harvest-teacher-data.use-case.js';
 
@@ -198,6 +199,11 @@ export async function buildApp() {
   await fastify.register(internalCoordinationRoutes, {
     coordinatorAccountService,
     internalToken: env.INTERNAL_API_TOKEN,
+  });
+
+  await fastify.register(superUserRoutes, {
+    coordinatorAccountService,
+    attendanceBackendClient,
   });
 
   await fastify.register(coordinationRoutes, {

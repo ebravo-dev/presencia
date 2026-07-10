@@ -47,9 +47,7 @@ export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> =
     controller.rangeReport,
   );
 
-  // Compatibilidad temporal para bundles viejos de frontend-coord.
-  // La administracion nueva vive en /superUsuario en el backend principal,
-  // pero estas rutas evitan 404 mientras se propaga el nuevo frontend.
+  // Compatibilidad temporal para bundles viejos de frontend-coord mientras se propaga el nuevo frontend.
   fastify.get('/api/coordinacion/infraestructura/resumen', controller.infrastructureSummary);
   fastify.get('/api/coordinacion/infraestructura/beacons', controller.beacons);
   fastify.post('/api/coordinacion/infraestructura/beacons', { preHandler: requireWriteCoordinator }, controller.createBeacon);
