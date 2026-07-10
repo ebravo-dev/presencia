@@ -18,4 +18,16 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Grupos mapeados').previousElementSibling).toHaveTextContent('35');
     expect(screen.getByText('Beacons de salón')).toBeInTheDocument();
   });
+
+  it('mantiene el resumen academico cuando falla infraestructura', async () => {
+    server.use(
+      http.get('/api/coordinacion/resumen', () => HttpResponse.json({ data: { counts: { teachers: 3, subjects: 11, assignments: 29, coordinations: 2 }, coordinations: [{ id: 'c1', externalId: '12', name: 'Ingenieria', shortName: 'FI', teacherCount: 3, subjectCount: 11, assignmentCount: 29 }] }, meta: { generatedAt: '2026-07-02T12:00:00.000Z' } })),
+      http.get('/api/coordinacion/infraestructura/resumen', () => HttpResponse.json({ error: 'ATTENDANCE_BACKEND_UNAVAILABLE' }, { status: 502 })),
+    );
+    render(<MemoryRouter><QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><DashboardPage/></QueryClientProvider></MemoryRouter>);
+
+    expect(await screen.findByText('Infraestructura temporalmente no disponible')).toBeInTheDocument();
+    expect(screen.getByText('FI')).toBeInTheDocument();
+    expect(screen.getByText('Grupos mapeados').previousElementSibling).toHaveTextContent('29');
+  });
 });

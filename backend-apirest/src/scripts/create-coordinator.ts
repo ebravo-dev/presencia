@@ -21,15 +21,15 @@ if (provisionOnlyIfConfigured && coordinators.length === 0) {
 
     const user = await prisma.coordinatorUser.upsert({
       where: { email: coordinator.email },
-      create: { email: coordinator.email, name: coordinator.name, passwordHash },
-      update: { name: coordinator.name, passwordHash, disabledAt: null },
+      create: { email: coordinator.email, name: coordinator.name, passwordHash, role: coordinator.role },
+      update: { name: coordinator.name, passwordHash, role: coordinator.role, disabledAt: null },
     });
-    console.log(`Coordinador provisionado: ${user.email}`);
+    console.log(`Cuenta administrativa provisionada: ${user.email} (${user.role})`);
   }
 }
 await prisma.$disconnect();
 
-type CoordinatorSeed = { email: string; name: string; password: string };
+type CoordinatorSeed = { email: string; name: string; password: string; role: 'COORDINATOR' | 'READ_ONLY' };
 
 function readCoordinators(): CoordinatorSeed[] {
   const values: unknown[] = [];
@@ -55,6 +55,19 @@ function readCoordinators(): CoordinatorSeed[] {
     values.push({ email: legacyValues[0], name: legacyValues[1], password: legacyValues[2] });
   }
 
+  const superAdminEmail = firstEnv('SUPERADMIN_EMAIL', 'SUPER_ADMIN_EMAIL');
+  const superAdminPassword = firstEnv('SUPERADMIN_PASSWORD', 'SUPER_ADMIN_PASSWORD');
+  const superAdminName = firstEnv('SUPERADMIN_NAME', 'SUPER_ADMIN_NAME') ?? 'Super Admin';
+  const superAdminRole = firstEnv('SUPERADMIN_ROLE', 'SUPER_ADMIN_ROLE') ?? 'COORDINATOR';
+  if (superAdminEmail || superAdminPassword) {
+    values.push({
+      email: superAdminEmail,
+      name: superAdminName,
+      password: superAdminPassword,
+      role: superAdminRole,
+    });
+  }
+
   const unique = new Map<string, CoordinatorSeed>();
   values.forEach((value, index) => {
     if (!value || typeof value !== 'object') throw invalidCoordinator(index);
@@ -62,13 +75,26 @@ function readCoordinators(): CoordinatorSeed[] {
     const email = typeof candidate.email === 'string' ? candidate.email.trim().toLowerCase() : '';
     const name = typeof candidate.name === 'string' ? candidate.name.trim() : '';
     const password = typeof candidate.password === 'string' ? candidate.password : '';
+    const role = normalizeRole(typeof candidate.role === 'string' ? candidate.role : undefined);
     if (!email || !email.includes('@') || !name || password.length < 12) throw invalidCoordinator(index);
-    unique.set(email, { email, name, password });
+    unique.set(email, { email, name, password, role });
   });
 
   return [...unique.values()];
 }
 
 function invalidCoordinator(index: number): Error {
-  return new Error(`Coordinador ${index + 1} invalido: requiere email, name y password de al menos 12 caracteres.`);
+  return new Error(`Cuenta ${index + 1} invalida: requiere email, name y password de al menos 12 caracteres.`);
+}
+
+function firstEnv(...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function normalizeRole(role?: string): 'COORDINATOR' | 'READ_ONLY' {
+  return role?.trim().toUpperCase() === 'READ_ONLY' ? 'READ_ONLY' : 'COORDINATOR';
 }

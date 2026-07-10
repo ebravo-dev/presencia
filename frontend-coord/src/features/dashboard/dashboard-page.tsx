@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowRight,
+  AlertTriangle,
   BarChart3,
   BellRing,
   Bluetooth,
@@ -37,7 +38,7 @@ export function DashboardPage() {
 
   if (overview.isLoading || infrastructure.isLoading) return <DashboardSkeleton />;
 
-  if (overview.isError || infrastructure.isError || !overview.data || !infrastructure.data) {
+  if (overview.isError || !overview.data) {
     return (
       <EmptyState
         icon={<RefreshCw size={34} />}
@@ -47,10 +48,24 @@ export function DashboardPage() {
     );
   }
 
-  return <DashboardContent overview={overview.data} infrastructure={infrastructure.data} />;
+  return (
+    <DashboardContent
+      overview={overview.data}
+      infrastructure={infrastructure.data ?? emptyInfrastructureSummary()}
+      infrastructureUnavailable={infrastructure.isError || !infrastructure.data}
+    />
+  );
 }
 
-function DashboardContent({ overview, infrastructure }: { overview: OverviewResponse; infrastructure: InfrastructureSummaryResponse }) {
+function DashboardContent({
+  overview,
+  infrastructure,
+  infrastructureUnavailable,
+}: {
+  overview: OverviewResponse;
+  infrastructure: InfrastructureSummaryResponse;
+  infrastructureUnavailable: boolean;
+}) {
   const { counts, coordinations } = overview.data;
   const operational = infrastructure.data;
   const lastUpdate = latestDate(overview.meta.generatedAt, infrastructure.meta.generatedAt);
@@ -58,6 +73,20 @@ function DashboardContent({ overview, infrastructure }: { overview: OverviewResp
 
   return (
     <div className="space-y-6">
+      {infrastructureUnavailable && (
+        <Card className="border-amber-200 bg-amber-50/80 p-4 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 shrink-0" size={19} />
+            <div>
+              <p className="text-sm font-semibold">Infraestructura temporalmente no disponible</p>
+              <p className="mt-1 text-xs leading-5 text-amber-800/80 dark:text-amber-200/80">
+                El resumen academico cargo correctamente; beacons, dispositivos y sustituciones se muestran en cero hasta que responda el backend principal.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
       <section className="relative overflow-hidden rounded-2xl bg-[#17191f] text-white shadow-lg shadow-slate-900/10">
         <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full bg-[#C8102E]/30 blur-3xl" />
         <div className="absolute bottom-0 right-1/3 h-36 w-36 rounded-full bg-blue-500/10 blur-3xl" />
@@ -292,6 +321,23 @@ function DashboardSkeleton() {
       <div className="grid gap-5 xl:grid-cols-2"><Skeleton className="h-80" /><Skeleton className="h-80" /></div>
     </div>
   );
+}
+
+function emptyInfrastructureSummary(): InfrastructureSummaryResponse {
+  return {
+    data: {
+      counts: {
+        beacons: 0,
+        studentDeviceBindings: 0,
+        studentBleAttendances: 0,
+        activeSubstitutions: 0,
+      },
+      recentBindings: [],
+      recentBeacons: [],
+      recentSubstitutions: [],
+    },
+    meta: { generatedAt: new Date(0).toISOString() },
+  };
 }
 
 function MetricCard({ label, value, note, icon, accent, alert = false }: { label: string; value: number; note: string; icon: ReactNode; accent: string; alert?: boolean }) {
