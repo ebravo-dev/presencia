@@ -200,6 +200,7 @@ class _MyAppState extends ConsumerState<MyApp> {
         theme: UATTheme.lightTheme,
         darkTheme: UATTheme.darkTheme,
         themeMode: themeMode,
+        builder: (context, child) => _DebugModeOverlay(child: child),
         home: Scaffold(
           backgroundColor: activeTheme.scaffoldBackgroundColor,
           body: Center(
@@ -247,6 +248,7 @@ class _MyAppState extends ConsumerState<MyApp> {
       darkTheme: UATTheme.darkTheme,
       themeMode: themeMode,
       routerConfig: router,
+      builder: (context, child) => _DebugModeOverlay(child: child),
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
@@ -254,6 +256,65 @@ class _MyAppState extends ConsumerState<MyApp> {
       ],
       supportedLocales: const [Locale('es', 'MX')],
       locale: const Locale('es', 'MX'),
+    );
+  }
+}
+
+class _DebugModeOverlay extends StatelessWidget {
+  final Widget? child;
+
+  const _DebugModeOverlay({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!ApiConstants.presenciaDebugMode &&
+        !ApiConstants.skipApiRestAttendanceUpload) {
+      return child ?? const SizedBox.shrink();
+    }
+
+    return Stack(
+      children: [
+        child ?? const SizedBox.shrink(),
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 8,
+          left: 12,
+          right: 12,
+          child: IgnorePointer(
+            child: Material(
+              color: Colors.transparent,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEAB308),
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.22),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Text(
+                    'MODO DEBUG · REPORTES · SIN UAT',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF111827),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -1,4 +1,15 @@
 export interface CoordinatorUser { id: string; email: string; name: string; role: string }
+export interface SuperUser { role: 'SUPER_USER' }
+export interface CoordinatorAccount {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  disabledAt: string | null;
+  disabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 export interface CoordinationSummary { id: string; externalId: string; name: string; shortName: string | null; teacherCount: number; subjectCount: number; assignmentCount: number }
 export interface TeacherSummary {
   id: string; externalId: string; institutionalCode: string | null; name: string; email: string | null;
@@ -19,9 +30,26 @@ export interface Assignment {
 export interface OverviewResponse { data: { counts: { teachers: number; subjects: number; coordinations: number; assignments: number }; coordinations: CoordinationSummary[] }; meta: { generatedAt: string } }
 export interface TeachersResponse { data: TeacherSummary[]; meta: { page: number; pageSize: number; total: number; totalPages: number } }
 export interface TeacherAssignmentsResponse { data: { teacher: TeacherSummary; assignments: Assignment[] }; meta: { generatedAt: string } }
-export type ReportCellStatus = 'TAKEN' | 'MISSING' | 'FUTURE' | 'NOT_SCHEDULED' | 'UNKNOWN_SCHEDULE' | 'SOURCE_UNAVAILABLE';
+export type ReportCellStatus = 'TAKEN' | 'LATE' | 'MISSING' | 'FUTURE' | 'NOT_SCHEDULED' | 'UNKNOWN_SCHEDULE' | 'SOURCE_UNAVAILABLE';
 export type ReportDay = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
-export interface ReportCell { date: string; status: ReportCellStatus; portalSyncStatus: string | null; portalSyncError: string | null }
+export interface ReportCell {
+  date: string;
+  status: ReportCellStatus;
+  professorEntryAt: string | null;
+  professorExitAt: string | null;
+  scheduledHours: number;
+  attendedHours: number;
+  coverageRate: number | null;
+  hourSlots: ReportHourSlot[];
+  portalSyncStatus: string | null;
+  portalSyncError: string | null;
+}
+export interface ReportHourSlot {
+  index: number;
+  startTime: string;
+  endTime: string;
+  status: ReportCellStatus;
+}
 export interface ReportRow {
   id: string; groupId: string; groupCode: string; grade?: string | null; subject: string; classroom: string | null; educationLevel: string | null;
   period: string; startTime: string | null; endTime: string | null; rawSchedule: string;
@@ -97,6 +125,135 @@ export interface StudentDeviceBinding {
   }>;
 }
 
+export interface DebugStatusResponse {
+  data: {
+    enabled: boolean;
+    period: string;
+    settings: DebugSettings;
+    apiRestPolicy: string;
+  };
+  meta: { generatedAt: string };
+}
+
+export interface DebugSettings {
+  teacherAttendanceToleranceMinutes: number;
+}
+
+export interface DebugSettingsResponse {
+  data: DebugSettings;
+  meta: { generatedAt: string };
+}
+
+export type DebugScheduleSlotInput = { startTime: string; endTime: string };
+export type DebugScheduleInput = Partial<Record<ScheduleDay, DebugScheduleSlotInput[]>>;
+
+export interface DebugClassResponse {
+  data: Array<{
+    id: string;
+    code: string;
+    groupLetter: string;
+    period: string;
+    name: string;
+    level: string;
+    classroom: string;
+    schedule: Record<string, unknown>;
+    professor: { id: string; name: string; institutionalEmail: string };
+    students: Array<{ id: string; matricula: string; name: string; beaconUuid: string | null }>;
+    attendanceRecords: Array<{
+      id: string;
+      date: string;
+      professorEntryAt: string | null;
+      professorExitAt: string | null;
+      portalSyncStatus: string;
+      portalSyncError: string | null;
+      attendances: unknown[];
+      studentBeaconDetections: unknown[];
+    }>;
+  }>;
+  meta: { generatedAt: string };
+}
+
+export interface DebugStudentAttendanceResponse {
+  data: Array<{
+    id: string;
+    date: string;
+    professorEntryAt: string | null;
+    professorExitAt: string | null;
+    portalSyncStatus: string;
+    portalSyncError: string | null;
+    createdAt: string;
+    professor: { id: string; name: string; institutionalEmail: string };
+    group: { id: string; code: string; groupLetter: string; period: string; name: string; classroom: string };
+    attendances: Array<{
+      id: string;
+      status: string;
+      createdAt: string;
+      student: { id: string; matricula: string; name: string; beaconUuid: string | null };
+    }>;
+    studentBeaconDetections: Array<{
+      id: string;
+      beaconUuid: string;
+      detectedAt: string;
+      rssi: number | null;
+      bluetoothAddress: string | null;
+      student: { id: string; matricula: string; name: string };
+    }>;
+  }>;
+  meta: { generatedAt: string };
+}
+
+export interface DebugFlowLogsResponse {
+  data: {
+    syncJobs: Array<{
+      id: string;
+      status: string;
+      currentGroupName: string | null;
+      error: string | null;
+      startedAt: string;
+      completedAt: string | null;
+      professor: { id: string; name: string; institutionalEmail: string };
+    }>;
+    attendanceRecords: Array<{
+      id: string;
+      date: string;
+      professorEntryAt: string | null;
+      professorExitAt: string | null;
+      portalSyncStatus: string;
+      portalSyncError: string | null;
+      createdAt: string;
+      professor: { id: string; name: string; institutionalEmail: string };
+      group: { id: string; code: string; groupLetter: string; period: string; name: string; classroom: string };
+      _count: { attendances: number; studentBeaconDetections: number };
+    }>;
+    recentBindings: StudentDeviceBinding[];
+  };
+  meta: { generatedAt: string };
+}
+
+export interface InfrastructureSummaryResponse {
+  data: {
+    counts: {
+      beacons: number;
+      studentDeviceBindings: number;
+      studentBleAttendances: number;
+      activeSubstitutions: number;
+    };
+    recentBindings: StudentDeviceBinding[];
+    recentBeacons: Beacon[];
+    recentSubstitutions: Array<{
+      id: string;
+      group: {
+        name: string;
+        groupLetter: string | null;
+        classroom: string | null;
+      };
+      primaryProfessor: { name: string };
+      substituteProfessor: { name: string };
+    }>;
+  };
+  meta: { generatedAt: string };
+}
+
 export interface ProfessorOption {
   id: string;
   externalId?: string;
@@ -104,32 +261,6 @@ export interface ProfessorOption {
   name: string;
   institutionalEmail?: string;
   email?: string | null;
-}
-
-export interface GroupOption {
-  id: string;
-  code: string;
-  groupLetter: string;
-  period: string;
-  name: string;
-  classroom: string;
-  professor: ProfessorOption;
-}
-
-export interface SubstituteAssignment {
-  id: string;
-  groupId: string;
-  primaryProfessorId: string;
-  substituteProfessorId: string;
-  startsAt: string | null;
-  endsAt: string | null;
-  active: boolean;
-  notes: string | null;
-  createdAt: string;
-  updatedAt: string;
-  group: Omit<GroupOption, 'professor'> & { schedule: unknown };
-  primaryProfessor: ProfessorOption;
-  substituteProfessor: ProfessorOption;
 }
 
 export interface SharedClassAssignment {
@@ -144,19 +275,4 @@ export interface SharedClassAssignment {
   updatedAt: string;
   sourceAssignment: Assignment;
   assignedTeacher: ProfessorOption;
-}
-
-export interface InfrastructureSummaryResponse {
-  data: {
-    counts: {
-      beacons: number;
-      studentDeviceBindings: number;
-      studentBleAttendances: number;
-      activeSubstitutions: number;
-    };
-    recentBindings: StudentDeviceBinding[];
-    recentSubstitutions: SubstituteAssignment[];
-    recentBeacons: Beacon[];
-  };
-  meta: { generatedAt: string };
 }

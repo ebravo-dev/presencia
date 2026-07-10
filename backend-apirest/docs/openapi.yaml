@@ -299,6 +299,112 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GuardaAsistenciasResponse"
+  /api/uat/alumnos/sessions:
+    post:
+      summary: Crea una sesion autenticada contra el portal de alumnos SUR
+      description: >
+        Obtiene __RequestVerificationToken, ejecuta Login/Accesar_Dominio,
+        valida la sesion, consulta carreras y selecciona el plan solicitado o
+        el primero disponible.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudentCredentials"
+      responses:
+        "201":
+          description: Sesion de alumno creada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentSessionResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Error"
+  /api/uat/alumnos/sessions/{sessionId}:
+    delete:
+      summary: Elimina una sesion de alumno en memoria
+      parameters:
+        - $ref: "#/components/parameters/SessionIdPath"
+      responses:
+        "200":
+          description: Resultado de eliminacion
+  /api/uat/alumnos/carreras:
+    get:
+      summary: Consulta carreras del alumno autenticado
+      parameters:
+        - $ref: "#/components/parameters/UatStudentSessionHeader"
+      responses:
+        "200":
+          description: JSON devuelto por CarrerasAlumno
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UatDataResponse"
+  /api/uat/alumnos/carreras/seleccionar:
+    post:
+      summary: Selecciona carrera/plan del alumno autenticado
+      parameters:
+        - $ref: "#/components/parameters/UatStudentSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idPlanEstudio]
+              properties:
+                idPlanEstudio:
+                  type: integer
+                  minimum: 1
+                  example: 3313
+      responses:
+        "200":
+          description: JSON devuelto por SeleccionarCarreraAlumno
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UatObjectResponse"
+  /api/uat/alumnos/horario:
+    get:
+      summary: Consulta horario del alumno autenticado
+      parameters:
+        - $ref: "#/components/parameters/UatStudentSessionHeader"
+      responses:
+        "200":
+          description: JSON devuelto por SpuSelHorarioFichaAlumno
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UatDataResponse"
+  /api/uat/alumnos/calificaciones/parciales:
+    get:
+      summary: Consulta calificaciones parciales del alumno autenticado
+      parameters:
+        - $ref: "#/components/parameters/UatStudentSessionHeader"
+      responses:
+        "200":
+          description: JSON devuelto por SPUSELCalificacionesParciales
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UatDataResponse"
+  /api/uat/alumnos/calificaciones/finales:
+    get:
+      summary: Consulta calificaciones finales del alumno autenticado
+      parameters:
+        - $ref: "#/components/parameters/UatStudentSessionHeader"
+      responses:
+        "200":
+          description: JSON devuelto por ConsultaEvaluaciones
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UatDataResponse"
   /api/uat/asistencia/lotes:
     post:
       summary: Entrega un lote idempotente a la cola durable de asistencia
@@ -635,6 +741,13 @@ components:
       schema:
         type: string
         format: uuid
+    UatStudentSessionHeader:
+      name: X-UAT-Student-Session-Id
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
     SessionIdPath:
       name: sessionId
       in: path
@@ -708,9 +821,31 @@ components:
         password:
           type: string
           format: password
+    StudentCredentials:
+      allOf:
+        - $ref: "#/components/schemas/Credentials"
+        - type: object
+          properties:
+            idPlanEstudio:
+              type: integer
+              minimum: 1
+              example: 3313
+            attendanceUuid:
+              type: string
+              format: uuid
+              description: UUID BLE estable generado por la app de alumnos.
+            deviceBindingId:
+              type: string
+              format: uuid
+              description: Identificador estable de la instalacion/dispositivo.
+            platform:
+              type: string
+              example: android
+            deviceInfo:
+              type: string
     HealthResponse:
       type: object
-      required: [status, service, activeUatSessions, timestamp]
+      required: [status, service, activeUatSessions, activeUatStudentSessions, timestamp]
       properties:
         status:
           type: string
@@ -719,6 +854,8 @@ components:
           type: string
           example: backend-apirest
         activeUatSessions:
+          type: integer
+        activeUatStudentSessions:
           type: integer
         timestamp:
           type: string
@@ -756,6 +893,20 @@ components:
               type: boolean
             hasAuthCookie:
               type: boolean
+    StudentSessionResponse:
+      allOf:
+        - $ref: "#/components/schemas/SessionResponse"
+        - type: object
+          required: [careers, selectedCareer]
+          properties:
+            careers:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            selectedCareer:
+              type: object
+              additionalProperties: true
     SafeLogin:
       type: object
       properties:

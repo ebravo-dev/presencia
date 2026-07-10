@@ -52,6 +52,19 @@ async function sendProxyResponse(response: Response, reply: FastifyReply) {
 
 export async function uatProxyRoutes(fastify: FastifyInstance): Promise<void> {
     fastify.all('/api/uat/*', async (request, reply) => {
+        if (env.PRESENCIA_DEBUG_MODE) {
+            const path = request.url.split('?')[0] ?? request.url;
+            const isTeacherLogin = request.method === 'POST' && path === '/api/uat/sessions';
+            const isStudentLogin = request.method === 'POST' && path === '/api/uat/alumnos/sessions';
+            if (!isTeacherLogin && !isStudentLogin) {
+                return reply.code(423).send({
+                    error: 'DEBUG_MODE_API_REST_DISABLED',
+                    message:
+                        'Modo debug activo: solo esta permitido el login contra API REST. Consultas y subidas reales estan deshabilitadas.',
+                });
+            }
+        }
+
         const target = new URL(request.url, env.BACKEND_API_REST_URL);
         const response = await fetch(target, {
             method: request.method,

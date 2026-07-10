@@ -1,7 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { UatService } from '../../../application/services/uat.service.js';
+import type { UatStudentService } from '../../../application/services/uat-student.service.js';
 import type { IDomainEventBus } from '../../../domain/events/domain-event-bus.js';
 import type { SharedClassService } from '../../../application/services/shared-class.service.js';
+import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
 import type { AttendanceUploadService } from '../../../application/services/attendance-upload.service.js';
 import type { AttendanceUploadWorker } from '../../../infrastructure/jobs/attendance-upload.worker.js';
 import { AsistenciaController } from '../controllers/asistencia.controller.js';
@@ -9,31 +11,61 @@ import { AttendanceUploadController } from '../controllers/attendance-upload.con
 import { CatalogoController } from '../controllers/catalogo.controller.js';
 import { ConsultaController } from '../controllers/consulta.controller.js';
 import { SessionController } from '../controllers/session.controller.js';
+import { StudentSessionController } from '../controllers/student-session.controller.js';
 import { SharedClassController } from '../controllers/shared-class.controller.js';
 import { buildAuthUatHook } from '../hooks/auth-uat.hook.js';
+import { buildAuthUatStudentHook } from '../hooks/auth-uat-student.hook.js';
+import { env } from '../../../config/env.js';
 
 export interface UatRoutesOptions {
   uatService: UatService;
+  uatStudentService: UatStudentService;
   eventBus: IDomainEventBus;
   sharedClassService: SharedClassService;
+  attendanceBackendClient: AttendanceBackendClient;
   attendanceUploadService: AttendanceUploadService;
   attendanceUploadWorker: AttendanceUploadWorker;
 }
 
 export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   fastify,
-  { uatService, eventBus, sharedClassService, attendanceUploadService, attendanceUploadWorker },
+  { uatService, uatStudentService, eventBus, sharedClassService, attendanceBackendClient, attendanceUploadService, attendanceUploadWorker },
 ) => {
+  fastify.addHook('preHandler', async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return;
+
+    const path = request.url.split('?')[0] ?? request.url;
+    const isTeacherLogin = request.method === 'POST' && path === '/api/uat/sessions';
+    const isStudentLogin = request.method === 'POST' && path === '/api/uat/alumnos/sessions';
+    if (isTeacherLogin || isStudentLogin) return;
+
+    return reply.code(423).send({
+      error: 'DEBUG_MODE_API_REST_DISABLED',
+      message:
+        'Modo debug activo: backend-apirest solo permite login. Consultas, scraping y subida de asistencia estan deshabilitadas para no tocar datos reales.',
+    });
+  });
+
   const authUat = buildAuthUatHook(uatService);
+  const authUatStudent = buildAuthUatStudentHook(uatStudentService);
   const sessionController = new SessionController(uatService, eventBus);
+  const studentSessionController = new StudentSessionController(uatStudentService);
   const consultaController = new ConsultaController(uatService);
   const catalogoController = new CatalogoController(uatService);
-  const asistenciaController = new AsistenciaController(uatService);
+  const asistenciaController = new AsistenciaController(uatService, attendanceBackendClient);
   const attendanceUploadController = new AttendanceUploadController(attendanceUploadService, attendanceUploadWorker);
   const sharedClassController = new SharedClassController(sharedClassService);
 
   fastify.post('/api/uat/sessions', sessionController.create);
   fastify.delete('/api/uat/sessions/:sessionId', sessionController.delete);
+
+  fastify.post('/api/uat/alumnos/sessions', studentSessionController.create);
+  fastify.delete('/api/uat/alumnos/sessions/:sessionId', studentSessionController.delete);
+  fastify.get('/api/uat/alumnos/carreras', { preHandler: authUatStudent }, studentSessionController.careers);
+  fastify.post('/api/uat/alumnos/carreras/seleccionar', { preHandler: authUatStudent }, studentSessionController.selectCareer);
+  fastify.get('/api/uat/alumnos/horario', { preHandler: authUatStudent }, studentSessionController.schedule);
+  fastify.get('/api/uat/alumnos/calificaciones/parciales', { preHandler: authUatStudent }, studentSessionController.partialGrades);
+  fastify.get('/api/uat/alumnos/calificaciones/finales', { preHandler: authUatStudent }, studentSessionController.finalGrades);
 
   fastify.get('/api/uat/profesor/consultas/horarios', { preHandler: authUat }, consultaController.horarios);
   fastify.get('/api/uat/profesor/consultas/examenes', { preHandler: authUat }, consultaController.examenes);

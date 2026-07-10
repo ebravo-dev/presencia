@@ -4,15 +4,19 @@ import { jwtService, rsaService, sessionService } from '../../core/security/inde
 import { AttendanceStatus, PortalSyncStatus, SyncStatus } from '@prisma/client';
 import { uatRestSyncService } from '../uat-rest/index.js';
 import { findBeaconByClassroom } from '../beacons/beacons.service.js';
+import { attendanceDateFromServerNow, serverNow } from '../../core/time/server-time.js';
+import { env } from '../../core/config/env.js';
 import {
     registerAttendanceSchema,
     attendanceHistoryQuerySchema,
     professorBeaconEntrySchema,
+    professorExitSchema,
     studentBeaconDetectionsSchema,
     studentBeaconBindingsSchema,
     type RegisterAttendanceRequest,
     type AttendanceHistoryQuery,
     type ProfessorBeaconEntryRequest,
+    type ProfessorExitRequest,
     type StudentBeaconDetectionsRequest,
     type StudentBeaconBindingsRequest,
 } from './attendance.schemas.js';
@@ -62,10 +66,40 @@ function activeSubstitutionWindow(now: Date) {
 
 async function resolveProfessorGroup(params: {
     professorId: string;
+    groupId?: string;
     code: string;
     groupLetter: string;
     period: string;
 }): Promise<ResolvedAttendanceGroup | null> {
+    if (params.groupId) {
+        const groupById = await prisma.group.findFirst({
+            where: {
+                id: params.groupId,
+                OR: [
+                    { professorId: params.professorId },
+                    ...(env.PRESENCIA_DEBUG_MODE ? [{ level: 'DEBUG' }] : []),
+                ],
+            },
+            select: {
+                id: true,
+                code: true,
+                groupLetter: true,
+                period: true,
+                name: true,
+                classroom: true,
+                professorId: true,
+            },
+        });
+
+        if (groupById) {
+            return {
+                group: groupById,
+                attendanceProfessorId: groupById.professorId,
+                isSubstitute: false,
+            };
+        }
+    }
+
     const ownedGroup = await prisma.group.findFirst({
         where: {
             code: params.code,
@@ -90,6 +124,35 @@ async function resolveProfessorGroup(params: {
             attendanceProfessorId: ownedGroup.professorId,
             isSubstitute: false,
         };
+    }
+
+    if (env.PRESENCIA_DEBUG_MODE) {
+        const debugGroup = await prisma.group.findFirst({
+            where: {
+                code: params.code,
+                groupLetter: params.groupLetter,
+                period: params.period,
+                level: 'DEBUG',
+            },
+            select: {
+                id: true,
+                code: true,
+                groupLetter: true,
+                period: true,
+                name: true,
+                classroom: true,
+                professorId: true,
+            },
+            orderBy: { updatedAt: 'desc' },
+        });
+
+        if (debugGroup) {
+            return {
+                group: debugGroup,
+                attendanceProfessorId: debugGroup.professorId,
+                isSubstitute: false,
+            };
+        }
     }
 
     const assignment = await substituteAssignment.findFirst({
@@ -144,6 +207,17 @@ async function canAccessGroup(params: {
     });
 
     if (ownedGroup) return true;
+
+    if (env.PRESENCIA_DEBUG_MODE) {
+        const debugGroup = await prisma.group.findFirst({
+            where: {
+                id: params.groupId,
+                level: 'DEBUG',
+            },
+            select: { id: true },
+        });
+        if (debugGroup) return true;
+    }
 
     const assignment = await substituteAssignment.findFirst({
         where: {
@@ -212,11 +286,21 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
         async (request, reply) => {
             try {
                 const validated = registerAttendanceSchema.parse(request.body);
-                const { code, groupLetter, period, date, attendances, encryptedPassword } = validated;
+                const {
+                    groupId: requestedGroupId,
+                    code,
+                    groupLetter,
+                    period,
+                    date,
+                    attendances,
+                    encryptedPassword,
+                    professorEntryAt,
+                    professorExitAt,
+                } = validated;
                 const professorId = (request as AuthenticatedRequest).professorId!;
 
                 // Resolve group by stable identifiers — no CUID needed from client
-                const resolvedGroup = await resolveProfessorGroup({ professorId, code, groupLetter, period });
+                const resolvedGroup = await resolveProfessorGroup({ professorId, groupId: requestedGroupId, code, groupLetter, period });
                 if (!resolvedGroup) {
                     return reply.code(404).send({
                         statusCode: 404,
@@ -227,22 +311,38 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
 
                 const { group, attendanceProfessorId, isSubstitute } = resolvedGroup;
                 const groupId = group.id;
+                const recordDate = new Date(date);
+                const existingRecord = await prisma.attendanceRecord.findUnique({
+                    where: {
+                        date_groupId: {
+                            date: recordDate,
+                            groupId,
+                        },
+                    },
+                });
+                const attendanceServerTimestamp = serverNow();
+                const professorAttendanceTimes = {
+                    ...(professorEntryAt && !existingRecord?.professorEntryAt ? { professorEntryAt: attendanceServerTimestamp } : {}),
+                    ...(professorExitAt && !existingRecord?.professorExitAt ? { professorExitAt: attendanceServerTimestamp } : {}),
+                };
 
                 // Create or update attendance record
                 const attendanceRecord = await prisma.attendanceRecord.upsert({
                     where: {
                         date_groupId: {
-                            date: new Date(date),
+                            date: recordDate,
                             groupId,
                         },
                     },
                     create: {
-                        date: new Date(date),
+                        date: recordDate,
                         groupId,
                         professorId: attendanceProfessorId,
+                        ...professorAttendanceTimes,
                     },
                     update: {
                         professorId: attendanceProfessorId,
+                        ...professorAttendanceTimes,
                     },
                 });
 
@@ -278,6 +378,40 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                     });
                 }
 
+                if (env.PRESENCIA_DEBUG_MODE) {
+                    await prisma.attendanceRecord.update({
+                        where: { id: refreshedRecord.id },
+                        data: {
+                            portalSyncStatus: PortalSyncStatus.NOT_REQUESTED,
+                            portalSyncError: 'DEBUG_BACKEND_ONLY: visible en reportes; no se envio al portal/API REST.',
+                            portalSyncedAt: null,
+                        },
+                    });
+
+                    request.log.info({
+                        professorId: attendanceProfessorId,
+                        attendanceRecordId: refreshedRecord.id,
+                        groupId,
+                        attendancesCount: attendances.length,
+                        professorEntryAt: refreshedRecord.professorEntryAt,
+                        professorExitAt: refreshedRecord.professorExitAt,
+                    }, 'Modo debug: asistencia guardada solo en backend principal.');
+
+                    return reply.code(201).send({
+                        data: {
+                            attendanceRecordId: attendanceRecord.id,
+                            date,
+                            groupId,
+                            professorEntryAt: refreshedRecord.professorEntryAt,
+                            professorExitAt: refreshedRecord.professorExitAt,
+                            attendancesCount: attendances.length,
+                            debug: true,
+                            reportVisible: true,
+                        },
+                        message: 'Modo debug: asistencia registrada localmente en backend, sin enviar a UAT/API REST.',
+                    });
+                }
+
                 // Only block if sync is actively in progress. Completed records can be
                 // re-synced explicitly so the portal matches the latest local data.
 
@@ -303,6 +437,8 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                             attendanceRecordId: attendanceRecord.id,
                             date,
                             groupId,
+                            professorEntryAt: attendanceRecord.professorEntryAt,
+                            professorExitAt: attendanceRecord.professorExitAt,
                             attendancesCount: attendances.length,
                             primaryProfessorId: attendanceProfessorId,
                             substituteProfessorId: professorId,
@@ -361,6 +497,8 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                         attendanceRecordId: attendanceRecord.id,
                         date: date,
                         groupId,
+                        professorEntryAt: refreshedRecord.professorEntryAt,
+                        professorExitAt: refreshedRecord.professorExitAt,
                         attendancesCount: attendances.length,
                         portalProcessedCount: uploadResult.processedCount,
                     },
@@ -383,9 +521,11 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
             try {
                 const validated = professorBeaconEntrySchema.parse(request.body);
                 const professorId = (request as AuthenticatedRequest).professorId!;
-                const { code, groupLetter, period, date, detectedAt, beaconUuid, rssi, distance, bluetoothAddress } = validated;
+                const { groupId: requestedGroupId, code, groupLetter, period, beaconUuid, rssi, distance, bluetoothAddress } = validated;
+                const detectedAt = serverNow();
+                const recordDate = attendanceDateFromServerNow(detectedAt);
 
-                const resolvedGroup = await resolveProfessorGroup({ professorId, code, groupLetter, period });
+                const resolvedGroup = await resolveProfessorGroup({ professorId, groupId: requestedGroupId, code, groupLetter, period });
                 if (!resolvedGroup) {
                     return reply.code(404).send({
                         statusCode: 404,
@@ -413,25 +553,37 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                     });
                 }
 
+                const existingRecord = await prisma.attendanceRecord.findUnique({
+                    where: {
+                        date_groupId: {
+                            date: recordDate,
+                            groupId: group.id,
+                        },
+                    },
+                });
+                const professorEntryUpdate = existingRecord?.professorEntryAt
+                    ? {}
+                    : { professorEntryAt: detectedAt };
+
                 const attendanceRecord = await prisma.attendanceRecord.upsert({
                     where: {
                         date_groupId: {
-                            date: new Date(date),
+                            date: recordDate,
                             groupId: group.id,
                         },
                     },
                     create: {
-                        date: new Date(date),
+                        date: recordDate,
                         groupId: group.id,
                         professorId: attendanceProfessorId,
-                        professorEntryAt: new Date(detectedAt),
+                        professorEntryAt: detectedAt,
                         roomBeaconUuid: beaconUuid,
                         roomBeaconRssi: rssi,
                         roomBeaconDistance: distance,
                         roomBeaconAddress: bluetoothAddress,
                     },
                     update: {
-                        professorEntryAt: new Date(detectedAt),
+                        ...professorEntryUpdate,
                         roomBeaconUuid: beaconUuid,
                         roomBeaconRssi: rssi,
                         roomBeaconDistance: distance,
@@ -443,7 +595,7 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                     data: {
                         attendanceRecordId: attendanceRecord.id,
                         groupId: group.id,
-                        date,
+                        date: recordDate.toISOString().slice(0, 10),
                         professorEntryAt: attendanceRecord.professorEntryAt,
                     },
                     message: 'Entrada del profesor registrada por beacon',
@@ -459,15 +611,84 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
         }
     );
 
+    fastify.post<{ Body: ProfessorExitRequest }>(
+        '/attendance/professor-exit',
+        async (request, reply) => {
+            try {
+                const validated = professorExitSchema.parse(request.body);
+                const professorId = (request as AuthenticatedRequest).professorId!;
+                const { groupId: requestedGroupId, code, groupLetter, period } = validated;
+                const detectedAt = serverNow();
+                const recordDate = attendanceDateFromServerNow(detectedAt);
+
+                const resolvedGroup = await resolveProfessorGroup({ professorId, groupId: requestedGroupId, code, groupLetter, period });
+                if (!resolvedGroup) {
+                    return reply.code(404).send({
+                        statusCode: 404,
+                        error: 'Not Found',
+                        message: `Grupo no encontrado (code: ${code}, group: ${groupLetter}, period: ${period})`,
+                    });
+                }
+
+                const { group, attendanceProfessorId } = resolvedGroup;
+                const existingRecord = await prisma.attendanceRecord.findUnique({
+                    where: {
+                        date_groupId: {
+                            date: recordDate,
+                            groupId: group.id,
+                        },
+                    },
+                });
+
+                const attendanceRecord = await prisma.attendanceRecord.upsert({
+                    where: {
+                        date_groupId: {
+                            date: recordDate,
+                            groupId: group.id,
+                        },
+                    },
+                    create: {
+                        date: recordDate,
+                        groupId: group.id,
+                        professorId: attendanceProfessorId,
+                        professorEntryAt: null,
+                        professorExitAt: detectedAt,
+                    },
+                    update: {
+                        professorId: attendanceProfessorId,
+                        professorExitAt: existingRecord?.professorExitAt ?? detectedAt,
+                    },
+                });
+
+                return reply.code(201).send({
+                    data: {
+                        attendanceRecordId: attendanceRecord.id,
+                        groupId: group.id,
+                        professorEntryAt: attendanceRecord.professorEntryAt,
+                        professorExitAt: attendanceRecord.professorExitAt,
+                    },
+                    message: 'Salida del profesor registrada con hora del servidor',
+                });
+            } catch (error) {
+                request.log.error(error);
+                return reply.code(500).send({
+                    statusCode: 500,
+                    error: 'Internal Server Error',
+                    message: 'Error registrando salida del profesor',
+                });
+            }
+        },
+    );
+
     fastify.post<{ Body: StudentBeaconDetectionsRequest }>(
         '/attendance/student-beacon-detections',
         async (request, reply) => {
             try {
                 const validated = studentBeaconDetectionsSchema.parse(request.body);
                 const professorId = (request as AuthenticatedRequest).professorId!;
-                const { code, groupLetter, period, date, detections } = validated;
+                const { groupId: requestedGroupId, code, groupLetter, period, date, detections } = validated;
 
-                const resolvedGroup = await resolveProfessorGroup({ professorId, code, groupLetter, period });
+                const resolvedGroup = await resolveProfessorGroup({ professorId, groupId: requestedGroupId, code, groupLetter, period });
                 if (!resolvedGroup) {
                     return reply.code(404).send({
                         statusCode: 404,
@@ -608,9 +829,9 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
             try {
                 const validated = studentBeaconBindingsSchema.parse(request.body);
                 const professorId = (request as AuthenticatedRequest).professorId!;
-                const { code, groupLetter, period } = validated;
+                const { groupId: requestedGroupId, code, groupLetter, period } = validated;
 
-                const resolvedGroup = await resolveProfessorGroup({ professorId, code, groupLetter, period });
+                const resolvedGroup = await resolveProfessorGroup({ professorId, groupId: requestedGroupId, code, groupLetter, period });
                 if (!resolvedGroup) {
                     return reply.code(404).send({
                         statusCode: 404,

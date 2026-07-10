@@ -155,10 +155,10 @@ function DashboardContent({ overview, infrastructure }: { overview: OverviewResp
               tone="blue"
             />
             <QuickAction
-              to="/infraestructura"
+              to="/superUsuario"
               icon={<Bluetooth size={20} />}
               title="Validar salones"
-              description="Beacons y sustituciones"
+              description="Beacons y permisos"
               tone="cyan"
             />
           </div>
@@ -190,7 +190,7 @@ function DashboardContent({ overview, infrastructure }: { overview: OverviewResp
             eyebrow="Atención"
             title="Sustituciones vigentes"
             description="Cambios que pueden afectar quién registra asistencia."
-            action={<Link to="/infraestructura" className="text-xs font-semibold text-[#C8102E] hover:underline">Gestionar</Link>}
+            action={<Link to="/superUsuario" className="text-xs font-semibold text-[#C8102E] hover:underline">Gestionar</Link>}
           />
           {operational.recentSubstitutions.length === 0 ? (
             <div className="grid min-h-64 place-items-center p-6 text-center">

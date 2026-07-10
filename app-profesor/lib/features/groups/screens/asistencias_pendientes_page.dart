@@ -294,6 +294,12 @@ class _AsistenciasPendientesPageState
       date: registroActualizado.fecha,
       attendances: attendances,
       encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
+      groupName: grupo.name,
+      classroom: grupo.classroom,
+      level: grupo.level,
+      schedule: grupo.schedule,
+      professorEntryAt: registroActualizado.horaEntrada,
+      professorExitAt: registroActualizado.horaSalida,
     );
 
     final uploadSuccess = await result.fold(
@@ -309,14 +315,16 @@ class _AsistenciasPendientesPageState
         }
         return false;
       },
-      (_) async {
+      (response) async {
         await _asistenciaService.marcarComoSincronizada(registroActualizado.id);
         if (showSnackbars && mounted) {
+          final isDebugUpload = response['skippedApiRestUpload'] == true;
+          final message = isDebugUpload
+              ? 'Modo debug: asistencia registrada para reportes. No se envio a UAT.'
+              : 'Asistencia del ${_formatearFecha(registroActualizado.fecha)} sincronizada';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                'Asistencia del ${_formatearFecha(registroActualizado.fecha)} sincronizada',
-              ),
+              content: Text(message),
               backgroundColor: Colors.green,
               behavior: SnackBarBehavior.floating,
             ),
@@ -335,26 +343,16 @@ class _AsistenciasPendientesPageState
 
     final direct = grupos.firstWhere(
       (g) => g.id == grupoId,
-      orElse: () => const Grupo(
-        id: '',
-        group: '',
-        classroom: '',
-        name: '',
-        students: const [],
-      ),
+      orElse: () =>
+          const Grupo(id: '', group: '', classroom: '', name: '', students: []),
     );
 
     if (direct.id.isNotEmpty) return direct;
 
     final byLegacy = grupos.firstWhere(
       (g) => g.identificadorUnico == grupoId,
-      orElse: () => const Grupo(
-        id: '',
-        group: '',
-        classroom: '',
-        name: '',
-        students: const [],
-      ),
+      orElse: () =>
+          const Grupo(id: '', group: '', classroom: '', name: '', students: []),
     );
 
     return byLegacy.id.isNotEmpty ? byLegacy : null;

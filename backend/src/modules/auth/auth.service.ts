@@ -2,6 +2,10 @@ import { prisma } from '../../core/database/prisma.js';
 import { rsaService, jwtService, sessionService } from '../../core/security/index.js';
 import type { LoginRequest, AuthResponse } from './auth.schemas.js';
 import { uatRestSyncService } from '../uat-rest/index.js';
+import { env } from '../../core/config/env.js';
+import { uatRestClient } from '../uat-rest/uat-rest.client.js';
+
+const studentDeviceBinding = (prisma as any).studentDeviceBinding;
 
 /**
  * Calculate the current academic period based on date
@@ -29,7 +33,13 @@ export class AuthService {
         const decryptedPassword = rsaService.decryptPasswordOrPlain(data.encryptedPassword);
 
         // Calculate current period
-        const currentPeriod = calculateCurrentPeriod();
+        const currentPeriod = env.PRESENCIA_DEBUG_MODE
+            ? env.PRESENCIA_DEBUG_PERIOD
+            : calculateCurrentPeriod();
+
+        const debugLogin = env.PRESENCIA_DEBUG_MODE
+            ? await this.validateLoginOnly(data.institutionalEmail, decryptedPassword)
+            : null;
 
         // Find or create professor (upsert behavior)
         let professor = await prisma.professor.findUnique({
@@ -43,16 +53,19 @@ export class AuthService {
             professor = await prisma.professor.create({
                 data: {
                     institutionalEmail: data.institutionalEmail,
-                    name: data.institutionalEmail.split('@')[0], // Temporary name from email
+                    name: debugLogin?.professorName ?? data.institutionalEmail.split('@')[0], // Temporary name from email
                     lastSyncPeriod: currentPeriod,
                 },
+            });
+        } else if (professor && debugLogin?.professorName && professor.name !== debugLogin.professorName) {
+            professor = await prisma.professor.update({
+                where: { id: professor.id },
+                data: { name: debugLogin.professorName },
             });
         }
 
         // At this point professor is guaranteed to exist
         const prof = professor!;
-        const periodChanged = prof.lastSyncPeriod !== currentPeriod;
-
         // Check if professor has any groups in current period
         const groupCount = await prisma.group.count({
             where: { professorId: prof.id, period: currentPeriod }
@@ -66,6 +79,21 @@ export class AuthService {
             email: prof.institutionalEmail,
             sessionId,
         });
+
+        if (env.PRESENCIA_DEBUG_MODE) {
+            const seed = await this.ensureDebugProfessorData(prof.id, currentPeriod);
+            return {
+                token,
+                profesor: {
+                    id: prof.id,
+                    institutionalEmail: prof.institutionalEmail,
+                    name: debugLogin?.professorName ?? prof.name,
+                },
+                message: `Modo debug activo. Login validado; usando ${seed.groupsCount} materia(s) y ${seed.studentsCount} alumno(s) de prueba.`,
+                currentPeriod,
+                needsSync: false,
+            };
+        }
 
         // Only sync if professor has NO groups in current period
         // (first login or new academic period). Returning professors
@@ -121,7 +149,17 @@ export class AuthService {
     ): Promise<{ message: string; currentPeriod: string }> {
         console.log(`🔄 forceSync called for professor ${professorId}`);
         const decryptedPassword = rsaService.decryptPasswordOrPlain(encryptedPassword);
-        const currentPeriod = calculateCurrentPeriod();
+        const currentPeriod = env.PRESENCIA_DEBUG_MODE
+            ? env.PRESENCIA_DEBUG_PERIOD
+            : calculateCurrentPeriod();
+
+        if (env.PRESENCIA_DEBUG_MODE) {
+            const seed = await this.ensureDebugProfessorData(professorId, currentPeriod);
+            return {
+                message: `Modo debug activo. Sincronización real deshabilitada; datos locales de prueba listos (${seed.groupsCount} materia(s), ${seed.studentsCount} alumno(s)).`,
+                currentPeriod,
+            };
+        }
 
         // Block sync if there are pending attendance uploads
         const pendingUploads = await prisma.attendanceRecord.count({
@@ -191,6 +229,152 @@ export class AuthService {
             message: 'Sincronización completada.',
             currentPeriod,
         };
+    }
+
+    private async validateLoginOnly(email: string, password: string): Promise<{ professorName?: string }> {
+        let sessionId: string | undefined;
+        try {
+            const session = await uatRestClient.createSession({ username: email, password });
+            sessionId = session.sessionId;
+            if (!session.authenticated || session.login?.exito === false) {
+                throw new Error(session.login?.mensaje ?? 'Credenciales rechazadas por el portal UAT.');
+            }
+            return {
+                professorName: session.login.parametros?.Txt_Usuario_AdmonUAT?.trim() || undefined,
+            };
+        } finally {
+            if (sessionId) {
+                await uatRestClient.deleteSession(sessionId).catch(() => undefined);
+            }
+        }
+    }
+
+    private async ensureDebugProfessorData(
+        professorId: string,
+        period: string,
+    ): Promise<{ groupsCount: number; studentsCount: number }> {
+        const professor = await prisma.professor.findUnique({ where: { id: professorId } });
+        if (!professor) throw new Error('Profesor no encontrado para sembrar datos debug.');
+
+        await prisma.professor.update({
+            where: { id: professorId },
+            data: { lastSyncPeriod: period },
+        });
+
+        const duration = Math.max(1, env.PRESENCIA_DEBUG_CLASS_HOURS || env.DEBUG_EXTRA_CLASS_HOURS);
+        const scheduleValue = `08:00-${String(8 + duration).padStart(2, '0')}:00`;
+        const schedule = {
+            monday: scheduleValue,
+            lunes: scheduleValue,
+            tuesday: scheduleValue,
+            martes: scheduleValue,
+            wednesday: scheduleValue,
+            miercoles: scheduleValue,
+            thursday: scheduleValue,
+            jueves: scheduleValue,
+            friday: scheduleValue,
+            viernes: scheduleValue,
+        };
+
+        const beaconUuid = '11111111-2222-4333-8444-555555555555';
+        const classroom = 'DEBUG-101';
+        const existingBeacon = await prisma.beacon.findUnique({
+            where: { uuid: beaconUuid },
+        });
+        if (!existingBeacon) {
+            await prisma.beacon.create({ data: { uuid: beaconUuid, classroom } });
+        }
+
+        let group = await prisma.group.findUnique({
+            where: {
+                code_groupLetter_professorId_period: {
+                    code: '990001',
+                    groupLetter: 'DBG',
+                    professorId,
+                    period,
+                },
+            },
+        });
+
+        if (!group) {
+            group = await prisma.group.create({
+                data: {
+                    code: '990001',
+                    groupLetter: 'DBG',
+                    name: `DEBUG ASISTENCIA ${duration}H`,
+                    level: 'DEBUG',
+                    classroom,
+                    schedule,
+                    period,
+                    professorId,
+                },
+            });
+        }
+
+        const students = [
+            ['DBG0001', 'Alumno Debug Uno', '22222222-0001-4333-8444-555555555555'],
+            ['DBG0002', 'Alumno Debug Dos', '22222222-0002-4333-8444-555555555555'],
+            ['DBG0003', 'Alumno Debug Tres', '22222222-0003-4333-8444-555555555555'],
+            ['DBG0004', 'Alumno Debug Cuatro', '22222222-0004-4333-8444-555555555555'],
+            ['DBG0005', 'Alumno Debug Cinco', '22222222-0005-4333-8444-555555555555'],
+            ['DBG0006', 'Alumno Debug Seis', '22222222-0006-4333-8444-555555555555'],
+        ] as const;
+
+        for (const [matricula, name, attendanceUuid] of students) {
+            await prisma.student.upsert({
+                where: {
+                    matricula_groupId: {
+                        matricula,
+                        groupId: group.id,
+                    },
+                },
+                create: {
+                    matricula,
+                    name,
+                    beaconUuid: attendanceUuid,
+                    groupId: group.id,
+                },
+                update: {
+                    name,
+                    beaconUuid: attendanceUuid,
+                },
+            });
+
+            await studentDeviceBinding.upsert({
+                where: { matricula },
+                create: {
+                    matricula,
+                    attendanceUuid,
+                    deviceBindingId: `debug-${matricula.toLowerCase()}`,
+                    platform: 'debug',
+                    deviceInfo: 'Dispositivo de prueba generado por PRESENCIA_DEBUG_MODE',
+                },
+                update: {
+                    attendanceUuid,
+                    deviceBindingId: `debug-${matricula.toLowerCase()}`,
+                    platform: 'debug',
+                    deviceInfo: 'Dispositivo de prueba generado por PRESENCIA_DEBUG_MODE',
+                },
+            });
+        }
+
+        await prisma.syncJob.create({
+            data: {
+                professorId,
+                status: 'COMPLETED',
+                totalGroups: await prisma.group.count({ where: { professorId, period } }),
+                currentGroup: 1,
+                currentGroupName: `Modo debug: materias listas para ${professor.institutionalEmail}`,
+                completedAt: new Date(),
+            },
+        });
+
+        const [groupsCount, studentsCount] = await Promise.all([
+            prisma.group.count({ where: { professorId, period } }),
+            prisma.student.count({ where: { group: { professorId, period } } }),
+        ]);
+
+        return { groupsCount, studentsCount };
     }
 }
 

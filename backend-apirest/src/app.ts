@@ -9,15 +9,19 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { SyncTeacherDataListener } from './application/listeners/sync-teacher-data.listener.js';
 import { CoordinationService } from './application/services/coordination.service.js';
+import { CoordinatorAccountService } from './application/services/coordinator-account.service.js';
 import { CoordinatorAuthService } from './application/services/coordinator-auth.service.js';
 import { WeeklyAttendanceReportService } from './application/services/weekly-attendance-report.service.js';
 import { SharedClassService } from './application/services/shared-class.service.js';
+import { UatStudentService } from './application/services/uat-student.service.js';
 import { AttendanceUploadService } from './application/services/attendance-upload.service.js';
 import { UatService } from './application/services/uat.service.js';
 import { HarvestTeacherDataUseCase } from './application/use-cases/harvest-teacher-data.use-case.js';
 import { env } from './config/env.js';
+import type { StoredUatStudentSession } from './domain/types/uat.interfaces.js';
 import { ApiError } from './errors/api-error.js';
 import { UatClientFactory } from './infrastructure/http/client/uat-client.factory.js';
+import { UatStudentClientFactory } from './infrastructure/http/client/uat-student-client.factory.js';
 import { AttendanceBackendClient } from './infrastructure/http/client/attendance-backend.client.js';
 import { InMemoryDomainEventBus } from './infrastructure/events/in-memory-domain-event-bus.js';
 import { MemoryUatSessionStore } from './infrastructure/persistence/memory-session.store.js';
@@ -32,12 +36,27 @@ import { CredentialCipher } from './infrastructure/security/credential-cipher.js
 import { AttendanceUploadWorker } from './infrastructure/jobs/attendance-upload.worker.js';
 import { coordinationRoutes } from './presentation/http/routes/coordination.routes.js';
 import { coordinatorAuthRoutes } from './presentation/http/routes/coordinator-auth.routes.js';
+import { internalCoordinationRoutes } from './presentation/http/routes/internal-coordination.routes.js';
 import { uatRoutes } from './presentation/http/routes/uat.routes.js';
+import type { DebugProfessorInput, HarvestDebugOptions } from './application/use-cases/harvest-teacher-data.use-case.js';
+
+const SERVER_TIME_ZONE = env.APP_TIME_ZONE;
+
+function serverLocalDateString(value = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: SERVER_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(value);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
 
 export async function buildApp() {
   const fastify = Fastify({
     logger: {
-      level: env.NODE_ENV === 'development' ? 'debug' : 'info',
+      level: env.PRESENCIA_DEBUG_MODE || env.PRESENCIA_DEBUG_VERBOSE_LOGS ? 'debug' : env.NODE_ENV === 'development' ? 'debug' : 'info',
       transport:
         env.NODE_ENV === 'development'
           ? {
@@ -51,11 +70,18 @@ export async function buildApp() {
   });
 
   const sessionRepository = new MemoryUatSessionStore();
+  const studentSessionRepository = new MemoryUatSessionStore<StoredUatStudentSession>();
   const clientFactory = new UatClientFactory();
+  const studentClientFactory = new UatStudentClientFactory();
   const credentialCipher = new CredentialCipher(
     env.ATTENDANCE_JOB_ENCRYPTION_SECRET ?? env.COORDINATION_JWT_SECRET,
   );
   const uatService = new UatService(sessionRepository, clientFactory, credentialCipher);
+  const attendanceBackendClient = new AttendanceBackendClient(
+    env.ATTENDANCE_BACKEND_URL,
+    env.ATTENDANCE_BACKEND_SERVICE_TOKEN,
+  );
+  const uatStudentService = new UatStudentService(studentSessionRepository, studentClientFactory, attendanceBackendClient);
   const attendanceUploadRepository = new PrismaAttendanceUploadRepository(prisma);
   const attendanceUploadService = new AttendanceUploadService(attendanceUploadRepository);
   const attendanceUploadWorker = new AttendanceUploadWorker(
@@ -64,7 +90,11 @@ export async function buildApp() {
     credentialCipher,
     fastify.log,
   );
-  await attendanceUploadWorker.start();
+  if (env.PRESENCIA_DEBUG_MODE) {
+    fastify.log.warn('Modo debug activo: worker de subida UAT deshabilitado.');
+  } else {
+    await attendanceUploadWorker.start();
+  }
   const teacherRepository = new PrismaTeacherRepository(prisma);
   const subjectRepository = new PrismaSubjectRepository(prisma);
   const coordinationRepository = new PrismaCoordinationRepository(prisma);
@@ -78,7 +108,12 @@ export async function buildApp() {
     subjectRepository,
     coordinationRepository,
     groupAssignmentRepository,
-    { preferredCycleId: env.UAT_ID_CICLO_ESCOLAR },
+    {
+      preferredCycleId: env.PRESENCIA_DEBUG_MODE ? env.PRESENCIA_DEBUG_CYCLE_ID : env.UAT_ID_CICLO_ESCOLAR,
+      debug: buildHarvestDebugOptions(),
+    },
+    undefined,
+    fastify.log,
   );
   const unsubscribeSync = new SyncTeacherDataListener(eventBus, harvestTeacherData, fastify.log).register();
   const coordinationService = new CoordinationService(
@@ -88,10 +123,7 @@ export async function buildApp() {
     groupAssignmentRepository,
   );
   const coordinatorAuthService = new CoordinatorAuthService(prisma, env.COORDINATION_JWT_SECRET);
-  const attendanceBackendClient = new AttendanceBackendClient(
-    env.ATTENDANCE_BACKEND_URL,
-    env.ATTENDANCE_BACKEND_SERVICE_TOKEN,
-  );
+  const coordinatorAccountService = new CoordinatorAccountService(prisma);
   const weeklyAttendanceReport = new WeeklyAttendanceReportService(
     teacherRepository,
     attendanceBackendClient,
@@ -138,18 +170,35 @@ export async function buildApp() {
     status: 'ok',
     service: 'backend-apirest',
     activeUatSessions: await uatService.getActiveSessionCount(),
+    activeUatStudentSessions: await uatStudentService.getActiveSessionCount(),
     timestamp: new Date().toISOString(),
+    timezone: SERVER_TIME_ZONE,
   }));
+
+  fastify.get('/time', async () => {
+    const now = new Date();
+    return {
+      now: now.toISOString(),
+      timezone: SERVER_TIME_ZONE,
+      localDate: serverLocalDateString(now),
+    };
+  });
 
   await fastify.register(uatRoutes, {
     uatService,
+    uatStudentService,
     eventBus,
     sharedClassService,
+    attendanceBackendClient,
     attendanceUploadService,
     attendanceUploadWorker,
   });
 
   await fastify.register(coordinatorAuthRoutes, { authService: coordinatorAuthService });
+  await fastify.register(internalCoordinationRoutes, {
+    coordinatorAccountService,
+    internalToken: env.INTERNAL_API_TOKEN,
+  });
 
   await fastify.register(coordinationRoutes, {
     coordinationService,
@@ -176,6 +225,28 @@ export async function buildApp() {
   });
 
   return fastify;
+}
+
+function buildHarvestDebugOptions(): HarvestDebugOptions {
+  return {
+    enabled: env.PRESENCIA_DEBUG_MODE,
+    cycleId: env.PRESENCIA_DEBUG_CYCLE_ID,
+    cycleName: env.PRESENCIA_DEBUG_CYCLE_NAME,
+    extraProfessorCount: env.PRESENCIA_DEBUG_EXTRA_PROFESSORS,
+    extraProfessors: parseDebugProfessors(env.PRESENCIA_DEBUG_EXTRA_PROFESSORS_JSON),
+    verboseLogs: env.PRESENCIA_DEBUG_MODE || env.PRESENCIA_DEBUG_VERBOSE_LOGS,
+  };
+}
+
+function parseDebugProfessors(value?: string): DebugProfessorInput[] | undefined {
+  if (!value?.trim()) return undefined;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return undefined;
+    return parsed.filter((item): item is DebugProfessorInput => typeof item === 'object' && item !== null);
+  } catch {
+    return undefined;
+  }
 }
 
 async function start(): Promise<void> {

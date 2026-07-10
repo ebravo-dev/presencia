@@ -1,4 +1,4 @@
-import { BarChart3, Bluetooth, BookOpenCheck, LogOut, Menu, Moon, Sun, X } from 'lucide-react';
+import { BarChart3, BookOpenCheck, LogOut, Menu, Moon, Sun, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import fiuatLogo from '@/assets/fiuat-logo.png';
@@ -10,13 +10,11 @@ import { Button, cn } from './ui';
 const navigation = [
   { to: '/', label: 'Resumen', icon: BarChart3 },
   { to: '/carga-academica', label: 'Carga académica', icon: BookOpenCheck },
-  { to: '/infraestructura', label: 'Infraestructura', icon: Bluetooth },
   { to: '/reportes/asistencia', label: 'Reportes de asistencia', icon: BarChart3 },
 ];
 const pageTitles: Record<string, string> = {
   '/': 'Resumen institucional',
   '/carga-academica': 'Carga académica',
-  '/infraestructura': 'Infraestructura BLE',
   '/reportes/asistencia': 'Reportes de asistencia',
 };
 

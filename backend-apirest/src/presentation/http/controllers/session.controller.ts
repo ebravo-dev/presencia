@@ -3,6 +3,7 @@ import type { UatService } from '../../../application/services/uat.service.js';
 import type { IDomainEventBus } from '../../../domain/events/domain-event-bus.js';
 import { createTeacherAuthenticatedEvent } from '../../../domain/events/teacher-authenticated.event.js';
 import { credentialsSchema, parsePayload, sessionParamsSchema } from '../schemas/uat.schemas.js';
+import { env } from '../../../config/env.js';
 
 export class SessionController {
   constructor(
@@ -16,6 +17,14 @@ export class SessionController {
     const response = await this.uatService.toSessionResponse(session);
 
     try {
+      if (env.PRESENCIA_DEBUG_MODE) {
+        request.log.info(
+          { sessionId: session.id, username: credentials.username },
+          'Modo debug activo: login validado; cosecha UAT deshabilitada.',
+        );
+        return reply.code(201).send(response);
+      }
+
       this.eventBus.publish(
         createTeacherAuthenticatedEvent({
           sessionId: session.id,

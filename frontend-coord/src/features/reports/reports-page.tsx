@@ -3,7 +3,7 @@ import { AlertTriangle, CalendarDays, CalendarRange, Check, ChevronLeft, Chevron
 import { useMemo, useState } from 'react';
 import fiuatLogo from '@/assets/fiuat-logo.png';
 import { coordinationApi } from '@/core/api/coordination.api';
-import type { AttendanceReportResponse, RangeReportResponse, ReportCell, ReportDay, TeacherSummary } from '@/core/api/types';
+import type { AttendanceReportResponse, RangeReportResponse, ReportCell, ReportDay, ReportHourSlot, ReportRow, TeacherSummary, WeeklyReportResponse } from '@/core/api/types';
 import { Button, EmptyState, Skeleton, cn } from '@/shared/components/ui';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 
@@ -296,46 +296,7 @@ function DocumentPreview({ report, fallbackTeacher }: { report: AttendanceReport
         ) : isRange ? (
           <RangeReportTable report={report} />
         ) : (
-          <table className="w-full table-fixed border-collapse text-[9px]">
-            <thead className="bg-slate-100">
-              <tr>
-                <th className="w-[184px] border-b border-r border-slate-300 px-3 py-2 text-left">Horario / Materia</th>
-                {days.map((day, index) => (
-                  <th key={day.key} className="border-b border-r border-slate-300 px-1 py-2 text-center last:border-r-0">
-                    <span className="block font-bold">{day.label}</span>
-                    <span className="mt-0.5 block text-[8px] font-normal text-slate-500">{dayDate(report.data.rows[0]?.cells[day.key], report.data.week.start, index)}</span>
-                  </th>
-                ))}
-                <th className="border-b border-slate-300 px-1 py-2 text-center">
-                  <span className="block font-bold">Cumpl.</span>
-                  <span className="mt-0.5 block text-[8px] font-normal text-slate-500">Semana</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {report.data.rows.map((row) => (
-                <tr key={row.id}>
-                  <th scope="row" className="border-b border-r border-slate-300 px-3 py-3 text-left align-middle last:border-b-0">
-                    <span className="block font-extrabold tabular-nums">{row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : row.rawSchedule}</span>
-                    <span className="mt-1 block font-semibold">{row.subject}</span>
-                    <span className="mt-0.5 block text-[8px] font-normal text-slate-500">
-                      Grupo {row.groupCode}{row.classroom ? ` · ${row.classroom}` : ''} · Ciclo {row.period}
-                    </span>
-                  </th>
-                  {days.map((day) => (
-                    <td key={day.key} className="h-[66px] border-b border-r border-slate-300 text-center last:border-r-0">
-                      <ReportMark cell={row.cells[day.key]} />
-                    </td>
-                  ))}
-                  <td className="h-[66px] border-b border-slate-300 text-center">
-                    <span className={cn('text-xs font-black', row.completionRate == null ? 'text-slate-400' : 'text-[#C8102E]')}>
-                      {formatRate(row.completionRate)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <WeeklyReportTable report={report} />
         )}
       </section>
 
@@ -344,16 +305,16 @@ function DocumentPreview({ report, fallbackTeacher }: { report: AttendanceReport
         <div className="mt-3 grid grid-cols-4 gap-3 text-center">
           {isRange ? (
             <>
-              <SummaryValue label="Programadas" value={report.data.summary.scheduledClassDays} />
-              <SummaryValue label="Reportadas" value={report.data.summary.reportedClassDays} tone="green" />
-              <SummaryValue label="Pendientes" value={report.data.summary.missingClassDays} tone="red" />
+              <SummaryValue label="Horas prog." value={report.data.summary.scheduledClassDays} />
+              <SummaryValue label="Horas cubiertas" value={report.data.summary.reportedClassDays} tone="green" />
+              <SummaryValue label="Horas faltantes" value={report.data.summary.missingClassDays} tone="red" />
               <SummaryValue label="Asistencia" value={formatRangeRate(report.data.summary.attendanceRate)} tone="brand" />
             </>
           ) : (
             <>
-              <SummaryValue label="Programadas" value={report.data.summary.scheduled} />
-              <SummaryValue label="Asistencias" value={report.data.summary.taken} tone="green" />
-              <SummaryValue label="Inasistencias" value={report.data.summary.missing} tone="red" />
+              <SummaryValue label="Horas prog." value={report.data.summary.scheduled} />
+              <SummaryValue label="Horas cubiertas" value={report.data.summary.taken} tone="green" />
+              <SummaryValue label="Horas faltantes" value={report.data.summary.missing} tone="red" />
               <SummaryValue label="Cumplimiento" value={`${report.data.summary.completionRate}%`} tone="brand" />
             </>
           )}
@@ -362,7 +323,7 @@ function DocumentPreview({ report, fallbackTeacher }: { report: AttendanceReport
 
       <footer className="mt-5 flex items-center justify-between border-t border-slate-200 pt-3 text-[8px] text-slate-500">
         {isRange ? (
-          <span>Porcentaje calculado como dias de clase reportados entre dias de clase en el periodo.</span>
+          <span>Porcentaje calculado como horas cubiertas entre horas programadas.</span>
         ) : (
           <div className="flex gap-4">
           <span>✓ Asistencia</span>
@@ -378,6 +339,67 @@ function DocumentPreview({ report, fallbackTeacher }: { report: AttendanceReport
 }
 
 /* ── Sub-components ───────────────────────────────────────────── */
+function WeeklyReportTable({ report }: { report: WeeklyReportResponse }) {
+  const displayRows = buildWeeklyHourRows(report.data.rows);
+
+  return (
+    <table className="w-full table-fixed border-collapse text-[9px]">
+      <thead className="bg-slate-100">
+        <tr>
+          <th className="w-[184px] border-b border-r border-slate-300 px-3 py-2 text-left">Horario / Materia</th>
+          {days.map((day, index) => (
+            <th key={day.key} className="border-b border-r border-slate-300 px-1 py-2 text-center last:border-r-0">
+              <span className="block font-bold">{day.label}</span>
+              <span className="mt-0.5 block text-[8px] font-normal text-slate-500">{dayDate(report.data.rows[0]?.cells[day.key], report.data.week.start, index)}</span>
+            </th>
+          ))}
+          <th className="border-b border-slate-300 px-1 py-2 text-center">
+            <span className="block font-bold">Cumpl.</span>
+            <span className="mt-0.5 block text-[8px] font-normal text-slate-500">Semana</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {displayRows.map(({ row, hourIndex, rowSpan }) => (
+          <tr key={`${row.id}-${hourIndex}`}>
+            {hourIndex === 0 && (
+              <th scope="row" rowSpan={rowSpan} className="border-b border-r border-slate-300 px-3 py-3 text-left align-middle last:border-b-0">
+                <span className="block font-extrabold tabular-nums">{row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : row.rawSchedule}</span>
+                <span className="mt-1 block font-semibold">{row.subject}</span>
+                <span className="mt-0.5 block text-[8px] font-normal text-slate-500">Grupo {row.groupCode}{row.classroom ? ` · ${row.classroom}` : ''} · Ciclo {row.period}</span>
+              </th>
+            )}
+            {days.map((day) => {
+              const cell = row.cells[day.key];
+              const hourSlot = cell?.hourSlots?.[hourIndex];
+              return (
+                <td key={day.key} className="h-[48px] border-b border-r border-slate-300 text-center last:border-r-0">
+                  <ReportMark cell={cell} hourSlot={hourSlot} />
+                  <HourSlotLabel hourSlot={hourSlot} />
+                </td>
+              );
+            })}
+            {hourIndex === 0 && (
+              <td rowSpan={rowSpan} className="h-[48px] border-b border-slate-300 text-center align-middle">
+                <span className={cn('text-xs font-black', row.completionRate == null ? 'text-slate-400' : 'text-[#C8102E]')}>
+                  {formatRate(row.completionRate)}
+                </span>
+              </td>
+            )}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function buildWeeklyHourRows(rows: ReportRow[]) {
+  return rows.flatMap((row) => {
+    const rowSpan = Math.max(1, ...days.map((day) => row.cells[day.key]?.hourSlots?.length ?? 0));
+    return Array.from({ length: rowSpan }, (_, hourIndex) => ({ row, hourIndex, rowSpan }));
+  });
+}
+
 function RangeReportTable({ report }: { report: RangeReportResponse }) {
   return (
     <table className="w-full table-fixed border-collapse text-[9px]">
@@ -386,8 +408,8 @@ function RangeReportTable({ report }: { report: RangeReportResponse }) {
           <th className="w-[230px] border-b border-r border-slate-300 px-3 py-2 text-left">Materia</th>
           <th className="w-[46px] border-b border-r border-slate-300 px-1 py-2 text-center">Grado</th>
           <th className="w-[46px] border-b border-r border-slate-300 px-1 py-2 text-center">Grupo</th>
-          <th className="border-b border-r border-slate-300 px-2 py-2 text-center">Dias de clase<br />en el periodo</th>
-          <th className="border-b border-r border-slate-300 px-2 py-2 text-center">Dias de clase<br />reportados</th>
+          <th className="border-b border-r border-slate-300 px-2 py-2 text-center">Horas<br />programadas</th>
+          <th className="border-b border-r border-slate-300 px-2 py-2 text-center">Horas<br />cubiertas</th>
           <th className="border-b border-slate-300 px-2 py-2 text-center">Porcentaje<br />de asistencia</th>
         </tr>
       </thead>
@@ -414,14 +436,31 @@ function RangeReportTable({ report }: { report: RangeReportResponse }) {
   );
 }
 
-function ReportMark({ cell }: { cell?: ReportCell }) {
-  if (!cell) return <span className="text-lg font-medium text-slate-300" aria-label="Sin clase">—</span>;
-  if (cell.status === 'NOT_SCHEDULED') return <span className="text-lg font-medium text-slate-300" aria-label="Sin clase">—</span>;
-  if (cell.status === 'TAKEN') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border-2 border-emerald-500 text-emerald-600" title={cell.portalSyncError || 'Asistencia registrada'} aria-label="Asistencia registrada"><Check size={14} strokeWidth={3} /></span>;
-  if (cell.status === 'MISSING') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border-2 border-red-400 text-red-500" aria-label="Inasistencia"><X size={14} strokeWidth={3} /></span>;
-  if (cell.status === 'FUTURE') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border border-slate-300 text-slate-400" aria-label="Clase futura" title="Clase futura"><Clock3 size={13} /></span>;
-  if (cell.status === 'SOURCE_UNAVAILABLE') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border border-amber-400 text-amber-600" aria-label="Asistencia no disponible" title="Asistencia no disponible"><AlertTriangle size={13} /></span>;
+function ReportMark({ cell, hourSlot }: { cell?: ReportCell; hourSlot?: ReportHourSlot }) {
+  const status = hourSlot?.status ?? cell?.status;
+  if (!status) return <span className="text-lg font-medium text-slate-300" aria-label="Sin clase">—</span>;
+  if (status === 'NOT_SCHEDULED') return <span className="text-lg font-medium text-slate-300" aria-label="Sin clase">—</span>;
+  if (status === 'TAKEN') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border-2 border-emerald-500 text-emerald-600" title={attendanceTitle(cell, hourSlot)} aria-label="Asistencia registrada"><Check size={14} strokeWidth={3} /></span>;
+  if (status === 'LATE') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border-2 border-amber-400 text-amber-600" title={attendanceTitle(cell, hourSlot, 'Retardo')} aria-label="Retardo"><Clock3 size={13} strokeWidth={3} /></span>;
+  if (status === 'MISSING') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border-2 border-red-400 text-red-500" aria-label="Inasistencia"><X size={14} strokeWidth={3} /></span>;
+  if (status === 'FUTURE') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border border-slate-300 text-slate-400" aria-label="Clase futura" title="Clase futura"><Clock3 size={13} /></span>;
+  if (status === 'SOURCE_UNAVAILABLE') return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border border-amber-400 text-amber-600" aria-label="Asistencia no disponible" title="Asistencia no disponible"><AlertTriangle size={13} /></span>;
   return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border border-amber-400 font-bold text-amber-600" aria-label="Horario no interpretable" title="Horario no interpretable">?</span>;
+}
+
+function HourSlotLabel({ hourSlot }: { hourSlot?: ReportHourSlot }) {
+  if (!hourSlot) return <span className="mt-1 block text-[7px] leading-3 text-slate-300">—</span>;
+  return <span className="mt-1 block text-[7px] font-semibold leading-3 text-slate-500">{hourSlot.startTime}-{hourSlot.endTime}</span>;
+}
+
+function attendanceTitle(cell?: ReportCell, hourSlot?: ReportHourSlot, label = 'Asistencia registrada') {
+  const pieces = [label];
+  if (hourSlot) pieces.push(`Hora: ${hourSlot.startTime}-${hourSlot.endTime}`);
+  if (cell?.professorEntryAt) pieces.push(`Entrada: ${formatTimeOnly(cell.professorEntryAt)}`);
+  if (cell?.professorExitAt) pieces.push(`Salida: ${formatTimeOnly(cell.professorExitAt)}`);
+  if (cell && cell.scheduledHours > 0) pieces.push(`Cobertura: ${cell.attendedHours}/${cell.scheduledHours} h`);
+  if (cell?.portalSyncError) pieces.push(cell.portalSyncError);
+  return pieces.join(' | ');
 }
 
 function SummaryValue({ label, value, tone }: { label: string; value: string | number; tone?: 'green' | 'red' | 'brand' }) {
@@ -438,6 +477,8 @@ function EmptyPreview({ icon, title, description }: { icon: React.ReactNode; tit
 }
 
 /* ── Date utilities ───────────────────────────────────────────── */
+const REPORT_TIME_ZONE = 'America/Mexico_City';
+
 function isRangeReport(report: AttendanceReportResponse): report is RangeReportResponse { return 'range' in report.data; }
 function currentMonday() { return mondayForDate(new Date().toISOString().slice(0, 10)); }
 function mondayForDate(value: string) { const date = new Date(`${value}T12:00:00Z`); const day = date.getUTCDay() || 7; date.setUTCDate(date.getUTCDate() - day + 1); return date.toISOString().slice(0, 10); }
@@ -457,7 +498,8 @@ function isoWeekLabel(monday: string) {
   const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + yearStart.getUTCDay() + 1) / 7);
   return `Semana ${weekNo}`;
 }
-function formatDateTime(value: string) { return new Date(value).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }); }
+function formatDateTime(value: string) { return new Date(value).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', timeZone: REPORT_TIME_ZONE }); }
+function formatTimeOnly(value: string | null | undefined) { return value ? new Date(value).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: REPORT_TIME_ZONE }) : '--:--'; }
 function dayDate(cell: ReportCell | undefined, weekStart: string, offset: number) { const value = cell?.date ?? addDays(weekStart, offset); return new Date(`${value}T12:00:00Z`).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }); }
 function formatRate(value: number | null | undefined) { return value == null ? 'N/D' : `${value}%`; }
 function formatRangeRate(value: number | null | undefined) { return value == null ? 'N/D' : `${value.toFixed(2)}%`; }

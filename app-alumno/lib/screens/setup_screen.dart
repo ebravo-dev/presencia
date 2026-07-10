@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class SetupScreen extends StatefulWidget {
-  final Future<void> Function(String matricula) onComplete;
+  final Future<void> Function({
+    required String username,
+    required String password,
+  })
+  onComplete;
 
   const SetupScreen({super.key, required this.onComplete});
 
@@ -11,26 +15,35 @@ class SetupScreen extends StatefulWidget {
 }
 
 class _SetupScreenState extends State<SetupScreen> {
-  final _matriculaController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _loading = false;
   String? _errorText;
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
-    _matriculaController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
-    final matricula = _matriculaController.text.trim().toUpperCase();
+    final username = _emailController.text.trim().toLowerCase();
+    final password = _passwordController.text;
 
-    if (matricula.isEmpty) {
-      setState(() => _errorText = 'Ingresa tu matrícula');
+    if (username.isEmpty) {
+      setState(() => _errorText = 'Ingresa tu correo institucional');
       return;
     }
 
-    if (matricula.length < 5) {
-      setState(() => _errorText = 'Revisa que tu matrícula esté completa');
+    if (!username.contains('@')) {
+      setState(() => _errorText = 'Ingresa un correo institucional válido');
+      return;
+    }
+
+    if (password.isEmpty) {
+      setState(() => _errorText = 'Ingresa tu contraseña');
       return;
     }
 
@@ -40,13 +53,21 @@ class _SetupScreenState extends State<SetupScreen> {
       _errorText = null;
     });
     HapticFeedback.mediumImpact();
-    await widget.onComplete(matricula);
+    try {
+      await widget.onComplete(username: username, password: password);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _errorText = error.toString();
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0B0F14),
+      backgroundColor: const Color(0xFFF7FAFE),
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -59,30 +80,104 @@ class _SetupScreenState extends State<SetupScreen> {
                   children: [
                     const SizedBox(height: 24),
                     const _BrandHeader(),
-                    SizedBox(height: constraints.maxHeight < 700 ? 44 : 84),
-                    const Text(
-                      'Vincula tu celular',
-                      style: TextStyle(
+                    SizedBox(height: constraints.maxHeight < 700 ? 34 : 64),
+                    Container(
+                      padding: const EdgeInsets.all(22),
+                      decoration: BoxDecoration(
                         color: Colors.white,
-                        fontSize: 34,
-                        fontWeight: FontWeight.w800,
+                        borderRadius: BorderRadius.circular(28),
+                        border: Border.all(color: const Color(0xFFDAE2F0)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(
+                              0xFF2348ED,
+                            ).withValues(alpha: 0.08),
+                            blurRadius: 26,
+                            offset: const Offset(0, 16),
+                          ),
+                        ],
+                      ),
+                      child: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.check_circle_rounded,
+                            color: Color(0xFF10AF74),
+                            size: 36,
+                          ),
+                          SizedBox(height: 14),
+                          Text(
+                            'Pase de lista rápido',
+                            style: TextStyle(
+                              color: Color(0xFF131825),
+                              fontSize: 25,
+                              fontWeight: FontWeight.w900,
+                              height: 1.08,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Vincula tu cuenta institucional para registrar asistencia desde tu celular.',
+                            style: TextStyle(
+                              color: Color(0xFF65728B),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    const Text(
+                      'Inicia sesión',
+                      style: TextStyle(
+                        color: Color(0xFF131825),
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
                         height: 1.05,
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Text(
-                      'Tu matrícula quedará asociada a este dispositivo. Un cambio de celular deberá ser autorizado por un maestro.',
+                    const Text(
+                      'Usa tu cuenta institucional UAT. Al iniciar sesión se vinculará este celular con tu matrícula y UUID de asistencia.',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.62),
+                        color: Color(0xFF65728B),
                         fontSize: 15,
+                        fontWeight: FontWeight.w600,
                         height: 1.45,
                       ),
                     ),
                     const SizedBox(height: 34),
                     TextField(
-                      controller: _matriculaController,
+                      controller: _emailController,
                       enabled: !_loading,
-                      textCapitalization: TextCapitalization.characters,
+                      keyboardType: TextInputType.emailAddress,
+                      textCapitalization: TextCapitalization.none,
+                      autocorrect: false,
+                      textInputAction: TextInputAction.next,
+                      onChanged: (_) {
+                        if (_errorText != null) {
+                          setState(() => _errorText = null);
+                        }
+                      },
+                      style: const TextStyle(
+                        color: Color(0xFF131825),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Correo institucional',
+                        hintText: 'tu.correo@alumnos.uat.edu.mx',
+                        prefixIcon: const Icon(Icons.alternate_email_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: _passwordController,
+                      enabled: !_loading,
+                      obscureText: _obscurePassword,
                       textInputAction: TextInputAction.done,
                       onSubmitted: (_) => _loading ? null : _submit(),
                       onChanged: (_) {
@@ -90,36 +185,35 @@ class _SetupScreenState extends State<SetupScreen> {
                           setState(() => _errorText = null);
                         }
                       },
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'[a-zA-Z0-9]'),
-                        ),
-                        LengthLimitingTextInputFormatter(14),
-                        TextInputFormatter.withFunction((oldValue, newValue) {
-                          return newValue.copyWith(
-                            text: newValue.text.toUpperCase(),
-                            selection: newValue.selection,
-                          );
-                        }),
-                      ],
                       style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
+                        color: Color(0xFF131825),
+                        fontSize: 16,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
                       decoration: InputDecoration(
-                        labelText: 'Matrícula',
-                        hintText: 'A2130587',
+                        labelText: 'Contraseña',
                         errorText: _errorText,
-                        prefixIcon: const Icon(Icons.badge_rounded),
+                        prefixIcon: const Icon(Icons.lock_rounded),
+                        suffixIcon: IconButton(
+                          onPressed: _loading
+                              ? null
+                              : () => setState(
+                                  () => _obscurePassword = !_obscurePassword,
+                                ),
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_rounded
+                                : Icons.visibility_off_rounded,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 18),
                     _InfoStrip(
                       icon: Icons.verified_user_rounded,
                       text:
-                          'Este vínculo ayuda a evitar registros desde otro celular.',
+                          'La matrícula se obtiene desde UAT; no se captura manualmente.',
                     ),
                     const SizedBox(height: 28),
                     SizedBox(
@@ -162,13 +256,13 @@ class _BrandHeader extends StatelessWidget {
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            color: const Color(0xFF17202B),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF263241)),
+            color: const Color(0xFFE0ECFF),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFDAE2F0)),
           ),
           child: const Icon(
             Icons.school_rounded,
-            color: Color(0xFF62D6A2),
+            color: Color(0xFF2348ED),
             size: 26,
           ),
         ),
@@ -179,18 +273,18 @@ class _BrandHeader extends StatelessWidget {
             Text(
               'Presencia',
               style: TextStyle(
-                color: Colors.white,
+                color: Color(0xFF131825),
                 fontSize: 18,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w900,
               ),
             ),
             SizedBox(height: 2),
             Text(
               'Alumno',
               style: TextStyle(
-                color: Color(0xFF8F9BA8),
+                color: Color(0xFF65728B),
                 fontSize: 13,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
@@ -211,20 +305,21 @@ class _InfoStrip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF111923),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF223040)),
+        color: const Color(0xFFE0ECFF),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFDAE2F0)),
       ),
       child: Row(
         children: [
-          Icon(icon, color: const Color(0xFF62D6A2), size: 20),
+          Icon(icon, color: const Color(0xFF2348ED), size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               text,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.68),
+              style: const TextStyle(
+                color: Color(0xFF65728B),
                 fontSize: 13,
+                fontWeight: FontWeight.w600,
                 height: 1.35,
               ),
             ),

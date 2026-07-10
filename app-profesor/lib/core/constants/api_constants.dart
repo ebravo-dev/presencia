@@ -13,6 +13,54 @@ class ApiConstants {
     'PRESENCIA_API_BASE_URL',
     defaultValue: baseUrl,
   );
+  static const String attendanceBackendBaseUrl = String.fromEnvironment(
+    'ATTENDANCE_BACKEND_URL',
+    defaultValue: baseUrl,
+  );
+  static const bool presenciaDebugMode = bool.fromEnvironment(
+    'PRESENCIA_DEBUG_MODE',
+    defaultValue: false,
+  );
+  static const bool skipApiRestAttendanceUpload = bool.fromEnvironment(
+    'SKIP_API_REST_ATTENDANCE_UPLOAD',
+    defaultValue: false,
+  );
+  static const bool debugExtraCurrentClass = bool.fromEnvironment(
+    'PRESENCIA_DEBUG_EXTRA_CURRENT_CLASS',
+    defaultValue: false,
+  );
+  static const bool debugSimulateRoomBeacon = bool.fromEnvironment(
+    'PRESENCIA_DEBUG_SIMULATE_ROOM_BEACON',
+    defaultValue: false,
+  );
+  static const String debugExtraClassCode = String.fromEnvironment(
+    'PRESENCIA_DEBUG_EXTRA_CLASS_CODE',
+    defaultValue: '990001',
+  );
+  static const String debugExtraClassGroupLetter = String.fromEnvironment(
+    'PRESENCIA_DEBUG_EXTRA_CLASS_GROUP',
+    defaultValue: 'DBG',
+  );
+  static const String debugExtraClassPeriod = String.fromEnvironment(
+    'PRESENCIA_DEBUG_EXTRA_CLASS_PERIOD',
+    defaultValue: '2026-2',
+  );
+  static const String debugExtraClassroom = String.fromEnvironment(
+    'PRESENCIA_DEBUG_EXTRA_CLASSROOM',
+    defaultValue: 'DEBUG-101',
+  );
+  static const String debugExtraClassName = String.fromEnvironment(
+    'PRESENCIA_DEBUG_EXTRA_CLASS_NAME',
+    defaultValue: 'DEBUG ASISTENCIA ACTUAL',
+  );
+  static const int debugExtraClassHours = int.fromEnvironment(
+    'PRESENCIA_DEBUG_EXTRA_CLASS_HOURS',
+    defaultValue: 4,
+  );
+  static const String debugExtraBeaconUuid = String.fromEnvironment(
+    'PRESENCIA_DEBUG_EXTRA_BEACON_UUID',
+    defaultValue: '11111111-2222-4333-8444-555555555555',
+  );
   static const int timeoutDuration = int.fromEnvironment(
     'API_TIMEOUT',
     defaultValue: 30000,
@@ -42,6 +90,14 @@ class ApiConstants {
     Logger.info('API Configuration:');
     Logger.info('   Backend baseUrl: $baseUrl');
     Logger.info('   Presencia baseUrl: $presenceApiBaseUrl');
+    Logger.info('   Attendance backend baseUrl: $attendanceBackendBaseUrl');
+    Logger.info('   Debug mode: $presenciaDebugMode');
+    Logger.info(
+      '   Skip API REST attendance upload: $skipApiRestAttendanceUpload',
+    );
+    Logger.info('   Debug extra current class: $debugExtraCurrentClass');
+    Logger.info('   Debug simulate room beacon: $debugSimulateRoomBeacon');
+    Logger.info('   Debug extra class hours: $debugExtraClassHours');
     Logger.info('   timeout: $timeoutDuration ms');
     Logger.info('   UAT cycle: $uatDefaultIdCiclo');
     Logger.info('   UAT DES: $uatDefaultIdDes');

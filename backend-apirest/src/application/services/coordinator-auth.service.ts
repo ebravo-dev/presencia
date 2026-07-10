@@ -30,7 +30,7 @@ export class CoordinatorAuthService {
     if (!token) return null;
     try {
       const payload = jwt.verify(token, this.jwtSecret, { issuer: 'presencia-backend-apirest' }) as CoordinatorJwtPayload;
-      if (!payload.sub || !payload.jti || payload.role !== 'COORDINATOR') return null;
+      if (!payload.sub || !payload.jti || !['COORDINATOR', 'READ_ONLY'].includes(payload.role)) return null;
       const session = await this.prisma.coordinatorSession.findUnique({ where: { id: payload.jti }, include: { user: true } });
       if (!session || session.expiresAt <= new Date() || session.user.disabledAt) return null;
       return toIdentity(session.user);

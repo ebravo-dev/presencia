@@ -13,14 +13,16 @@ import { beaconsRoutes } from './modules/beacons/index.js';
 import { uatProxyRoutes } from './modules/uat-proxy/index.js';
 import { substitutionsRoutes } from './modules/substitutions/index.js';
 import { internalCoordinationRoutes } from './modules/internal-coordination/index.js';
+import { superUserRoutes } from './modules/super-user/index.js';
 import { sessionService } from './core/security/index.js';
+import { SERVER_TIME_ZONE, serverLocalDateString, serverNow } from './core/time/server-time.js';
 import fastifyStatic from '@fastify/static';
 import path from 'path';
 
 // Create Fastify instance
 const fastify = Fastify({
     logger: {
-        level: env.NODE_ENV === 'development' ? 'debug' : 'info',
+        level: env.PRESENCIA_DEBUG_MODE || env.PRESENCIA_DEBUG_VERBOSE_LOGS || env.NODE_ENV === 'development' ? 'debug' : 'info',
         transport: env.NODE_ENV === 'development'
             ? {
                 target: 'pino-pretty',
@@ -84,8 +86,19 @@ async function registerRoutes(): Promise<void> {
     fastify.get('/health', async () => {
         return {
             status: 'ok',
-            timestamp: new Date().toISOString(),
+            timestamp: serverNow().toISOString(),
+            timezone: SERVER_TIME_ZONE,
             environment: env.NODE_ENV,
+            debugMode: env.PRESENCIA_DEBUG_MODE,
+        };
+    });
+
+    fastify.get('/time', async () => {
+        const now = serverNow();
+        return {
+            now: now.toISOString(),
+            timezone: SERVER_TIME_ZONE,
+            localDate: serverLocalDateString(now),
         };
     });
 
@@ -100,6 +113,7 @@ async function registerRoutes(): Promise<void> {
     await fastify.register(beaconsRoutes);
     await fastify.register(substitutionsRoutes);
     await fastify.register(internalCoordinationRoutes);
+    await fastify.register(superUserRoutes);
 
     // Serve admin panel static files
     await fastify.register(fastifyStatic, {

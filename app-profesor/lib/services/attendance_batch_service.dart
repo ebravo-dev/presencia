@@ -18,6 +18,18 @@ class PreparedAttendanceBatch {
   });
 }
 
+class DebugAttendanceBatchResult {
+  final int uploaded;
+  final int skipped;
+  final int failed;
+
+  const DebugAttendanceBatchResult({
+    required this.uploaded,
+    required this.skipped,
+    required this.failed,
+  });
+}
+
 /// Single responsibility: translate local attendance snapshots into the
 /// idempotent batch contract and transfer ownership to the server.
 class AttendanceBatchService {
@@ -110,6 +122,118 @@ class AttendanceBatchService {
     return result;
   }
 
+  Future<DebugAttendanceBatchResult> submitDebugReportOnly({
+    required String token,
+    required List<AsistenciaRegistro> records,
+    required List<Grupo> groups,
+    String encryptedPassword = '',
+  }) async {
+    var uploaded = 0;
+    var skipped = 0;
+    var failed = 0;
+
+    for (final record in records) {
+      final group = _resolveGroup(record, groups);
+      if (group == null) {
+        skipped++;
+        continue;
+      }
+
+      final result = await _apiService.uploadAttendance(
+        token: token,
+        groupId: group.id,
+        code: group.code ?? record.grupoCode ?? '',
+        groupLetter:
+            group.groupLetter ?? record.grupoGroupLetter ?? group.group,
+        period: group.period ?? record.grupoPeriod ?? '',
+        date: record.fecha,
+        attendances: _buildAttendances(record, group),
+        encryptedPassword: encryptedPassword,
+        groupName: group.name,
+        classroom: group.classroom,
+        level: group.level,
+        schedule: group.schedule,
+        professorEntryAt: record.horaEntrada,
+        professorExitAt: record.horaSalida,
+      );
+
+      await result.fold(
+        (_) async {
+          failed++;
+        },
+        (_) async {
+          await _localService.marcarComoSincronizada(record.id);
+          uploaded++;
+        },
+      );
+    }
+
+    return DebugAttendanceBatchResult(
+      uploaded: uploaded,
+      skipped: skipped,
+      failed: failed,
+    );
+  }
+
+  Future<DebugAttendanceBatchResult> submitDirectToBackend({
+    required String token,
+    required List<AsistenciaRegistro> records,
+    required List<Grupo> groups,
+    String encryptedPassword = '',
+  }) async {
+    var uploaded = 0;
+    var skipped = 0;
+    var failed = 0;
+
+    for (final record in records) {
+      final group = _resolveGroup(record, groups);
+      if (group == null) {
+        skipped++;
+        continue;
+      }
+
+      final attendances = _buildAttendances(record, group);
+      if (attendances.isEmpty) {
+        skipped++;
+        continue;
+      }
+
+      final result = await _apiService.uploadAttendance(
+        token: token,
+        groupId: group.id,
+        code: group.code ?? record.grupoCode ?? '',
+        groupLetter:
+            group.groupLetter ?? record.grupoGroupLetter ?? group.group,
+        period: group.period ?? record.grupoPeriod ?? '',
+        date: record.fecha,
+        attendances: attendances,
+        encryptedPassword: encryptedPassword,
+        groupName: group.name,
+        classroom: group.classroom,
+        level: group.level,
+        schedule: group.schedule,
+        professorEntryAt: record.horaEntrada,
+        professorExitAt: record.horaSalida,
+      );
+
+      await result.fold(
+        (_) async {
+          failed++;
+        },
+        (_) async {
+          await _localService.marcarComoSincronizada(record.id);
+          uploaded++;
+        },
+      );
+    }
+
+    return DebugAttendanceBatchResult(
+      uploaded: uploaded,
+      skipped: skipped,
+      failed: failed,
+    );
+  }
+
   /// Completes the local record only when it still matches the snapshot that
   /// was accepted by the server. Later edits remain pending as a new revision.
   Future<bool> markCompletedIfUnchanged(String clientRecordId) async {
@@ -146,5 +270,44 @@ class AttendanceBatchService {
       }
     }
     return null;
+  }
+
+  List<Map<String, dynamic>> _buildAttendances(
+    AsistenciaRegistro record,
+    Grupo group,
+  ) {
+    final students = <String, ({String id, int? numericId, int listNumber})>{};
+    for (final entry in group.students.asMap().entries) {
+      final student = entry.value;
+      final id = student.id;
+      if (id == null || id.isEmpty) continue;
+      final parsedId = int.tryParse(id);
+      final mapped = (
+        id: id,
+        numericId: parsedId != null && parsedId > 0 ? parsedId : null,
+        listNumber: entry.key + 1,
+      );
+      students[id] = mapped;
+      students[student.number.toString()] = mapped;
+      final matricula = student.matricula;
+      if (matricula != null && matricula.isNotEmpty) {
+        students[matricula] = mapped;
+      }
+    }
+
+    final attendances = <Map<String, dynamic>>[];
+    record.asistenciasAlumnos.forEach((key, present) {
+      final student = students[key];
+      if (student == null) return;
+      attendances.add({
+        'studentId': student.id,
+        if (student.numericId != null) 'id_alumno': student.numericId,
+        'num_pase_lista': student.listNumber,
+        'num_dia': record.fecha.weekday,
+        'sn_asistencia': present,
+        'status': present ? 'PRESENT' : 'ABSENT',
+      });
+    });
+    return attendances;
   }
 }

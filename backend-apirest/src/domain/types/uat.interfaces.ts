@@ -37,6 +37,79 @@ export interface UatSafeLogin {
   parametros?: UatLoginParametros;
 }
 
+export interface UatStudentCareerItem extends JsonRecord {
+  Num_Matricula?: string | number;
+  Id_Plan_Estudio?: number;
+  Id_DES?: number;
+  Txt_Programa_Academico?: string;
+  CicloActivo?: string;
+  Promedio?: string | number;
+  CreditosAprobados?: string | number;
+}
+
+export interface UatStudentCareerSelection extends JsonRecord {
+  exito?: boolean;
+  mensaje?: string;
+  parametros?: JsonRecord & {
+    Id_Alumno_AlumnosUAT?: string | number;
+    Num_Matricula_AlumnosUAT?: string | number;
+    Id_Plan_Estudio_AlumnosUAT?: string | number;
+    Id_Ciclo_Escolar_Activo_AlumnosUAT?: string | number;
+    Id_DES_AlumnosUAT?: string | number;
+  };
+}
+
+export interface UatStudentScheduleItem extends JsonRecord {
+  Id_Grupo?: number;
+  Txt_Letra?: string;
+  Txt_Materia?: string;
+  Num_Creditos?: number;
+  Num_Periodo?: string | number | null;
+  Txt_Espacio_Fisico?: string | null;
+  Txt_Lunes?: string | null;
+  Txt_Martes?: string | null;
+  Txt_Miercoles?: string | null;
+  Txt_Jueves?: string | null;
+  Txt_Viernes?: string | null;
+  Txt_Sabado?: string | null;
+  Txt_Domingo?: string | null;
+  Txt_Nombre_Profesor?: string | null;
+}
+
+export interface UatStudentPartialGradeItem extends JsonRecord {
+  MATERIA?: string;
+  GRUPO?: string;
+  PROFESOR?: string;
+  P1?: string | number | null;
+  P2?: string | number | null;
+  P3?: string | number | null;
+  P4?: string | number | null;
+  P5?: string | number | null;
+  P6?: string | number | null;
+  P7?: string | number | null;
+  P8?: string | number | null;
+  PROMEDIO?: string | number | null;
+}
+
+export interface UatStudentFinalGradeItem extends JsonRecord {
+  num?: number;
+  cve_materia?: string;
+  txt_materia?: string;
+  creditos?: string | number | null;
+  txt_letra?: string;
+  acta?: string | number | null;
+  fecordinarioa?: string | null;
+  ordinariotextoa?: string | number | null;
+  fecordinariob?: string | null;
+  ordinariotextob?: string | number | null;
+  fecexordinarioa?: string | null;
+  exordinariotextoa?: string | number | null;
+  fecexordinariob?: string | null;
+  exordinariotextob?: string | number | null;
+  txt_profesor?: string | null;
+  id_grupo?: number;
+}
+
 export interface UatHorarioItem extends JsonRecord {
   Id_Grupo: number;
   Txt_DES: string;
@@ -211,15 +284,37 @@ export interface UatPortalClientPort {
   getCookieDiagnostics(): UatCookieDiagnostics;
 }
 
-export interface StoredUatSession {
+export interface UatStudentPortalClientPort {
+  authenticate(credentials: UatCredentials): Promise<UatLoginResponse>;
+  getCareers(): Promise<UatStudentCareerItem[]>;
+  selectCareer(idPlanEstudio: number): Promise<UatStudentCareerSelection>;
+  getSchedule(): Promise<UatStudentScheduleItem[]>;
+  getPartialGrades(): Promise<UatStudentPartialGradeItem[]>;
+  getFinalGrades(): Promise<UatStudentFinalGradeItem[]>;
+  getCookieDiagnostics(): UatCookieDiagnostics;
+}
+
+export interface StoredUatSessionBase {
+  id: string;
+  username: string;
+  createdAt: Date;
+  lastUsedAt: Date;
+  expiresAt: Date;
+}
+
+export interface StoredUatSession extends StoredUatSessionBase {
   id: string;
   username: string;
   credentialCipher: string;
   client: UatPortalClientPort;
   login: UatLoginResponse;
-  createdAt: Date;
-  lastUsedAt: Date;
-  expiresAt: Date;
+}
+
+export interface StoredUatStudentSession extends StoredUatSessionBase {
+  client: UatStudentPortalClientPort;
+  login: UatLoginResponse;
+  careers: UatStudentCareerItem[];
+  selectedCareer: UatStudentCareerSelection;
 }
 
 export interface UatSessionResponse {
@@ -257,4 +352,17 @@ export interface UatSnapshotResponse {
   horarios: UatHorarioItem[];
   examenes?: UatExamenItem[];
   fetchedAt: string;
+}
+
+export interface UatStudentSessionResponse {
+  sessionId: string;
+  authenticated: true;
+  login: UatSafeLogin;
+  careers: UatStudentCareerItem[];
+  selectedCareer: UatStudentCareerSelection;
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+  activeSessions: number;
+  cookieDiagnostics: UatCookieDiagnostics;
 }

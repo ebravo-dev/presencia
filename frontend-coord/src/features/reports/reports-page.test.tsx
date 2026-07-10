@@ -31,9 +31,9 @@ describe('ReportsPage', () => {
     await user.click(await screen.findByRole('button', { name: /Ada Lovelace/i }));
     expect(await screen.findByLabelText('Vista previa del reporte de Ada Lovelace')).toBeInTheDocument();
     expect(screen.getByText('Sábado')).toBeInTheDocument();
-    expect(screen.getByLabelText('Asistencia registrada')).toBeInTheDocument();
-    expect(screen.getByLabelText('Inasistencia')).toBeInTheDocument();
-    expect(screen.getAllByLabelText('Sin clase')).toHaveLength(4);
+    expect(screen.getAllByLabelText('Asistencia registrada')).toHaveLength(2);
+    expect(screen.getAllByLabelText('Inasistencia')).toHaveLength(2);
+    expect(screen.getAllByLabelText('Sin clase')).toHaveLength(8);
     expect(screen.getByText('Cumpl.')).toBeInTheDocument();
     expect(screen.getAllByText('50%')).toHaveLength(2);
     expect(screen.getByText(/Ciclo 2026-2/)).toBeInTheDocument();
@@ -65,12 +65,28 @@ describe('ReportsPage', () => {
     expect(await screen.findByText('Calculo')).toBeInTheDocument();
     expect(screen.getByText('Grado')).toBeInTheDocument();
     expect(screen.getByText('Grupo')).toBeInTheDocument();
-    expect(screen.getByText('Reportadas')).toBeInTheDocument();
+    expect(screen.getByText('Horas cubiertas')).toBeInTheDocument();
     expect(screen.getAllByText('72.73%')).toHaveLength(2);
     expect(screen.getByText(/Ciclo 2026-1/)).toBeInTheDocument();
   });
 });
 
 function cell(date: string, status: 'TAKEN' | 'MISSING' | 'NOT_SCHEDULED') {
-  return { date, status, portalSyncStatus: status === 'TAKEN' ? 'COMPLETED' : null, portalSyncError: null };
+  return {
+    date,
+    status,
+    professorEntryAt: status === 'TAKEN' ? `${date}T07:05:00.000Z` : null,
+    professorExitAt: status === 'TAKEN' ? `${date}T08:55:00.000Z` : null,
+    scheduledHours: status === 'NOT_SCHEDULED' ? 0 : 2,
+    attendedHours: status === 'TAKEN' ? 2 : 0,
+    coverageRate: status === 'TAKEN' ? 100 : null,
+    hourSlots: status === 'NOT_SCHEDULED'
+      ? []
+      : [
+          { index: 0, startTime: '07:00', endTime: '08:00', status },
+          { index: 1, startTime: '08:00', endTime: '09:00', status },
+        ],
+    portalSyncStatus: status === 'TAKEN' ? 'COMPLETED' : null,
+    portalSyncError: null,
+  };
 }

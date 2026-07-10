@@ -951,6 +951,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                           _salidaProfesor = DateTime.now();
                         });
                         _guardarAsistencia();
+                        _sincronizarSalidaProfesor();
                       } else {
                         _mostrarMensajeHorario(_getMensajeVentanaSalida());
                       }
@@ -1111,41 +1112,38 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       widget.grupo.classroom,
     );
 
-    if (beaconUuid == null || beaconUuid.isEmpty) {
-      final result = await _apiService.resolveClassroomBeacons(
-        classrooms: [widget.grupo.classroom],
-      );
-      await result.fold((_) async {}, (beacons) async {
-        if (beacons.isEmpty) return;
+    final result = await _apiService.resolveClassroomBeacons(
+      classrooms: [widget.grupo.classroom],
+    );
+    await result.fold((_) async {}, (beacons) async {
+      if (beacons.isEmpty) return;
 
-        final existing = authStorage.getBeacons() ?? [];
-        final merged = <String, Map<String, dynamic>>{
-          for (final beacon in existing)
-            if (AuthStorageService.classroomKey(
-              beacon['classroomKey']?.toString() ??
-                  beacon['classroom']?.toString(),
-            ).isNotEmpty)
-              AuthStorageService.classroomKey(
-                beacon['classroomKey']?.toString() ??
-                    beacon['classroom']?.toString(),
-              ): beacon,
-        };
-
-        for (final beacon in beacons) {
-          final classroomKey = AuthStorageService.classroomKey(
+      final existing = authStorage.getBeacons() ?? [];
+      final merged = <String, Map<String, dynamic>>{
+        for (final beacon in existing)
+          if (AuthStorageService.classroomKey(
             beacon['classroomKey']?.toString() ??
                 beacon['classroom']?.toString(),
-          );
-          if (classroomKey.isEmpty) continue;
-          merged[classroomKey] = beacon;
-        }
+          ).isNotEmpty)
+            AuthStorageService.classroomKey(
+              beacon['classroomKey']?.toString() ??
+                  beacon['classroom']?.toString(),
+            ): beacon,
+      };
 
-        await authStorage.saveBeacons(merged.values.toList());
-        beaconUuid = authStorage.getBeaconUuidForClassroom(
-          widget.grupo.classroom,
+      for (final beacon in beacons) {
+        final classroomKey = AuthStorageService.classroomKey(
+          beacon['classroomKey']?.toString() ?? beacon['classroom']?.toString(),
         );
-      });
-    }
+        if (classroomKey.isEmpty) continue;
+        merged[classroomKey] = beacon;
+      }
+
+      await authStorage.saveBeacons(merged.values.toList());
+      beaconUuid = authStorage.getBeaconUuidForClassroom(
+        widget.grupo.classroom,
+      );
+    });
 
     final resolvedBeaconUuid = beaconUuid;
     if (resolvedBeaconUuid == null || resolvedBeaconUuid.isEmpty) {
@@ -1322,6 +1320,29 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     await _asistenciaService.guardarAsistencia(registro);
   }
 
+  Future<void> _sincronizarSalidaProfesor() async {
+    final token = _authStorage.getToken();
+    if (token == null || token.isEmpty) return;
+
+    final salida = _salidaProfesor;
+    if (salida == null) return;
+
+    final result = await _apiService.recordProfessorExit(
+      token: token,
+      code: widget.grupo.code ?? '',
+      groupLetter: widget.grupo.groupLetter ?? widget.grupo.grupoLetra,
+      period: widget.grupo.period ?? '',
+      detectedAt: salida,
+    );
+
+    result.fold(
+      (error) => Logger.error(
+        'No se pudo registrar salida del profesor en backend: $error',
+      ),
+      (_) => Logger.info('Salida del profesor registrada en backend.'),
+    );
+  }
+
   // Intentar sincronizar asistencia a la nube
   Future<void> _intentarSincronizarAsistencia() async {
     // Mostrar diálogo de progreso
@@ -1415,6 +1436,12 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       date: _selectedDateTime,
       attendances: attendances,
       encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
+      groupName: widget.grupo.name,
+      classroom: widget.grupo.classroom,
+      level: widget.grupo.level,
+      schedule: widget.grupo.schedule,
+      professorEntryAt: _entradaProfesor,
+      professorExitAt: _salidaProfesor,
     );
 
     // Cerrar diálogo
@@ -1428,19 +1455,21 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           _mostrarDialogoErrorSincronizacion();
         }
       },
-      (_) async {
+      (response) async {
         await _asistenciaService.marcarComoSincronizada(
           _registroAsistenciaId(),
         );
         if (mounted) {
-          _mostrarDialogoExito();
+          _mostrarDialogoExito(
+            debugUpload: response['skippedApiRestUpload'] == true,
+          );
         }
       },
     );
   }
 
   // Mostrar diálogo de éxito
-  void _mostrarDialogoExito() {
+  void _mostrarDialogoExito({bool debugUpload = false}) {
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -1473,7 +1502,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  '¡Asistencia guardada!',
+                  debugUpload ? 'Modo debug activo' : '¡Asistencia guardada!',
                   style: TextStyle(
                     color: palette.textPrimary,
                     fontSize: 20,
@@ -1482,7 +1511,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'La asistencia del profesor y los alumnos\nha sido subida exitosamente a la nube.',
+                  debugUpload
+                      ? 'La asistencia quedó registrada para reportes.\nNo se envio a UAT/API REST externa.'
+                      : 'La asistencia del profesor y los alumnos\nha sido subida exitosamente a la nube.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: palette.textSecondary, fontSize: 14),
                 ),

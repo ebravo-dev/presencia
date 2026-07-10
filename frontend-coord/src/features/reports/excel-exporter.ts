@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import type { AttendanceReportResponse, RangeReportResponse, ReportCellStatus, ReportDay, WeeklyReportResponse } from '@/core/api/types';
+import type { AttendanceReportResponse, RangeReportResponse, ReportCell, ReportCellStatus, ReportDay, ReportRow, WeeklyReportResponse } from '@/core/api/types';
 
 const days: Array<{ key: ReportDay; label: string }> = [
   { key: 'monday', label: 'Lunes' },
@@ -12,6 +12,7 @@ const days: Array<{ key: ReportDay; label: string }> = [
 
 const statusLabels: Record<ReportCellStatus, string> = {
   TAKEN: '✓',
+  LATE: 'R',
   MISSING: '✕',
   FUTURE: '○',
   NOT_SCHEDULED: '—',
@@ -42,21 +43,27 @@ export async function exportReportExcel(report: AttendanceReportResponse): Promi
   sheet.getRow(4).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   sheet.getRow(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC8102E' } };
 
-  for (const reportRow of report.data.rows) {
+  for (const { reportRow, hourIndex, rowSpan } of weeklyHourRows(report.data.rows)) {
     const row = sheet.addRow([
-      reportRow.startTime && reportRow.endTime ? `${reportRow.startTime}-${reportRow.endTime}` : reportRow.rawSchedule,
+      hourIndex === 0 ? reportRow.startTime && reportRow.endTime ? `${reportRow.startTime}-${reportRow.endTime}` : reportRow.rawSchedule : '',
       reportRow.subject,
       reportRow.groupCode,
       reportRow.classroom || '—',
       reportRow.period,
-      ...days.map((day) => statusLabels[reportRow.cells[day.key]?.status ?? 'NOT_SCHEDULED']),
-      formatRate(reportRow.completionRate),
+      ...days.map((day) => hourCellLabel(reportRow.cells[day.key], hourIndex)),
+      hourIndex === 0 ? formatRate(reportRow.completionRate) : '',
     ]);
 
-    days.forEach((day, index) => styleStatusCell(row.getCell(index + 6), reportRow.cells[day.key]?.status ?? 'NOT_SCHEDULED'));
+    days.forEach((day, index) => styleStatusCell(row.getCell(index + 6), reportRow.cells[day.key]?.hourSlots?.[hourIndex]?.status ?? 'NOT_SCHEDULED'));
     const rateCell = row.getCell(days.length + 6);
     rateCell.alignment = { horizontal: 'center', vertical: 'middle' };
     rateCell.font = { bold: true, color: { argb: reportRow.completionRate == null ? 'FF64748B' : 'FFC8102E' } };
+
+    if (hourIndex === 0 && rowSpan > 1) {
+      const startRow = row.number;
+      const endRow = row.number + rowSpan - 1;
+      [1, 2, 3, 4, 5, days.length + 6].forEach((column) => sheet.mergeCells(startRow, column, endRow, column));
+    }
   }
 
   sheet.columns = [{ width: 16 }, { width: 38 }, { width: 14 }, { width: 14 }, { width: 16 }, ...days.map(() => ({ width: 13 })), { width: 14 }];
@@ -78,7 +85,7 @@ async function exportRangeReportExcel(report: RangeReportResponse): Promise<void
   sheet.getCell('A2').value = `${report.data.teacher.name} · ${report.data.range.start} a ${report.data.range.end}`;
 
   sheet.addRow([]);
-  sheet.addRow(['Materia', 'Horario', 'Salón', 'Ciclo', 'Grado', 'Grupo', 'Dias de clase en el periodo', 'Dias de clase reportados', 'Porcentaje de asistencia']);
+  sheet.addRow(['Materia', 'Horario', 'Salón', 'Ciclo', 'Grado', 'Grupo', 'Horas programadas', 'Horas cubiertas', 'Porcentaje de asistencia']);
   sheet.getRow(4).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   sheet.getRow(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC8102E' } };
 
@@ -114,9 +121,22 @@ function styleStatusCell(cell: ExcelJS.Cell, status: ReportCellStatus): void {
     bold: true,
     size: 12,
     color: {
-      argb: status === 'TAKEN' ? 'FF16A34A' : status === 'MISSING' ? 'FFDC2626' : status === 'SOURCE_UNAVAILABLE' ? 'FFD97706' : 'FF64748B',
+      argb: status === 'TAKEN' ? 'FF16A34A' : status === 'LATE' ? 'FFD97706' : status === 'MISSING' ? 'FFDC2626' : status === 'SOURCE_UNAVAILABLE' ? 'FFD97706' : 'FF64748B',
     },
   };
+}
+
+function hourCellLabel(cell: ReportCell | undefined, hourIndex: number): string {
+  const hourSlot = cell?.hourSlots?.[hourIndex];
+  if (!hourSlot) return statusLabels.NOT_SCHEDULED;
+  return `${statusLabels[hourSlot.status]} ${hourSlot.startTime}-${hourSlot.endTime}`;
+}
+
+function weeklyHourRows(rows: ReportRow[]) {
+  return rows.flatMap((reportRow) => {
+    const rowSpan = Math.max(1, ...days.map((day) => reportRow.cells[day.key]?.hourSlots?.length ?? 0));
+    return Array.from({ length: rowSpan }, (_, hourIndex) => ({ reportRow, hourIndex, rowSpan }));
+  });
 }
 
 function formatRate(value: number | null | undefined) {
