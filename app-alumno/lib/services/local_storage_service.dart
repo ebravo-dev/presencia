@@ -23,6 +23,8 @@ class LocalStorageService {
   static const int _maxAttendanceHistoryEntries = 200;
   static const String _secureUsernameKey = 'uat_student_username';
   static const String _securePasswordKey = 'uat_student_password';
+  static const String _legacyClassroomBeaconClearedKey =
+      'legacy_classroom_beacon_cleared';
   static const _secureStorage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
     iOptions: IOSOptions(
@@ -96,6 +98,7 @@ class LocalStorageService {
     if (!isProfileSet) return;
 
     await ensureDeviceIdentity();
+    await _clearLegacyClassroomBeacon();
     await _syncNativeIdentity(
       matricula: matricula,
       attendanceUuid: attendanceUuid,
@@ -174,6 +177,16 @@ class LocalStorageService {
 
   Future<void> setDeviceBindingSyncPending(bool pending) async {
     await _profile.put('device_binding_sync_pending', pending);
+  }
+
+  Future<void> _clearLegacyClassroomBeacon() async {
+    final alreadyCleared =
+        _profile.get(_legacyClassroomBeaconClearedKey, defaultValue: false) ==
+        true;
+    if (alreadyCleared) return;
+
+    await _profile.delete('classroom_beacon_uuid');
+    await _profile.put(_legacyClassroomBeaconClearedKey, true);
   }
 
   Future<void> _syncNativeIdentity({

@@ -7,7 +7,7 @@ class ApiConstants {
   // --dart-define=API_BASE_URL=http://10.0.2.2:3000
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://backendasistencia.duckdns.org/',
+    defaultValue: 'https://administracionuat.149828.xyz/',
   );
   static const String presenceApiBaseUrl = String.fromEnvironment(
     'PRESENCIA_API_BASE_URL',
@@ -23,7 +23,7 @@ class ApiConstants {
   );
   static const bool useBackendApiRest = bool.fromEnvironment(
     'USE_BACKEND_API_REST',
-    defaultValue: false,
+    defaultValue: true,
   );
   static const bool presenciaDebugMode = bool.fromEnvironment(
     'PRESENCIA_DEBUG_MODE',

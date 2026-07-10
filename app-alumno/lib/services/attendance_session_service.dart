@@ -73,7 +73,9 @@ class AttendanceSessionService {
       return;
     }
 
-    final permissionsReady = await _requestRuntimePermissions();
+    final permissionsReady = await _requestRuntimePermissions(
+      requiresRoomScan: classroomUuid.isNotEmpty,
+    );
     if (!permissionsReady) {
       _emit(
         AttendanceSessionState.error,
@@ -128,13 +130,21 @@ class AttendanceSessionService {
     );
 
     try {
-      await _beacons.startScanning(uuids: [classroomUuid]);
+      final scanStarted = await _beacons.startScanning(uuids: [classroomUuid]);
+      if (!scanStarted) {
+        await _stopRoomScanOnly();
+        _emit(
+          AttendanceSessionState.error,
+          message: 'Permite la ubicación para confirmar que estás en clase.',
+        );
+        return;
+      }
     } catch (error) {
       debugPrint('[AttendanceSession] Could not start room scan: $error');
       await _stopRoomScanOnly();
       _emit(
         AttendanceSessionState.error,
-        message: 'No pudimos preparar el pase de lista.',
+        message: _roomScanErrorMessage(error),
       );
       return;
     }
@@ -186,36 +196,41 @@ class AttendanceSessionService {
     return uuid.replaceAll('-', '').toLowerCase().trim();
   }
 
-  Future<bool> _requestRuntimePermissions() async {
-    final permissions = <Permission>[];
-
+  Future<bool> _requestRuntimePermissions({
+    required bool requiresRoomScan,
+  }) async {
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        permissions.addAll([
+        final permissions = <Permission>[
           Permission.bluetoothScan,
           Permission.bluetoothAdvertise,
           Permission.bluetoothConnect,
           Permission.locationWhenInUse,
           Permission.notification,
-        ]);
-        break;
+        ];
+        final results = await permissions.request();
+        return results.entries.every((entry) {
+          if (entry.key == Permission.notification) {
+            return entry.value.isGranted || entry.value.isLimited;
+          }
+          return entry.value.isGranted || entry.value.isLimited;
+        });
       case TargetPlatform.iOS:
-        permissions.addAll([
-          Permission.bluetooth,
-          Permission.locationWhenInUse,
-        ]);
-        break;
+        return !requiresRoomScan || await _beacons.requestPermissions();
       default:
         return true;
     }
+  }
 
-    final results = await permissions.request();
-    return results.entries.every((entry) {
-      if (entry.key == Permission.notification) {
-        return entry.value.isGranted || entry.value.isLimited;
-      }
-      return entry.value.isGranted || entry.value.isLimited;
-    });
+  String _roomScanErrorMessage(Object error) {
+    final text = error.toString();
+    if (text.contains('PERMISSION_DENIED')) {
+      return 'Permite la ubicación para confirmar que estás en clase.';
+    }
+    if (text.contains('UNSUPPORTED')) {
+      return 'Este iPhone no es compatible con el pase de lista por Bluetooth.';
+    }
+    return 'No pudimos preparar el pase de lista.';
   }
 
   void dispose() {

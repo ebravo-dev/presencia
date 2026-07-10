@@ -22,6 +22,7 @@ import UIKit
   private var attendanceUuidValue: Data?
 
   private var locationManager: CLLocationManager?
+  private var pendingLocationPermissionResult: FlutterResult?
   private var activeConstraints: [String: CLBeaconIdentityConstraint] = [:]
   private var monitoredRegions: [String: CLBeaconRegion] = [:]
   private var backgroundTaskIdentifier: UIBackgroundTaskIdentifier = .invalid
@@ -143,11 +144,8 @@ import UIKit
 
     switch call.method {
     case "checkBluetoothState":
-      guard CLLocationManager.isRangingAvailable() else {
-        result("unsupported")
-        return
-      }
-      result(CLLocationManager.locationServicesEnabled() ? "poweredOn" : "poweredOff")
+      let state = peripheralManager?.state ?? .unknown
+      result(state == .poweredOn ? "poweredOn" : "poweredOff")
 
     case "requestPermissions":
       requestLocationPermissions(result: result)
@@ -281,8 +279,8 @@ import UIKit
 
     let status = authorizationStatus(for: manager)
     if status == .notDetermined {
+      pendingLocationPermissionResult = result
       manager.requestWhenInUseAuthorization()
-      result(false)
       return
     }
 
@@ -453,6 +451,16 @@ extension AppDelegate: CBPeripheralManagerDelegate {
 }
 
 extension AppDelegate: CLLocationManagerDelegate {
+  func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    guard let result = pendingLocationPermissionResult else { return }
+
+    let status = authorizationStatus(for: manager)
+    guard status != .notDetermined else { return }
+
+    pendingLocationPermissionResult = nil
+    result(status == .authorizedAlways || status == .authorizedWhenInUse)
+  }
+
   func locationManager(
     _ manager: CLLocationManager,
     didRange beacons: [CLBeacon],

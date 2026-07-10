@@ -94,7 +94,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         _attendanceState = snapshot.state;
         if (!_isConfirmed) {
-          _statusText = _textForAttendance(snapshot.state);
+          _statusText = snapshot.message ?? _textForAttendance(snapshot.state);
         }
       });
     });
