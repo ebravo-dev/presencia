@@ -1757,17 +1757,28 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           for (final alumno in widget.grupo.students)
             if (alumno.id != null) alumno.id!: _alumnoKey(alumno),
         };
+        final studentKeysByMatricula = {
+          for (final alumno in widget.grupo.students)
+            if (alumno.matricula?.trim().isNotEmpty ?? false)
+              alumno.matricula!.trim().toUpperCase(): _alumnoKey(alumno),
+        };
 
         for (final binding in bindings) {
           final studentId = binding['studentId']?.toString();
+          final matricula = binding['matricula']?.toString();
           final beaconUuid = binding['beaconUuid']?.toString();
-          if (studentId == null ||
-              studentId.isEmpty ||
-              beaconUuid == null ||
-              beaconUuid.isEmpty) {
+          if (beaconUuid == null || beaconUuid.isEmpty) {
             continue;
           }
-          final studentKey = studentKeys[studentId] ?? studentId;
+          final studentKey =
+              (matricula == null || matricula.trim().isEmpty
+                  ? null
+                  : studentKeysByMatricula[matricula.trim().toUpperCase()]) ??
+              (studentId == null || studentId.isEmpty
+                  ? null
+                  : studentKeys[studentId]) ??
+              studentId;
+          if (studentKey == null || studentKey.isEmpty) continue;
           final normalized = _normalizeBeaconUuid(beaconUuid);
           if (normalized.isEmpty) continue;
           resolved[normalized] = studentKey;
