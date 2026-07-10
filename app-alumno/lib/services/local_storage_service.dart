@@ -4,6 +4,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/attendance_history_entry.dart';
+
 class StudentStoredCredentials {
   final String username;
   final String password;
@@ -17,6 +19,8 @@ class StudentStoredCredentials {
 /// Local storage for student profile
 class LocalStorageService {
   static const String _profileBox = 'student_profile';
+  static const String _attendanceHistoryKey = 'attendance_history';
+  static const int _maxAttendanceHistoryEntries = 200;
   static const String _secureUsernameKey = 'uat_student_username';
   static const String _securePasswordKey = 'uat_student_password';
   static const _secureStorage = FlutterSecureStorage(
@@ -58,6 +62,35 @@ class LocalStorageService {
       _profile.get('device_binding_sync_pending', defaultValue: false) == true;
 
   bool get hasClassroomBeacon => classroomBeaconUuid.trim().isNotEmpty;
+
+  List<AttendanceHistoryEntry> get attendanceHistory {
+    final storedEntries = _profile.get(_attendanceHistoryKey);
+    if (storedEntries is! List) return const [];
+
+    final entries =
+        storedEntries
+            .map(AttendanceHistoryEntry.fromStorage)
+            .whereType<AttendanceHistoryEntry>()
+            .toList()
+          ..sort((left, right) => right.recordedAt.compareTo(left.recordedAt));
+
+    return entries;
+  }
+
+  int get attendanceHistoryCount => attendanceHistory.length;
+
+  Future<void> addAttendanceHistoryEntry(DateTime recordedAt) async {
+    final entries = attendanceHistory
+      ..insert(0, AttendanceHistoryEntry(recordedAt: recordedAt));
+
+    await _profile.put(
+      _attendanceHistoryKey,
+      entries
+          .take(_maxAttendanceHistoryEntries)
+          .map((entry) => entry.toStorage())
+          .toList(growable: false),
+    );
+  }
 
   Future<void> ensureDeviceBinding() async {
     if (!isProfileSet) return;

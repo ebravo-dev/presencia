@@ -48,17 +48,30 @@ class StudentAttendanceBlePlugin(
     private var targetUuids: Set<String> = emptySet()
     private val handledUuids = mutableSetOf<String>()
     private val activeGatts = mutableMapOf<String, BluetoothGatt>()
+    private val pendingDetections = mutableMapOf<String, PendingDetection>()
+    @Volatile
+    private var isActivityInForeground = true
+
+    private data class PendingDetection(
+        val uuid: String,
+        val bluetoothAddress: String,
+        val rssi: Int,
+    )
 
     private val bluetoothAdapter: BluetoothAdapter?
         get() = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
-            connectToCandidate(result)
+            if (isActivityInForeground) {
+                connectToCandidate(result)
+            }
         }
 
         override fun onBatchScanResults(results: MutableList<ScanResult>) {
-            results.forEach(::connectToCandidate)
+            if (isActivityInForeground) {
+                results.forEach(::connectToCandidate)
+            }
         }
 
         override fun onScanFailed(errorCode: Int) {
@@ -69,6 +82,17 @@ class StudentAttendanceBlePlugin(
     fun register(messenger: BinaryMessenger) {
         MethodChannel(messenger, METHOD_CHANNEL).setMethodCallHandler(this)
         EventChannel(messenger, EVENT_CHANNEL).setStreamHandler(this)
+    }
+
+    /** Stops the student BLE scan and open GATT connections outside the visible app. */
+    fun onActivityPaused() {
+        isActivityInForeground = false
+        stopScanning()
+    }
+
+    /** Scanning is only started again by an explicit action in the visible UI. */
+    fun onActivityResumed() {
+        isActivityInForeground = true
     }
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
@@ -104,6 +128,9 @@ class StudentAttendanceBlePlugin(
     }
 
     private fun startScanning(uuids: List<String>) {
+        if (!isActivityInForeground) {
+            throw IllegalStateException("La detección BLE solo está disponible con la app en primer plano")
+        }
         ensureRuntimePermissions()
         stopScanning()
         targetUuids = uuids.map { normalizeUuid(it) }.filter { it.isNotEmpty() }.toSet()
@@ -135,9 +162,12 @@ class StudentAttendanceBlePlugin(
             }
         }
         activeGatts.clear()
+        pendingDetections.clear()
     }
 
     private fun connectToCandidate(result: ScanResult) {
+        if (!isActivityInForeground) return
+
         val device = result.device ?: return
         val address = device.address ?: return
         if (activeGatts.containsKey(address)) return
@@ -145,6 +175,10 @@ class StudentAttendanceBlePlugin(
 
         val callback = object : BluetoothGattCallback() {
             override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+                if (!isActivityInForeground) {
+                    closeGatt(address, gatt)
+                    return
+                }
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     Log.i(TAG, "Connected to student candidate $address; discovering services")
                     if (!gatt.discoverServices()) {
@@ -157,6 +191,10 @@ class StudentAttendanceBlePlugin(
             }
 
             override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+                if (!isActivityInForeground) {
+                    closeGatt(address, gatt)
+                    return
+                }
                 if (status != BluetoothGatt.GATT_SUCCESS) {
                     Log.w(TAG, "Service discovery failed for $address with status=$status")
                     closeGatt(address, gatt)
@@ -200,6 +238,19 @@ class StudentAttendanceBlePlugin(
                 characteristic: BluetoothGattCharacteristic,
                 status: Int,
             ) {
+                if (!isActivityInForeground) {
+                    closeGatt(address, gatt)
+                    return
+                }
+                if (characteristic.uuid == CONFIRMATION_CHAR &&
+                    status == BluetoothGatt.GATT_SUCCESS) {
+                    emitConfirmedDetection(address)
+                } else {
+                    Log.w(
+                        TAG,
+                        "Attendance confirmation failed for $address with status=$status",
+                    )
+                }
                 mainHandler.postDelayed({ closeGatt(address, gatt) }, 650)
             }
         }
@@ -220,6 +271,10 @@ class StudentAttendanceBlePlugin(
         value: ByteArray?,
         status: Int = BluetoothGatt.GATT_SUCCESS,
     ) {
+        if (!isActivityInForeground) {
+            closeGatt(address, gatt)
+            return
+        }
         if (status != BluetoothGatt.GATT_SUCCESS || value == null) {
             Log.w(TAG, "Attendance UUID read failed for $address status=$status valueIsNull=${value == null}")
             closeGatt(address, gatt)
@@ -235,33 +290,45 @@ class StudentAttendanceBlePlugin(
 
         Log.i(TAG, "Matched student UUID from $address: $uuid")
 
-        mainHandler.post {
-            eventSink?.success(
-                listOf(
-                    mapOf(
-                        "uuid" to uuid,
-                        "bluetoothAddress" to address,
-                        "rssi" to rssi,
-                    )
-                )
-            )
-        }
-
         val confirmation = gatt.getService(SERVICE_UUID)?.getCharacteristic(CONFIRMATION_CHAR)
         if (confirmation == null) {
             Log.w(TAG, "Confirmation characteristic not found for $address")
             closeGatt(address, gatt)
             return
         }
+        pendingDetections[address] = PendingDetection(
+            uuid = uuid,
+            bluetoothAddress = address,
+            rssi = rssi,
+        )
         confirmation.value = "CONFIRMED".toByteArray(Charsets.UTF_8)
         if (!gatt.writeCharacteristic(confirmation)) {
             Log.w(TAG, "Could not write confirmation to $address")
+            pendingDetections.remove(address)
             closeGatt(address, gatt)
+        }
+    }
+
+    private fun emitConfirmedDetection(address: String) {
+        val detection = pendingDetections.remove(address) ?: return
+        mainHandler.post {
+            if (isActivityInForeground) {
+                eventSink?.success(
+                    listOf(
+                        mapOf(
+                            "uuid" to detection.uuid,
+                            "bluetoothAddress" to detection.bluetoothAddress,
+                            "rssi" to detection.rssi,
+                        )
+                    )
+                )
+            }
         }
     }
 
     private fun closeGatt(address: String, gatt: BluetoothGatt) {
         activeGatts.remove(address)
+        pendingDetections.remove(address)
         try {
             gatt.disconnect()
             gatt.close()

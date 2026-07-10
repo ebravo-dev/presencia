@@ -68,7 +68,7 @@ class AttendanceSessionService {
     if (attendanceUuid.isEmpty) {
       _emit(
         AttendanceSessionState.error,
-        message: 'No se pudo vincular este celular.',
+        message: 'No pudimos preparar el pase de lista.',
       );
       return;
     }
@@ -77,7 +77,7 @@ class AttendanceSessionService {
     if (!permissionsReady) {
       _emit(
         AttendanceSessionState.error,
-        message: 'Concede los permisos necesarios para registrar asistencia.',
+        message: 'Permite el acceso necesario para pasar lista.',
       );
       return;
     }
@@ -86,7 +86,7 @@ class AttendanceSessionService {
     if (!bluetoothReady) {
       _emit(
         AttendanceSessionState.bluetoothOff,
-        message: 'Activa Bluetooth para registrar asistencia.',
+        message: 'Revisa la configuración de tu celular.',
       );
       return;
     }
@@ -120,15 +120,22 @@ class AttendanceSessionService {
       },
       onError: (Object error) {
         debugPrint('[AttendanceSession] Room scan error: $error');
-        _emit(AttendanceSessionState.error, message: error.toString());
+        _emit(
+          AttendanceSessionState.error,
+          message: 'No pudimos preparar el pase de lista.',
+        );
       },
     );
 
     try {
       await _beacons.startScanning(uuids: [classroomUuid]);
     } catch (error) {
+      debugPrint('[AttendanceSession] Could not start room scan: $error');
       await _stopRoomScanOnly();
-      _emit(AttendanceSessionState.error, message: error.toString());
+      _emit(
+        AttendanceSessionState.error,
+        message: 'No pudimos preparar el pase de lista.',
+      );
       return;
     }
 
@@ -137,7 +144,7 @@ class AttendanceSessionService {
       await _stopRoomScanOnly();
       _emit(
         AttendanceSessionState.roomNotFound,
-        message: 'No se pudo validar tu clase.',
+        message: 'No pudimos confirmar que estás en clase.',
       );
     });
   }

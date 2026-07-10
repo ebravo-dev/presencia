@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>App Alumno</string>
+	<string>Presencia Alumno</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>app_alumno</string>
+	<string>Presencia Alumno</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -46,9 +46,9 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Esta app usa Bluetooth para registrar tu asistencia automáticamente cuando estás en clase.</string>
+	<string>Esta app necesita conectarse con dispositivos cercanos para confirmar tu asistencia cuando estás en clase.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Esta app usa Bluetooth para registrar tu asistencia automáticamente cuando estás en clase.</string>
+	<string>Esta app necesita conectarse con dispositivos cercanos para confirmar tu asistencia cuando estás en clase.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Esta app usa ubicación para confirmar que estás en tu clase antes de registrar asistencia.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
