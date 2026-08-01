@@ -6,29 +6,27 @@ import 'package:flutter/services.dart';
 import '../services/attendance_session_service.dart';
 import '../services/ble_advertiser_service.dart';
 import '../services/local_storage_service.dart';
+import '../services/student_device_binding_service.dart';
+import '../theme/app_theme.dart';
 import 'history_screen.dart';
 
-const _background = Color(0xFF0B0F14);
-const _panel = Color(0xFF111923);
-const _panelSoft = Color(0xFF10161E);
-const _line = Color(0xFF223040);
-const _muted = Color(0xFF8F9BA8);
-const _accent = Color(0xFF62D6A2);
-const _blue = Color(0xFF79A8FF);
-const _warning = Color(0xFFF4B860);
-const _danger = Color(0xFFFF7A70);
-
 class HomeScreen extends StatefulWidget {
-  final LocalStorageService storage;
-  final BleAdvertiserService bleService;
-  final AttendanceSessionService attendanceSession;
-
   const HomeScreen({
     super.key,
     required this.storage,
     required this.bleService,
     required this.attendanceSession,
+    required this.deviceBindingService,
+    required this.themeMode,
+    required this.onThemeModeChanged,
   });
+
+  final LocalStorageService storage;
+  final BleAdvertiserService bleService;
+  final AttendanceSessionService attendanceSession;
+  final StudentDeviceBindingService deviceBindingService;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -37,77 +35,106 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   AdvertiserState _advertiserState = AdvertiserState.idle;
   AttendanceSessionState _attendanceState = AttendanceSessionState.idle;
-  String _statusText = 'Listo para pasar lista';
-  String? _lastConfirmationId;
-  int _historyCount = 0;
-
   StreamSubscription<AdvertiserState>? _advertiserSubscription;
   StreamSubscription<String>? _confirmationSubscription;
   StreamSubscription<AttendanceSessionSnapshot>? _attendanceSubscription;
+  int _selectedTab = 0;
+  int _selectedClass = 1;
+  int _historyCount = 0;
+  bool _isSyncingDeviceBinding = false;
+  String? _confirmationId;
+
+  bool get _isActive => _advertiserState == AdvertiserState.advertising;
+  bool get _isChecking =>
+      _attendanceState == AttendanceSessionState.checkingRoom;
+  bool get _confirmed => _confirmationId != null;
+  bool get _hasError =>
+      _advertiserState == AdvertiserState.error ||
+      _advertiserState == AdvertiserState.bluetoothOff ||
+      _attendanceState == AttendanceSessionState.error ||
+      _attendanceState == AttendanceSessionState.bluetoothOff ||
+      _attendanceState == AttendanceSessionState.roomNotFound ||
+      _attendanceState == AttendanceSessionState.missingRoomBeacon;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-
-    final history = widget.storage.attendanceHistory;
-    _historyCount = history.length;
-
-    _advertiserSubscription = widget.bleService.stateStream.listen((state) {
-      if (!mounted) return;
-      setState(() {
-        _advertiserState = state;
-        if (!_isConfirmed &&
-            _attendanceState != AttendanceSessionState.broadcasting) {
-          _statusText = _textForAdvertiser(state);
-        }
-      });
+    _historyCount = widget.storage.attendanceHistoryCount;
+    _advertiserState = widget.bleService.currentState;
+    _attendanceState = widget.attendanceSession.currentState;
+    _advertiserSubscription = widget.bleService.stateStream.listen((value) {
+      if (mounted) {
+        setState(() => _advertiserState = value);
+      }
     });
-
+    _attendanceSubscription = widget.attendanceSession.stateStream.listen((
+      snapshot,
+    ) {
+      if (mounted) {
+        setState(() => _attendanceState = snapshot.state);
+      }
+    });
     _confirmationSubscription = widget.bleService.confirmationStream.listen((
       _,
     ) {
       if (!mounted) return;
-
-      final confirmationId = DateTime.now().microsecondsSinceEpoch.toString();
-      final confirmedAt = DateTime.now();
-      setState(() {
-        _lastConfirmationId = confirmationId;
-        _statusText = '¡Lista pasada!';
-      });
-      unawaited(_saveConfirmedAttendance(confirmedAt));
+      final id = DateTime.now().microsecondsSinceEpoch.toString();
+      setState(() => _confirmationId = id);
+      unawaited(_saveAttendance());
       unawaited(widget.attendanceSession.stop());
-
       Future<void>.delayed(const Duration(seconds: 5), () {
-        if (!mounted || _lastConfirmationId != confirmationId) return;
-        setState(() {
-          _lastConfirmationId = null;
-          _statusText = _textForAttendance(_attendanceState);
-        });
-      });
-    });
-
-    _attendanceSubscription = widget.attendanceSession.stateStream.listen((
-      snapshot,
-    ) {
-      if (!mounted) return;
-      setState(() {
-        _attendanceState = snapshot.state;
-        if (!_isConfirmed) {
-          _statusText = snapshot.message ?? _textForAttendance(snapshot.state);
+        if (mounted && _confirmationId == id) {
+          setState(() => _confirmationId = null);
         }
       });
     });
-
-    _advertiserState = widget.bleService.currentState;
-    _attendanceState = widget.attendanceSession.currentState;
-    _statusText = _textForAttendance(_attendanceState);
+    unawaited(_syncDeviceBinding());
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused && _isActive) {
-      widget.attendanceSession.stop();
+    if (state == AppLifecycleState.paused && (_isActive || _isChecking)) {
+      unawaited(widget.attendanceSession.stop());
+    }
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_syncDeviceBinding());
+    }
+  }
+
+  Future<void> _syncDeviceBinding() async {
+    if (_isSyncingDeviceBinding || !widget.storage.isProfileSet) return;
+    _isSyncingDeviceBinding = true;
+    try {
+      final synced = await widget.deviceBindingService.sync(widget.storage);
+      await widget.storage.setDeviceBindingSyncPending(!synced);
+    } finally {
+      _isSyncingDeviceBinding = false;
+    }
+  }
+
+  Future<void> _saveAttendance() async {
+    await widget.storage.addAttendanceHistoryEntry(DateTime.now());
+    if (mounted) {
+      setState(() => _historyCount = widget.storage.attendanceHistoryCount);
+    }
+  }
+
+  Future<void> _toggleAttendance() async {
+    HapticFeedback.mediumImpact();
+    if (_isActive || _isChecking) {
+      await widget.attendanceSession.stop();
+    } else {
+      await widget.attendanceSession.start();
+    }
+  }
+
+  Future<void> _openHistory() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => HistoryScreen(storage: widget.storage)),
+    );
+    if (mounted) {
+      setState(() => _historyCount = widget.storage.attendanceHistoryCount);
     }
   }
 
@@ -120,610 +147,740 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  bool get _isActive => _advertiserState == AdvertiserState.advertising;
-  bool get _isChecking =>
-      _attendanceState == AttendanceSessionState.checkingRoom;
-  bool get _isConfirmed => _lastConfirmationId != null;
-  bool get _hasError =>
-      _advertiserState == AdvertiserState.error ||
-      _attendanceState == AttendanceSessionState.error ||
-      _attendanceState == AttendanceSessionState.roomNotFound ||
-      _attendanceState == AttendanceSessionState.missingRoomBeacon;
-  bool get _phoneNeedsAttention =>
-      _advertiserState == AdvertiserState.bluetoothOff ||
-      _attendanceState == AttendanceSessionState.bluetoothOff;
-
-  String _textForAdvertiser(AdvertiserState state) {
-    switch (state) {
-      case AdvertiserState.advertising:
-        return 'Esperando confirmación';
-      case AdvertiserState.bluetoothOff:
-        return 'Revisa la configuración de tu celular';
-      case AdvertiserState.error:
-        return 'No pudimos preparar el pase de lista';
-      case AdvertiserState.idle:
-        return 'Listo para pasar lista';
-    }
-  }
-
-  String _textForAttendance(AttendanceSessionState state) {
-    switch (state) {
-      case AttendanceSessionState.checkingRoom:
-        return 'Revisando tu clase';
-      case AttendanceSessionState.roomVerified:
-        return 'Tu clase está lista';
-      case AttendanceSessionState.broadcasting:
-        return 'Esperando confirmación';
-      case AttendanceSessionState.bluetoothOff:
-        return 'Revisa la configuración de tu celular';
-      case AttendanceSessionState.missingRoomBeacon:
-      case AttendanceSessionState.roomNotFound:
-        return 'No pudimos confirmar que estás en clase';
-      case AttendanceSessionState.error:
-        return 'No pudimos preparar el pase de lista';
-      case AttendanceSessionState.idle:
-        return 'Listo para pasar lista';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final visual = _visualState;
-
+    final pages = [
+      _AttendancePage(
+        historyCount: _historyCount,
+        selectedClass: _selectedClass,
+        isActive: _isActive,
+        isChecking: _isChecking,
+        confirmed: _confirmed,
+        hasError: _hasError,
+        onSelectClass: (index) => setState(() => _selectedClass = index),
+        onRegister: _toggleAttendance,
+      ),
+      const _SchedulePage(),
+      _ProfilePage(
+        matricula: widget.storage.matricula,
+        email: widget.storage.institutionalEmail,
+        themeMode: widget.themeMode,
+        onThemeModeChanged: widget.onThemeModeChanged,
+        onOpenHistory: _openHistory,
+      ),
+    ];
     return Scaffold(
-      backgroundColor: _background,
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: constraints.maxHeight - 40,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _Header(
-                      matricula: widget.storage.matricula,
-                      onOpenHistory: _openHistory,
-                    ),
-                    const SizedBox(height: 24),
-                    _StatusPanel(
-                      visual: visual,
-                      statusText: _statusText,
-                      active: _isActive,
-                      checking: _isChecking,
-                      confirmed: _isConfirmed,
-                    ),
-                    const SizedBox(height: 20),
-                    _PrimaryAction(
-                      active: _isActive,
-                      checking: _isChecking,
-                      hasError: _hasError || _phoneNeedsAttention,
-                      onPressed: _toggleAttendance,
-                    ),
-                    const SizedBox(height: 18),
-                    _SummaryPanel(
-                      matricula: widget.storage.matricula,
-                      attendanceCount: _historyCount,
-                    ),
-                    const SizedBox(height: 14),
-                    _HelpPanel(
-                      title: _helpTitle,
-                      body: _helpBody,
-                      icon: _helpIcon,
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 430),
+            child: IndexedStack(index: _selectedTab, children: pages),
+          ),
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 430),
+            child: _BottomNav(
+              index: _selectedTab,
+              onChanged: (value) => setState(() => _selectedTab = value),
+            ),
+          ),
         ),
       ),
     );
   }
-
-  Future<void> _saveConfirmedAttendance(DateTime confirmedAt) async {
-    await widget.storage.addAttendanceHistoryEntry(confirmedAt);
-    if (!mounted) return;
-    setState(() => _historyCount = widget.storage.attendanceHistoryCount);
-  }
-
-  Future<void> _openHistory() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => HistoryScreen(storage: widget.storage)),
-    );
-    if (!mounted) return;
-    setState(() => _historyCount = widget.storage.attendanceHistoryCount);
-  }
-
-  Future<void> _toggleAttendance() async {
-    HapticFeedback.mediumImpact();
-    if (_isActive || _isChecking) {
-      await widget.attendanceSession.stop();
-    } else {
-      await widget.attendanceSession.start();
-    }
-  }
-
-  _VisualState get _visualState {
-    if (_isConfirmed) {
-      return const _VisualState(
-        accent: _accent,
-        surface: Color(0xFF11231C),
-        icon: Icons.check_rounded,
-      );
-    }
-    if (_isActive) {
-      return const _VisualState(
-        accent: _accent,
-        surface: Color(0xFF11231C),
-        icon: Icons.hourglass_top_rounded,
-      );
-    }
-    if (_isChecking) {
-      return const _VisualState(
-        accent: _warning,
-        surface: Color(0xFF261E12),
-        icon: Icons.hourglass_top_rounded,
-      );
-    }
-    if (_hasError || _phoneNeedsAttention) {
-      return const _VisualState(
-        accent: _danger,
-        surface: Color(0xFF2A1516),
-        icon: Icons.priority_high_rounded,
-      );
-    }
-    return const _VisualState(
-      accent: _blue,
-      surface: Color(0xFF121D31),
-      icon: Icons.how_to_reg_rounded,
-    );
-  }
-
-  String get _helpTitle {
-    if (_isConfirmed) return 'Listo';
-    if (_isActive) return 'Pase de lista en curso';
-    if (_isChecking) return 'Revisando tu clase';
-    if (_phoneNeedsAttention || _hasError) return 'Inténtalo de nuevo';
-    return 'Cuando estés en clase';
-  }
-
-  String get _helpBody {
-    if (_isConfirmed) return 'Tu asistencia quedó registrada.';
-    if (_isActive) {
-      return 'Espera a que el profesor confirme tu asistencia.';
-    }
-    if (_isChecking) return 'Esto puede tomar unos segundos.';
-    if (_phoneNeedsAttention || _hasError) {
-      return 'Revisa la configuración de tu celular y vuelve a intentarlo.';
-    }
-    return 'Presiona el botón cuando el profesor inicie el pase de lista.';
-  }
-
-  IconData get _helpIcon {
-    if (_isConfirmed) return Icons.task_alt_rounded;
-    if (_isActive) return Icons.visibility_rounded;
-    if (_isChecking) return Icons.manage_search_rounded;
-    if (_phoneNeedsAttention || _hasError) return Icons.refresh_rounded;
-    return Icons.school_rounded;
-  }
 }
 
-class _Header extends StatelessWidget {
-  final String matricula;
-  final VoidCallback onOpenHistory;
-
-  const _Header({required this.matricula, required this.onOpenHistory});
+class _AttendancePage extends StatelessWidget {
+  const _AttendancePage({
+    required this.historyCount,
+    required this.selectedClass,
+    required this.isActive,
+    required this.isChecking,
+    required this.confirmed,
+    required this.hasError,
+    required this.onSelectClass,
+    required this.onRegister,
+  });
+  final int historyCount;
+  final int selectedClass;
+  final bool isActive, isChecking, confirmed, hasError;
+  final ValueChanged<int> onSelectClass;
+  final VoidCallback onRegister;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 46,
-          height: 46,
-          decoration: BoxDecoration(
-            color: const Color(0xFF17202B),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF263241)),
+    final scheme = Theme.of(context).colorScheme;
+    final ratio = (historyCount / 10).clamp(0.0, 1.0);
+    final buttonTitle = confirmed
+        ? 'Asistencia registrada'
+        : isActive || isChecking
+        ? 'Cancelando registro'
+        : hasError
+        ? 'Intentar de nuevo'
+        : 'Registrar asistencia';
+    final buttonDetail = confirmed
+        ? 'Tu asistencia quedó confirmada'
+        : isChecking
+        ? 'Verificando disponibilidad'
+        : isActive
+        ? 'Esperando confirmación'
+        : hasError
+        ? 'Revisa tu celular y vuelve a intentarlo'
+        : 'Disponible cuando el profesor inicie el pase';
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: CustomScrollView(
+        slivers: [
+          const SliverToBoxAdapter(child: SizedBox(height: 18)),
+          SliverToBoxAdapter(
+            child: _PageHeader(title: 'Asistencia', subtitle: 'Periodo actual'),
           ),
-          child: const Icon(Icons.school_rounded, color: _accent, size: 25),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Presencia',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
+          const SliverToBoxAdapter(child: SizedBox(height: 22)),
+          SliverToBoxAdapter(
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${(ratio * 100).round()}%',
+                            style: Theme.of(
+                              context,
+                            ).textTheme.headlineSmall?.copyWith(fontSize: 42),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'asistencia general',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(
+                      width: 126,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$historyCount de 10 clases',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 12),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(5),
+                            child: LinearProgressIndicator(
+                              value: ratio,
+                              minHeight: 10,
+                              color: scheme.primary,
+                              backgroundColor: scheme.surfaceContainerHighest,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 2),
-              Text(
-                matricula,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: _muted,
-                  fontSize: 13,
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 26)),
+          SliverToBoxAdapter(
+            child: Text(
+              'Clase a registrar',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 4)),
+          SliverToBoxAdapter(
+            child: Text(
+              'Desliza para elegir una clase reciente',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 14)),
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 154,
+              child: PageView.builder(
+                controller: PageController(
+                  viewportFraction: .74,
+                  initialPage: selectedClass,
+                ),
+                itemCount: _classes.length,
+                onPageChanged: onSelectClass,
+                itemBuilder: (context, index) => _ClassCard(
+                  item: _classes[index],
+                  selected: index == selectedClass,
+                ),
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  _classes.length,
+                  (index) => AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    margin: const EdgeInsets.symmetric(horizontal: 5),
+                    width: index == selectedClass ? 18 : 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: index == selectedClass
+                          ? scheme.primary
+                          : appMuted(context).withValues(alpha: .4),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 30)),
+          SliverToBoxAdapter(
+            child: Semantics(
+              button: true,
+              label: buttonTitle,
+              child: SizedBox(
+                height: 88,
+                child: FilledButton(
+                  onPressed: confirmed ? null : onRegister,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: confirmed
+                        ? AppColors.success
+                        : scheme.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        buttonTitle,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 19,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(buttonDetail, style: const TextStyle(fontSize: 11)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SchedulePage extends StatefulWidget {
+  const _SchedulePage();
+  @override
+  State<_SchedulePage> createState() => _SchedulePageState();
+}
+
+class _SchedulePageState extends State<_SchedulePage> {
+  int _day = DateTime.now().weekday.clamp(1, 5) - 1;
+  static const _days = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+    padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _PageHeader(title: 'Horario', subtitle: 'Semana actual'),
+        const SizedBox(height: 24),
+        SizedBox(
+          height: 44,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _days.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (_, index) => SizedBox(
+              width: 62,
+              child: ChoiceChip(
+                label: Text(_days[index]),
+                selected: _day == index,
+                onSelected: (_) => setState(() => _day = index),
+                showCheckmark: false,
+                selectedColor: Theme.of(context).colorScheme.primary,
+                labelStyle: TextStyle(
+                  color: _day == index ? Colors.white : null,
                   fontWeight: FontWeight.w700,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 26),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: _day == 4
+                ? const _EmptySchedule()
+                : const Column(
+                    children: [
+                      _ScheduleItem(
+                        time: '08:00',
+                        subject: 'Sin clases sincronizadas',
+                        room: 'Actualiza tu información académica',
+                        color: AppColors.indigo,
+                      ),
+                      SizedBox(height: 14),
+                      _ScheduleItem(
+                        time: '10:00',
+                        subject: 'Horario disponible pronto',
+                        room: 'Los datos aparecerán aquí',
+                        color: AppColors.orange,
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _ProfilePage extends StatelessWidget {
+  const _ProfilePage({
+    required this.matricula,
+    required this.email,
+    required this.themeMode,
+    required this.onThemeModeChanged,
+    required this.onOpenHistory,
+  });
+  final String matricula, email;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
+  final VoidCallback onOpenHistory;
+  @override
+  Widget build(BuildContext context) {
+    final initials = matricula.isEmpty
+        ? 'FI'
+        : matricula.substring(0, matricula.length.clamp(0, 2)).toUpperCase();
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _PageHeader(
+            title: 'Perfil',
+            subtitle: 'Tu información estudiantil',
+          ),
+          const SizedBox(height: 22),
+          Card(
+            child: SizedBox(
+              height: 190,
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            initials,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 22,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Estudiante FIUAT',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Facultad de Ingeniería',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Matrícula $matricula',
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: onOpenHistory,
+                        icon: const Icon(Icons.history_rounded),
+                        label: const Text('Ver historial'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'Información académica',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 10),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  _ProfileField(
+                    'CORREO',
+                    email.isEmpty ? 'No sincronizado' : email,
+                  ),
+                  const Divider(height: 32),
+                  const _ProfileField('SEMESTRE', 'Información pendiente'),
+                  const Divider(height: 32),
+                  const _ProfileField('CAMPUS', 'Ciudad Victoria'),
+                  const Divider(height: 32),
+                  const _ProfileField('PROGRAMA', 'Facultad de Ingeniería'),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Card(
+            child: SwitchListTile.adaptive(
+              title: const Text('Tema oscuro'),
+              subtitle: const Text('Usar la apariencia oscura'),
+              value:
+                  themeMode == ThemeMode.dark ||
+                  (themeMode == ThemeMode.system &&
+                      MediaQuery.platformBrightnessOf(context) ==
+                          Brightness.dark),
+              onChanged: (enabled) => onThemeModeChanged(
+                enabled ? ThemeMode.dark : ThemeMode.light,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PageHeader extends StatelessWidget {
+  const _PageHeader({required this.title, required this.subtitle});
+  final String title, subtitle;
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(title, style: Theme.of(context).textTheme.headlineSmall),
+      const SizedBox(height: 3),
+      Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
+    ],
+  );
+}
+
+class _ClassCard extends StatelessWidget {
+  const _ClassCard({required this.item, required this.selected});
+  final _ClassItem item;
+  final bool selected;
+  @override
+  Widget build(BuildContext context) => AnimatedScale(
+    scale: selected ? 1 : .92,
+    duration: const Duration(milliseconds: 220),
+    child: AnimatedOpacity(
+      opacity: selected ? 1 : .58,
+      duration: const Duration(milliseconds: 220),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: selected
+                ? Theme.of(context).colorScheme.secondary
+                : appSurface(context),
+            borderRadius: BorderRadius.circular(22),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.subject,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: selected ? Colors.white : null,
+                  ),
+                ),
+                const Spacer(),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.room_outlined,
+                      size: 16,
+                      color: selected ? Colors.white70 : appMuted(context),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      item.room,
+                      style: TextStyle(
+                        color: selected ? Colors.white70 : appMuted(context),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  item.time,
+                  style: TextStyle(
+                    color: selected ? Colors.white70 : appMuted(context),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _BottomNav extends StatelessWidget {
+  const _BottomNav({required this.index, required this.onChanged});
+  final int index;
+  final ValueChanged<int> onChanged;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+    child: Container(
+      height: 70,
+      decoration: BoxDecoration(
+        color: appSurface(context),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Row(
+        children: [
+          _NavItem(
+            icon: Icons.how_to_reg_rounded,
+            label: 'Asistencia',
+            active: index == 0,
+            onTap: () => onChanged(0),
+          ),
+          _NavItem(
+            icon: Icons.calendar_month_rounded,
+            label: 'Horario',
+            active: index == 1,
+            onTap: () => onChanged(1),
+          ),
+          _NavItem(
+            icon: Icons.account_circle_rounded,
+            label: 'Perfil',
+            active: index == 2,
+            onTap: () => onChanged(2),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _NavItem extends StatelessWidget {
+  const _NavItem({
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: Semantics(
+      selected: active,
+      button: true,
+      label: label,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          margin: const EdgeInsets.all(7),
+          decoration: BoxDecoration(
+            color: active
+                ? Theme.of(context).colorScheme.primary.withValues(alpha: .13)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                color: active
+                    ? Theme.of(context).colorScheme.primary
+                    : appMuted(context),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: active
+                      ? Theme.of(context).colorScheme.primary
+                      : appMuted(context),
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(width: 6),
-        _HeaderAction(
-          tooltip: 'Historial',
-          icon: Icons.history_rounded,
-          onPressed: onOpenHistory,
-        ),
-      ],
-    );
-  }
-}
-
-class _HeaderAction extends StatelessWidget {
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback? onPressed;
-  final bool loading;
-
-  const _HeaderAction({
-    required this.tooltip,
-    required this.icon,
-    required this.onPressed,
-    this.loading = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: Semantics(
-        button: true,
-        label: tooltip,
-        enabled: onPressed != null,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onPressed,
-            borderRadius: BorderRadius.circular(12),
-            child: Ink(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: const Color(0xFF17202B),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF263241)),
-              ),
-              child: Center(
-                child: loading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          color: _accent,
-                          strokeWidth: 2.2,
-                        ),
-                      )
-                    : Icon(icon, color: _accent, size: 22),
-              ),
-            ),
-          ),
-        ),
       ),
-    );
-  }
+    ),
+  );
 }
 
-class _StatusPanel extends StatelessWidget {
-  final _VisualState visual;
-  final String statusText;
-  final bool active;
-  final bool checking;
-  final bool confirmed;
-
-  const _StatusPanel({
-    required this.visual,
-    required this.statusText,
-    required this.active,
-    required this.checking,
-    required this.confirmed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final detail = confirmed
-        ? 'Tu asistencia quedó registrada'
-        : active
-        ? 'Espera la confirmación del profesor'
-        : checking
-        ? 'Esto puede tomar unos segundos'
-        : 'Presiona el botón cuando el profesor pase lista';
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
-      decoration: BoxDecoration(
-        color: _panel,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _line),
-      ),
-      child: Column(
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 260),
-            width: 156,
-            height: 156,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: visual.surface,
-              border: Border.all(color: visual.accent, width: 2),
-              boxShadow: [
-                BoxShadow(
-                  color: visual.accent.withValues(alpha: active ? 0.24 : 0.12),
-                  blurRadius: active ? 34 : 18,
-                  spreadRadius: active ? 5 : 1,
-                ),
-              ],
-            ),
-            child: Icon(visual.icon, color: visual.accent, size: 66),
-          ),
-          const SizedBox(height: 22),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
-            child: Text(
-              statusText,
-              key: ValueKey(statusText),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                height: 1.15,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            detail,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.55),
-              fontSize: 14,
-              height: 1.35,
-            ),
-          ),
-          if (checking) ...[
-            const SizedBox(height: 16),
-            SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(
-                color: visual.accent,
-                strokeWidth: 2.2,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _PrimaryAction extends StatelessWidget {
-  final bool active;
-  final bool checking;
-  final bool hasError;
-  final VoidCallback onPressed;
-
-  const _PrimaryAction({
-    required this.active,
-    required this.checking,
-    required this.hasError,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isCancelling = active || checking;
-    final label = isCancelling
-        ? 'Cancelar'
-        : hasError
-        ? 'Intentar de nuevo'
-        : 'Pasar lista';
-    final icon = isCancelling
-        ? Icons.close_rounded
-        : hasError
-        ? Icons.refresh_rounded
-        : Icons.check_rounded;
-
-    return SizedBox(
-      height: 96,
-      child: FilledButton(
-        onPressed: onPressed,
-        style: FilledButton.styleFrom(
-          backgroundColor: isCancelling ? _danger : _accent,
-          foregroundColor: const Color(0xFF07110D),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 30),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SummaryPanel extends StatelessWidget {
-  final String matricula;
-  final int attendanceCount;
-
-  const _SummaryPanel({required this.matricula, required this.attendanceCount});
-
-  @override
-  Widget build(BuildContext context) {
-    final attendanceText = attendanceCount == 1
-        ? '1 asistencia'
-        : '$attendanceCount asistencias';
-
-    return Row(
-      children: [
-        Expanded(
-          child: _InfoTile(
-            icon: Icons.badge_rounded,
-            label: 'Matrícula',
-            value: matricula,
-            color: _blue,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _InfoTile(
-            icon: Icons.history_rounded,
-            label: 'Historial',
-            value: attendanceText,
-            color: _accent,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _InfoTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  const _InfoTile({
-    required this.icon,
-    required this.label,
-    required this.value,
+class _ScheduleItem extends StatelessWidget {
+  const _ScheduleItem({
+    required this.time,
+    required this.subject,
+    required this.room,
     required this.color,
   });
-
+  final String time, subject, room;
+  final Color color;
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 112),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: _panel,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _line),
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      SizedBox(
+        width: 54,
+        child: Text(
+          time,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+        ),
       ),
+      Expanded(
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 65),
+          padding: const EdgeInsets.fromLTRB(18, 13, 12, 13),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: .12),
+            borderRadius: BorderRadius.circular(16),
+            border: Border(left: BorderSide(color: color, width: 6)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                subject,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              Text(room, style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
+class _EmptySchedule extends StatelessWidget {
+  const _EmptySchedule();
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 80),
+    child: Center(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: 14),
-          Text(
-            label,
-            style: const TextStyle(
-              color: _muted,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
+          Icon(
+            Icons.event_available_rounded,
+            size: 38,
+            color: appMuted(context),
           ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-              height: 1.15,
-            ),
+          const SizedBox(height: 12),
+          const Text(
+            'No tienes clases programadas para este día',
+            textAlign: TextAlign.center,
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
 }
 
-class _HelpPanel extends StatelessWidget {
-  final String title;
-  final String body;
-  final IconData icon;
-
-  const _HelpPanel({
-    required this.title,
-    required this.body,
-    required this.icon,
-  });
-
+class _ProfileField extends StatelessWidget {
+  const _ProfileField(this.label, this.value);
+  final String label, value;
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _panelSoft,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF1D2936)),
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label, style: Theme.of(context).textTheme.labelSmall),
+      const SizedBox(height: 5),
+      Text(
+        value,
+        style: Theme.of(
+          context,
+        ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: _muted, size: 22),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  body,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.58),
-                    fontSize: 13,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+    ],
+  );
 }
 
-class _VisualState {
-  final Color accent;
-  final Color surface;
-  final IconData icon;
-
-  const _VisualState({
-    required this.accent,
-    required this.surface,
-    required this.icon,
-  });
+class _ClassItem {
+  const _ClassItem(this.subject, this.room, this.time);
+  final String subject, room, time;
 }
+
+const _classes = [
+  _ClassItem('Cálculo integral', 'Aula pendiente', '08:00 - 09:00'),
+  _ClassItem(
+    'Tu clase actual',
+    'Disponible al iniciar el pase',
+    'Horario por sincronizar',
+  ),
+  _ClassItem('Programación móvil', 'Aula pendiente', '10:00 - 11:00'),
+];

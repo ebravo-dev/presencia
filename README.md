@@ -13,6 +13,10 @@ presencia/
 `- frontend-coord/
 ```
 
+## Arquitectura
+
+- [Plan de migración a microservicios](docs/architecture/PLAN_MIGRACION_MICROSERVICIOS.md)
+
 ## backend-apirest
 
 `backend-apirest` es el backend puente/ACL entre `app-profesor` y el portal

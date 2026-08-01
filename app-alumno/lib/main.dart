@@ -1,26 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'services/local_storage_service.dart';
 import 'services/ble_advertiser_service.dart';
 import 'services/attendance_session_service.dart';
 import 'services/student_device_binding_service.dart';
-import 'screens/setup_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/login_screen.dart';
+import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Color(0xFF0B0F14),
-      statusBarBrightness: Brightness.dark,
-      statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Color(0xFF0B0F14),
-      systemNavigationBarIconBrightness: Brightness.light,
-    ),
-  );
 
   final storage = LocalStorageService();
   await storage.init();
@@ -33,15 +26,13 @@ void main() async {
   );
   final deviceBindingService = StudentDeviceBindingService();
 
-  // Sync student identity to native so attendance services can read it.
+  // Sync the local identity immediately; server reconciliation must not delay UI.
   if (storage.isProfileSet) {
     await bleService.setStudentIdentity(
       matricula: storage.matricula,
       attendanceUuid: storage.attendanceUuid,
       deviceBindingId: storage.deviceBindingId,
     );
-    final synced = await deviceBindingService.sync(storage);
-    await storage.setDeviceBindingSyncPending(!synced);
   }
 
   runApp(
@@ -52,9 +43,21 @@ void main() async {
       deviceBindingService: deviceBindingService,
     ),
   );
+
+  if (storage.isProfileSet) {
+    unawaited(_syncDeviceBindingInBackground(deviceBindingService, storage));
+  }
 }
 
-class PresenciaAlumnoApp extends StatelessWidget {
+Future<void> _syncDeviceBindingInBackground(
+  StudentDeviceBindingService service,
+  LocalStorageService storage,
+) async {
+  final synced = await service.sync(storage);
+  await storage.setDeviceBindingSyncPending(!synced);
+}
+
+class PresenciaAlumnoApp extends StatefulWidget {
   final LocalStorageService storage;
   final BleAdvertiserService bleService;
   final AttendanceSessionService attendanceSession;
@@ -69,82 +72,27 @@ class PresenciaAlumnoApp extends StatelessWidget {
   });
 
   @override
+  State<PresenciaAlumnoApp> createState() => _PresenciaAlumnoAppState();
+}
+
+class _PresenciaAlumnoAppState extends State<PresenciaAlumnoApp> {
+  ThemeMode _themeMode = ThemeMode.system;
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Presencia Alumno',
+      title: 'FIUAT Student Hub',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF62D6A2),
-          brightness: Brightness.dark,
-          primary: const Color(0xFF62D6A2),
-          surface: const Color(0xFF111923),
-        ),
-        scaffoldBackgroundColor: const Color(0xFF0B0F14),
-        fontFamily: 'Roboto',
-        filledButtonTheme: FilledButtonThemeData(
-          style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xFF62D6A2),
-            foregroundColor: const Color(0xFF07110D),
-            disabledBackgroundColor: const Color(0xFF27313B),
-            disabledForegroundColor: const Color(0xFF8F9BA8),
-            textStyle: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: const Color(0xFF111923),
-          labelStyle: const TextStyle(
-            color: Color(0xFF8F9BA8),
-            fontWeight: FontWeight.w700,
-          ),
-          hintStyle: TextStyle(
-            color: Colors.white.withValues(alpha: 0.28),
-            fontWeight: FontWeight.w700,
-          ),
-          prefixIconColor: const Color(0xFF8F9BA8),
-          errorStyle: const TextStyle(
-            color: Color(0xFFFF7A70),
-            fontWeight: FontWeight.w700,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFF223040)),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFF223040)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFF62D6A2), width: 1.4),
-          ),
-          errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFFFF7A70)),
-          ),
-          focusedErrorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFFFF7A70), width: 1.4),
-          ),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 18,
-          ),
-        ),
-      ),
+      theme: buildAppTheme(Brightness.light),
+      darkTheme: buildAppTheme(Brightness.dark),
+      themeMode: _themeMode,
       home: _AppRouter(
-        storage: storage,
-        bleService: bleService,
-        attendanceSession: attendanceSession,
-        deviceBindingService: deviceBindingService,
+        storage: widget.storage,
+        bleService: widget.bleService,
+        attendanceSession: widget.attendanceSession,
+        deviceBindingService: widget.deviceBindingService,
+        onThemeModeChanged: (value) => setState(() => _themeMode = value),
+        themeMode: _themeMode,
       ),
     );
   }
@@ -156,12 +104,16 @@ class _AppRouter extends StatefulWidget {
   final BleAdvertiserService bleService;
   final AttendanceSessionService attendanceSession;
   final StudentDeviceBindingService deviceBindingService;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
 
   const _AppRouter({
     required this.storage,
     required this.bleService,
     required this.attendanceSession,
     required this.deviceBindingService,
+    required this.themeMode,
+    required this.onThemeModeChanged,
   });
 
   @override
@@ -172,25 +124,32 @@ class _AppRouterState extends State<_AppRouter> {
   bool _profileSet = false;
 
   @override
-  void initState() {
-    super.initState();
-    _profileSet = widget.storage.isProfileSet;
-  }
-
-  @override
   Widget build(BuildContext context) {
     if (!_profileSet) {
-      return SetupScreen(
-        onComplete: (matricula) async {
-          await widget.storage.saveProfile(matricula);
+      return LoginScreen(
+        storage: widget.storage,
+        onAuthenticated: (username, password, result) async {
+          await widget.storage.saveInstitutionalCredentials(
+            username: username,
+            password: password,
+          );
+          await widget.storage.saveProfile(
+            result.matricula,
+            institutionalEmail: username,
+            uatStudentSessionId: result.sessionId,
+          );
           await widget.bleService.setStudentIdentity(
-            matricula: matricula,
+            matricula: result.matricula,
             attendanceUuid: widget.storage.attendanceUuid,
             deviceBindingId: widget.storage.deviceBindingId,
           );
-          final synced = await widget.deviceBindingService.sync(widget.storage);
-          await widget.storage.setDeviceBindingSyncPending(!synced);
           setState(() => _profileSet = true);
+          unawaited(
+            _syncDeviceBindingInBackground(
+              widget.deviceBindingService,
+              widget.storage,
+            ),
+          );
         },
       );
     }
@@ -199,6 +158,9 @@ class _AppRouterState extends State<_AppRouter> {
       storage: widget.storage,
       bleService: widget.bleService,
       attendanceSession: widget.attendanceSession,
+      deviceBindingService: widget.deviceBindingService,
+      themeMode: widget.themeMode,
+      onThemeModeChanged: widget.onThemeModeChanged,
     );
   }
 }
