@@ -4,7 +4,13 @@ import { z } from 'zod';
 export const UAT_PORTAL_BASE_URL = 'https://administracionescolar.uat.edu.mx';
 export const UAT_ALUMNOS_BASE_URL = 'https://alumnossur.uat.edu.mx';
 
-const envSchema = z.object({
+const DEVELOPMENT_SECRETS = new Set([
+  'development-coordination-jwt-secret-change-me',
+  'development-internal-service-token-change-me',
+  'development-attendance-job-secret-change-me',
+]);
+
+export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().positive().default(3100),
@@ -50,17 +56,60 @@ const envSchema = z.object({
   ),
   ATTENDANCE_BACKEND_URL: z.string().url().default('http://localhost:3000'),
   ATTENDANCE_BACKEND_SERVICE_TOKEN: z.string().min(32).default('development-internal-service-token-change-me'),
-  ATTENDANCE_JOB_ENCRYPTION_SECRET: z.preprocess(
-    (value) => value === undefined || value === '' ? undefined : value,
-    z.string().min(32).optional(),
-  ),
+  ATTENDANCE_JOB_ENCRYPTION_SECRET: z.string().min(32).default('development-attendance-job-secret-change-me'),
   COORDINATION_WEB_DIST: z.string().optional(),
+}).superRefine((value, ctx) => {
+  if (value.NODE_ENV !== 'production') return;
+
+  const secretFields = [
+    'COORDINATION_JWT_SECRET',
+    'INTERNAL_API_TOKEN',
+    'ATTENDANCE_BACKEND_SERVICE_TOKEN',
+    'ATTENDANCE_JOB_ENCRYPTION_SECRET',
+  ] as const;
+
+  for (const field of secretFields) {
+    if (DEVELOPMENT_SECRETS.has(value[field])) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [field],
+        message: 'Must be configured with a non-development value in production',
+      });
+    }
+  }
+
+  const identitySecrets = [value.COORDINATION_JWT_SECRET, value.ATTENDANCE_JOB_ENCRYPTION_SECRET];
+  const serviceSecrets = [value.INTERNAL_API_TOKEN, value.ATTENDANCE_BACKEND_SERVICE_TOKEN];
+  if (identitySecrets.some((secret) => serviceSecrets.includes(secret))
+    || value.COORDINATION_JWT_SECRET === value.ATTENDANCE_JOB_ENCRYPTION_SECRET) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['COORDINATION_JWT_SECRET'],
+      message: 'JWT and encryption secrets must be distinct from service tokens and from each other',
+    });
+  }
+
+  if (value.PRESENCIA_DEBUG_MODE) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['PRESENCIA_DEBUG_MODE'],
+      message: 'Debug mode cannot be enabled in production',
+    });
+  }
+
+  if (value.COORDINATION_COOKIE_SECURE === false) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['COORDINATION_COOKIE_SECURE'],
+      message: 'Secure cookies cannot be disabled in production',
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;
 
-function loadEnv(): Env {
-  const result = envSchema.safeParse(process.env);
+export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
+  const result = envSchema.safeParse(source);
 
   if (!result.success) {
     console.error('Invalid environment variables:');

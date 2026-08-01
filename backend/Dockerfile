@@ -1,5 +1,5 @@
 # Build stage
-FROM node:20-slim AS builder
+FROM node:24-slim AS builder
 
 WORKDIR /app
 
@@ -8,7 +8,6 @@ COPY package*.json ./
 COPY prisma ./prisma
 
 # Install ALL dependencies (need devDeps for build)
-# v8 - fastify/static compatible with fastify 4
 RUN npm ci
 
 # Generate Prisma client
@@ -19,7 +18,7 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:20-slim AS production
+FROM node:24-slim AS production
 
 WORKDIR /app
 
@@ -34,13 +33,12 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/start.sh ./start.sh
-COPY --from=builder /app/public ./public
 
 # Install ONLY production dependencies
 RUN npm ci --omit=dev
 
 # Generate Prisma client for production target
-RUN npx prisma generate
+RUN ./node_modules/.bin/prisma generate
 
 # Create non-root user for security
 RUN groupadd -g 1001 nodejs && \

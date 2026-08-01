@@ -44,7 +44,7 @@ export class UatStudentService {
 
     const career = selectCareer(careers, input.idPlanEstudio);
     const selectedCareer = await client.selectCareer(career.Id_Plan_Estudio);
-    await this.bindStudentDeviceIfRequested(input, selectedCareer, career);
+    const deviceBindingToken = await this.bindStudentDeviceIfRequested(input, selectedCareer, career);
     const now = new Date();
     const session: StoredUatStudentSession = {
       id: randomUUID(),
@@ -53,6 +53,7 @@ export class UatStudentService {
       login,
       careers,
       selectedCareer,
+      deviceBindingToken,
       createdAt: now,
       lastUsedAt: now,
       expiresAt: now,
@@ -90,6 +91,7 @@ export class UatStudentService {
       login: this.toSafeLogin(session.login),
       careers: session.careers,
       selectedCareer: session.selectedCareer,
+      deviceBindingToken: session.deviceBindingToken,
       createdAt: session.createdAt.toISOString(),
       lastUsedAt: session.lastUsedAt.toISOString(),
       expiresAt: session.expiresAt.toISOString(),
@@ -146,8 +148,8 @@ export class UatStudentService {
     input: CreateUatStudentSessionInput,
     selectedCareer: UatStudentCareerSelection,
     fallbackCareer: UatStudentCareerItem,
-  ): Promise<void> {
-    if (!input.attendanceUuid) return;
+  ): Promise<string | undefined> {
+    if (!input.attendanceUuid) return undefined;
     if (!this.attendanceBackendClient) {
       throw new ApiError(500, 'ATTENDANCE_BACKEND_NOT_CONFIGURED', 'No se configuro el backend de asistencia para vincular alumnos.');
     }
@@ -160,13 +162,18 @@ export class UatStudentService {
       });
     }
 
-    await this.attendanceBackendClient.createStudentDeviceBinding({
+    const response = await this.attendanceBackendClient.createStudentDeviceBinding({
       matricula,
       attendanceUuid: input.attendanceUuid,
       deviceBindingId: input.deviceBindingId,
       platform: input.platform,
       deviceInfo: input.deviceInfo,
     });
+    const token = response.data?.bindingToken;
+    if (!token) {
+      throw new ApiError(502, 'STUDENT_BINDING_TOKEN_MISSING', 'El backend de asistencia no devolvio la autorizacion del celular.');
+    }
+    return token;
   }
 
   private toUatDataResponse<TItem extends JsonRecord>(

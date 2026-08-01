@@ -35,6 +35,12 @@ export interface AttendanceSettings {
   teacherAttendanceToleranceMinutes: number;
 }
 
+interface StudentDeviceBindingResponse {
+  data: {
+    bindingToken: string;
+  };
+}
+
 export class AttendanceBackendUnavailableError extends Error {}
 
 export class AttendanceBackendClient {
@@ -123,7 +129,7 @@ export class AttendanceBackendClient {
     deviceBindingId?: string;
     platform?: string;
     deviceInfo?: string;
-  }) {
+  }): Promise<StudentDeviceBindingResponse> {
     return this.request(() => this.http.post('/api/student-device-bindings', input));
   }
 

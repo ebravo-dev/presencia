@@ -56,10 +56,14 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   const attendanceUploadController = new AttendanceUploadController(attendanceUploadService, attendanceUploadWorker);
   const sharedClassController = new SharedClassController(sharedClassService);
 
-  fastify.post('/api/uat/sessions', sessionController.create);
+  fastify.post('/api/uat/sessions', {
+    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+  }, sessionController.create);
   fastify.delete('/api/uat/sessions/:sessionId', sessionController.delete);
 
-  fastify.post('/api/uat/alumnos/sessions', studentSessionController.create);
+  fastify.post('/api/uat/alumnos/sessions', {
+    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+  }, studentSessionController.create);
   fastify.delete('/api/uat/alumnos/sessions/:sessionId', studentSessionController.delete);
   fastify.get('/api/uat/alumnos/carreras', { preHandler: authUatStudent }, studentSessionController.careers);
   fastify.post('/api/uat/alumnos/carreras/seleccionar', { preHandler: authUatStudent }, studentSessionController.selectCareer);

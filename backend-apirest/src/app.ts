@@ -74,7 +74,7 @@ export async function buildApp() {
   const clientFactory = new UatClientFactory();
   const studentClientFactory = new UatStudentClientFactory();
   const credentialCipher = new CredentialCipher(
-    env.ATTENDANCE_JOB_ENCRYPTION_SECRET ?? env.COORDINATION_JWT_SECRET,
+    env.ATTENDANCE_JOB_ENCRYPTION_SECRET,
   );
   const uatService = new UatService(sessionRepository, clientFactory, credentialCipher);
   const attendanceBackendClient = new AttendanceBackendClient(

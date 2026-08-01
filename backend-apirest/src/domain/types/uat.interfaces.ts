@@ -315,6 +315,7 @@ export interface StoredUatStudentSession extends StoredUatSessionBase {
   login: UatLoginResponse;
   careers: UatStudentCareerItem[];
   selectedCareer: UatStudentCareerSelection;
+  deviceBindingToken?: string;
 }
 
 export interface UatSessionResponse {
@@ -360,6 +361,7 @@ export interface UatStudentSessionResponse {
   login: UatSafeLogin;
   careers: UatStudentCareerItem[];
   selectedCareer: UatStudentCareerSelection;
+  deviceBindingToken?: string;
   createdAt: string;
   lastUsedAt: string;
   expiresAt: string;

@@ -75,11 +75,10 @@ class UatRestSyncService {
             ]);
 
             const normalizedGroups = mergeUatGroups(horarios, controlGroups, currentPeriod);
-            await prisma.group.deleteMany({
-                where: { professorId: input.professorId, period: currentPeriod },
-            });
-
             await updateStep(3, `${normalizedGroups.length} clases encontradas`);
+            // Preserve existing groups and their attendance history if UAT sends
+            // an empty or partial response. Stale-group deactivation will be a
+            // separate, explicit reconciliation step once Group has an active flag.
             for (const group of normalizedGroups) {
                 await prisma.group.upsert({
                     where: {

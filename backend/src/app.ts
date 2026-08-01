@@ -1,6 +1,8 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
+import Redis from 'ioredis';
 import { env } from './core/config/env.js';
 import { connectDatabase, disconnectDatabase, prisma } from './core/database/prisma.js';
 import { authRoutes } from './modules/auth/index.js';
@@ -11,13 +13,10 @@ import { syncRoutes } from './modules/sync/index.js';
 import { studentAttendanceRoutes } from './modules/student-attendance/index.js';
 import { beaconsRoutes } from './modules/beacons/index.js';
 import { uatProxyRoutes } from './modules/uat-proxy/index.js';
-import { substitutionsRoutes } from './modules/substitutions/index.js';
 import { internalCoordinationRoutes } from './modules/internal-coordination/index.js';
 import { superUserRoutes } from './modules/super-user/index.js';
 import { sessionService } from './core/security/index.js';
 import { SERVER_TIME_ZONE, serverLocalDateString, serverNow } from './core/time/server-time.js';
-import fastifyStatic from '@fastify/static';
-import path from 'path';
 
 // Create Fastify instance
 const fastify = Fastify({
@@ -33,6 +32,10 @@ const fastify = Fastify({
             : undefined,
     },
 });
+const rateLimitRedis = new Redis(env.REDIS_URL, {
+    keyPrefix: 'rate-limit:',
+    lazyConnect: true,
+});
 
 /**
  * Register plugins
@@ -40,8 +43,14 @@ const fastify = Fastify({
 async function registerPlugins(): Promise<void> {
     // CORS
     await fastify.register(cors, {
-        origin: true, // Allow all origins in development
+        origin: env.CORS_ALLOWED_ORIGINS,
         credentials: true,
+    });
+
+    await fastify.register(rateLimit, {
+        global: false,
+        hook: 'preHandler',
+        redis: rateLimitRedis,
     });
 
     // CSS/Security
@@ -61,16 +70,21 @@ async function registerPlugins(): Promise<void> {
 
             // Validate single session via Redis
             const { professorId, sessionId } = request.user;
-            if (sessionId) {
-                const { sessionService } = await import('./core/security/index.js');
-                const isValid = await sessionService.validateSession(professorId, sessionId);
-                if (!isValid) {
-                    return reply.code(401).send({
-                        statusCode: 401,
-                        error: 'Unauthorized',
-                        message: 'Sesión invalidada. Se inició sesión en otro dispositivo.',
-                    });
-                }
+            if (!professorId || !sessionId) {
+                return reply.code(401).send({
+                    statusCode: 401,
+                    error: 'Unauthorized',
+                    message: 'Token de sesión inválido.',
+                });
+            }
+
+            const isValid = await sessionService.validateSession(professorId, sessionId);
+            if (!isValid) {
+                return reply.code(401).send({
+                    statusCode: 401,
+                    error: 'Unauthorized',
+                    message: 'Sesión invalidada. Se inició sesión en otro dispositivo.',
+                });
             }
         } catch (err) {
             reply.send(err);
@@ -111,15 +125,8 @@ async function registerRoutes(): Promise<void> {
     await fastify.register(uatProxyRoutes);
     await fastify.register(studentAttendanceRoutes);
     await fastify.register(beaconsRoutes);
-    await fastify.register(substitutionsRoutes);
     await fastify.register(internalCoordinationRoutes);
     await fastify.register(superUserRoutes);
-
-    // Serve admin panel static files
-    await fastify.register(fastifyStatic, {
-        root: path.join(process.cwd(), 'public'),
-        prefix: '/admin/',
-    });
 
     // 404 handler
     fastify.setNotFoundHandler((request, reply) => {
@@ -134,14 +141,16 @@ async function registerRoutes(): Promise<void> {
     fastify.setErrorHandler((error, request, reply) => {
         request.log.error(error);
 
-        const statusCode = error.statusCode || 500;
+        const normalizedError = error instanceof Error ? error : new Error('Unknown error');
+        const errorWithStatus = normalizedError as Error & { statusCode?: number };
+        const statusCode = errorWithStatus.statusCode || 500;
         const message = statusCode === 500
             ? 'Internal Server Error'
-            : error.message;
+            : normalizedError.message;
 
         reply.code(statusCode).send({
             statusCode,
-            error: error.name || 'Error',
+            error: normalizedError.name || 'Error',
             message,
         });
     });
@@ -159,6 +168,9 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
         await sessionService.close();
         console.log('✅ Session store closed');
+
+        await rateLimitRedis.quit();
+        console.log('✅ Rate-limit store closed');
 
         await disconnectDatabase();
         console.log('✅ Database disconnected');

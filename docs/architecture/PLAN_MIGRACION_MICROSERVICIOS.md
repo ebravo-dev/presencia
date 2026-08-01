@@ -1,6 +1,6 @@
 # Plan de migración a microservicios de Presencia
 
-**Estado:** Propuesto para implementación
+**Estado:** En implementación — Fase 0
 
 **Fecha de decisión:** 2026-07-31
 
@@ -474,6 +474,19 @@ haberlo separado.
 ## 11. Fases de implementación
 
 ### Fase 0 — Hardening y línea base
+
+Avance al 31 de julio de 2026:
+
+- [x] Secretos de producción obligatorios y sin valores de desarrollo.
+- [x] CORS explícito y rate limiting de autenticación.
+- [x] CRUD anónimo retirado y resoluciones operativas acotadas al profesor.
+- [x] Vinculación de celular autorizada con token acotado y almacenamiento seguro.
+- [x] Migraciones fail-closed; no se marcan fallos como aplicados.
+- [x] Sincronización académica no destructiva para el historial existente.
+- [x] Captura principal de asistencia transaccional con validación de roster.
+- [ ] Backup y restauración comprobados en un entorno de prueba.
+- [ ] Inventario OpenAPI y pruebas de caracterización completas.
+- [ ] Línea base de carga, latencia y errores en un entorno representativo.
 
 Entregables:
 

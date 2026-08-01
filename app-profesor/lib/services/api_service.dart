@@ -1269,9 +1269,17 @@ class ApiService {
         'Resolviendo beacons en backend principal para ${normalizedClassrooms.length} salones',
       );
 
+      final mainBackendToken = AuthStorageService().getMainBackendToken();
+      if (mainBackendToken == null || mainBackendToken.isEmpty) {
+        return const Left('La sesión de asistencia necesita renovarse');
+      }
+
       final response = await _attendanceBackendDio.post(
         '/api/beacons/resolve',
         data: {'classrooms': normalizedClassrooms},
+        options: Options(
+          headers: {'Authorization': 'Bearer $mainBackendToken'},
+        ),
       );
 
       if (response.statusCode == 200) {
@@ -1324,9 +1332,17 @@ class ApiService {
 
       if (normalizedMatriculas.isEmpty) return const Right([]);
 
+      final mainBackendToken = AuthStorageService().getMainBackendToken();
+      if (mainBackendToken == null || mainBackendToken.isEmpty) {
+        return const Left('La sesión de asistencia necesita renovarse');
+      }
+
       final response = await _attendanceBackendDio.post(
         '/api/student-device-bindings/resolve',
         data: {'matriculas': normalizedMatriculas},
+        options: Options(
+          headers: {'Authorization': 'Bearer $mainBackendToken'},
+        ),
       );
 
       if (response.statusCode == 200) {

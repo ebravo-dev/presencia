@@ -133,6 +133,9 @@ class _AppRouterState extends State<_AppRouter> {
             username: username,
             password: password,
           );
+          await widget.storage.saveDeviceBindingToken(
+            result.deviceBindingToken,
+          );
           await widget.storage.saveProfile(
             result.matricula,
             institutionalEmail: username,

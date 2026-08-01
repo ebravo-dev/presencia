@@ -16,7 +16,9 @@ const SUPER_USER_COOKIE = 'super_user_session';
 const superUserService = new SuperUserService();
 
 export async function superUserRoutes(fastify: FastifyInstance) {
-    fastify.post('/api/superUsuario/auth/login', async (request, reply) => {
+    fastify.post('/api/superUsuario/auth/login', {
+        config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+    }, async (request, reply) => {
         const parsed = superUserLoginSchema.safeParse(request.body);
         if (!parsed.success) {
             return reply.code(400).send({

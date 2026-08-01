@@ -41,12 +41,12 @@ describe('UatStudentService', () => {
       {
         createStudentDeviceBinding: async (input: unknown) => {
           bindings.push(input);
-          return { data: input };
+          return { data: { bindingToken: 'signed-binding-token' } };
         },
       } as never,
     );
 
-    await service.createSession({
+    const session = await service.createSession({
       username: 'alumno@uat.edu.mx',
       password: 'secret',
       attendanceUuid: '12345678-1234-4234-9234-123456789abc',
@@ -63,6 +63,7 @@ describe('UatStudentService', () => {
         deviceInfo: undefined,
       },
     ]);
+    expect(session.deviceBindingToken).toBe('signed-binding-token');
   });
 
   it('rechaza un plan que no pertenece al alumno', async () => {

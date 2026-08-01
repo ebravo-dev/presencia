@@ -35,6 +35,8 @@ interface AuthenticatedRequest extends FastifyRequest {
     professorId?: string;
 }
 
+class AttendanceSyncInProgressError extends Error {}
+
 function normalizeUuid(uuid: string): string {
     return uuid.replace(/-/g, '').toLowerCase().trim();
 }
@@ -252,16 +254,21 @@ async function authMiddleware(
         const token = authHeader.substring(7);
         const payload = jwtService.verify(token);
 
-        // Validate single session
-        if (payload.sessionId) {
-            const isValid = await sessionService.validateSession(payload.professorId, payload.sessionId);
-            if (!isValid) {
-                return reply.code(401).send({
-                    statusCode: 401,
-                    error: 'Unauthorized',
-                    message: 'Sesión invalidada. Se inició sesión en otro dispositivo.',
-                });
-            }
+        if (!payload.professorId || !payload.sessionId) {
+            return reply.code(401).send({
+                statusCode: 401,
+                error: 'Unauthorized',
+                message: 'Token de sesión inválido.',
+            });
+        }
+
+        const isValid = await sessionService.validateSession(payload.professorId, payload.sessionId);
+        if (!isValid) {
+            return reply.code(401).send({
+                statusCode: 401,
+                error: 'Unauthorized',
+                message: 'Sesión invalidada. Se inició sesión en otro dispositivo.',
+            });
         }
 
         (request as AuthenticatedRequest).professorId = payload.professorId;
@@ -285,7 +292,15 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
         '/attendance',
         async (request, reply) => {
             try {
-                const validated = registerAttendanceSchema.parse(request.body);
+                const parsed = registerAttendanceSchema.safeParse(request.body);
+                if (!parsed.success) {
+                    return reply.code(400).send({
+                        statusCode: 400,
+                        error: 'Validation Error',
+                        message: parsed.error.errors.map((issue) => issue.message).join(', '),
+                    });
+                }
+                const validated = parsed.data;
                 const {
                     groupId: requestedGroupId,
                     code,
@@ -312,82 +327,114 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                 const { group, attendanceProfessorId, isSubstitute } = resolvedGroup;
                 const groupId = group.id;
                 const recordDate = new Date(date);
-                const existingRecord = await prisma.attendanceRecord.findUnique({
-                    where: {
-                        date_groupId: {
-                            date: recordDate,
-                            groupId,
-                        },
-                    },
+                const requestedStudentIds = attendances.map((attendance) => attendance.studentId);
+                const uniqueStudentIds = Array.from(new Set(requestedStudentIds));
+                if (uniqueStudentIds.length !== requestedStudentIds.length) {
+                    return reply.code(400).send({
+                        statusCode: 400,
+                        error: 'Bad Request',
+                        message: 'La lista de asistencia contiene alumnos duplicados.',
+                    });
+                }
+
+                const groupStudents = await prisma.student.findMany({
+                    where: { id: { in: uniqueStudentIds }, groupId },
+                    select: { id: true },
                 });
+                if (groupStudents.length !== uniqueStudentIds.length) {
+                    return reply.code(400).send({
+                        statusCode: 400,
+                        error: 'Bad Request',
+                        message: 'Todos los alumnos deben pertenecer al grupo indicado.',
+                    });
+                }
+
+                const professor = !env.PRESENCIA_DEBUG_MODE && !isSubstitute
+                    ? await prisma.professor.findUnique({ where: { id: attendanceProfessorId } })
+                    : null;
+                if (!env.PRESENCIA_DEBUG_MODE && !isSubstitute && !professor) {
+                    return reply.code(404).send({
+                        statusCode: 404,
+                        error: 'Not Found',
+                        message: 'Profesor no encontrado',
+                    });
+                }
+                const decryptedPassword = professor
+                    ? rsaService.decryptPasswordOrPlain(encryptedPassword)
+                    : null;
                 const attendanceServerTimestamp = serverNow();
-                const professorAttendanceTimes = {
-                    ...(professorEntryAt && !existingRecord?.professorEntryAt ? { professorEntryAt: attendanceServerTimestamp } : {}),
-                    ...(professorExitAt && !existingRecord?.professorExitAt ? { professorExitAt: attendanceServerTimestamp } : {}),
-                };
+                const debugMessage = 'DEBUG_BACKEND_ONLY: visible en reportes; no se envio al portal/API REST.';
+                const persisted = await prisma.$transaction(async (transaction) => {
+                    const currentRecord = await transaction.attendanceRecord.findUnique({
+                        where: { date_groupId: { date: recordDate, groupId } },
+                    });
+                    if (currentRecord
+                        && (currentRecord.portalSyncStatus === PortalSyncStatus.PENDING
+                            || currentRecord.portalSyncStatus === PortalSyncStatus.IN_PROGRESS)) {
+                        throw new AttendanceSyncInProgressError();
+                    }
 
-                // Create or update attendance record
-                const attendanceRecord = await prisma.attendanceRecord.upsert({
-                    where: {
-                        date_groupId: {
+                    const professorAttendanceTimes = {
+                        ...(professorEntryAt && !currentRecord?.professorEntryAt ? { professorEntryAt: attendanceServerTimestamp } : {}),
+                        ...(professorExitAt && !currentRecord?.professorExitAt ? { professorExitAt: attendanceServerTimestamp } : {}),
+                    };
+                    const portalSyncStatus = env.PRESENCIA_DEBUG_MODE || isSubstitute
+                        ? PortalSyncStatus.NOT_REQUESTED
+                        : PortalSyncStatus.PENDING;
+                    const attendanceRecord = await transaction.attendanceRecord.upsert({
+                        where: { date_groupId: { date: recordDate, groupId } },
+                        create: {
                             date: recordDate,
                             groupId,
-                        },
-                    },
-                    create: {
-                        date: recordDate,
-                        groupId,
-                        professorId: attendanceProfessorId,
-                        ...professorAttendanceTimes,
-                    },
-                    update: {
-                        professorId: attendanceProfessorId,
-                        ...professorAttendanceTimes,
-                    },
-                });
-
-                // Upsert individual attendances
-                for (const attendance of attendances) {
-                    await prisma.attendance.upsert({
-                        where: {
-                            studentId_attendanceRecordId: {
-                                studentId: attendance.studentId,
-                                attendanceRecordId: attendanceRecord.id,
-                            },
-                        },
-                        create: {
-                            studentId: attendance.studentId,
-                            attendanceRecordId: attendanceRecord.id,
-                            status: attendance.status,
+                            professorId: attendanceProfessorId,
+                            portalSyncStatus,
+                            portalSyncError: env.PRESENCIA_DEBUG_MODE ? debugMessage : null,
+                            ...professorAttendanceTimes,
                         },
                         update: {
-                            status: attendance.status,
+                            professorId: attendanceProfessorId,
+                            portalSyncStatus,
+                            portalSyncError: env.PRESENCIA_DEBUG_MODE ? debugMessage : null,
+                            portalSyncedAt: null,
+                            ...professorAttendanceTimes,
                         },
                     });
-                }
 
-                const refreshedRecord = await prisma.attendanceRecord.findUnique({
-                    where: { id: attendanceRecord.id },
-                });
+                    for (const attendance of attendances) {
+                        await transaction.attendance.upsert({
+                            where: {
+                                studentId_attendanceRecordId: {
+                                    studentId: attendance.studentId,
+                                    attendanceRecordId: attendanceRecord.id,
+                                },
+                            },
+                            create: {
+                                studentId: attendance.studentId,
+                                attendanceRecordId: attendanceRecord.id,
+                                status: attendance.status,
+                            },
+                            update: { status: attendance.status },
+                        });
+                    }
 
-                if (!refreshedRecord) {
-                    return reply.code(500).send({
-                        statusCode: 500,
-                        error: 'Internal Server Error',
-                        message: 'No se pudo leer el registro de asistencia',
-                    });
-                }
+                    const syncJob = professor
+                        ? await transaction.syncJob.create({
+                            data: {
+                                professorId: attendanceProfessorId,
+                                status: SyncStatus.PENDING,
+                                totalGroups: attendances.length,
+                                currentGroup: 0,
+                                currentGroupName: 'Preparando subida de asistencia...',
+                            },
+                        })
+                        : null;
+                    return { attendanceRecord, syncJobId: syncJob?.id };
+                }, { isolationLevel: 'Serializable' });
+
+                const attendanceRecord = persisted.attendanceRecord;
+                const refreshedRecord = attendanceRecord;
 
                 if (env.PRESENCIA_DEBUG_MODE) {
-                    await prisma.attendanceRecord.update({
-                        where: { id: refreshedRecord.id },
-                        data: {
-                            portalSyncStatus: PortalSyncStatus.NOT_REQUESTED,
-                            portalSyncError: 'DEBUG_BACKEND_ONLY: visible en reportes; no se envio al portal/API REST.',
-                            portalSyncedAt: null,
-                        },
-                    });
-
                     request.log.info({
                         professorId: attendanceProfessorId,
                         attendanceRecordId: refreshedRecord.id,
@@ -412,26 +459,7 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                     });
                 }
 
-                // Only block if sync is actively in progress. Completed records can be
-                // re-synced explicitly so the portal matches the latest local data.
-
-                if (refreshedRecord.portalSyncStatus === PortalSyncStatus.IN_PROGRESS) {
-                    return reply.code(409).send({
-                        statusCode: 409,
-                        error: 'Conflict',
-                        message: 'La asistencia ya se esta subiendo al portal',
-                    });
-                }
-
                 if (isSubstitute) {
-                    await prisma.attendanceRecord.update({
-                        where: { id: refreshedRecord.id },
-                        data: {
-                            portalSyncStatus: PortalSyncStatus.NOT_REQUESTED,
-                            portalSyncError: null,
-                        },
-                    });
-
                     return reply.code(201).send({
                         data: {
                             attendanceRecordId: attendanceRecord.id,
@@ -449,44 +477,12 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                     });
                 }
 
-                const professor = await prisma.professor.findUnique({
-                    where: { id: attendanceProfessorId },
-                });
-
-                if (!professor) {
-                    return reply.code(404).send({
-                        statusCode: 404,
-                        error: 'Not Found',
-                        message: 'Profesor no encontrado',
-                    });
-                }
-
-                const decryptedPassword = rsaService.decryptPasswordOrPlain(encryptedPassword);
-
-                const syncJob = await prisma.syncJob.create({
-                    data: {
-                        professorId: attendanceProfessorId,
-                        status: SyncStatus.PENDING,
-                        totalGroups: attendances.length,
-                        currentGroup: 0,
-                        currentGroupName: 'Preparando subida de asistencia...',
-                    },
-                });
-
-                await prisma.attendanceRecord.update({
-                    where: { id: refreshedRecord.id },
-                    data: {
-                        portalSyncStatus: PortalSyncStatus.PENDING,
-                        portalSyncError: null,
-                    },
-                });
-
                 const uploadResult = await uatRestSyncService.uploadAttendance({
                     professorId: attendanceProfessorId,
-                    email: professor.institutionalEmail,
-                    password: decryptedPassword,
+                    email: professor!.institutionalEmail,
+                    password: decryptedPassword!,
                     attendanceRecordId: refreshedRecord.id,
-                    syncJobId: syncJob.id,
+                    syncJobId: persisted.syncJobId!,
                     groupId,
                     date,
                     attendances,
@@ -505,6 +501,13 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                     message: 'Asistencia registrada y subida por backend-apirest',
                 });
             } catch (error) {
+                if (error instanceof AttendanceSyncInProgressError) {
+                    return reply.code(409).send({
+                        statusCode: 409,
+                        error: 'Conflict',
+                        message: 'La asistencia ya se esta subiendo al portal',
+                    });
+                }
                 request.log.error(error);
                 return reply.code(500).send({
                     statusCode: 500,

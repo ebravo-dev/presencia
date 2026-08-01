@@ -13,6 +13,9 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     fastify.post<{ Body: LoginRequest }>(
         '/professors/login',
         {
+            config: {
+                rateLimit: { max: 5, timeWindow: '1 minute' },
+            },
             schema: {
                 body: {
                     type: 'object',

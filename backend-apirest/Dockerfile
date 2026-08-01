@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:20-slim AS deps
+FROM node:24-slim AS deps
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates openssl && rm -rf /var/lib/apt/lists/*
 
@@ -18,7 +18,7 @@ COPY src ./src
 COPY prisma ./prisma
 RUN npm run build
 
-FROM node:20-slim AS production
+FROM node:24-slim AS production
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates openssl && rm -rf /var/lib/apt/lists/*
 

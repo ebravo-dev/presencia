@@ -7,8 +7,13 @@ import 'local_storage_service.dart';
 class StudentAuthResult {
   final String sessionId;
   final String matricula;
+  final String deviceBindingToken;
 
-  const StudentAuthResult({required this.sessionId, required this.matricula});
+  const StudentAuthResult({
+    required this.sessionId,
+    required this.matricula,
+    required this.deviceBindingToken,
+  });
 }
 
 class StudentInfoSyncResult {
@@ -56,14 +61,19 @@ class StudentAuthService {
 
     final sessionId = decoded['sessionId']?.toString() ?? '';
     final matricula = _extractMatricula(decoded);
+    final deviceBindingToken = decoded['deviceBindingToken']?.toString() ?? '';
 
-    if (sessionId.isEmpty || matricula.isEmpty) {
+    if (sessionId.isEmpty || matricula.isEmpty || deviceBindingToken.isEmpty) {
       throw const StudentAuthException(
         'No pudimos preparar tu cuenta. Inténtalo de nuevo.',
       );
     }
 
-    return StudentAuthResult(sessionId: sessionId, matricula: matricula);
+    return StudentAuthResult(
+      sessionId: sessionId,
+      matricula: matricula,
+      deviceBindingToken: deviceBindingToken,
+    );
   }
 
   Future<StudentInfoSyncResult> syncAcademicInfo(
