@@ -1,0 +1,225 @@
+name: presencia
+
+x-attendance-environment: &attendance-environment
+  NODE_ENV: production
+  PORT: 3000
+  DATABASE_URL: ${ATTENDANCE_DATABASE_URL:?ATTENDANCE_DATABASE_URL is required}
+  REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+  JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+  JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+  SUPER_USER_PASSWORD: ${SUPER_USER_PASSWORD:?SUPER_USER_PASSWORD is required}
+  RSA_PRIVATE_KEY: ${RSA_PRIVATE_KEY:?RSA_PRIVATE_KEY is required}
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
+  UAT_PORTAL_URL: ${UAT_PORTAL_URL:-https://administracionescolar.uat.edu.mx}
+  UAT_ID_CICLO_ESCOLAR: ${UAT_ID_CICLO_ESCOLAR:-150}
+  UAT_ID_DES: ${UAT_ID_DES:-12}
+  BACKEND_API_REST_URL: http://uat-integration:3100
+  INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
+
+x-uat-environment: &uat-environment
+  NODE_ENV: production
+  HOST: 0.0.0.0
+  PORT: 3100
+  DATABASE_URL: ${UAT_DATABASE_URL:?UAT_DATABASE_URL is required}
+  REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+  RABBITMQ_URL: ${RABBITMQ_URL:?RABBITMQ_URL is required}
+  UAT_BASE_URL: ${UAT_BASE_URL:-https://administracionescolar.uat.edu.mx}
+  UAT_ALUMNOS_BASE_URL: ${UAT_ALUMNOS_BASE_URL:-https://alumnossur.uat.edu.mx}
+  UAT_HTTP_TIMEOUT_MS: ${UAT_HTTP_TIMEOUT_MS:-30000}
+  UAT_SESSION_TTL_MINUTES: ${UAT_SESSION_TTL_MINUTES:-45}
+  UAT_ID_CICLO_ESCOLAR: ${UAT_ID_CICLO_ESCOLAR:-150}
+  COORDINATION_JWT_SECRET: ${COORDINATION_JWT_SECRET:?COORDINATION_JWT_SECRET is required}
+  INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
+  COORDINATION_WEB_ORIGIN: ${COORDINATION_WEB_ORIGIN:?COORDINATION_WEB_ORIGIN is required}
+  COORDINATION_COOKIE_SECURE: "true"
+  ATTENDANCE_BACKEND_URL: http://attendance-backend:3000
+  ATTENDANCE_BACKEND_SERVICE_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
+  ATTENDANCE_JOB_ENCRYPTION_SECRET: ${ATTENDANCE_JOB_ENCRYPTION_SECRET:?ATTENDANCE_JOB_ENCRYPTION_SECRET is required}
+  UAT_SESSION_ENCRYPTION_SECRET: ${UAT_SESSION_ENCRYPTION_SECRET:?UAT_SESSION_ENCRYPTION_SECRET is required}
+  COORDINATOR_EMAIL: ${COORDINATOR_EMAIL:-}
+  COORDINATOR_NAME: ${COORDINATOR_NAME:-Coordinacion Academica}
+  COORDINATOR_PASSWORD: ${COORDINATOR_PASSWORD:-}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: presencia_admin
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}
+      ATTENDANCE_DB_NAME: ${ATTENDANCE_DB_NAME:-presencia_attendance}
+      ATTENDANCE_DB_USER: ${ATTENDANCE_DB_USER:-presencia_attendance}
+      ATTENDANCE_DB_PASSWORD: ${ATTENDANCE_DB_PASSWORD:?ATTENDANCE_DB_PASSWORD is required}
+      UAT_DB_NAME: ${UAT_DB_NAME:-presencia_uat}
+      UAT_DB_USER: ${UAT_DB_USER:-presencia_uat}
+      UAT_DB_PASSWORD: ${UAT_DB_PASSWORD:?UAT_DB_PASSWORD is required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U presencia_admin -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [private]
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a '$${REDIS_PASSWORD}' ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    networks: [private]
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    networks: [private]
+
+  attendance-migrate:
+    image: presencia-attendance:${IMAGE_TAG:-latest}
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    restart: "no"
+    command: ["./node_modules/.bin/prisma", "migrate", "deploy"]
+    environment: *attendance-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [private]
+
+  attendance-backend:
+    image: presencia-attendance:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: ["node", "dist/app.js"]
+    environment: *attendance-environment
+    depends_on:
+      attendance-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    expose: ["3000"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks: [private]
+
+  uat-migrate:
+    image: presencia-uat-integration:${IMAGE_TAG:-latest}
+    build:
+      context: ../../backend-apirest
+      dockerfile: Dockerfile
+    restart: "no"
+    command: ["npm", "run", "prisma:deploy"]
+    environment: *uat-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [private]
+
+  uat-provision:
+    image: presencia-uat-integration:${IMAGE_TAG:-latest}
+    restart: "no"
+    command: ["node", "dist/scripts/create-coordinator.js", "--if-configured"]
+    environment: *uat-environment
+    depends_on:
+      uat-migrate:
+        condition: service_completed_successfully
+    networks: [private]
+
+  uat-integration:
+    image: presencia-uat-integration:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: ["node", "dist/app.js"]
+    environment: *uat-environment
+    depends_on:
+      uat-provision:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      attendance-backend:
+        condition: service_healthy
+    expose: ["3100"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3100/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks: [private]
+
+  api-gateway:
+    image: presencia-api-gateway:${IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: services/api-gateway/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8080
+      LEGACY_BACKEND_URL: http://attendance-backend:3000
+      UAT_INTEGRATION_URL: http://uat-integration:3100
+      REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+      CORS_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
+      METRICS_TOKEN: ${METRICS_TOKEN:?METRICS_TOKEN is required}
+    depends_on:
+      attendance-backend:
+        condition: service_healthy
+      uat-integration:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose: ["8080"]
+    networks: [private, dokploy-network]
+
+  frontend-coord:
+    image: presencia-frontend-coord:${IMAGE_TAG:-latest}
+    build:
+      context: ../../frontend-coord
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      API_GATEWAY_UPSTREAM: api-gateway:8080
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    expose: ["8080"]
+    networks: [private, dokploy-network]
+
+volumes:
+  postgres-data:
+  redis-data:
+  rabbitmq-data:
+
+networks:
+  private:
+    internal: true
+  dokploy-network:
+    external: true
+    name: ${DOKPLOY_NETWORK_NAME:-dokploy-network}

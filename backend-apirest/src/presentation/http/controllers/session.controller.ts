@@ -25,7 +25,7 @@ export class SessionController {
         return reply.code(201).send(response);
       }
 
-      this.eventBus.publish(
+      await this.eventBus.publish(
         createTeacherAuthenticatedEvent({
           sessionId: session.id,
           username: credentials.username,

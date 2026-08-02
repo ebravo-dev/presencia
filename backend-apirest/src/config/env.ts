@@ -8,6 +8,7 @@ const DEVELOPMENT_SECRETS = new Set([
   'development-coordination-jwt-secret-change-me',
   'development-internal-service-token-change-me',
   'development-attendance-job-secret-change-me',
+  'development-uat-session-secret-change-me',
 ]);
 
 export const envSchema = z.object({
@@ -43,6 +44,9 @@ export const envSchema = z.object({
     z.boolean().default(false),
   ),
   UAT_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(45),
+  REDIS_URL: z.string().url().default('redis://localhost:6379/0'),
+  RABBITMQ_URL: z.string().url().default('amqp://guest:guest@localhost:5672'),
+  DOMAIN_EVENT_POLL_INTERVAL_MS: z.coerce.number().int().positive().max(60_000).default(1_000),
   DATABASE_URL: z
     .string()
     .min(1)
@@ -57,6 +61,7 @@ export const envSchema = z.object({
   ATTENDANCE_BACKEND_URL: z.string().url().default('http://localhost:3000'),
   ATTENDANCE_BACKEND_SERVICE_TOKEN: z.string().min(32).default('development-internal-service-token-change-me'),
   ATTENDANCE_JOB_ENCRYPTION_SECRET: z.string().min(32).default('development-attendance-job-secret-change-me'),
+  UAT_SESSION_ENCRYPTION_SECRET: z.string().min(32).default('development-uat-session-secret-change-me'),
   COORDINATION_WEB_DIST: z.string().optional(),
 }).superRefine((value, ctx) => {
   if (value.NODE_ENV !== 'production') return;
@@ -66,6 +71,7 @@ export const envSchema = z.object({
     'INTERNAL_API_TOKEN',
     'ATTENDANCE_BACKEND_SERVICE_TOKEN',
     'ATTENDANCE_JOB_ENCRYPTION_SECRET',
+    'UAT_SESSION_ENCRYPTION_SECRET',
   ] as const;
 
   for (const field of secretFields) {
@@ -78,10 +84,14 @@ export const envSchema = z.object({
     }
   }
 
-  const identitySecrets = [value.COORDINATION_JWT_SECRET, value.ATTENDANCE_JOB_ENCRYPTION_SECRET];
+  const identitySecrets = [
+    value.COORDINATION_JWT_SECRET,
+    value.ATTENDANCE_JOB_ENCRYPTION_SECRET,
+    value.UAT_SESSION_ENCRYPTION_SECRET,
+  ];
   const serviceSecrets = [value.INTERNAL_API_TOKEN, value.ATTENDANCE_BACKEND_SERVICE_TOKEN];
   if (identitySecrets.some((secret) => serviceSecrets.includes(secret))
-    || value.COORDINATION_JWT_SECRET === value.ATTENDANCE_JOB_ENCRYPTION_SECRET) {
+    || new Set(identitySecrets).size !== identitySecrets.length) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['COORDINATION_JWT_SECRET'],
@@ -102,6 +112,15 @@ export const envSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['COORDINATION_COOKIE_SECURE'],
       message: 'Secure cookies cannot be disabled in production',
+    });
+  }
+
+  const rabbitmq = new URL(value.RABBITMQ_URL);
+  if (rabbitmq.username === 'guest' || rabbitmq.password === 'guest') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['RABBITMQ_URL'],
+      message: 'RabbitMQ guest credentials cannot be used in production',
     });
   }
 });

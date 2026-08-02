@@ -7,6 +7,7 @@ import fastifyStatic from '@fastify/static';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { Redis } from 'ioredis';
 import { SyncTeacherDataListener } from './application/listeners/sync-teacher-data.listener.js';
 import { CoordinationService } from './application/services/coordination.service.js';
 import { CoordinatorAccountService } from './application/services/coordinator-account.service.js';
@@ -23,8 +24,10 @@ import { ApiError } from './errors/api-error.js';
 import { UatClientFactory } from './infrastructure/http/client/uat-client.factory.js';
 import { UatStudentClientFactory } from './infrastructure/http/client/uat-student-client.factory.js';
 import { AttendanceBackendClient } from './infrastructure/http/client/attendance-backend.client.js';
-import { InMemoryDomainEventBus } from './infrastructure/events/in-memory-domain-event-bus.js';
-import { MemoryUatSessionStore } from './infrastructure/persistence/memory-session.store.js';
+import { DurableDomainEventBus } from './infrastructure/events/durable-domain-event-bus.js';
+import { RedisKeyValueStore } from './infrastructure/persistence/redis-key-value.store.js';
+import { RedisUatSessionStore } from './infrastructure/persistence/redis-session.store.js';
+import { StudentSessionCodec, TeacherSessionCodec } from './infrastructure/persistence/session-codec.js';
 import { prisma } from './infrastructure/persistence/prisma/prisma.client.js';
 import { PrismaCoordinationRepository } from './infrastructure/persistence/prisma/prisma-coordination.repository.js';
 import { PrismaGroupAssignmentRepository } from './infrastructure/persistence/prisma/prisma-group-assignment.repository.js';
@@ -69,12 +72,29 @@ export async function buildApp() {
     },
   });
 
-  const sessionRepository = new MemoryUatSessionStore();
-  const studentSessionRepository = new MemoryUatSessionStore<StoredUatStudentSession>();
   const clientFactory = new UatClientFactory();
   const studentClientFactory = new UatStudentClientFactory();
   const credentialCipher = new CredentialCipher(
     env.ATTENDANCE_JOB_ENCRYPTION_SECRET,
+  );
+  const sessionCipher = new CredentialCipher(env.UAT_SESSION_ENCRYPTION_SECRET);
+  const redis = new Redis(env.REDIS_URL, {
+    lazyConnect: true,
+    maxRetriesPerRequest: 2,
+    enableReadyCheck: true,
+  });
+  await redis.connect();
+  const sessionKeyValueStore = new RedisKeyValueStore(redis);
+  const sessionTtlMs = env.UAT_SESSION_TTL_MINUTES * 60 * 1000;
+  const sessionRepository = new RedisUatSessionStore(
+    sessionKeyValueStore,
+    new TeacherSessionCodec(clientFactory, sessionCipher),
+    { prefix: 'presencia:uat:teacher-session', ttlMs: sessionTtlMs },
+  );
+  const studentSessionRepository = new RedisUatSessionStore<StoredUatStudentSession>(
+    sessionKeyValueStore,
+    new StudentSessionCodec(studentClientFactory, sessionCipher),
+    { prefix: 'presencia:uat:student-session', ttlMs: sessionTtlMs },
   );
   const uatService = new UatService(sessionRepository, clientFactory, credentialCipher);
   const attendanceBackendClient = new AttendanceBackendClient(
@@ -101,7 +121,14 @@ export async function buildApp() {
   const groupAssignmentRepository = new PrismaGroupAssignmentRepository(prisma);
   const sharedClassRepository = new PrismaSharedClassAssignmentRepository(prisma);
   const sharedClassService = new SharedClassService(sharedClassRepository, teacherRepository, groupAssignmentRepository);
-  const eventBus = new InMemoryDomainEventBus(fastify.log);
+  const eventBus = new DurableDomainEventBus(
+    prisma,
+    {
+      rabbitmqUrl: env.RABBITMQ_URL,
+      pollIntervalMs: env.DOMAIN_EVENT_POLL_INTERVAL_MS,
+    },
+    fastify.log,
+  );
   const harvestTeacherData = new HarvestTeacherDataUseCase(
     uatService,
     teacherRepository,
@@ -116,6 +143,7 @@ export async function buildApp() {
     fastify.log,
   );
   const unsubscribeSync = new SyncTeacherDataListener(eventBus, harvestTeacherData, fastify.log).register();
+  await eventBus.start();
   const coordinationService = new CoordinationService(
     teacherRepository,
     subjectRepository,
@@ -132,8 +160,10 @@ export async function buildApp() {
 
   fastify.addHook('onClose', async () => {
     unsubscribeSync();
+    await eventBus.stop();
     await attendanceUploadWorker.stop();
     await prisma.$disconnect();
+    await redis.quit();
   });
 
   await fastify.register(cors, {
@@ -174,6 +204,32 @@ export async function buildApp() {
     timestamp: new Date().toISOString(),
     timezone: SERVER_TIME_ZONE,
   }));
+
+  fastify.get('/health/live', async () => ({
+    status: 'ok',
+    service: 'backend-apirest',
+    timestamp: new Date().toISOString(),
+  }));
+
+  fastify.get('/health/ready', async (_request, reply) => {
+    const [database, redisStatus] = await Promise.all([
+      prisma.$queryRaw`SELECT 1`.then(() => ({ ok: true })).catch((error: unknown) => ({
+        ok: false,
+        error: error instanceof Error ? error.message : 'Unknown PostgreSQL error',
+      })),
+      redis.ping().then((result) => ({ ok: result === 'PONG' })).catch((error: unknown) => ({
+        ok: false,
+        error: error instanceof Error ? error.message : 'Unknown Redis error',
+      })),
+    ]);
+    const rabbitmq = { ok: eventBus.isReady() };
+    const ready = database.ok && redisStatus.ok && rabbitmq.ok;
+    return reply.code(ready ? 200 : 503).send({
+      status: ready ? 'ok' : 'degraded',
+      service: 'backend-apirest',
+      dependencies: { database, redis: redisStatus, rabbitmq },
+    });
+  });
 
   fastify.get('/time', async () => {
     const now = new Date();

@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:24.7-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -6,8 +6,7 @@ COPY . .
 RUN npm run build
 
 FROM nginx:1.27-alpine AS production
-ENV BACKEND_API_UPSTREAM=backend-apirest:3100
-ENV ATTENDANCE_BACKEND_UPSTREAM=backend:3000
+ENV API_GATEWAY_UPSTREAM=api-gateway:8080
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=builder /app/dist /usr/share/nginx/html/coordinacion
 EXPOSE 8080

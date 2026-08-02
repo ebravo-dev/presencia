@@ -238,6 +238,10 @@ export class UatPortalClient implements UatPortalClientPort {
     };
   }
 
+  exportSessionState(): unknown {
+    return this.jar.serializeSync();
+  }
+
   private normalizeProfesorGrupo(grupo: UatProfesorGrupoItem): UatProfesorGrupoItem {
     const idGrupo = this.readNumber(grupo, ['Id_Grupo', 'id_grupo', 'idGrupo']);
     const materia = this.readString(grupo, ['Txt_Materia', 'txt_materia', 'Materia']);

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-export const TEACHER_AUTHENTICATED_EVENT = 'teacher.authenticated' as const;
+export const TEACHER_AUTHENTICATED_EVENT = 'teacher.authenticated.v1' as const;
 
 export interface AuthenticatedTeacherIdentity {
   externalId: string;

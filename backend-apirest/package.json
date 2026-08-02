@@ -18,7 +18,7 @@
     "coordinator:create:production": "node dist/scripts/create-coordinator.js",
     "seed:shared-class": "node dist/scripts/seed-shared-class.js",
     "seed:shared-class:dev": "tsx prisma/seed.ts",
-    "test": "vitest run",
+    "test": "NODE_ENV=test vitest run",
     "fetch:horarios": "tsx src/scripts/fetch-horarios.ts"
   },
   "dependencies": {
@@ -28,11 +28,13 @@
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/static": "^10.1.2",
     "@prisma/client": "^6.19.0",
+    "amqplib": "^2.0.1",
     "argon2": "^0.44.0",
     "axios": "^1.7.9",
     "axios-cookiejar-support": "^5.0.5",
     "dotenv": "^16.4.7",
     "fastify": "^5.11.0",
+    "ioredis": "^5.7.0",
     "jsonwebtoken": "^9.0.3",
     "prisma": "^6.19.0",
     "tough-cookie": "^4.1.4",

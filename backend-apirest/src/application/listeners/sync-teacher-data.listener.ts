@@ -33,6 +33,7 @@ export class SyncTeacherDataListener {
           { err: error, eventId: event.eventId, sessionId: event.sessionId, durationMs: Date.now() - startedAt },
           'Fallo la cosecha local; la sesion UAT permanece activa.',
         );
+        throw error;
       }
     });
   }

@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 
-/** Encrypts short-lived UAT credentials before they enter the durable queue. */
+/** Encrypts sensitive short-lived UAT payloads before external persistence. */
 export class CredentialCipher {
   private readonly key: Buffer;
 

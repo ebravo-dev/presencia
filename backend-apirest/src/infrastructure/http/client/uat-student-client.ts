@@ -162,6 +162,10 @@ export class UatStudentPortalClient implements UatStudentPortalClientPort {
     };
   }
 
+  exportSessionState(): unknown {
+    return this.jar.serializeSync();
+  }
+
   private async getJsonList<TItem extends JsonRecord>(
     path: string,
     context: string,

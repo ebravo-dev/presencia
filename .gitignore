@@ -33,3 +33,7 @@ frontend-coord/frontend-coord-dist.zip
 backend-apirest-dokploy.zip
 frontend-coord-dist.zip
 backend-dokploy.zip
+
+# Generated TypeScript workspace artifacts
+packages/*/dist/
+services/*/dist/

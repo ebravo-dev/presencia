@@ -12,8 +12,8 @@ export class InMemoryDomainEventBus implements IDomainEventBus {
 
   constructor(private readonly logger: EventBusLogger) {}
 
-  publish<TName extends keyof DomainEventMap>(event: DomainEventMap[TName]): void {
-    if (event.eventName === 'teacher.authenticated') {
+  async publish<TName extends keyof DomainEventMap>(event: DomainEventMap[TName]): Promise<void> {
+    if (event.eventName === 'teacher.authenticated.v1') {
       this.prunePublishedSessions();
       if (this.publishedSessionIds.has(event.sessionId)) return;
       this.publishedSessionIds.set(event.sessionId, Date.now());

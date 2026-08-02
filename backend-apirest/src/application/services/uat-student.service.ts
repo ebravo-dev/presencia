@@ -101,38 +101,55 @@ export class UatStudentService {
   }
 
   async getCareersBySession(sessionId: string): Promise<UatDataResponse<UatStudentCareerItem>> {
-    const session = await this.getSessionOrThrow(sessionId);
-    const careers = await session.client.getCareers();
-    session.careers = careers;
-    return this.toUatDataResponse('CarrerasAlumno', {}, careers);
+    return this.withSession(sessionId, async (session) => {
+      const careers = await session.client.getCareers();
+      session.careers = careers;
+      return this.toUatDataResponse('CarrerasAlumno', {}, careers);
+    });
   }
 
   async selectCareerBySession(
     sessionId: string,
     idPlanEstudio: number,
   ): Promise<UatObjectResponse<UatStudentCareerSelection>> {
-    const session = await this.getSessionOrThrow(sessionId);
-    const selected = await session.client.selectCareer(idPlanEstudio);
-    session.selectedCareer = selected;
-    return this.toUatObjectResponse('SeleccionarCarreraAlumno', { Id_Plan_Estudio: idPlanEstudio }, selected);
+    return this.withSession(sessionId, async (session) => {
+      const selected = await session.client.selectCareer(idPlanEstudio);
+      session.selectedCareer = selected;
+      return this.toUatObjectResponse('SeleccionarCarreraAlumno', { Id_Plan_Estudio: idPlanEstudio }, selected);
+    });
   }
 
   async getScheduleBySession(sessionId: string): Promise<UatDataResponse<UatStudentScheduleItem>> {
-    const session = await this.getSessionOrThrow(sessionId);
-    const schedule = await session.client.getSchedule();
-    return this.toUatDataResponse('SpuSelHorarioFichaAlumno', {}, schedule);
+    return this.withSession(sessionId, async (session) => {
+      const schedule = await session.client.getSchedule();
+      return this.toUatDataResponse('SpuSelHorarioFichaAlumno', {}, schedule);
+    });
   }
 
   async getPartialGradesBySession(sessionId: string): Promise<UatDataResponse<UatStudentPartialGradeItem>> {
-    const session = await this.getSessionOrThrow(sessionId);
-    const grades = await session.client.getPartialGrades();
-    return this.toUatDataResponse('SPUSELCalificacionesParciales', {}, grades);
+    return this.withSession(sessionId, async (session) => {
+      const grades = await session.client.getPartialGrades();
+      return this.toUatDataResponse('SPUSELCalificacionesParciales', {}, grades);
+    });
   }
 
   async getFinalGradesBySession(sessionId: string): Promise<UatDataResponse<UatStudentFinalGradeItem>> {
+    return this.withSession(sessionId, async (session) => {
+      const grades = await session.client.getFinalGrades();
+      return this.toUatDataResponse('ConsultaEvaluaciones', {}, grades);
+    });
+  }
+
+  private async withSession<TResult>(
+    sessionId: string,
+    action: (session: StoredUatStudentSession) => Promise<TResult>,
+  ): Promise<TResult> {
     const session = await this.getSessionOrThrow(sessionId);
-    const grades = await session.client.getFinalGrades();
-    return this.toUatDataResponse('ConsultaEvaluaciones', {}, grades);
+    try {
+      return await action(session);
+    } finally {
+      await this.sessionRepository.create(session.id, session);
+    }
   }
 
   private toSafeLogin(login: StoredUatStudentSession['login']): UatSafeLogin {

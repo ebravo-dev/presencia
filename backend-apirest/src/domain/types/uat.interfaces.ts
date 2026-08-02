@@ -282,6 +282,7 @@ export interface UatPortalClientPort {
   getAsistenciaGrupo(params: UatAsistenciaGrupoParams): Promise<UatAsistenciaGrupoResponse>;
   guardaAsistencias(payload: UatGuardaAsistenciasPayload): Promise<UatGuardaAsistenciasResponse>;
   getCookieDiagnostics(): UatCookieDiagnostics;
+  exportSessionState?(): unknown;
 }
 
 export interface UatStudentPortalClientPort {
@@ -292,6 +293,7 @@ export interface UatStudentPortalClientPort {
   getPartialGrades(): Promise<UatStudentPartialGradeItem[]>;
   getFinalGrades(): Promise<UatStudentFinalGradeItem[]>;
   getCookieDiagnostics(): UatCookieDiagnostics;
+  exportSessionState?(): unknown;
 }
 
 export interface StoredUatSessionBase {

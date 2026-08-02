@@ -29,90 +29,16 @@ server {
     try_files $uri =404;
   }
 
-  location /api/superUsuario/ {
-    proxy_pass http://${ATTENDANCE_BACKEND_UPSTREAM};
+  # El navegador sólo conoce al API Gateway. La selección del microservicio
+  # propietario ocurre dentro de la red privada.
+  location ~ ^/(api|attendance|auth|professors|groups)(/|$) {
+    proxy_pass http://${API_GATEWAY_UPSTREAM};
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_connect_timeout 10s;
-    proxy_read_timeout 60s;
-  }
-
-  location ^~ /api/student-device-bindings {
-    proxy_pass http://${ATTENDANCE_BACKEND_UPSTREAM};
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_connect_timeout 10s;
-    proxy_read_timeout 60s;
-  }
-
-  location ^~ /api/beacons {
-    proxy_pass http://${ATTENDANCE_BACKEND_UPSTREAM};
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_connect_timeout 10s;
-    proxy_read_timeout 60s;
-  }
-
-  location ^~ /api/dashboard/ {
-    proxy_pass http://${ATTENDANCE_BACKEND_UPSTREAM};
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_connect_timeout 10s;
-    proxy_read_timeout 60s;
-  }
-
-  location ^~ /attendance/ {
-    proxy_pass http://${ATTENDANCE_BACKEND_UPSTREAM};
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_connect_timeout 10s;
-    proxy_read_timeout 60s;
-  }
-
-  location ^~ /auth/ {
-    proxy_pass http://${ATTENDANCE_BACKEND_UPSTREAM};
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_connect_timeout 10s;
-    proxy_read_timeout 60s;
-  }
-
-  location ^~ /professors/ {
-    proxy_pass http://${ATTENDANCE_BACKEND_UPSTREAM};
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_connect_timeout 10s;
-    proxy_read_timeout 60s;
-  }
-
-  location /api/ {
-    proxy_pass http://${BACKEND_API_UPSTREAM};
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Correlation-Id $request_id;
     proxy_connect_timeout 10s;
     proxy_read_timeout 60s;
   }

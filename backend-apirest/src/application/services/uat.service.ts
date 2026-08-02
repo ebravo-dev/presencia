@@ -94,34 +94,34 @@ export class UatService {
     sessionId: string,
     params: UatProfesorConsultaParams,
   ): Promise<UatDataResponse<UatHorarioItem>> {
-    const session = await this.getSessionOrThrow(sessionId);
-    const horarios = await session.client.getHorarios(params);
-
-    return this.toUatDataResponse('BuscaHorarios', params, horarios);
+    return this.withSession(sessionId, async (session) => {
+      const horarios = await session.client.getHorarios(params);
+      return this.toUatDataResponse('BuscaHorarios', params, horarios);
+    });
   }
 
   async getExamenesPorSesion(
     sessionId: string,
     params: UatProfesorConsultaParams,
   ): Promise<UatDataResponse<UatExamenItem>> {
-    const session = await this.getSessionOrThrow(sessionId);
-    const examenes = await session.client.getExamenes(params);
-
-    return this.toUatDataResponse('BuscaExamenes', params, examenes);
+    return this.withSession(sessionId, async (session) => {
+      const examenes = await session.client.getExamenes(params);
+      return this.toUatDataResponse('BuscaExamenes', params, examenes);
+    });
   }
 
   async getNivelesEducativosPorSesion(sessionId: string): Promise<UatDataResponse<UatNivelEducativoItem>> {
-    const session = await this.getSessionOrThrow(sessionId);
-    const niveles = await session.client.getNivelesEducativos();
-
-    return this.toUatDataResponse('BuscarNivelEducativo', {}, niveles);
+    return this.withSession(sessionId, async (session) => {
+      const niveles = await session.client.getNivelesEducativos();
+      return this.toUatDataResponse('BuscarNivelEducativo', {}, niveles);
+    });
   }
 
   async getCampusPorSesion(sessionId: string, idNivelEducativo: number): Promise<UatDataResponse<UatCampusItem>> {
-    const session = await this.getSessionOrThrow(sessionId);
-    const campus = await session.client.getCampus(idNivelEducativo);
-
-    return this.toUatDataResponse('BuscarCampus', { id_nivel_educativo: idNivelEducativo }, campus);
+    return this.withSession(sessionId, async (session) => {
+      const campus = await session.client.getCampus(idNivelEducativo);
+      return this.toUatDataResponse('BuscarCampus', { id_nivel_educativo: idNivelEducativo }, campus);
+    });
   }
 
   async getDesPorSesion(
@@ -129,47 +129,47 @@ export class UatService {
     idNivelEducativo: number,
     idCu: number,
   ): Promise<UatDataResponse<UatDesItem>> {
-    const session = await this.getSessionOrThrow(sessionId);
-    const des = await session.client.getDes(idNivelEducativo, idCu);
-
-    return this.toUatDataResponse('BuscarDES', { id_nivel_educativo: idNivelEducativo, id_cu: idCu }, des);
+    return this.withSession(sessionId, async (session) => {
+      const des = await session.client.getDes(idNivelEducativo, idCu);
+      return this.toUatDataResponse('BuscarDES', { id_nivel_educativo: idNivelEducativo, id_cu: idCu }, des);
+    });
   }
 
   async getCiclosEscolaresPorSesion(sessionId: string): Promise<UatDataResponse<UatCicloEscolarItem>> {
-    const session = await this.getSessionOrThrow(sessionId);
-    const ciclos = await session.client.getCiclosEscolares();
-
-    return this.toUatDataResponse('BuscarCicloEscolar', {}, ciclos);
+    return this.withSession(sessionId, async (session) => {
+      const ciclos = await session.client.getCiclosEscolares();
+      return this.toUatDataResponse('BuscarCicloEscolar', {}, ciclos);
+    });
   }
 
   async getGruposProfesorPorSesion(
     sessionId: string,
     params: UatProfesorGruposParams,
   ): Promise<UatDataResponse<UatProfesorGrupoItem>> {
-    const session = await this.getSessionOrThrow(sessionId);
-    const grupos = await session.client.getGruposProfesor(params);
-
-    return this.toUatDataResponse('BuscaGruposProfesor', params, grupos);
+    return this.withSession(sessionId, async (session) => {
+      const grupos = await session.client.getGruposProfesor(params);
+      return this.toUatDataResponse('BuscaGruposProfesor', params, grupos);
+    });
   }
 
   async getSemanasGrupoPorSesion(
     sessionId: string,
     params: UatSemanasGrupoParams,
   ): Promise<UatDataResponse<UatSemanaItem>> {
-    const session = await this.getSessionOrThrow(sessionId);
-    const semanas = await session.client.getSemanasGrupo(params);
-
-    return this.toUatDataResponse('BuscaSemanas', params, semanas);
+    return this.withSession(sessionId, async (session) => {
+      const semanas = await session.client.getSemanasGrupo(params);
+      return this.toUatDataResponse('BuscaSemanas', params, semanas);
+    });
   }
 
   async getAsistenciaGrupoPorSesion(
     sessionId: string,
     params: UatAsistenciaGrupoParams,
   ): Promise<UatObjectResponse<UatAsistenciaGrupoResponse>> {
-    const session = await this.getSessionOrThrow(sessionId);
-    const asistencia = await session.client.getAsistenciaGrupo(params);
-
-    return this.toUatObjectResponse('BuscaAsistenciaGrupo', params, asistencia);
+    return this.withSession(sessionId, async (session) => {
+      const asistencia = await session.client.getAsistenciaGrupo(params);
+      return this.toUatObjectResponse('BuscaAsistenciaGrupo', params, asistencia);
+    });
   }
 
   async registrarAsistencias(
@@ -178,13 +178,25 @@ export class UatService {
     fechaInicio: string,
     asistencias: UatAsistenciaAlumnoInput[],
   ): Promise<UatGuardaAsistenciasResponse> {
-    const session = await this.getSessionOrThrow(sessionId);
-
-    return session.client.guardaAsistencias({
+    return this.withSession(sessionId, (session) => session.client.guardaAsistencias({
       Id_Grupo: idGrupo,
       Fec_Ini: fechaInicio,
       Asistencia: JSON.stringify(asistencias),
-    });
+    }));
+  }
+
+  private async withSession<TResult>(
+    sessionId: string,
+    action: (session: StoredUatSession) => Promise<TResult>,
+  ): Promise<TResult> {
+    const session = await this.getSessionOrThrow(sessionId);
+    try {
+      return await action(session);
+    } finally {
+      // UAT may rotate ASP.NET cookies on any request. Persist the updated jar
+      // so a subsequent request can be served by another replica.
+      await this.sessionRepository.create(session.id, session);
+    }
   }
 
   async getStatelessSnapshot(
