@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Coordination } from '../../domain/entities/coordination.js';
 import type { Group, WeeklySchedule } from '../../domain/entities/group.js';
 import type { Subject } from '../../domain/entities/subject.js';
@@ -9,6 +10,11 @@ import type { ITeacherRepository } from '../../domain/repositories/teacher.repos
 import type { JsonRecord, UatCicloEscolarItem, UatDesItem, UatNivelEducativoItem } from '../../domain/types/uat.interfaces.js';
 import type { UatService } from '../services/uat.service.js';
 import { MappedTeacherGroup, UatTeacherDataMapper } from '../mappers/uat-teacher-data.mapper.js';
+import type {
+  AcademicSnapshotPublisher,
+  AcademicSnapshotStudent,
+  ProfessorAcademicSnapshotInput,
+} from '../ports/academic-snapshot.publisher.js';
 
 export interface HarvestTeacherDataResult {
   teacherExternalId: string;
@@ -57,6 +63,7 @@ export class HarvestTeacherDataUseCase {
     private readonly options: HarvestTeacherDataOptions = {},
     private readonly mapper = new UatTeacherDataMapper(),
     private readonly logger?: HarvestLogger,
+    private readonly academicSnapshotPublisher?: AcademicSnapshotPublisher,
   ) {}
 
   async execute(event: TeacherAuthenticatedEvent): Promise<HarvestTeacherDataResult> {
@@ -103,6 +110,11 @@ export class HarvestTeacherDataUseCase {
     const desItems = await this.discoverCoordinations(event.sessionId);
     let groupCount = 0;
     const harvestedGroups: MappedTeacherGroup[] = [];
+    const academicGroups: Array<{
+      mapped: MappedTeacherGroup;
+      rosterAuthoritative: boolean;
+      students: AcademicSnapshotStudent[];
+    }> = [];
 
     this.logDebug({
       teacherExternalId: event.teacher.externalId,
@@ -168,8 +180,23 @@ export class HarvestTeacherDataUseCase {
           await this.subjectRepository.upsert(mapped.subject);
           await this.groupAssignmentRepository.upsert(mapped.group);
           harvestedGroups.push(mapped);
+          if (this.academicSnapshotPublisher) {
+            const roster = await this.loadGroupRoster(event.sessionId, mapped.group.externalGroupId);
+            academicGroups.push({ mapped, ...roster });
+          }
           groupCount += 1;
         }
+      }
+    }
+
+    if (this.academicSnapshotPublisher) {
+      for (const cycle of cycles) {
+        const cycleExternalId = String(cycle.Id_Ciclo_Escolar);
+        const cycleName = cycle.Ciclo ?? cycle.Txt_Ciclo_Escolar ?? cycle.Txt_Nombre_Corto ?? cycleExternalId;
+        const groups = academicGroups.filter(({ mapped }) => mapped.group.schoolCycleExternalId === cycleExternalId);
+        await this.academicSnapshotPublisher.publishProfessorSnapshot(
+          toAcademicSnapshot(event, cycleExternalId, cycleName, groups),
+        );
       }
     }
 
@@ -187,6 +214,64 @@ export class HarvestTeacherDataUseCase {
       debugSyntheticGroupCount: debugSeed.groupCount,
       skipped: false,
     };
+  }
+
+  private async loadGroupRoster(
+    sessionId: string,
+    externalGroupId: string,
+  ): Promise<{ rosterAuthoritative: boolean; students: AcademicSnapshotStudent[] }> {
+    const groupId = Number(externalGroupId);
+    if (!Number.isSafeInteger(groupId) || groupId <= 0) {
+      this.logger?.warn({ externalGroupId }, 'No se consulto el roster: Id_Grupo UAT invalido.');
+      return { rosterAuthoritative: false, students: [] };
+    }
+
+    try {
+      const weeks = (await this.uatService.getSemanasGrupoPorSesion(sessionId, { Id_Grupo: groupId })).data;
+      const week = weeks.find((item) => {
+        const start = readString(item, ['Fec_Ini', 'fec_ini']);
+        const end = readString(item, ['Fec_Fin', 'fec_fin']);
+        return Boolean(start && end);
+      });
+      const start = week ? readString(week, ['Fec_Ini', 'fec_ini']) : null;
+      const end = week ? readString(week, ['Fec_Fin', 'fec_fin']) : null;
+      if (!start || !end) {
+        this.logger?.warn({ externalGroupId }, 'La UAT no devolvio una semana valida; se conserva el roster previo.');
+        return { rosterAuthoritative: false, students: [] };
+      }
+
+      const response = (await this.uatService.getAsistenciaGrupoPorSesion(sessionId, {
+        Id_Grupo: groupId,
+        fec_ini: start,
+        fec_fin: end,
+      })).data;
+      if (response.exito === false) {
+        this.logger?.warn({ externalGroupId, message: response.mensaje ?? null }, 'La UAT rechazo la consulta del roster.');
+        return { rosterAuthoritative: false, students: [] };
+      }
+      const rawStudents = response.alumnos ?? response.Alumnos ?? response.data;
+      if (!Array.isArray(rawStudents)) {
+        this.logger?.warn({ externalGroupId }, 'La respuesta UAT no incluyo una lista de alumnos; se conserva el roster previo.');
+        return { rosterAuthoritative: false, students: [] };
+      }
+
+      const students = new Map<string, AcademicSnapshotStudent>();
+      for (const item of rawStudents) {
+        const matricula = readString(item, ['Num_Matricula', 'num_matricula', 'Matricula', 'Id_Alumno', 'id_alumno']);
+        if (!matricula) continue;
+        students.set(matricula.toUpperCase(), {
+          matricula: matricula.toUpperCase(),
+          name: readString(item, ['Txt_Alumno', 'txt_alumno', 'Nombre', 'Alumno']) ?? matricula,
+        });
+      }
+      return { rosterAuthoritative: true, students: [...students.values()] };
+    } catch (error) {
+      this.logger?.warn({
+        externalGroupId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }, 'No se pudo consultar el roster UAT; se conserva el roster previo.');
+      return { rosterAuthoritative: false, students: [] };
+    }
   }
 
   private async discoverCoordinations(
@@ -264,6 +349,60 @@ export class HarvestTeacherDataUseCase {
     if (!this.options.debug?.enabled || !this.options.debug.verboseLogs) return;
     this.logger?.debug(bindings, message);
   }
+}
+
+function toAcademicSnapshot(
+  event: TeacherAuthenticatedEvent,
+  cycleExternalId: string,
+  cycleName: string,
+  groups: Array<{
+    mapped: MappedTeacherGroup;
+    rosterAuthoritative: boolean;
+    students: AcademicSnapshotStudent[];
+  }>,
+): ProfessorAcademicSnapshotInput {
+  return {
+    snapshotId: stableSnapshotId(event.eventId, cycleExternalId),
+    correlationId: event.correlationId,
+    causationId: event.eventId,
+    teacher: {
+      externalId: event.teacher.externalId,
+      institutionalCode: event.teacher.institutionalCode,
+      name: event.teacher.name,
+      email: event.teacher.email,
+      authenticatedAt: event.occurredAt.toISOString(),
+    },
+    cycle: { externalId: cycleExternalId, name: cycleName },
+    groups: groups.map(({ mapped, rosterAuthoritative, students }) => ({
+      externalGroupId: mapped.group.externalGroupId,
+      code: mapped.group.externalGroupId,
+      groupLetter: mapped.group.groupCode ?? '',
+      name: mapped.subject.name,
+      level: mapped.group.educationLevel,
+      classroom: mapped.group.classroom,
+      schedule: Object.fromEntries(Object.entries(mapped.group.schedule)),
+      subject: {
+        externalId: mapped.subject.externalId,
+        code: mapped.subject.code,
+        name: mapped.subject.name,
+      },
+      coordination: {
+        externalId: mapped.coordination.externalId,
+        name: mapped.coordination.name,
+        shortName: mapped.coordination.shortName,
+      },
+      rosterAuthoritative,
+      students,
+    })),
+  };
+}
+
+function stableSnapshotId(eventId: string, cycleExternalId: string): string {
+  const bytes = createHash('sha256').update(`${eventId}:${cycleExternalId}`).digest().subarray(0, 16);
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x50;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+  const value = bytes.toString('hex');
+  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
 }
 
 function toCoordination(item: UatDesItem): Coordination {

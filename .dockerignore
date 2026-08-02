@@ -10,3 +10,5 @@
 !services/api-gateway/**
 !services/identity-service/
 !services/identity-service/**
+!services/academic-service/
+!services/academic-service/**

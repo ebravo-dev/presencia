@@ -1,0 +1,183 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model TeacherProfile {
+  id                    String   @id @default(cuid())
+  externalId            String   @unique @map("external_id")
+  institutionalCode     String?  @map("institutional_code")
+  name                  String
+  email                 String?
+  lastAuthenticatedAt   DateTime @map("last_authenticated_at")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  groups AcademicGroup[]
+
+  @@index([email])
+  @@map("teacher_profiles")
+}
+
+model AcademicCycle {
+  id         String   @id @default(cuid())
+  externalId String   @unique @map("external_id")
+  name       String
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  groups AcademicGroup[]
+
+  @@map("academic_cycles")
+}
+
+model AcademicCoordination {
+  id         String   @id @default(cuid())
+  externalId String   @unique @map("external_id")
+  name       String
+  shortName  String?  @map("short_name")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  subjects AcademicSubject[]
+  groups   AcademicGroup[]
+
+  @@map("academic_coordinations")
+}
+
+model AcademicSubject {
+  id             String   @id @default(cuid())
+  externalId     String   @unique @map("external_id")
+  code           String?
+  name           String
+  coordinationId String   @map("coordination_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  coordination AcademicCoordination @relation(fields: [coordinationId], references: [id], onDelete: Restrict)
+  groups       AcademicGroup[]
+
+  @@index([coordinationId])
+  @@map("academic_subjects")
+}
+
+model AcademicGroup {
+  id              String   @id @default(cuid())
+  externalGroupId String   @unique @map("external_group_id")
+  code            String
+  groupLetter     String   @default("") @map("group_letter")
+  name            String
+  level           String?
+  classroom       String?
+  schedule        Json
+  active          Boolean  @default(true)
+  teacherId       String   @map("teacher_id")
+  cycleId         String   @map("cycle_id")
+  subjectId       String   @map("subject_id")
+  coordinationId  String   @map("coordination_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  teacher      TeacherProfile        @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  cycle        AcademicCycle         @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+  subject      AcademicSubject       @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  coordination AcademicCoordination  @relation(fields: [coordinationId], references: [id], onDelete: Restrict)
+  enrollments  AcademicEnrollment[]
+
+  @@index([teacherId, cycleId, active])
+  @@index([coordinationId, active])
+  @@map("academic_groups")
+}
+
+model AcademicEnrollment {
+  id        String   @id @default(cuid())
+  groupId   String   @map("group_id")
+  matricula String
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  group AcademicGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@unique([groupId, matricula])
+  @@index([matricula, active])
+  @@map("academic_enrollments")
+}
+
+model StudentAcademicProfile {
+  id                     String   @id @default(cuid())
+  matricula              String   @unique
+  displayName            String   @map("display_name")
+  email                  String?
+  planExternalId         String   @map("plan_external_id")
+  careerName             String   @map("career_name")
+  coordinationExternalId String?  @map("coordination_external_id")
+  cycleExternalId        String   @map("cycle_external_id")
+  cycleName              String   @map("cycle_name")
+  lastSynchronizedAt     DateTime @map("last_synchronized_at")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  scheduleEntries StudentScheduleEntry[]
+
+  @@index([coordinationExternalId, cycleExternalId])
+  @@map("student_academic_profiles")
+}
+
+model StudentScheduleEntry {
+  id              String   @id @default(cuid())
+  studentId       String   @map("student_id")
+  planExternalId  String   @map("plan_external_id")
+  cycleExternalId String   @map("cycle_external_id")
+  externalGroupId String   @map("external_group_id")
+  groupLetter     String   @default("") @map("group_letter")
+  subjectName     String   @map("subject_name")
+  professorName   String?  @map("professor_name")
+  classroom       String?
+  period          String?
+  credits         Int?
+  schedule        Json
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  student StudentAcademicProfile @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@unique([studentId, planExternalId, cycleExternalId, externalGroupId])
+  @@index([studentId, active])
+  @@index([externalGroupId, active])
+  @@map("student_schedule_entries")
+}
+
+model ProcessedAcademicSnapshot {
+  snapshotId  String   @id @map("snapshot_id")
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@map("processed_academic_snapshots")
+}
+
+model AcademicOutboxEvent {
+  eventId       String    @id @map("event_id")
+  eventType     String    @map("event_type")
+  aggregateId   String    @map("aggregate_id")
+  correlationId String    @map("correlation_id")
+  causationId   String    @map("causation_id")
+  payload       Json
+  occurredAt    DateTime  @default(now()) @map("occurred_at")
+  publishedAt   DateTime? @map("published_at")
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now()) @map("next_attempt_at")
+  lockedAt      DateTime? @map("locked_at")
+  lastError     String?   @map("last_error")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([publishedAt, nextAttemptAt, createdAt])
+  @@map("academic_outbox_events")
+}

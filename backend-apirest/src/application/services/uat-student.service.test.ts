@@ -77,6 +77,35 @@ describe('UatStudentService', () => {
       code: 'UAT_STUDENT_CAREER_NOT_FOUND',
     });
   });
+
+  it('sincroniza perfil y horario seguros sin exponer la sesion UAT', async () => {
+    const client = fakeStudentClient();
+    client.getSchedule = async () => [{
+      Id_Grupo: 947699, Txt_Letra: 'A', Txt_Materia: 'Calculo I', Num_Creditos: 5,
+      Txt_Nombre_Profesor: 'Profesor UAT', Txt_Lunes: '07:00 - 08:00',
+    }];
+    const snapshots: unknown[] = [];
+    const service = new UatStudentService(
+      memoryRepository(),
+      fakeFactory(client),
+      undefined,
+      undefined,
+      { publishStudentSnapshot: async (snapshot: unknown) => { snapshots.push(snapshot); } } as never,
+    );
+    const session = await service.createSession({ username: 'alumno@uat.edu.mx', password: 'secret' });
+
+    await service.getScheduleBySession(session.id, { correlationId: 'request-1' });
+
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]).toMatchObject({
+      correlationId: 'request-1',
+      student: { matricula: '2251330007', email: 'alumno@uat.edu.mx' },
+      career: { planExternalId: '3313', coordinationExternalId: '12' },
+      cycle: { externalId: '151', name: '2026 - 2 VERANO' },
+      schedule: [{ externalGroupId: '947699', subjectName: 'Calculo I', credits: 5 }],
+    });
+    expect(JSON.stringify(snapshots[0])).not.toMatch(/password|cookie|sessionId/i);
+  });
 });
 
 function memoryRepository(): IUatSessionRepository<StoredUatStudentSession> {

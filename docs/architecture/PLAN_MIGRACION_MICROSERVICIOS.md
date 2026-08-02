@@ -1,6 +1,6 @@
 # Plan de migración a microservicios de Presencia
 
-**Estado:** En implementación — Fase 0
+**Estado:** En implementación — Fase 5 (Attendance Service)
 
 **Fecha de decisión:** 2026-07-31
 
@@ -509,6 +509,11 @@ Criterio de salida:
 
 ### Fase 1 — Fundación de plataforma
 
+Avance al 2 de agosto de 2026: estructura de workspaces, contratos HTTP/eventos,
+API Gateway, Redis, RabbitMQ, PostgreSQL aislado por servicio y Compose para
+Dokploy implementados. Falta instrumentación OpenTelemetry y validación real de
+contenedores en un host con Docker.
+
 Entregables:
 
 - estructura `services/`, `packages/` e `infra/`;
@@ -528,6 +533,11 @@ Criterio de salida:
 
 ### Fase 2 — UAT Integration Service
 
+Avance al 2 de agosto de 2026: sesiones de profesor/alumno cifradas en Redis,
+circuit breakers, rate limit, bus durable con outbox/inbox, reintentos y DLQ
+implementados. La extracción de coordinación y el E2E con portales UAT reales
+siguen pendientes.
+
 Entregables:
 
 - `backend-apirest` actualizado a Node.js 24/Fastify 5;
@@ -546,6 +556,11 @@ Criterio de salida:
 
 ### Fase 3 — Identity Service
 
+Avance al 2 de agosto de 2026: servicio aislado con base propia, sesión única en
+Redis, JWT revocable/rotable, auditoría e integración posterior a autenticación
+UAT implementados. La migración de cuentas de coordinación/superusuario y el
+corte de rutas públicas siguen pendientes.
+
 Entregables:
 
 - cuentas y sesiones migradas;
@@ -563,6 +578,12 @@ Criterio de salida:
 
 ### Fase 4 — Academic Service
 
+Avance al 2 de agosto de 2026: servicio aislado con base propia, snapshots
+diferenciales de profesores/grupos/rosters y alumnos/carreras/horarios,
+idempotencia, conservación no destructiva y outbox RabbitMQ implementados. El
+backfill histórico, clases compartidas/sustituciones y el corte de rutas públicas
+siguen pendientes.
+
 Entregables:
 
 - profesores, grupos, alumnos, ciclos y sustituciones migrados;
@@ -578,6 +599,10 @@ Criterio de salida:
 - grupos retirados quedan inactivos y consultables históricamente.
 
 ### Fase 5 — Attendance Service
+
+Estado al 2 de agosto de 2026: iniciada. El backend legado ya tiene captura
+transaccional y vínculo firmado, pero la propiedad de datos, idempotencia móvil,
+outbox de captura y procesamiento asíncrono deben extraerse al servicio nuevo.
 
 Entregables:
 

@@ -25,6 +25,7 @@ import { UatClientFactory } from './infrastructure/http/client/uat-client.factor
 import { UatStudentClientFactory } from './infrastructure/http/client/uat-student-client.factory.js';
 import { AttendanceBackendClient } from './infrastructure/http/client/attendance-backend.client.js';
 import { IdentityServiceClient } from './infrastructure/http/client/identity-service.client.js';
+import { AcademicServiceClient } from './infrastructure/http/client/academic-service.client.js';
 import { DurableDomainEventBus } from './infrastructure/events/durable-domain-event-bus.js';
 import { RedisKeyValueStore } from './infrastructure/persistence/redis-key-value.store.js';
 import { RedisUatSessionStore } from './infrastructure/persistence/redis-session.store.js';
@@ -102,6 +103,11 @@ export async function buildApp() {
     env.INTERNAL_API_TOKEN,
     env.IDENTITY_SERVICE_REQUIRED,
   );
+  const academicServiceClient = new AcademicServiceClient(
+    env.ACADEMIC_SERVICE_URL,
+    env.INTERNAL_API_TOKEN,
+    env.ACADEMIC_SERVICE_REQUIRED,
+  );
   const uatService = new UatService(sessionRepository, clientFactory, credentialCipher, identityServiceClient);
   const attendanceBackendClient = new AttendanceBackendClient(
     env.ATTENDANCE_BACKEND_URL,
@@ -112,6 +118,8 @@ export async function buildApp() {
     studentClientFactory,
     attendanceBackendClient,
     identityServiceClient,
+    academicServiceClient,
+    fastify.log,
   );
   const attendanceUploadRepository = new PrismaAttendanceUploadRepository(prisma);
   const attendanceUploadService = new AttendanceUploadService(attendanceUploadRepository);
@@ -152,6 +160,7 @@ export async function buildApp() {
     },
     undefined,
     fastify.log,
+    academicServiceClient,
   );
   const unsubscribeSync = new SyncTeacherDataListener(eventBus, harvestTeacherData, fastify.log).register();
   await eventBus.start();

@@ -33,7 +33,7 @@ export class StudentSessionController {
   };
 
   schedule = async (request: FastifyRequest) => {
-    return this.uatStudentService.getScheduleBySession(request.uatStudentSession.id);
+    return this.uatStudentService.getScheduleBySession(request.uatStudentSession.id, { correlationId: request.id });
   };
 
   partialGrades = async (request: FastifyRequest) => {

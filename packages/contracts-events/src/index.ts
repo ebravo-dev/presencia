@@ -6,6 +6,7 @@ export const eventNames = [
   'academic.roster_updated.v1',
   'academic.group_deactivated.v1',
   'academic.substitution_changed.v1',
+  'academic.student_schedule_updated.v1',
   'attendance.recorded.v1',
   'attendance.corrected.v1',
   'attendance.upload_requested.v1',

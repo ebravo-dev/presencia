@@ -9,6 +9,7 @@ import type { IGroupAssignmentRepository } from '../../domain/repositories/group
 import type { ISubjectRepository } from '../../domain/repositories/subject.repository.js';
 import type { ITeacherRepository } from '../../domain/repositories/teacher.repository.js';
 import type { UatService } from '../services/uat.service.js';
+import type { AcademicSnapshotPublisher, ProfessorAcademicSnapshotInput } from '../ports/academic-snapshot.publisher.js';
 import { HarvestTeacherDataUseCase } from './harvest-teacher-data.use-case.js';
 
 describe('HarvestTeacherDataUseCase', () => {
@@ -223,7 +224,56 @@ describe('HarvestTeacherDataUseCase', () => {
     expect(repositories.groups[0]?.schoolCycleExternalId).toBe('150');
     expect(repositories.groups[0]?.schoolCycleName).toBe('2026-1');
   });
+
+  it('publica un snapshot diferencial con roster UAT y sin datos de sesion', async () => {
+    const repositories = makeRepositories();
+    const snapshots: ProfessorAcademicSnapshotInput[] = [];
+    const publisher: AcademicSnapshotPublisher = {
+      publishProfessorSnapshot: async (snapshot) => { snapshots.push(snapshot); },
+    };
+    const uatService = {
+      getCiclosEscolaresPorSesion: async () => uatList([{ Id_Ciclo_Escolar: 150, Ciclo: '2026-1', Sn_Activo: true }]),
+      getNivelesEducativosPorSesion: async () => uatList([{ Id_Nivel_Educativo: 1, Txt_Nivel_Educativo: 'Licenciatura' }]),
+      getCampusPorSesion: async () => uatList([{ Id_CU: 1, Txt_CU: 'Tampico' }]),
+      getDesPorSesion: async () => uatList([{ Id_DES: 12, Txt_DES: 'Ingenieria', Txt_Nombre_Corto: 'FI' }]),
+      getGruposProfesorPorSesion: async () => uatList([{ Id_Grupo: 947699, Txt_Materia: 'Calculo I', Txt_Letra: 'A' }]),
+      getHorariosPorSesion: async () => uatList([{ Id_Grupo: 947699, Txt_Lunes: '07:00 - 08:00' }]),
+      getSemanasGrupoPorSesion: async () => uatList([{ Id_Grupo: 947699, Fec_Ini: '2026-08-03', Fec_Fin: '2026-08-09' }]),
+      getAsistenciaGrupoPorSesion: async () => ({
+        source: 'UAT', endpoint: 'BuscaAsistenciaGrupo', query: {}, fetchedAt: new Date().toISOString(),
+        data: { exito: true, alumnos: [{ Id_Alumno: 1, Num_Matricula: '2251330007', Txt_Alumno: 'Ana Alumna' }] },
+      }),
+    } as unknown as UatService;
+
+    await new HarvestTeacherDataUseCase(
+      uatService,
+      repositories.teacherRepository,
+      repositories.subjectRepository,
+      repositories.coordinationRepository,
+      repositories.groupAssignmentRepository,
+      {},
+      undefined,
+      undefined,
+      publisher,
+    ).execute(makeEvent());
+
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]).toMatchObject({
+      correlationId: 'request-1', causationId: 'event-1',
+      cycle: { externalId: '150', name: '2026-1' },
+      groups: [{
+        externalGroupId: '947699', rosterAuthoritative: true,
+        students: [{ matricula: '2251330007', name: 'Ana Alumna' }],
+      }],
+    });
+    expect(snapshots[0]?.snapshotId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(JSON.stringify(snapshots[0])).not.toMatch(/sessionId|password|cookie/i);
+  });
 });
+
+function uatList<T>(data: T[]) {
+  return { source: 'UAT' as const, endpoint: 'test', query: {}, data, fetchedAt: new Date().toISOString() };
+}
 
 function makeEvent(): TeacherAuthenticatedEvent {
   return {

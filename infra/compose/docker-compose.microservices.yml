@@ -38,6 +38,8 @@ x-uat-environment: &uat-environment
   UAT_SESSION_ENCRYPTION_SECRET: ${UAT_SESSION_ENCRYPTION_SECRET:?UAT_SESSION_ENCRYPTION_SECRET is required}
   IDENTITY_SERVICE_URL: http://identity-service:3200
   IDENTITY_SERVICE_REQUIRED: "true"
+  ACADEMIC_SERVICE_URL: http://academic-service:3300
+  ACADEMIC_SERVICE_REQUIRED: "true"
   COORDINATOR_EMAIL: ${COORDINATOR_EMAIL:-}
   COORDINATOR_NAME: ${COORDINATOR_NAME:-Coordinacion Academica}
   COORDINATOR_PASSWORD: ${COORDINATOR_PASSWORD:-}
@@ -54,6 +56,15 @@ x-identity-environment: &identity-environment
   IDENTITY_SESSION_TTL_SECONDS: ${IDENTITY_SESSION_TTL_SECONDS:-604800}
   INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
   METRICS_TOKEN: ${IDENTITY_METRICS_TOKEN:?IDENTITY_METRICS_TOKEN is required}
+
+x-academic-environment: &academic-environment
+  NODE_ENV: production
+  HOST: 0.0.0.0
+  PORT: 3300
+  DATABASE_URL: ${ACADEMIC_DATABASE_URL:?ACADEMIC_DATABASE_URL is required}
+  RABBITMQ_URL: ${RABBITMQ_URL:?RABBITMQ_URL is required}
+  INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
+  METRICS_TOKEN: ${ACADEMIC_METRICS_TOKEN:?ACADEMIC_METRICS_TOKEN is required}
 
 services:
   postgres:
@@ -72,6 +83,9 @@ services:
       IDENTITY_DB_NAME: ${IDENTITY_DB_NAME:-presencia_identity}
       IDENTITY_DB_USER: ${IDENTITY_DB_USER:-presencia_identity}
       IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:?IDENTITY_DB_PASSWORD is required}
+      ACADEMIC_DB_NAME: ${ACADEMIC_DB_NAME:-presencia_academic}
+      ACADEMIC_DB_USER: ${ACADEMIC_DB_USER:-presencia_academic}
+      ACADEMIC_DB_PASSWORD: ${ACADEMIC_DB_PASSWORD:?ACADEMIC_DB_PASSWORD is required}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ../postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
@@ -80,6 +94,34 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    networks: [private]
+
+  postgres-provision:
+    image: postgres:17-alpine
+    restart: "no"
+    command: ["/opt/presencia/init-databases.sh"]
+    environment:
+      PGHOST: postgres
+      PGPASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}
+      POSTGRES_DB: postgres
+      POSTGRES_USER: presencia_admin
+      ATTENDANCE_DB_NAME: ${ATTENDANCE_DB_NAME:-presencia_attendance}
+      ATTENDANCE_DB_USER: ${ATTENDANCE_DB_USER:-presencia_attendance}
+      ATTENDANCE_DB_PASSWORD: ${ATTENDANCE_DB_PASSWORD:?ATTENDANCE_DB_PASSWORD is required}
+      UAT_DB_NAME: ${UAT_DB_NAME:-presencia_uat}
+      UAT_DB_USER: ${UAT_DB_USER:-presencia_uat}
+      UAT_DB_PASSWORD: ${UAT_DB_PASSWORD:?UAT_DB_PASSWORD is required}
+      IDENTITY_DB_NAME: ${IDENTITY_DB_NAME:-presencia_identity}
+      IDENTITY_DB_USER: ${IDENTITY_DB_USER:-presencia_identity}
+      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:?IDENTITY_DB_PASSWORD is required}
+      ACADEMIC_DB_NAME: ${ACADEMIC_DB_NAME:-presencia_academic}
+      ACADEMIC_DB_USER: ${ACADEMIC_DB_USER:-presencia_academic}
+      ACADEMIC_DB_PASSWORD: ${ACADEMIC_DB_PASSWORD:?ACADEMIC_DB_PASSWORD is required}
+    volumes:
+      - ../postgres/init-databases.sh:/opt/presencia/init-databases.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks: [private]
 
   redis:
@@ -121,8 +163,8 @@ services:
     command: ["./node_modules/.bin/prisma", "migrate", "deploy"]
     environment: *attendance-environment
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres-provision:
+        condition: service_completed_successfully
     networks: [private]
 
   attendance-backend:
@@ -153,8 +195,8 @@ services:
     command: ["npm", "run", "prisma:deploy"]
     environment: *uat-environment
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres-provision:
+        condition: service_completed_successfully
     networks: [private]
 
   uat-provision:
@@ -183,6 +225,8 @@ services:
         condition: service_healthy
       identity-service:
         condition: service_healthy
+      academic-service:
+        condition: service_healthy
     expose: ["3100"]
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3100/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -201,8 +245,8 @@ services:
     command: ["npm", "run", "prisma:deploy", "--workspace", "@presencia/identity-service"]
     environment: *identity-environment
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres-provision:
+        condition: service_completed_successfully
     networks: [private]
 
   identity-service:
@@ -215,6 +259,31 @@ services:
       redis:
         condition: service_healthy
     expose: ["3200"]
+    networks: [private]
+
+  academic-migrate:
+    image: presencia-academic:${IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: services/academic-service/Dockerfile
+    restart: "no"
+    command: ["npm", "run", "prisma:deploy", "--workspace", "@presencia/academic-service"]
+    environment: *academic-environment
+    depends_on:
+      postgres-provision:
+        condition: service_completed_successfully
+    networks: [private]
+
+  academic-service:
+    image: presencia-academic:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment: *academic-environment
+    depends_on:
+      academic-migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    expose: ["3300"]
     networks: [private]
 
   api-gateway:
@@ -230,6 +299,7 @@ services:
       LEGACY_BACKEND_URL: http://attendance-backend:3000
       UAT_INTEGRATION_URL: http://uat-integration:3100
       IDENTITY_SERVICE_URL: http://identity-service:3200
+      ACADEMIC_SERVICE_URL: http://academic-service:3300
       ROUTE_TARGET_OVERRIDES: ${ROUTE_TARGET_OVERRIDES:-{}}
       REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
       CORS_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
@@ -241,6 +311,8 @@ services:
       uat-integration:
         condition: service_healthy
       identity-service:
+        condition: service_healthy
+      academic-service:
         condition: service_healthy
       redis:
         condition: service_healthy

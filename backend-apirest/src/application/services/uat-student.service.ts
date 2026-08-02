@@ -18,6 +18,16 @@ import type {
 import type { UatStudentClientFactory } from '../../infrastructure/http/client/uat-student-client.factory.js';
 import type { AttendanceBackendClient } from '../../infrastructure/http/client/attendance-backend.client.js';
 import type { IdentityServiceClient } from '../../infrastructure/http/client/identity-service.client.js';
+import type {
+  StudentAcademicSnapshotInput,
+  StudentAcademicSnapshotPublisher,
+} from '../ports/academic-snapshot.publisher.js';
+import { mapWeeklySchedule } from '../mappers/uat-teacher-data.mapper.js';
+import type { UatHorarioItem } from '../../domain/types/uat.interfaces.js';
+
+export interface StudentAcademicSyncLogger {
+  warn(bindings: object, message: string): void;
+}
 
 export interface CreateUatStudentSessionInput extends UatCredentials {
   idPlanEstudio?: number;
@@ -33,6 +43,8 @@ export class UatStudentService {
     private readonly clientFactory: UatStudentClientFactory,
     private readonly attendanceBackendClient?: AttendanceBackendClient,
     private readonly identityService?: IdentityServiceClient,
+    private readonly academicSnapshotPublisher?: StudentAcademicSnapshotPublisher,
+    private readonly logger?: StudentAcademicSyncLogger,
   ) {}
 
   async createSession(
@@ -152,9 +164,13 @@ export class UatStudentService {
     });
   }
 
-  async getScheduleBySession(sessionId: string): Promise<UatDataResponse<UatStudentScheduleItem>> {
+  async getScheduleBySession(
+    sessionId: string,
+    context: { correlationId?: string } = {},
+  ): Promise<UatDataResponse<UatStudentScheduleItem>> {
     return this.withSession(sessionId, async (session) => {
       const schedule = await session.client.getSchedule();
+      await this.syncStudentAcademicSnapshot(session, schedule, context.correlationId ?? randomUUID());
       return this.toUatDataResponse('SpuSelHorarioFichaAlumno', {}, schedule);
     });
   }
@@ -226,6 +242,27 @@ export class UatStudentService {
     return token;
   }
 
+  private async syncStudentAcademicSnapshot(
+    session: StoredUatStudentSession,
+    schedule: UatStudentScheduleItem[],
+    correlationId: string,
+  ): Promise<void> {
+    if (!this.academicSnapshotPublisher) return;
+    const career = currentCareer(session.selectedCareer, session.careers);
+    const matricula = readStudentMatricula(session.selectedCareer, career);
+    if (!matricula) return;
+    const snapshot = toStudentAcademicSnapshot(session, career, schedule, matricula, correlationId);
+    try {
+      await this.academicSnapshotPublisher.publishStudentSnapshot(snapshot);
+    } catch (error) {
+      this.logger?.warn({
+        matricula,
+        correlationId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }, 'El horario UAT se devolvio, pero no pudo persistirse en Academic Service.');
+    }
+  }
+
   private toUatDataResponse<TItem extends JsonRecord>(
     endpoint: string,
     query: JsonRecord,
@@ -253,6 +290,78 @@ export class UatStudentService {
       fetchedAt: new Date().toISOString(),
     };
   }
+}
+
+function toStudentAcademicSnapshot(
+  session: StoredUatStudentSession,
+  career: UatStudentCareerItem & { Id_Plan_Estudio: number },
+  schedule: UatStudentScheduleItem[],
+  matricula: string,
+  correlationId: string,
+): StudentAcademicSnapshotInput {
+  const selected = session.selectedCareer.parametros;
+  const cycleExternalId = readValue(selected, ['Id_Ciclo_Escolar_Activo_AlumnosUAT', 'Id_Ciclo_Escolar'])
+    ?? readValue(career, ['Id_Ciclo_Escolar', 'CicloActivo'])
+    ?? 'unknown';
+  const cycleName = readValue(career, ['CicloActivo', 'Ciclo', 'Txt_Ciclo_Escolar']) ?? cycleExternalId;
+  const displayName = readValue(session.login.parametros, [
+    'Txt_Nombre_Alumno', 'Txt_Alumno', 'Txt_Usuario_AlumnosUAT', 'Txt_Usuario',
+  ]) ?? session.username;
+  const planExternalId = readValue(selected, ['Id_Plan_Estudio_AlumnosUAT', 'Id_Plan_Estudio'])
+    ?? String(career.Id_Plan_Estudio);
+  const synchronizedAt = new Date().toISOString();
+
+  return {
+    snapshotId: randomUUID(),
+    correlationId,
+    causationId: correlationId,
+    synchronizedAt,
+    student: {
+      matricula,
+      displayName,
+      ...(session.username.includes('@') ? { email: session.username } : {}),
+    },
+    career: {
+      planExternalId,
+      name: readValue(career, ['Txt_Programa_Academico', 'Programa_Academico']) ?? `Plan ${planExternalId}`,
+      coordinationExternalId: readValue(selected, ['Id_DES_AlumnosUAT', 'Id_DES']) ?? readValue(career, ['Id_DES']),
+    },
+    cycle: { externalId: cycleExternalId, name: cycleName },
+    schedule: schedule.flatMap((item) => {
+      const externalGroupId = readValue(item, ['Id_Grupo', 'id_grupo']);
+      if (!externalGroupId) return [];
+      const creditsValue = Number(item.Num_Creditos);
+      return [{
+        externalGroupId,
+        groupLetter: readValue(item, ['Txt_Letra', 'Grupo']) ?? '',
+        subjectName: readValue(item, ['Txt_Materia', 'Materia']) ?? `Grupo ${externalGroupId}`,
+        professorName: readValue(item, ['Txt_Nombre_Profesor', 'Profesor']),
+        classroom: readValue(item, ['Txt_Espacio_Fisico', 'Aula']),
+        period: readValue(item, ['Num_Periodo', 'Periodo']),
+        credits: Number.isInteger(creditsValue) && creditsValue >= 0 ? creditsValue : null,
+        schedule: Object.fromEntries(Object.entries(mapWeeklySchedule(item as UatHorarioItem))),
+      }];
+    }),
+  };
+}
+
+function currentCareer(
+  selected: UatStudentCareerSelection,
+  careers: UatStudentCareerItem[],
+): UatStudentCareerItem & { Id_Plan_Estudio: number } {
+  const selectedPlan = Number(selected.parametros?.Id_Plan_Estudio_AlumnosUAT ?? selected.parametros?.Id_Plan_Estudio);
+  return selectCareer(careers, Number.isInteger(selectedPlan) && selectedPlan > 0 ? selectedPlan : undefined);
+}
+
+function readValue(record: JsonRecord | undefined, keys: string[]): string | null {
+  if (!record) return null;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value !== 'string' && typeof value !== 'number') continue;
+    const normalized = String(value).trim();
+    if (normalized) return normalized;
+  }
+  return null;
 }
 
 function readStudentMatricula(selectedCareer: UatStudentCareerSelection, fallbackCareer: UatStudentCareerItem): string | null {
