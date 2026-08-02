@@ -304,12 +304,20 @@ export interface StoredUatSessionBase {
   expiresAt: Date;
 }
 
+export interface IdentitySessionGrant {
+  identityId: string;
+  sessionId: string;
+  accessToken: string;
+  expiresAt: string;
+}
+
 export interface StoredUatSession extends StoredUatSessionBase {
   id: string;
   username: string;
   credentialCipher: string;
   client: UatPortalClientPort;
   login: UatLoginResponse;
+  identitySession?: IdentitySessionGrant;
 }
 
 export interface StoredUatStudentSession extends StoredUatSessionBase {
@@ -318,6 +326,7 @@ export interface StoredUatStudentSession extends StoredUatSessionBase {
   careers: UatStudentCareerItem[];
   selectedCareer: UatStudentCareerSelection;
   deviceBindingToken?: string;
+  identitySession?: IdentitySessionGrant;
 }
 
 export interface UatSessionResponse {
@@ -329,6 +338,7 @@ export interface UatSessionResponse {
   expiresAt: string;
   activeSessions: number;
   cookieDiagnostics: UatCookieDiagnostics;
+  identitySession?: IdentitySessionGrant;
 }
 
 export interface UatDataResponse<TItem extends JsonRecord> {
@@ -364,6 +374,7 @@ export interface UatStudentSessionResponse {
   careers: UatStudentCareerItem[];
   selectedCareer: UatStudentCareerSelection;
   deviceBindingToken?: string;
+  identitySession?: IdentitySessionGrant;
   createdAt: string;
   lastUsedAt: string;
   expiresAt: string;

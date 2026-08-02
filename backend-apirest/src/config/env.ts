@@ -27,6 +27,8 @@ export const envSchema = z.object({
     .default(UAT_ALUMNOS_BASE_URL)
     .transform((value) => value.replace(/\/+$/, '')),
   UAT_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+  UAT_CIRCUIT_FAILURE_THRESHOLD: z.coerce.number().int().positive().max(100).default(5),
+  UAT_CIRCUIT_OPEN_MS: z.coerce.number().int().positive().max(600_000).default(30_000),
   UAT_ID_CICLO_ESCOLAR: z.preprocess(
     (value) => value === undefined || value === '' ? undefined : value,
     z.coerce.number().int().positive().optional(),
@@ -59,6 +61,11 @@ export const envSchema = z.object({
     z.boolean().optional(),
   ),
   ATTENDANCE_BACKEND_URL: z.string().url().default('http://localhost:3000'),
+  IDENTITY_SERVICE_URL: z.string().url().optional(),
+  IDENTITY_SERVICE_REQUIRED: z.preprocess(
+    (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
+    z.boolean().default(false),
+  ),
   ATTENDANCE_BACKEND_SERVICE_TOKEN: z.string().min(32).default('development-internal-service-token-change-me'),
   ATTENDANCE_JOB_ENCRYPTION_SECRET: z.string().min(32).default('development-attendance-job-secret-change-me'),
   UAT_SESSION_ENCRYPTION_SECRET: z.string().min(32).default('development-uat-session-secret-change-me'),
@@ -112,6 +119,14 @@ export const envSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['COORDINATION_COOKIE_SECURE'],
       message: 'Secure cookies cannot be disabled in production',
+    });
+  }
+
+  if (value.IDENTITY_SERVICE_REQUIRED && !value.IDENTITY_SERVICE_URL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['IDENTITY_SERVICE_URL'],
+      message: 'Identity Service URL is required when identity integration is enabled',
     });
   }
 

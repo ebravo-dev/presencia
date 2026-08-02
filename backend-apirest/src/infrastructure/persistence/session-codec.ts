@@ -25,10 +25,17 @@ const baseSessionSchema = z.object({
 });
 
 const loginSchema = z.object({ exito: z.boolean() }).passthrough();
+const identitySessionSchema = z.object({
+  identityId: z.string().min(1),
+  sessionId: z.string().min(1),
+  accessToken: z.string().min(1),
+  expiresAt: z.string().datetime(),
+});
 
 const teacherSessionSchema = baseSessionSchema.extend({
   credentialCipher: z.string().min(1),
   login: loginSchema,
+  identitySession: identitySessionSchema.optional(),
 });
 
 const studentSessionSchema = baseSessionSchema.extend({
@@ -36,6 +43,7 @@ const studentSessionSchema = baseSessionSchema.extend({
   careers: z.array(z.record(z.unknown())),
   selectedCareer: z.record(z.unknown()),
   deviceBindingToken: z.string().optional(),
+  identitySession: identitySessionSchema.optional(),
 });
 
 function exportedCookieJar(session: { client: { exportSessionState?(): unknown } }): unknown {
@@ -58,6 +66,7 @@ export class TeacherSessionCodec implements SessionCodec<StoredUatSession> {
       username: session.username,
       credentialCipher: session.credentialCipher,
       login: session.login,
+      ...(session.identitySession ? { identitySession: session.identitySession } : {}),
       createdAt: session.createdAt.toISOString(),
       lastUsedAt: session.lastUsedAt.toISOString(),
       expiresAt: session.expiresAt.toISOString(),
@@ -72,6 +81,7 @@ export class TeacherSessionCodec implements SessionCodec<StoredUatSession> {
       username: payload.username,
       credentialCipher: payload.credentialCipher,
       login: payload.login as UatLoginResponse,
+      ...(payload.identitySession ? { identitySession: payload.identitySession } : {}),
       client: this.clientFactory.restore(payload.cookieJar),
       createdAt: new Date(payload.createdAt),
       lastUsedAt: new Date(payload.lastUsedAt),
@@ -94,6 +104,7 @@ export class StudentSessionCodec implements SessionCodec<StoredUatStudentSession
       careers: session.careers,
       selectedCareer: session.selectedCareer,
       ...(session.deviceBindingToken ? { deviceBindingToken: session.deviceBindingToken } : {}),
+      ...(session.identitySession ? { identitySession: session.identitySession } : {}),
       createdAt: session.createdAt.toISOString(),
       lastUsedAt: session.lastUsedAt.toISOString(),
       expiresAt: session.expiresAt.toISOString(),
@@ -110,6 +121,7 @@ export class StudentSessionCodec implements SessionCodec<StoredUatStudentSession
       careers: payload.careers as UatStudentCareerItem[],
       selectedCareer: payload.selectedCareer as UatStudentCareerSelection,
       ...(payload.deviceBindingToken ? { deviceBindingToken: payload.deviceBindingToken } : {}),
+      ...(payload.identitySession ? { identitySession: payload.identitySession } : {}),
       client: this.clientFactory.restore(payload.cookieJar),
       createdAt: new Date(payload.createdAt),
       lastUsedAt: new Date(payload.lastUsedAt),

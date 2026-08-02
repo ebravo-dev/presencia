@@ -88,7 +88,7 @@ export class DurableDomainEventBus implements IDomainEventBus {
       where: { id: event.eventId },
       create: {
         id: event.eventId,
-        eventName: event.eventName,
+        eventName: event.eventType,
         aggregateId: event.teacher.externalId,
         payload: serialized,
         occurredAt: event.occurredAt,
@@ -285,8 +285,8 @@ export class DurableDomainEventBus implements IDomainEventBus {
 
     try {
       const event = this.parseTeacherEvent(message.content);
-      const listeners = this.listeners.get(event.eventName);
-      if (!listeners || listeners.size === 0) throw new Error(`No subscriber for ${event.eventName}`);
+      const listeners = this.listeners.get(event.eventType);
+      if (!listeners || listeners.size === 0) throw new Error(`No subscriber for ${event.eventType}`);
       for (const listener of listeners) await listener(event);
       await this.prisma.processedDomainEvent.create({ data: { eventId, consumer: CONSUMER_NAME } });
       channel.ack(message);
@@ -354,11 +354,11 @@ export function consumerRetryDecision(retryCount: number): ConsumerRetryDecision
 
 export function parseTeacherAuthenticatedEvent(content: Buffer): TeacherAuthenticatedEvent {
   const value = JSON.parse(content.toString('utf8')) as unknown;
-  if (!value || typeof value !== 'object') throw new Error('Evento teacher.authenticated.v1 inválido.');
+  if (!value || typeof value !== 'object') throw new Error('Evento uat.teacher_authenticated.v1 inválido.');
   const candidate = value as Record<string, unknown>;
   const teacher = candidate.teacher;
   if (
-    candidate.eventName !== TEACHER_AUTHENTICATED_EVENT
+    candidate.eventType !== TEACHER_AUTHENTICATED_EVENT
     || typeof candidate.eventId !== 'string'
     || typeof candidate.sessionId !== 'string'
     || typeof candidate.occurredAt !== 'string'
@@ -366,9 +366,9 @@ export function parseTeacherAuthenticatedEvent(content: Buffer): TeacherAuthenti
     || typeof teacher !== 'object'
     || typeof (teacher as Record<string, unknown>).externalId !== 'string'
   ) {
-    throw new Error('Evento teacher.authenticated.v1 inválido.');
+    throw new Error('Evento uat.teacher_authenticated.v1 inválido.');
   }
   const occurredAt = new Date(candidate.occurredAt);
-  if (Number.isNaN(occurredAt.getTime())) throw new Error('Evento teacher.authenticated.v1 inválido.');
+  if (Number.isNaN(occurredAt.getTime())) throw new Error('Evento uat.teacher_authenticated.v1 inválido.');
   return { ...candidate, occurredAt } as unknown as TeacherAuthenticatedEvent;
 }

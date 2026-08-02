@@ -228,8 +228,13 @@ describe('HarvestTeacherDataUseCase', () => {
 function makeEvent(): TeacherAuthenticatedEvent {
   return {
     eventId: 'event-1',
-    eventName: TEACHER_AUTHENTICATED_EVENT,
+    eventType: TEACHER_AUTHENTICATED_EVENT,
     occurredAt: new Date('2026-07-04T00:00:00.000Z'),
+    producer: 'uat-integration',
+    correlationId: 'request-1',
+    causationId: 'request-1',
+    aggregateId: '308127',
+    schemaVersion: 1,
     sessionId: 'uat-session-1',
     teacher: {
       externalId: '308127',

@@ -29,17 +29,30 @@ import type {
 } from '../../domain/types/uat.interfaces.js';
 import type { UatClientFactory } from '../../infrastructure/http/client/uat-client.factory.js';
 import type { CredentialCipher } from '../../infrastructure/security/credential-cipher.js';
+import type { IdentityServiceClient } from '../../infrastructure/http/client/identity-service.client.js';
 
 export class UatService {
   constructor(
     private readonly sessionRepository: IUatSessionRepository,
     private readonly clientFactory: UatClientFactory,
     private readonly credentialCipher: CredentialCipher,
+    private readonly identityService?: IdentityServiceClient,
   ) {}
 
-  async createSession(credentials: UatCredentials): Promise<StoredUatSession> {
+  async createSession(credentials: UatCredentials, context: { correlationId?: string } = {}): Promise<StoredUatSession> {
     const client = this.clientFactory.create();
     const login = await client.authenticate(credentials);
+    const plantillaId = login.parametros?.Id_Plantilla_AdmonUAT?.trim();
+    const institutionalCode = login.parametros?.Cve_Usuario_AdmonUAT?.trim();
+    const identitySession = await this.identityService?.createAuthenticatedSession({
+      kind: 'PROFESSOR',
+      role: 'PROFESSOR',
+      institutionalIdentifier: plantillaId || institutionalCode || credentials.username.trim().toLowerCase(),
+      ...(credentials.username.includes('@') ? { email: credentials.username.trim().toLowerCase() } : {}),
+      displayName: login.parametros?.Txt_Usuario_AdmonUAT?.trim() || institutionalCode || credentials.username.trim(),
+      source: 'UAT_TEACHER',
+      correlationId: context.correlationId ?? randomUUID(),
+    });
     const now = new Date();
     const session: StoredUatSession = {
       id: randomUUID(),
@@ -47,6 +60,7 @@ export class UatService {
       credentialCipher: this.credentialCipher.encrypt(credentials.password),
       client,
       login,
+      ...(identitySession ? { identitySession } : {}),
       createdAt: now,
       lastUsedAt: now,
       expiresAt: now,
@@ -70,6 +84,10 @@ export class UatService {
   }
 
   async deleteSession(sessionId: string): Promise<boolean> {
+    const session = await this.sessionRepository.get(sessionId);
+    if (session?.identitySession && this.identityService) {
+      await this.identityService.revoke(session.identitySession.accessToken);
+    }
     return this.sessionRepository.delete(sessionId);
   }
 
@@ -87,6 +105,7 @@ export class UatService {
       expiresAt: session.expiresAt.toISOString(),
       activeSessions: await this.sessionRepository.size(),
       cookieDiagnostics: session.client.getCookieDiagnostics(),
+      ...(session.identitySession ? { identitySession: session.identitySession } : {}),
     };
   }
 

@@ -8,3 +8,5 @@
 !services/
 !services/api-gateway/
 !services/api-gateway/**
+!services/identity-service/
+!services/identity-service/**

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-export const TEACHER_AUTHENTICATED_EVENT = 'teacher.authenticated.v1' as const;
+export const TEACHER_AUTHENTICATED_EVENT = 'uat.teacher_authenticated.v1' as const;
 
 export interface AuthenticatedTeacherIdentity {
   externalId: string;
@@ -12,8 +12,13 @@ export interface AuthenticatedTeacherIdentity {
 
 export interface TeacherAuthenticatedEvent {
   eventId: string;
-  eventName: typeof TEACHER_AUTHENTICATED_EVENT;
+  eventType: typeof TEACHER_AUTHENTICATED_EVENT;
   occurredAt: Date;
+  producer: 'uat-integration';
+  correlationId: string;
+  causationId: string;
+  aggregateId: string;
+  schemaVersion: 1;
   sessionId: string;
   teacher: AuthenticatedTeacherIdentity;
 }
@@ -21,6 +26,8 @@ export interface TeacherAuthenticatedEvent {
 export function createTeacherAuthenticatedEvent(input: {
   sessionId: string;
   username: string;
+  correlationId?: string;
+  causationId?: string;
   loginParameters?: {
     Id_Plantilla_AdmonUAT?: string;
     Cve_Usuario_AdmonUAT?: string;
@@ -32,13 +39,21 @@ export function createTeacherAuthenticatedEvent(input: {
   const institutionalCode = clean(parameters?.Cve_Usuario_AdmonUAT);
   const email = input.username.includes('@') ? input.username.trim().toLowerCase() : null;
 
+  const eventId = randomUUID();
+  const correlationId = input.correlationId ?? eventId;
+  const aggregateId = String(plantilla ?? institutionalCode ?? input.username.trim().toLowerCase());
   return {
-    eventId: randomUUID(),
-    eventName: TEACHER_AUTHENTICATED_EVENT,
+    eventId,
+    eventType: TEACHER_AUTHENTICATED_EVENT,
     occurredAt: new Date(),
+    producer: 'uat-integration',
+    correlationId,
+    causationId: input.causationId ?? correlationId,
+    aggregateId,
+    schemaVersion: 1,
     sessionId: input.sessionId,
     teacher: {
-      externalId: String(plantilla ?? institutionalCode ?? input.username.trim().toLowerCase()),
+      externalId: aggregateId,
       plantillaId: plantilla,
       institutionalCode,
       name: clean(parameters?.Txt_Usuario_AdmonUAT) ?? institutionalCode ?? input.username.trim(),

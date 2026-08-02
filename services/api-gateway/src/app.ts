@@ -1,12 +1,12 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import replyFrom from '@fastify/reply-from';
-import { resolveGatewayTarget } from '@presencia/contracts-http';
+import { resolveGatewayTarget, type GatewayTarget } from '@presencia/contracts-http';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { Redis } from 'ioredis';
-import { type GatewayEnv, loadGatewayEnv, parseCorsOrigins } from './config.js';
+import { type GatewayEnv, loadGatewayEnv, parseCorsOrigins, parseRouteOverrides } from './config.js';
 import { createGatewayMetrics } from './metrics.js';
 import type { GatewayRedis } from './redis.js';
 
@@ -23,6 +23,14 @@ interface DependencyStatus {
 
 function headerValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function createTraceparent(): string {
+  return `00-${randomBytes(16).toString('hex')}-${randomBytes(8).toString('hex')}-01`;
+}
+
+function validTraceparent(value: string | undefined): string | undefined {
+  return value && /^00-[\da-f]{32}-[\da-f]{16}-[\da-f]{2}$/i.test(value) ? value.toLowerCase() : undefined;
 }
 
 async function checkHttpDependency(url: string, timeoutMs: number): Promise<DependencyStatus> {
@@ -47,6 +55,16 @@ export async function buildGateway(options: BuildGatewayOptions = {}): Promise<F
   });
   const metrics = createGatewayMetrics();
   const requestStart = new Map<string, bigint>();
+  const requestTraceparent = new Map<string, string>();
+  const routeOverrides = parseRouteOverrides(env.ROUTE_TARGET_OVERRIDES);
+  const upstreams: Partial<Record<GatewayTarget, string>> = {
+    'legacy-backend': env.LEGACY_BACKEND_URL,
+    'uat-integration': env.UAT_INTEGRATION_URL,
+    ...(env.IDENTITY_SERVICE_URL ? { identity: env.IDENTITY_SERVICE_URL } : {}),
+    ...(env.ACADEMIC_SERVICE_URL ? { academic: env.ACADEMIC_SERVICE_URL } : {}),
+    ...(env.ATTENDANCE_SERVICE_URL ? { attendance: env.ATTENDANCE_SERVICE_URL } : {}),
+    ...(env.COORDINATION_QUERY_SERVICE_URL ? { 'coordination-query': env.COORDINATION_QUERY_SERVICE_URL } : {}),
+  };
 
   const app = Fastify({
     bodyLimit: env.BODY_LIMIT_BYTES,
@@ -61,6 +79,7 @@ export async function buildGateway(options: BuildGatewayOptions = {}): Promise<F
   await app.register(cors, {
     origin: parseCorsOrigins(env.CORS_ORIGINS),
     credentials: true,
+    exposedHeaders: ['x-correlation-id', 'traceparent'],
   });
   const rateLimitOptions = {
     global: true,
@@ -76,12 +95,16 @@ export async function buildGateway(options: BuildGatewayOptions = {}): Promise<F
 
   app.addHook('onRequest', async (request, reply) => {
     requestStart.set(request.id, process.hrtime.bigint());
+    const traceparent = validTraceparent(headerValue(request.headers.traceparent)) ?? createTraceparent();
+    requestTraceparent.set(request.id, traceparent);
     reply.header('x-correlation-id', request.id);
+    reply.header('traceparent', traceparent);
   });
 
   app.addHook('onResponse', async (request, reply) => {
     const startedAt = requestStart.get(request.id);
     requestStart.delete(request.id);
+    requestTraceparent.delete(request.id);
     if (startedAt === undefined) return;
 
     const elapsedSeconds = Number(process.hrtime.bigint() - startedAt) / 1_000_000_000;
@@ -127,7 +150,7 @@ export async function buildGateway(options: BuildGatewayOptions = {}): Promise<F
   });
 
   app.setNotFoundHandler(async (request, reply) => {
-    const target = resolveGatewayTarget(request.raw.url ?? request.url);
+    const target = resolveGatewayTarget(request.raw.url ?? request.url, routeOverrides);
     if (target === 'denied') {
       return reply.code(404).send({ error: 'NOT_FOUND', message: 'Ruta no encontrada.' });
     }
@@ -135,9 +158,14 @@ export async function buildGateway(options: BuildGatewayOptions = {}): Promise<F
       return reply.code(404).send({ error: 'NOT_FOUND', message: 'Ruta no encontrada.' });
     }
 
-    const upstream = target === 'uat-integration'
-      ? env.UAT_INTEGRATION_URL
-      : env.LEGACY_BACKEND_URL;
+    const upstream = upstreams[target];
+    if (!upstream) {
+      request.log.error({ target }, 'La ruta apunta a un servicio sin URL configurada.');
+      return reply.code(503).send({
+        error: 'UPSTREAM_NOT_CONFIGURED',
+        message: 'El servicio solicitado no está disponible durante la migración.',
+      });
+    }
     const upstreamUrl = new URL(request.raw.url ?? request.url, upstream).toString();
 
     return reply.from(upstreamUrl, {
@@ -146,6 +174,7 @@ export async function buildGateway(options: BuildGatewayOptions = {}): Promise<F
         delete forwardedHeaders.host;
         delete forwardedHeaders['x-internal-service-token'];
         forwardedHeaders['x-correlation-id'] = request.id;
+        forwardedHeaders.traceparent = requestTraceparent.get(request.id) ?? createTraceparent();
         forwardedHeaders['x-internal-service-token'] = env.INTERNAL_API_TOKEN;
         return forwardedHeaders;
       },

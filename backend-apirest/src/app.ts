@@ -24,6 +24,7 @@ import { ApiError } from './errors/api-error.js';
 import { UatClientFactory } from './infrastructure/http/client/uat-client.factory.js';
 import { UatStudentClientFactory } from './infrastructure/http/client/uat-student-client.factory.js';
 import { AttendanceBackendClient } from './infrastructure/http/client/attendance-backend.client.js';
+import { IdentityServiceClient } from './infrastructure/http/client/identity-service.client.js';
 import { DurableDomainEventBus } from './infrastructure/events/durable-domain-event-bus.js';
 import { RedisKeyValueStore } from './infrastructure/persistence/redis-key-value.store.js';
 import { RedisUatSessionStore } from './infrastructure/persistence/redis-session.store.js';
@@ -96,12 +97,22 @@ export async function buildApp() {
     new StudentSessionCodec(studentClientFactory, sessionCipher),
     { prefix: 'presencia:uat:student-session', ttlMs: sessionTtlMs },
   );
-  const uatService = new UatService(sessionRepository, clientFactory, credentialCipher);
+  const identityServiceClient = new IdentityServiceClient(
+    env.IDENTITY_SERVICE_URL,
+    env.INTERNAL_API_TOKEN,
+    env.IDENTITY_SERVICE_REQUIRED,
+  );
+  const uatService = new UatService(sessionRepository, clientFactory, credentialCipher, identityServiceClient);
   const attendanceBackendClient = new AttendanceBackendClient(
     env.ATTENDANCE_BACKEND_URL,
     env.ATTENDANCE_BACKEND_SERVICE_TOKEN,
   );
-  const uatStudentService = new UatStudentService(studentSessionRepository, studentClientFactory, attendanceBackendClient);
+  const uatStudentService = new UatStudentService(
+    studentSessionRepository,
+    studentClientFactory,
+    attendanceBackendClient,
+    identityServiceClient,
+  );
   const attendanceUploadRepository = new PrismaAttendanceUploadRepository(prisma);
   const attendanceUploadService = new AttendanceUploadService(attendanceUploadRepository);
   const attendanceUploadWorker = new AttendanceUploadWorker(

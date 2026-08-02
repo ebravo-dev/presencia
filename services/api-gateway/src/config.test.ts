@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gatewayEnvSchema, parseCorsOrigins } from './config.js';
+import { gatewayEnvSchema, parseCorsOrigins, parseRouteOverrides } from './config.js';
 
 describe('gateway configuration', () => {
   it('fails closed with development secrets in production', () => {
@@ -22,5 +22,12 @@ describe('gateway configuration', () => {
       'https://a.example',
       'https://b.example',
     ]);
+  });
+
+  it('parses route cutovers and rejects reserved internal prefixes', () => {
+    expect(parseRouteOverrides('{"/professors/login":"identity"}')).toEqual([
+      { prefix: '/professors/login', target: 'identity' },
+    ]);
+    expect(() => parseRouteOverrides('{"/internal":"uat-integration"}')).toThrow();
   });
 });

@@ -36,9 +36,24 @@ x-uat-environment: &uat-environment
   ATTENDANCE_BACKEND_SERVICE_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
   ATTENDANCE_JOB_ENCRYPTION_SECRET: ${ATTENDANCE_JOB_ENCRYPTION_SECRET:?ATTENDANCE_JOB_ENCRYPTION_SECRET is required}
   UAT_SESSION_ENCRYPTION_SECRET: ${UAT_SESSION_ENCRYPTION_SECRET:?UAT_SESSION_ENCRYPTION_SECRET is required}
+  IDENTITY_SERVICE_URL: http://identity-service:3200
+  IDENTITY_SERVICE_REQUIRED: "true"
   COORDINATOR_EMAIL: ${COORDINATOR_EMAIL:-}
   COORDINATOR_NAME: ${COORDINATOR_NAME:-Coordinacion Academica}
   COORDINATOR_PASSWORD: ${COORDINATOR_PASSWORD:-}
+
+x-identity-environment: &identity-environment
+  NODE_ENV: production
+  HOST: 0.0.0.0
+  PORT: 3200
+  DATABASE_URL: ${IDENTITY_DATABASE_URL:?IDENTITY_DATABASE_URL is required}
+  REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+  IDENTITY_JWT_SECRET: ${IDENTITY_JWT_SECRET:?IDENTITY_JWT_SECRET is required}
+  IDENTITY_JWT_ISSUER: presencia-identity
+  IDENTITY_JWT_AUDIENCE: presencia-apps
+  IDENTITY_SESSION_TTL_SECONDS: ${IDENTITY_SESSION_TTL_SECONDS:-604800}
+  INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
+  METRICS_TOKEN: ${IDENTITY_METRICS_TOKEN:?IDENTITY_METRICS_TOKEN is required}
 
 services:
   postgres:
@@ -54,6 +69,9 @@ services:
       UAT_DB_NAME: ${UAT_DB_NAME:-presencia_uat}
       UAT_DB_USER: ${UAT_DB_USER:-presencia_uat}
       UAT_DB_PASSWORD: ${UAT_DB_PASSWORD:?UAT_DB_PASSWORD is required}
+      IDENTITY_DB_NAME: ${IDENTITY_DB_NAME:-presencia_identity}
+      IDENTITY_DB_USER: ${IDENTITY_DB_USER:-presencia_identity}
+      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:?IDENTITY_DB_PASSWORD is required}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ../postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
@@ -163,6 +181,8 @@ services:
         condition: service_healthy
       attendance-backend:
         condition: service_healthy
+      identity-service:
+        condition: service_healthy
     expose: ["3100"]
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3100/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -170,6 +190,31 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    networks: [private]
+
+  identity-migrate:
+    image: presencia-identity:${IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: services/identity-service/Dockerfile
+    restart: "no"
+    command: ["npm", "run", "prisma:deploy", "--workspace", "@presencia/identity-service"]
+    environment: *identity-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [private]
+
+  identity-service:
+    image: presencia-identity:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment: *identity-environment
+    depends_on:
+      identity-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    expose: ["3200"]
     networks: [private]
 
   api-gateway:
@@ -184,6 +229,8 @@ services:
       PORT: 8080
       LEGACY_BACKEND_URL: http://attendance-backend:3000
       UAT_INTEGRATION_URL: http://uat-integration:3100
+      IDENTITY_SERVICE_URL: http://identity-service:3200
+      ROUTE_TARGET_OVERRIDES: ${ROUTE_TARGET_OVERRIDES:-{}}
       REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
       CORS_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
@@ -192,6 +239,8 @@ services:
       attendance-backend:
         condition: service_healthy
       uat-integration:
+        condition: service_healthy
+      identity-service:
         condition: service_healthy
       redis:
         condition: service_healthy

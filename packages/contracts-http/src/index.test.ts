@@ -19,4 +19,19 @@ describe('resolveGatewayTarget', () => {
   it('does not confuse a similarly named public path with an internal route', () => {
     expect(resolveGatewayTarget('/internal-tools')).toBe('legacy-backend');
   });
+
+  it('supports reversible longest-prefix cutovers without changing the public URL', () => {
+    const overrides = [
+      { prefix: '/professors', target: 'academic' as const },
+      { prefix: '/professors/login', target: 'identity' as const },
+    ];
+    expect(resolveGatewayTarget('/professors/login', overrides)).toBe('identity');
+    expect(resolveGatewayTarget('/professors/me/groups', overrides)).toBe('academic');
+  });
+
+  it('does not allow an override to expose internal routes', () => {
+    expect(resolveGatewayTarget('/internal/secret', [
+      { prefix: '/internal', target: 'uat-integration' },
+    ])).toBe('denied');
+  });
 });

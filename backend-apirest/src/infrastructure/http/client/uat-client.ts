@@ -26,6 +26,7 @@ import type {
   UatSemanaItem,
   UatSemanasGrupoParams,
 } from '../../../domain/types/uat.interfaces.js';
+import { teacherUatCircuitBreaker } from '../../resilience/uat-circuit-breakers.js';
 
 type FormValue = string | number | boolean;
 type AxiosCookieJarConfig = AxiosRequestConfig & { jar: CookieJar };
@@ -56,11 +57,11 @@ export class UatPortalClient implements UatPortalClientPort {
 
   async authenticate(credentials: UatCredentials): Promise<UatLoginResponse> {
     try {
-      await this.http.get('/Login', {
+      await teacherUatCircuitBreaker.execute(() => this.http.get('/Login', {
         ...this.withJar(),
         responseType: 'text',
         headers: this.htmlHeaders(),
-      });
+      }));
       const initialCookieNames = this.cookieNames();
 
       const loginForm = this.toForm({
@@ -93,11 +94,11 @@ export class UatPortalClient implements UatPortalClientPort {
         });
       }
 
-      await this.http.get('/Login/Validar', {
+      await teacherUatCircuitBreaker.execute(() => this.http.get('/Login/Validar', {
         ...this.withJar(),
         responseType: 'text',
         headers: this.htmlHeaders(`${this.baseUrl}/Login`),
-      });
+      }));
 
       return login;
     } catch (error) {
@@ -376,7 +377,7 @@ export class UatPortalClient implements UatPortalClientPort {
 
   private async requestJson<T>(request: () => Promise<AxiosResponse<unknown>>, context: string): Promise<T> {
     try {
-      const response = await request();
+      const response = await teacherUatCircuitBreaker.execute(request);
       return this.parseJsonResponse<T>(response, context);
     } catch (error) {
       if (error instanceof UatSessionExpiredError || error instanceof UatPortalError || error instanceof UatLoginError) {

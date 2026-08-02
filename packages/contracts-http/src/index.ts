@@ -4,7 +4,16 @@ export type GatewayTarget =
   | 'gateway'
   | 'legacy-backend'
   | 'uat-integration'
+  | 'identity'
+  | 'academic'
+  | 'attendance'
+  | 'coordination-query'
   | 'denied';
+
+export interface GatewayRouteOverride {
+  readonly prefix: string;
+  readonly target: Exclude<GatewayTarget, 'gateway' | 'denied'>;
+}
 
 export interface PublicRouteContract {
   readonly prefix: string;
@@ -29,11 +38,19 @@ function matchesPrefix(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
 
-export function resolveGatewayTarget(rawUrl: string): GatewayTarget {
+export function resolveGatewayTarget(
+  rawUrl: string,
+  overrides: readonly GatewayRouteOverride[] = [],
+): GatewayTarget {
   const pathname = new URL(rawUrl, 'http://gateway.internal').pathname;
 
   if (matchesPrefix(pathname, '/internal')) return 'denied';
   if (matchesPrefix(pathname, '/health') || pathname === '/metrics') return 'gateway';
+
+  const override = [...overrides]
+    .sort((left, right) => right.prefix.length - left.prefix.length)
+    .find(({ prefix }) => matchesPrefix(pathname, prefix));
+  if (override) return override.target;
 
   const contract = publicRouteContracts.find(({ prefix }) => matchesPrefix(pathname, prefix));
   return contract?.transitionalTarget ?? 'legacy-backend';

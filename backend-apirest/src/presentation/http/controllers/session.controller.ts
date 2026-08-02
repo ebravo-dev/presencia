@@ -13,7 +13,7 @@ export class SessionController {
 
   create = async (request: FastifyRequest, reply: FastifyReply) => {
     const credentials = parsePayload(credentialsSchema, request.body);
-    const session = await this.uatService.createSession(credentials);
+    const session = await this.uatService.createSession(credentials, { correlationId: request.id });
     const response = await this.uatService.toSessionResponse(session);
 
     try {
@@ -29,6 +29,8 @@ export class SessionController {
         createTeacherAuthenticatedEvent({
           sessionId: session.id,
           username: credentials.username,
+          correlationId: request.id,
+          causationId: request.id,
           loginParameters: session.login.parametros,
         }),
       );

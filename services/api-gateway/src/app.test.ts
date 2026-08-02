@@ -18,6 +18,7 @@ describe('API Gateway', () => {
       upstream: 'legacy',
       correlationId: request.headers['x-correlation-id'],
       internalToken: request.headers['x-internal-service-token'],
+      traceparent: request.headers.traceparent,
     }));
     await legacy.listen({ host: '127.0.0.1', port: 0 });
 
@@ -26,6 +27,7 @@ describe('API Gateway', () => {
       upstream: 'uat',
       correlationId: request.headers['x-correlation-id'],
       internalToken: request.headers['x-internal-service-token'],
+      traceparent: request.headers.traceparent,
     }));
     await uat.listen({ host: '127.0.0.1', port: 0 });
 
@@ -58,12 +60,27 @@ describe('API Gateway', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
+    expect(response.json()).toMatchObject({
       upstream: 'uat',
       correlationId: 'mobile-request-123',
       internalToken: token,
     });
     expect(response.headers['x-correlation-id']).toBe('mobile-request-123');
+    expect(response.headers.traceparent).toMatch(/^00-[\da-f]{32}-[\da-f]{16}-01$/);
+    expect(response.json().traceparent).toBe(response.headers.traceparent);
+  });
+
+  it('fails closed when a cutover target has no configured upstream', async () => {
+    const cutoverGateway = await buildGateway({
+      env: gatewayEnvSchema.parse({
+        ...env,
+        ROUTE_TARGET_OVERRIDES: '{"/professors/login":"identity"}',
+      }),
+      redis: { ping: async () => 'PONG', quit: async () => 'OK' },
+    });
+    const response = await cutoverGateway.inject({ method: 'POST', url: '/professors/login', payload: {} });
+    expect(response.statusCode).toBe(503);
+    await cutoverGateway.close();
   });
 
   it('routes existing attendance endpoints without changing their path', async () => {

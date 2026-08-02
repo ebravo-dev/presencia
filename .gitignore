@@ -37,3 +37,4 @@ backend-dokploy.zip
 # Generated TypeScript workspace artifacts
 packages/*/dist/
 services/*/dist/
+services/*/src/generated/

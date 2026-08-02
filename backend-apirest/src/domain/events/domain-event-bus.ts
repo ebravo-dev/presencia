@@ -1,7 +1,7 @@
 import type { TeacherAuthenticatedEvent } from './teacher-authenticated.event.js';
 
 export interface DomainEventMap {
-  'teacher.authenticated.v1': TeacherAuthenticatedEvent;
+  'uat.teacher_authenticated.v1': TeacherAuthenticatedEvent;
 }
 
 export interface IDomainEventBus {

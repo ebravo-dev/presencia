@@ -7,7 +7,7 @@ export class StudentSessionController {
 
   create = async (request: FastifyRequest, reply: FastifyReply) => {
     const credentials = parsePayload(studentCredentialsSchema, request.body);
-    const session = await this.uatStudentService.createSession(credentials);
+    const session = await this.uatStudentService.createSession(credentials, { correlationId: request.id });
     const response = await this.uatStudentService.toSessionResponse(session);
 
     return reply.code(201).send(response);

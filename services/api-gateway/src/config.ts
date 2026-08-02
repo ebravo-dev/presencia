@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { GatewayRouteOverride, GatewayTarget } from '@presencia/contracts-http';
 
 const developmentSecrets = new Set([
   'development-internal-service-token-change-me',
@@ -12,6 +13,11 @@ export const gatewayEnvSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   LEGACY_BACKEND_URL: z.url().default('http://localhost:3000'),
   UAT_INTEGRATION_URL: z.url().default('http://localhost:3100'),
+  IDENTITY_SERVICE_URL: z.url().optional(),
+  ACADEMIC_SERVICE_URL: z.url().optional(),
+  ATTENDANCE_SERVICE_URL: z.url().optional(),
+  COORDINATION_QUERY_SERVICE_URL: z.url().optional(),
+  ROUTE_TARGET_OVERRIDES: z.string().default('{}'),
   REDIS_URL: z.url().default('redis://localhost:6379/0'),
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
   INTERNAL_API_TOKEN: z.string().min(32).default('development-internal-service-token-change-me'),
@@ -53,4 +59,26 @@ export function loadGatewayEnv(source: NodeJS.ProcessEnv = process.env): Gateway
 
 export function parseCorsOrigins(value: string): string[] {
   return value.split(',').map((origin) => origin.trim()).filter(Boolean);
+}
+
+const overridableTargetSchema = z.enum([
+  'legacy-backend',
+  'uat-integration',
+  'identity',
+  'academic',
+  'attendance',
+  'coordination-query',
+] satisfies Exclude<GatewayTarget, 'gateway' | 'denied'>[]);
+
+export function parseRouteOverrides(value: string): GatewayRouteOverride[] {
+  const parsed = z.record(z.string(), overridableTargetSchema).parse(JSON.parse(value) as unknown);
+  return Object.entries(parsed).map(([prefix, target]) => {
+    if (!prefix.startsWith('/') || prefix.includes('?') || prefix.includes('#')) {
+      throw new Error(`Invalid gateway override prefix: ${prefix}`);
+    }
+    if (prefix === '/internal' || prefix.startsWith('/internal/') || prefix === '/health' || prefix === '/metrics') {
+      throw new Error(`Reserved gateway prefix cannot be overridden: ${prefix}`);
+    }
+    return { prefix: prefix.replace(/\/+$/, '') || '/', target };
+  });
 }

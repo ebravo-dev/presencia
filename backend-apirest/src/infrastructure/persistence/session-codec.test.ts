@@ -51,6 +51,10 @@ describe('encrypted UAT session codecs', () => {
       careers: [{ Id_Plan_Estudio: 3313, Num_Matricula: 2251330007 }],
       selectedCareer: { exito: true, parametros: { Id_Plan_Estudio_AlumnosUAT: 3313 } },
       deviceBindingToken: 'signed-binding-token',
+      identitySession: {
+        identityId: 'identity-1', sessionId: 'identity-session-1',
+        accessToken: 'identity-access-token', expiresAt: '2026-08-02T13:00:00.000Z',
+      },
       createdAt: now,
       lastUsedAt: now,
       expiresAt: new Date(now.getTime() + 60_000),
@@ -58,6 +62,7 @@ describe('encrypted UAT session codecs', () => {
 
     const restored = codec.decode(codec.encode(session));
     expect(restored.deviceBindingToken).toBe('signed-binding-token');
+    expect(restored.identitySession?.identityId).toBe('identity-1');
     expect(restored.careers[0]?.Id_Plan_Estudio).toBe(3313);
     expect(restored.client.getCookieDiagnostics().hasAuthCookie).toBe(true);
   });

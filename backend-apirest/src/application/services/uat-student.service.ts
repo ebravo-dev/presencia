@@ -17,6 +17,7 @@ import type {
 } from '../../domain/types/uat.interfaces.js';
 import type { UatStudentClientFactory } from '../../infrastructure/http/client/uat-student-client.factory.js';
 import type { AttendanceBackendClient } from '../../infrastructure/http/client/attendance-backend.client.js';
+import type { IdentityServiceClient } from '../../infrastructure/http/client/identity-service.client.js';
 
 export interface CreateUatStudentSessionInput extends UatCredentials {
   idPlanEstudio?: number;
@@ -31,9 +32,13 @@ export class UatStudentService {
     private readonly sessionRepository: IUatSessionRepository<StoredUatStudentSession>,
     private readonly clientFactory: UatStudentClientFactory,
     private readonly attendanceBackendClient?: AttendanceBackendClient,
+    private readonly identityService?: IdentityServiceClient,
   ) {}
 
-  async createSession(input: CreateUatStudentSessionInput): Promise<StoredUatStudentSession> {
+  async createSession(
+    input: CreateUatStudentSessionInput,
+    context: { correlationId?: string } = {},
+  ): Promise<StoredUatStudentSession> {
     const client = this.clientFactory.create();
     const login = await client.authenticate(input);
     const careers = await client.getCareers();
@@ -44,7 +49,29 @@ export class UatStudentService {
 
     const career = selectCareer(careers, input.idPlanEstudio);
     const selectedCareer = await client.selectCareer(career.Id_Plan_Estudio);
-    const deviceBindingToken = await this.bindStudentDeviceIfRequested(input, selectedCareer, career);
+    const matricula = readStudentMatricula(selectedCareer, career);
+    if (!matricula) {
+      throw new ApiError(502, 'UAT_STUDENT_MATRICULA_MISSING', 'El portal de alumnos no devolvio matricula para crear la identidad.');
+    }
+    const identitySession = await this.identityService?.createAuthenticatedSession({
+      kind: 'STUDENT',
+      role: 'STUDENT',
+      institutionalIdentifier: matricula,
+      ...(input.username.includes('@') ? { email: input.username.trim().toLowerCase() } : {}),
+      displayName: input.username.trim(),
+      source: 'UAT_STUDENT',
+      correlationId: context.correlationId ?? randomUUID(),
+      ...(input.deviceBindingId ? { deviceId: input.deviceBindingId } : {}),
+    });
+    let deviceBindingToken: string | undefined;
+    try {
+      deviceBindingToken = await this.bindStudentDeviceIfRequested(input, selectedCareer, career);
+    } catch (error) {
+      if (identitySession && this.identityService) {
+        await this.identityService.revoke(identitySession.accessToken).catch(() => undefined);
+      }
+      throw error;
+    }
     const now = new Date();
     const session: StoredUatStudentSession = {
       id: randomUUID(),
@@ -54,6 +81,7 @@ export class UatStudentService {
       careers,
       selectedCareer,
       deviceBindingToken,
+      ...(identitySession ? { identitySession } : {}),
       createdAt: now,
       lastUsedAt: now,
       expiresAt: now,
@@ -77,6 +105,10 @@ export class UatStudentService {
   }
 
   async deleteSession(sessionId: string): Promise<boolean> {
+    const session = await this.sessionRepository.get(sessionId);
+    if (session?.identitySession && this.identityService) {
+      await this.identityService.revoke(session.identitySession.accessToken);
+    }
     return this.sessionRepository.delete(sessionId);
   }
 
@@ -92,6 +124,7 @@ export class UatStudentService {
       careers: session.careers,
       selectedCareer: session.selectedCareer,
       deviceBindingToken: session.deviceBindingToken,
+      ...(session.identitySession ? { identitySession: session.identitySession } : {}),
       createdAt: session.createdAt.toISOString(),
       lastUsedAt: session.lastUsedAt.toISOString(),
       expiresAt: session.expiresAt.toISOString(),

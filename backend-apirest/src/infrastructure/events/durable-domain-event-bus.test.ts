@@ -27,12 +27,12 @@ describe('durable event policies', () => {
       loginParameters: { Id_Plantilla_AdmonUAT: '1234' },
     });
     const restored = parseTeacherAuthenticatedEvent(Buffer.from(JSON.stringify(event)));
-    expect(restored.eventName).toBe('teacher.authenticated.v1');
+    expect(restored.eventType).toBe('uat.teacher_authenticated.v1');
     expect(restored.occurredAt).toBeInstanceOf(Date);
     expect(restored.teacher.plantillaId).toBe(1234);
   });
 
   it('rejects malformed messages before invoking a domain listener', () => {
-    expect(() => parseTeacherAuthenticatedEvent(Buffer.from('{"eventName":"teacher.authenticated.v1"}'))).toThrow();
+    expect(() => parseTeacherAuthenticatedEvent(Buffer.from('{"eventType":"uat.teacher_authenticated.v1"}'))).toThrow();
   });
 });
