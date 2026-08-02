@@ -263,7 +263,7 @@ describe('HarvestTeacherDataUseCase', () => {
       cycle: { externalId: '150', name: '2026-1' },
       groups: [{
         externalGroupId: '947699', rosterAuthoritative: true,
-        students: [{ matricula: '2251330007', name: 'Ana Alumna' }],
+        students: [{ matricula: '2251330007', name: 'Ana Alumna', uatStudentId: 1 }],
       }],
     });
     expect(snapshots[0]?.snapshotId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);

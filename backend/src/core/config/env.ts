@@ -52,9 +52,23 @@ export const envSchema = z.object({
     // Internal backend-apirest bridge
     BACKEND_API_REST_URL: z.string().url().default('http://localhost:3100'),
 
+    // Authoritative device-binding commands during the strangler migration
+    ATTENDANCE_SERVICE_URL: z.string().url().optional(),
+    ATTENDANCE_SERVICE_REQUIRED: z.preprocess(
+        (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
+        z.boolean().default(false),
+    ),
+
     // Shared internal API token for backend-apirest coordination calls
     INTERNAL_API_TOKEN: z.string().min(32).default('development-internal-service-token-change-me'),
 }).superRefine((value, ctx) => {
+    if (value.ATTENDANCE_SERVICE_REQUIRED && !value.ATTENDANCE_SERVICE_URL) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['ATTENDANCE_SERVICE_URL'],
+            message: 'Must be configured when ATTENDANCE_SERVICE_REQUIRED=true',
+        });
+    }
     if (value.NODE_ENV !== 'production') return;
 
     if (DEVELOPMENT_SECRETS.has(value.SUPER_USER_PASSWORD)) {

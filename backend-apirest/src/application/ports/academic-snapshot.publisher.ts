@@ -1,6 +1,8 @@
 export interface AcademicSnapshotStudent {
   matricula: string;
   name: string;
+  uatStudentId?: number | null;
+  listNumber?: number | null;
 }
 
 export interface AcademicSnapshotGroup {

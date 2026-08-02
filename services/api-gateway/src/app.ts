@@ -172,10 +172,11 @@ export async function buildGateway(options: BuildGatewayOptions = {}): Promise<F
       rewriteRequestHeaders(_originalRequest, headers) {
         const forwardedHeaders = { ...headers };
         delete forwardedHeaders.host;
+        // A public edge must never confer service identity to its caller.
+        // Service-to-service traffic uses the private network directly.
         delete forwardedHeaders['x-internal-service-token'];
         forwardedHeaders['x-correlation-id'] = request.id;
         forwardedHeaders.traceparent = requestTraceparent.get(request.id) ?? createTraceparent();
-        forwardedHeaders['x-internal-service-token'] = env.INTERNAL_API_TOKEN;
         return forwardedHeaders;
       },
     });

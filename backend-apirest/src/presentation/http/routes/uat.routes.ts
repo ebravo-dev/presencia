@@ -6,6 +6,7 @@ import type { SharedClassService } from '../../../application/services/shared-cl
 import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
 import type { AttendanceUploadService } from '../../../application/services/attendance-upload.service.js';
 import type { AttendanceUploadWorker } from '../../../infrastructure/jobs/attendance-upload.worker.js';
+import type { AttendanceCaptureClient } from '../../../infrastructure/http/client/attendance-capture.client.js';
 import { AsistenciaController } from '../controllers/asistencia.controller.js';
 import { AttendanceUploadController } from '../controllers/attendance-upload.controller.js';
 import { CatalogoController } from '../controllers/catalogo.controller.js';
@@ -25,11 +26,12 @@ export interface UatRoutesOptions {
   attendanceBackendClient: AttendanceBackendClient;
   attendanceUploadService: AttendanceUploadService;
   attendanceUploadWorker: AttendanceUploadWorker;
+  attendanceCaptureClient?: AttendanceCaptureClient;
 }
 
 export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   fastify,
-  { uatService, uatStudentService, eventBus, sharedClassService, attendanceBackendClient, attendanceUploadService, attendanceUploadWorker },
+  { uatService, uatStudentService, eventBus, sharedClassService, attendanceBackendClient, attendanceUploadService, attendanceUploadWorker, attendanceCaptureClient },
 ) => {
   fastify.addHook('preHandler', async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return;
@@ -52,7 +54,7 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   const studentSessionController = new StudentSessionController(uatStudentService);
   const consultaController = new ConsultaController(uatService);
   const catalogoController = new CatalogoController(uatService);
-  const asistenciaController = new AsistenciaController(uatService, attendanceBackendClient);
+  const asistenciaController = new AsistenciaController(uatService, attendanceBackendClient, attendanceCaptureClient);
   const attendanceUploadController = new AttendanceUploadController(attendanceUploadService, attendanceUploadWorker);
   const sharedClassController = new SharedClassController(sharedClassService);
 

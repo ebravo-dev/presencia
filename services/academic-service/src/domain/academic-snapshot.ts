@@ -1,4 +1,9 @@
-export interface AcademicStudentSnapshot { readonly matricula: string; readonly name: string }
+export interface AcademicStudentSnapshot {
+  readonly matricula: string;
+  readonly name: string;
+  readonly uatStudentId?: number | null | undefined;
+  readonly listNumber?: number | null | undefined;
+}
 export interface AcademicGroupSnapshot {
   readonly externalGroupId: string;
   readonly code: string;

@@ -61,6 +61,11 @@ export const envSchema = z.object({
     z.boolean().optional(),
   ),
   ATTENDANCE_BACKEND_URL: z.string().url().default('http://localhost:3000'),
+  ATTENDANCE_SERVICE_URL: z.string().url().optional(),
+  ATTENDANCE_SERVICE_REQUIRED: z.preprocess(
+    (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
+    z.boolean().default(false),
+  ),
   IDENTITY_SERVICE_URL: z.string().url().optional(),
   IDENTITY_SERVICE_REQUIRED: z.preprocess(
     (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
@@ -139,6 +144,13 @@ export const envSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['ACADEMIC_SERVICE_URL'],
       message: 'Academic Service URL is required when academic integration is enabled',
+    });
+  }
+  if (value.ATTENDANCE_SERVICE_REQUIRED && !value.ATTENDANCE_SERVICE_URL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['ATTENDANCE_SERVICE_URL'],
+      message: 'Attendance Service URL is required when attendance migration is enabled',
     });
   }
 

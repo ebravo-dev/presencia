@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
-const studentSchema = z.object({ matricula: z.string().trim().min(1).max(40), name: z.string().trim().min(1).max(240) });
+const studentSchema = z.object({
+  matricula: z.string().trim().min(1).max(40), name: z.string().trim().min(1).max(240),
+  uatStudentId: z.number().int().positive().nullable().optional(),
+  listNumber: z.number().int().nonnegative().nullable().optional(),
+});
 const groupSchema = z.object({
   externalGroupId: z.string().trim().min(1).max(160),
   code: z.string().trim().min(1).max(80),

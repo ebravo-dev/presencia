@@ -126,8 +126,14 @@ export class PrismaAcademicRepository implements AcademicRepository {
           const matricula = student.matricula.trim().toUpperCase();
           await transaction.academicEnrollment.upsert({
             where: { groupId_matricula: { groupId: group.id, matricula } },
-            create: { groupId: group.id, matricula, name: student.name.trim(), active: true },
-            update: { name: student.name.trim(), active: true },
+            create: {
+              groupId: group.id, matricula, name: student.name.trim(),
+              uatStudentId: student.uatStudentId ?? null, listNumber: student.listNumber ?? null, active: true,
+            },
+            update: {
+              name: student.name.trim(), uatStudentId: student.uatStudentId ?? null,
+              listNumber: student.listNumber ?? null, active: true,
+            },
           });
         }
         await transaction.academicOutboxEvent.create({
@@ -142,6 +148,12 @@ export class PrismaAcademicRepository implements AcademicRepository {
               cycleExternalId: snapshot.cycle.externalId,
               activeStudents: groupSnapshot.rosterAuthoritative ? matriculas.length : null,
               rosterAuthoritative: groupSnapshot.rosterAuthoritative,
+              professorExternalId: snapshot.teacher.externalId,
+              groupName: groupSnapshot.name,
+              groupLetter: groupSnapshot.groupLetter,
+              schedule: groupSnapshot.schedule,
+              students: groupSnapshot.rosterAuthoritative ? groupSnapshot.students : null,
+              rosterVersion: snapshot.snapshotId,
             }),
           },
         });

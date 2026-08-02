@@ -1,0 +1,71 @@
+import { describe, expect, it } from 'vitest';
+import type { AttendanceRepository } from '../domain/attendance.repository.js';
+import { CaptureAttendanceService } from './capture-attendance.service.js';
+
+describe('CaptureAttendanceService', () => {
+  it('normalizes and hashes a capture before the transaction', async () => {
+    let received: unknown;
+    let hash = '';
+    const repository = repositoryStub();
+    repository.capture = async (command, requestHash) => {
+      received = command;
+      hash = requestHash;
+      return {
+        attendanceSessionId: 'session-1', externalGroupId: command.externalGroupId, date: command.date,
+        entriesCount: command.entries.length, uploadStatus: 'PENDING', duplicate: false, version: 1,
+      };
+    };
+    const service = new CaptureAttendanceService(repository);
+
+    await service.capture({
+      idempotencyKey: '74b29734-65a8-48b2-9e6e-8cd01f1a0016', correlationId: 'request-1',
+      professorExternalId: ' teacher-1 ', externalGroupId: ' 947699 ', date: '2026-08-02',
+      entries: [{ matricula: 'b2', status: 'ABSENT' }, { matricula: ' a1 ', status: 'PRESENT' }],
+    });
+
+    expect(received).toMatchObject({
+      professorExternalId: 'teacher-1', externalGroupId: '947699',
+      entries: [{ matricula: 'A1', status: 'PRESENT' }, { matricula: 'B2', status: 'ABSENT' }],
+    });
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('rejects duplicate matriculas before writing', async () => {
+    let called = false;
+    const repository = repositoryStub();
+    repository.capture = async () => { called = true; throw new Error('unexpected'); };
+    const service = new CaptureAttendanceService(repository);
+    await expect(service.capture({
+      idempotencyKey: '74b29734-65a8-48b2-9e6e-8cd01f1a0016', correlationId: 'request-1',
+      professorExternalId: 'teacher-1', externalGroupId: '947699', date: '2026-08-02',
+      entries: [{ matricula: 'a1', status: 'PRESENT' }, { matricula: 'A1', status: 'ABSENT' }],
+    })).rejects.toMatchObject({ code: 'DUPLICATE_MATRICULA' });
+    expect(called).toBe(false);
+  });
+
+  it('normalizes and rejects duplicate UAT student identifiers before writing', async () => {
+    let called = false;
+    const repository = repositoryStub();
+    repository.capture = async () => { called = true; throw new Error('unexpected'); };
+    const service = new CaptureAttendanceService(repository);
+    await expect(service.capture({
+      idempotencyKey: '74b29734-65a8-48b2-9e6e-8cd01f1a0016', correlationId: 'request-1',
+      professorExternalId: 'teacher-1', externalGroupId: '947699', date: '2026-08-02',
+      entries: [{ uatStudentId: 515722, status: 'PRESENT' }, { uatStudentId: 515722, status: 'ABSENT' }],
+    })).rejects.toMatchObject({ code: 'DUPLICATE_MATRICULA' });
+    expect(called).toBe(false);
+  });
+});
+
+function repositoryStub(): AttendanceRepository {
+  return {
+    async applyRoster() {},
+    async deactivateRoster() {},
+    async markUploadResult() { return true; },
+    async capture() { throw new Error('unexpected'); },
+    async bindInitial() { throw new Error('unexpected'); },
+    async replaceBinding() { throw new Error('unexpected'); },
+    async unbind() { return false; },
+    async bindingByMatricula() { return null; },
+  };
+}

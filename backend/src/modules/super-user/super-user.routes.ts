@@ -145,7 +145,10 @@ export async function superUserRoutes(fastify: FastifyInstance) {
         '/api/superUsuario/alumnos-vinculados/:matricula',
         { preHandler: requireSuperUser },
         async (request, reply) => {
-            const deleted = await superUserService.deleteStudentDeviceBinding(decodeURIComponent(request.params.matricula));
+            const deleted = await superUserService.deleteStudentDeviceBinding(
+                decodeURIComponent(request.params.matricula),
+                request.id,
+            );
             if (!deleted) {
                 return reply.code(404).send({
                     statusCode: 404,

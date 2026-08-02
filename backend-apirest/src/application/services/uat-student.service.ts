@@ -16,7 +16,7 @@ import type {
   UatStudentSessionResponse,
 } from '../../domain/types/uat.interfaces.js';
 import type { UatStudentClientFactory } from '../../infrastructure/http/client/uat-student-client.factory.js';
-import type { AttendanceBackendClient } from '../../infrastructure/http/client/attendance-backend.client.js';
+import type { AttendanceBindingClient } from '../ports/attendance-binding.client.js';
 import type { IdentityServiceClient } from '../../infrastructure/http/client/identity-service.client.js';
 import type {
   StudentAcademicSnapshotInput,
@@ -41,7 +41,7 @@ export class UatStudentService {
   constructor(
     private readonly sessionRepository: IUatSessionRepository<StoredUatStudentSession>,
     private readonly clientFactory: UatStudentClientFactory,
-    private readonly attendanceBackendClient?: AttendanceBackendClient,
+    private readonly attendanceBackendClient?: AttendanceBindingClient,
     private readonly identityService?: IdentityServiceClient,
     private readonly academicSnapshotPublisher?: StudentAcademicSnapshotPublisher,
     private readonly logger?: StudentAcademicSyncLogger,

@@ -73,12 +73,12 @@ export class AttendanceUploadWorker {
         Asistencia: JSON.stringify(job.attendances),
       });
       if (response.exito === false) throw new Error(response.mensaje || 'UAT rechazó la lista de asistencia.');
-      await this.repository.completeJob(job.id);
+      await this.repository.completeJob(job);
       this.logger.info({ jobId: job.id, batchId: job.batchId, clientRecordId: job.clientRecordId }, 'Lista de asistencia procesada.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error desconocido al subir asistencia.';
       if (job.attempts >= MAX_ATTEMPTS) {
-        await this.repository.failJob(job.id, message);
+        await this.repository.failJob(job, message);
         this.logger.error({ jobId: job.id, err: error }, 'Lista de asistencia agotó sus reintentos.');
       } else {
         const delay = Math.min(60_000, 1_000 * 2 ** (job.attempts - 1));

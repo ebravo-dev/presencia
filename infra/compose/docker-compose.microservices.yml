@@ -14,6 +14,8 @@ x-attendance-environment: &attendance-environment
   UAT_ID_CICLO_ESCOLAR: ${UAT_ID_CICLO_ESCOLAR:-150}
   UAT_ID_DES: ${UAT_ID_DES:-12}
   BACKEND_API_REST_URL: http://uat-integration:3100
+  ATTENDANCE_SERVICE_URL: http://attendance-service:3400
+  ATTENDANCE_SERVICE_REQUIRED: "true"
   INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
 
 x-uat-environment: &uat-environment
@@ -33,6 +35,8 @@ x-uat-environment: &uat-environment
   COORDINATION_WEB_ORIGIN: ${COORDINATION_WEB_ORIGIN:?COORDINATION_WEB_ORIGIN is required}
   COORDINATION_COOKIE_SECURE: "true"
   ATTENDANCE_BACKEND_URL: http://attendance-backend:3000
+  ATTENDANCE_SERVICE_URL: http://attendance-service:3400
+  ATTENDANCE_SERVICE_REQUIRED: "true"
   ATTENDANCE_BACKEND_SERVICE_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
   ATTENDANCE_JOB_ENCRYPTION_SECRET: ${ATTENDANCE_JOB_ENCRYPTION_SECRET:?ATTENDANCE_JOB_ENCRYPTION_SECRET is required}
   UAT_SESSION_ENCRYPTION_SECRET: ${UAT_SESSION_ENCRYPTION_SECRET:?UAT_SESSION_ENCRYPTION_SECRET is required}
@@ -66,6 +70,16 @@ x-academic-environment: &academic-environment
   INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
   METRICS_TOKEN: ${ACADEMIC_METRICS_TOKEN:?ACADEMIC_METRICS_TOKEN is required}
 
+x-attendance-service-environment: &attendance-service-environment
+  NODE_ENV: production
+  HOST: 0.0.0.0
+  PORT: 3400
+  DATABASE_URL: ${ATTENDANCE_SERVICE_DATABASE_URL:?ATTENDANCE_SERVICE_DATABASE_URL is required}
+  RABBITMQ_URL: ${RABBITMQ_URL:?RABBITMQ_URL is required}
+  INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
+  BINDING_JWT_SECRET: ${BINDING_JWT_SECRET:?BINDING_JWT_SECRET is required}
+  METRICS_TOKEN: ${ATTENDANCE_METRICS_TOKEN:?ATTENDANCE_METRICS_TOKEN is required}
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -86,6 +100,9 @@ services:
       ACADEMIC_DB_NAME: ${ACADEMIC_DB_NAME:-presencia_academic}
       ACADEMIC_DB_USER: ${ACADEMIC_DB_USER:-presencia_academic}
       ACADEMIC_DB_PASSWORD: ${ACADEMIC_DB_PASSWORD:?ACADEMIC_DB_PASSWORD is required}
+      ATTENDANCE_SERVICE_DB_NAME: ${ATTENDANCE_SERVICE_DB_NAME:-presencia_attendance_service}
+      ATTENDANCE_SERVICE_DB_USER: ${ATTENDANCE_SERVICE_DB_USER:-presencia_attendance_service}
+      ATTENDANCE_SERVICE_DB_PASSWORD: ${ATTENDANCE_SERVICE_DB_PASSWORD:?ATTENDANCE_SERVICE_DB_PASSWORD is required}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ../postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
@@ -117,6 +134,9 @@ services:
       ACADEMIC_DB_NAME: ${ACADEMIC_DB_NAME:-presencia_academic}
       ACADEMIC_DB_USER: ${ACADEMIC_DB_USER:-presencia_academic}
       ACADEMIC_DB_PASSWORD: ${ACADEMIC_DB_PASSWORD:?ACADEMIC_DB_PASSWORD is required}
+      ATTENDANCE_SERVICE_DB_NAME: ${ATTENDANCE_SERVICE_DB_NAME:-presencia_attendance_service}
+      ATTENDANCE_SERVICE_DB_USER: ${ATTENDANCE_SERVICE_DB_USER:-presencia_attendance_service}
+      ATTENDANCE_SERVICE_DB_PASSWORD: ${ATTENDANCE_SERVICE_DB_PASSWORD:?ATTENDANCE_SERVICE_DB_PASSWORD is required}
     volumes:
       - ../postgres/init-databases.sh:/opt/presencia/init-databases.sh:ro
     depends_on:
@@ -177,6 +197,8 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+      attendance-service:
+        condition: service_healthy
     expose: ["3000"]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
@@ -226,6 +248,8 @@ services:
       identity-service:
         condition: service_healthy
       academic-service:
+        condition: service_healthy
+      attendance-service:
         condition: service_healthy
     expose: ["3100"]
     healthcheck:
@@ -286,6 +310,31 @@ services:
     expose: ["3300"]
     networks: [private]
 
+  attendance-service-migrate:
+    image: presencia-attendance-service:${IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: services/attendance-service/Dockerfile
+    restart: "no"
+    command: ["npm", "run", "prisma:deploy", "--workspace", "@presencia/attendance-service"]
+    environment: *attendance-service-environment
+    depends_on:
+      postgres-provision:
+        condition: service_completed_successfully
+    networks: [private]
+
+  attendance-service:
+    image: presencia-attendance-service:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment: *attendance-service-environment
+    depends_on:
+      attendance-service-migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    expose: ["3400"]
+    networks: [private]
+
   api-gateway:
     image: presencia-api-gateway:${IMAGE_TAG:-latest}
     build:
@@ -300,10 +349,10 @@ services:
       UAT_INTEGRATION_URL: http://uat-integration:3100
       IDENTITY_SERVICE_URL: http://identity-service:3200
       ACADEMIC_SERVICE_URL: http://academic-service:3300
+      ATTENDANCE_SERVICE_URL: http://attendance-service:3400
       ROUTE_TARGET_OVERRIDES: ${ROUTE_TARGET_OVERRIDES:-{}}
       REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
       CORS_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
-      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
       METRICS_TOKEN: ${METRICS_TOKEN:?METRICS_TOKEN is required}
     depends_on:
       attendance-backend:
@@ -313,6 +362,8 @@ services:
       identity-service:
         condition: service_healthy
       academic-service:
+        condition: service_healthy
+      attendance-service:
         condition: service_healthy
       redis:
         condition: service_healthy

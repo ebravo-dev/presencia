@@ -1,0 +1,177 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AttendanceRosterGroup {
+  id                  String   @id @default(cuid())
+  externalGroupId     String   @unique @map("external_group_id")
+  uatGroupId          Int?     @map("uat_group_id")
+  name                String
+  groupLetter         String   @default("") @map("group_letter")
+  professorExternalId String   @map("professor_external_id")
+  schedule            Json
+  rosterVersion       String   @map("roster_version")
+  rosterObservedAt    DateTime @map("roster_observed_at")
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  students AttendanceRosterStudent[]
+  sessions AttendanceSession[]
+
+  @@index([professorExternalId, active])
+  @@map("attendance_roster_groups")
+}
+
+model AttendanceRosterStudent {
+  id           String   @id @default(cuid())
+  groupId      String   @map("group_id")
+  matricula    String
+  name         String
+  uatStudentId Int?     @map("uat_student_id")
+  listNumber   Int?     @map("list_number")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  group AttendanceRosterGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@unique([groupId, matricula])
+  @@unique([groupId, uatStudentId])
+  @@index([matricula, active])
+  @@map("attendance_roster_students")
+}
+
+model AttendanceSession {
+  id                  String               @id @default(cuid())
+  groupId             String               @map("group_id")
+  date                DateTime             @db.Date
+  professorExternalId String               @map("professor_external_id")
+  professorEntryAt    DateTime?             @map("professor_entry_at")
+  professorExitAt     DateTime?             @map("professor_exit_at")
+  uploadStatus        AttendanceUploadStatus @default(PENDING) @map("upload_status")
+  uploadError         String?               @map("upload_error")
+  uploadedAt          DateTime?             @map("uploaded_at")
+  version             Int                  @default(1)
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+
+  group   AttendanceRosterGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  entries AttendanceEntry[]
+
+  @@unique([groupId, date])
+  @@index([professorExternalId, date])
+  @@index([uploadStatus, updatedAt])
+  @@map("attendance_sessions")
+}
+
+model AttendanceEntry {
+  id        String           @id @default(cuid())
+  sessionId String           @map("session_id")
+  matricula String
+  status    AttendanceStatus
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  session AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+
+  @@unique([sessionId, matricula])
+  @@map("attendance_entries")
+}
+
+model StudentDeviceBinding {
+  id              String   @id @default(cuid())
+  matricula       String   @unique
+  attendanceUuid  String   @unique @map("attendance_uuid")
+  deviceBindingId String?  @unique @map("device_binding_id")
+  platform        String?
+  deviceInfo      String?  @map("device_info")
+  bindingVersion  Int      @default(1) @map("binding_version")
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  auditEvents DeviceBindingAuditEvent[]
+
+  @@index([attendanceUuid])
+  @@map("student_device_bindings")
+}
+
+model DeviceBindingAuditEvent {
+  id              String   @id @default(cuid())
+  bindingId       String?  @map("binding_id")
+  matricula       String
+  action          String
+  actorIdentityId String   @map("actor_identity_id")
+  actorRole       String   @map("actor_role")
+  reason          String
+  previousValue   Json?    @map("previous_value")
+  newValue        Json?    @map("new_value")
+  correlationId   String   @map("correlation_id")
+  occurredAt      DateTime @default(now()) @map("occurred_at")
+
+  binding StudentDeviceBinding? @relation(fields: [bindingId], references: [id], onDelete: SetNull)
+
+  @@index([matricula, occurredAt])
+  @@index([actorIdentityId, occurredAt])
+  @@map("device_binding_audit_events")
+}
+
+model AttendanceCommand {
+  idempotencyKey String   @id @map("idempotency_key")
+  operation      String
+  requestHash    String   @map("request_hash")
+  response       Json
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("attendance_commands")
+}
+
+model AttendanceOutboxEvent {
+  eventId       String    @id @map("event_id")
+  eventType     String    @map("event_type")
+  aggregateId   String    @map("aggregate_id")
+  correlationId String    @map("correlation_id")
+  causationId   String    @map("causation_id")
+  payload       Json
+  occurredAt    DateTime  @default(now()) @map("occurred_at")
+  publishedAt   DateTime? @map("published_at")
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now()) @map("next_attempt_at")
+  lockedAt      DateTime? @map("locked_at")
+  lastError     String?   @map("last_error")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([publishedAt, nextAttemptAt, createdAt])
+  @@map("attendance_outbox_events")
+}
+
+model ProcessedAttendanceEvent {
+  eventId     String   @map("event_id")
+  consumer    String
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@id([eventId, consumer])
+  @@map("processed_attendance_events")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum AttendanceUploadStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}

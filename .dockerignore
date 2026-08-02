@@ -12,3 +12,5 @@
 !services/identity-service/**
 !services/academic-service/
 !services/academic-service/**
+!services/attendance-service/
+!services/attendance-service/**

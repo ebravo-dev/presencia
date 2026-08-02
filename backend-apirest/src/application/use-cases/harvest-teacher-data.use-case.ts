@@ -262,6 +262,8 @@ export class HarvestTeacherDataUseCase {
         students.set(matricula.toUpperCase(), {
           matricula: matricula.toUpperCase(),
           name: readString(item, ['Txt_Alumno', 'txt_alumno', 'Nombre', 'Alumno']) ?? matricula,
+          uatStudentId: readNumber(item, ['Id_Alumno', 'id_alumno']),
+          listNumber: readNumber(item, ['Num_Lista', 'num_lista']),
         });
       }
       return { rosterAuthoritative: true, students: [...students.values()] };

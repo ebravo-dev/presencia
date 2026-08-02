@@ -7,14 +7,12 @@ describe('gateway configuration', () => {
     expect(result.success).toBe(false);
   });
 
-  it('requires different internal and metrics tokens', () => {
-    const token = 'a-secure-token-with-at-least-thirty-two-characters';
-    const result = gatewayEnvSchema.safeParse({
-      NODE_ENV: 'production',
-      INTERNAL_API_TOKEN: token,
-      METRICS_TOKEN: token,
+  it('does not retain an internal service token at the public edge', () => {
+    const result = gatewayEnvSchema.parse({
+      NODE_ENV: 'test',
+      INTERNAL_API_TOKEN: 'an-internal-secret-that-must-not-reach-the-edge',
     });
-    expect(result.success).toBe(false);
+    expect('INTERNAL_API_TOKEN' in result).toBe(false);
   });
 
   it('normalizes the CORS allowlist', () => {

@@ -100,6 +100,8 @@ model AcademicEnrollment {
   groupId   String   @map("group_id")
   matricula String
   name      String
+  uatStudentId Int?     @map("uat_student_id")
+  listNumber   Int?     @map("list_number")
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -107,6 +109,7 @@ model AcademicEnrollment {
   group AcademicGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
 
   @@unique([groupId, matricula])
+  @@unique([groupId, uatStudentId])
   @@index([matricula, active])
   @@map("academic_enrollments")
 }

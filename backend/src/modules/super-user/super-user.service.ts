@@ -16,6 +16,7 @@ import {
     updateAttendanceSettings,
 } from '../settings/attendance-settings.service.js';
 import type { CoordinatorCreateInput, CoordinatorUpdateInput, DebugClassCreateInput, DebugClassUpdateInput, DebugSettingsUpdateInput } from './super-user.schemas.js';
+import { AttendanceServiceCommandClient } from './attendance-service-command.client.js';
 
 const studentDeviceBinding = (prisma as any).studentDeviceBinding;
 const DEBUG_DAY_ALIASES = {
@@ -38,6 +39,9 @@ interface SuperUserJwtPayload extends jwt.JwtPayload {
 
 export class SuperUserService {
     readonly sessionDurationSeconds = 4 * 60 * 60;
+    private readonly attendanceCommands = env.ATTENDANCE_SERVICE_URL
+        ? new AttendanceServiceCommandClient(env.ATTENDANCE_SERVICE_URL, env.INTERNAL_API_TOKEN)
+        : undefined;
 
     login(password: string): { token: string; user: SuperUserIdentity; expiresAt: Date } {
         if (!this.passwordMatches(password)) {
@@ -178,13 +182,24 @@ export class SuperUserService {
         }));
     }
 
-    async deleteStudentDeviceBinding(matriculaInput: string): Promise<boolean> {
+    async deleteStudentDeviceBinding(matriculaInput: string, correlationId = 'super-user-dashboard'): Promise<boolean> {
         const matricula = matriculaInput.trim().toUpperCase();
+        let authoritativeCommandSent = false;
+        if (this.attendanceCommands) {
+            await this.attendanceCommands.unbindStudentDevice({
+                matricula,
+                actorIdentityId: 'super-user:dashboard',
+                actorRole: 'SUPER_USER',
+                reason: 'Desvinculación solicitada desde el dashboard de coordinación.',
+                correlationId,
+            });
+            authoritativeCommandSent = true;
+        }
         const deleted = await studentDeviceBinding.deleteMany({
             where: { matricula },
         });
 
-        if (deleted.count === 0) return false;
+        if (deleted.count === 0) return authoritativeCommandSent;
 
         await prisma.student.updateMany({
             where: { matricula },

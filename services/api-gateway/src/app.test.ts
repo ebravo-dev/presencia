@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type GatewayEnv, gatewayEnvSchema } from './config.js';
 import { buildGateway } from './app.js';
 
-const token = 'a-secure-internal-token-with-at-least-32-characters';
 const metricsToken = 'a-different-metrics-token-with-at-least-32-characters';
 
 describe('API Gateway', () => {
@@ -36,7 +35,6 @@ describe('API Gateway', () => {
       LOG_LEVEL: 'silent',
       LEGACY_BACKEND_URL: legacy.listeningOrigin,
       UAT_INTEGRATION_URL: uat.listeningOrigin,
-      INTERNAL_API_TOKEN: token,
       METRICS_TOKEN: metricsToken,
     });
     gateway = await buildGateway({
@@ -49,7 +47,7 @@ describe('API Gateway', () => {
     await Promise.all([gateway?.close(), legacy?.close(), uat?.close()]);
   });
 
-  it('routes UAT requests and replaces untrusted internal headers', async () => {
+  it('routes UAT requests and strips untrusted internal headers', async () => {
     const response = await gateway.inject({
       method: 'GET',
       url: '/api/uat/alumnos/horario',
@@ -63,8 +61,8 @@ describe('API Gateway', () => {
     expect(response.json()).toMatchObject({
       upstream: 'uat',
       correlationId: 'mobile-request-123',
-      internalToken: token,
     });
+    expect(response.json().internalToken).toBeUndefined();
     expect(response.headers['x-correlation-id']).toBe('mobile-request-123');
     expect(response.headers.traceparent).toMatch(/^00-[\da-f]{32}-[\da-f]{16}-01$/);
     expect(response.json().traceparent).toBe(response.headers.traceparent);

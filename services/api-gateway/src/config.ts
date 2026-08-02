@@ -2,7 +2,6 @@ import { z } from 'zod';
 import type { GatewayRouteOverride, GatewayTarget } from '@presencia/contracts-http';
 
 const developmentSecrets = new Set([
-  'development-internal-service-token-change-me',
   'development-metrics-token-change-me',
 ]);
 
@@ -20,7 +19,6 @@ export const gatewayEnvSchema = z.object({
   ROUTE_TARGET_OVERRIDES: z.string().default('{}'),
   REDIS_URL: z.url().default('redis://localhost:6379/0'),
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
-  INTERNAL_API_TOKEN: z.string().min(32).default('development-internal-service-token-change-me'),
   METRICS_TOKEN: z.string().min(32).default('development-metrics-token-change-me'),
   UPSTREAM_TIMEOUT_MS: z.coerce.number().int().positive().max(120_000).default(30_000),
   BODY_LIMIT_BYTES: z.coerce.number().int().positive().max(10_000_000).default(1_048_576),
@@ -29,10 +27,7 @@ export const gatewayEnvSchema = z.object({
 }).superRefine((value, context) => {
   if (value.NODE_ENV !== 'production') return;
 
-  for (const [field, secret] of [
-    ['INTERNAL_API_TOKEN', value.INTERNAL_API_TOKEN],
-    ['METRICS_TOKEN', value.METRICS_TOKEN],
-  ] as const) {
+  for (const [field, secret] of [['METRICS_TOKEN', value.METRICS_TOKEN]] as const) {
     if (developmentSecrets.has(secret)) {
       context.addIssue({
         code: 'custom',
@@ -42,13 +37,6 @@ export const gatewayEnvSchema = z.object({
     }
   }
 
-  if (value.INTERNAL_API_TOKEN === value.METRICS_TOKEN) {
-    context.addIssue({
-      code: 'custom',
-      path: ['METRICS_TOKEN'],
-      message: 'Metrics and internal service tokens must be different',
-    });
-  }
 });
 
 export type GatewayEnv = z.infer<typeof gatewayEnvSchema>;

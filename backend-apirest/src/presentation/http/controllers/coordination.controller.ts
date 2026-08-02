@@ -3,6 +3,7 @@ import type { CoordinationService } from '../../../application/services/coordina
 import type { WeeklyAttendanceReportService } from '../../../application/services/weekly-attendance-report.service.js';
 import type { SharedClassService, SharedClassInput } from '../../../application/services/shared-class.service.js';
 import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
+import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
 import {
   parseCoordinationPayload,
   rangeReportQuerySchema,
@@ -20,6 +21,7 @@ export class CoordinationController {
     private readonly weeklyAttendanceReport: WeeklyAttendanceReportService,
     private readonly attendanceBackendClient: AttendanceBackendClient,
     private readonly sharedClassService: SharedClassService,
+    private readonly attendanceServiceCommands?: AttendanceServiceCommandClient,
   ) {}
 
   overview = async (_request: FastifyRequest, reply: FastifyReply) => {
@@ -76,6 +78,17 @@ export class CoordinationController {
   };
 
   deleteStudentDeviceBinding = async (request: FastifyRequest<{ Params: { matricula: string } }>, reply: FastifyReply) => {
+    const coordinator = request.coordinator;
+    if (!coordinator) return reply.code(401).send({ error: 'COORDINATOR_UNAUTHORIZED' });
+    if (this.attendanceServiceCommands) {
+      await this.attendanceServiceCommands.unbindStudentDevice({
+        matricula: request.params.matricula,
+        actorIdentityId: coordinator.id,
+        actorRole: 'COORDINATOR',
+        reason: 'Desvinculación solicitada desde el dashboard de coordinación.',
+        correlationId: request.id,
+      });
+    }
     await this.attendanceBackendClient.deleteStudentDeviceBinding(request.params.matricula);
     return reply.code(204).send();
   };

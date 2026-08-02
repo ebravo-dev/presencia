@@ -4,6 +4,7 @@ import type { CoordinatorAuthService } from '../../../application/services/coord
 import type { WeeklyAttendanceReportService } from '../../../application/services/weekly-attendance-report.service.js';
 import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
 import type { SharedClassService } from '../../../application/services/shared-class.service.js';
+import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
 import { CoordinationController } from '../controllers/coordination.controller.js';
 import { coordinationRouteSchemas } from '../schemas/coordination.schemas.js';
 import { buildCoordinatorAuthHook } from '../hooks/coordinator-auth.hook.js';
@@ -14,15 +15,22 @@ export interface CoordinationRoutesOptions {
   weeklyAttendanceReport: WeeklyAttendanceReportService;
   attendanceBackendClient: AttendanceBackendClient;
   sharedClassService: SharedClassService;
+  attendanceServiceCommands?: AttendanceServiceCommandClient;
 }
 
 export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> = async (
   fastify,
-  { coordinationService, authService, weeklyAttendanceReport, attendanceBackendClient, sharedClassService },
+  { coordinationService, authService, weeklyAttendanceReport, attendanceBackendClient, sharedClassService, attendanceServiceCommands },
 ) => {
   fastify.addHook('preHandler', buildCoordinatorAuthHook(authService));
   const requireWriteCoordinator = buildCoordinatorAuthHook(authService, { write: true });
-  const controller = new CoordinationController(coordinationService, weeklyAttendanceReport, attendanceBackendClient, sharedClassService);
+  const controller = new CoordinationController(
+    coordinationService,
+    weeklyAttendanceReport,
+    attendanceBackendClient,
+    sharedClassService,
+    attendanceServiceCommands,
+  );
 
   fastify.get('/api/coordinacion/resumen', { schema: coordinationRouteSchemas.overview }, controller.overview);
   fastify.get(
