@@ -10,10 +10,6 @@ import {
   semanasGrupoQuerySchema,
 } from '../schemas/uat.schemas.js';
 
-function toIsoDateTime(value: string | null | undefined): string | null {
-  return value ? new Date(value).toISOString() : null;
-}
-
 export class AsistenciaController {
   constructor(
     private readonly uatService: UatService,
@@ -54,8 +50,6 @@ export class AsistenciaController {
       externalGroupId: String(body.Id_Grupo),
       professorExternalId,
       date: dateFromWeekStart(body.Fec_Ini, dayNumbers[0]!),
-      professorEntryAt: toIsoDateTime(body.ProfessorEntryAt),
-      professorExitAt: toIsoDateTime(body.ProfessorExitAt),
       entries: body.Asistencia.map((attendance) => ({
         uatStudentId: attendance.id_alumno,
         status: attendance.sn_asistencia ? 'PRESENT' : 'ABSENT',

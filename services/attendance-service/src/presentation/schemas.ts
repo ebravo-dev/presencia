@@ -18,7 +18,6 @@ export const captureAttendanceSchema = z.object({
   externalGroupId: z.string().trim().min(1).max(160),
   professorExternalId: z.string().trim().min(1).max(160),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  professorEntryAt: z.iso.datetime().nullable().optional(), professorExitAt: z.iso.datetime().nullable().optional(),
   uatSessionId: z.uuid().nullable().optional(),
   entries: z.array(z.object({
     matricula: z.string().trim().min(1).max(40).optional(),
@@ -27,7 +26,7 @@ export const captureAttendanceSchema = z.object({
   }).refine((entry) => Number(Boolean(entry.matricula)) + Number(Boolean(entry.uatStudentId)) === 1, {
     message: 'exactly one of matricula or uatStudentId is required',
   })).min(1).max(1_000),
-});
+}).strict();
 export const deviceBindingSchema = z.object({
   matricula: z.string().trim().min(1).max(40), attendanceUuid: z.uuid(), deviceBindingId: z.uuid(),
   platform: z.enum(['android', 'ios']), deviceInfo: z.string().trim().max(500).nullable().optional(),

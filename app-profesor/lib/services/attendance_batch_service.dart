@@ -151,8 +151,6 @@ class AttendanceBatchService {
         classroom: group.classroom,
         level: group.level,
         schedule: group.schedule,
-        professorEntryAt: record.horaEntrada,
-        professorExitAt: record.horaSalida,
       );
 
       await result.fold(
@@ -208,8 +206,6 @@ class AttendanceBatchService {
         classroom: group.classroom,
         level: group.level,
         schedule: group.schedule,
-        professorEntryAt: record.horaEntrada,
-        professorExitAt: record.horaSalida,
       );
 
       await result.fold(

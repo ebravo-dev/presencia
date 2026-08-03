@@ -1136,6 +1136,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       _motivoEntrada = resultado.motivo;
     });
     await _guardarAsistencia();
+    if (resultado.verificada && resultado.beaconUuid != null) {
+      await _sincronizarEntradaProfesor(resultado.beaconUuid!);
+    }
   }
 
   Future<void> _verificarBeaconYMarcarSalida() async {
@@ -1379,6 +1382,27 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     );
   }
 
+  Future<void> _sincronizarEntradaProfesor(String beaconUuid) async {
+    final token = _authStorage.getToken();
+    final entrada = _entradaProfesor;
+    if (token == null || token.isEmpty || entrada == null) return;
+
+    final result = await _apiService.recordProfessorBeaconEntry(
+      token: token,
+      externalGroupId: widget.grupo.id,
+      detectedAt: entrada,
+      beaconUuid: beaconUuid,
+    );
+
+    result.fold(
+      (error) => Logger.error(
+        'No se pudo registrar entrada verificada del profesor en backend: $error',
+      ),
+      (_) =>
+          Logger.info('Entrada verificada del profesor registrada en backend.'),
+    );
+  }
+
   // Intentar sincronizar asistencia a la nube
   Future<void> _intentarSincronizarAsistencia() async {
     // Mostrar diálogo de progreso
@@ -1396,6 +1420,19 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       }
       return;
     }
+
+    if (_entradaVerificada && _entradaProfesor != null) {
+      final beaconUuid = _authStorage.getBeaconUuidForClassroom(
+        widget.grupo.classroom,
+      );
+      if (beaconUuid != null && beaconUuid.isNotEmpty) {
+        await _sincronizarEntradaProfesor(beaconUuid);
+      }
+    }
+    if (_salidaProfesor != null) {
+      await _sincronizarSalidaProfesor();
+    }
+    if (!mounted) return;
 
     showDialog(
       context: context,
@@ -1475,8 +1512,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       classroom: widget.grupo.classroom,
       level: widget.grupo.level,
       schedule: widget.grupo.schedule,
-      professorEntryAt: _entradaProfesor,
-      professorExitAt: _salidaProfesor,
     );
 
     // Cerrar diálogo
@@ -2560,16 +2595,21 @@ class _BleDialogResult {
   final bool debeMarcarAsistencia;
   final bool verificada;
   final String? motivo;
+  final String? beaconUuid;
 
   const _BleDialogResult({
     required this.debeMarcarAsistencia,
     required this.verificada,
     this.motivo,
+    this.beaconUuid,
   });
 
   /// Beacon detectado — asistencia verificada
-  factory _BleDialogResult.verified() =>
-      const _BleDialogResult(debeMarcarAsistencia: true, verificada: true);
+  factory _BleDialogResult.verified(String beaconUuid) => _BleDialogResult(
+    debeMarcarAsistencia: true,
+    verificada: true,
+    beaconUuid: beaconUuid,
+  );
 
   /// Beacon no detectado — entrada parcial con motivo
   factory _BleDialogResult.withMotivo(String motivo) => _BleDialogResult(
@@ -2672,7 +2712,9 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
         HapticFeedback.heavyImpact();
         await Future.delayed(const Duration(milliseconds: 800));
         if (mounted) {
-          Navigator.of(context).pop(_BleDialogResult.verified());
+          Navigator.of(
+            context,
+          ).pop(_BleDialogResult.verified(widget.beaconUuid));
         }
         break;
 

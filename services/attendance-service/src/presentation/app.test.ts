@@ -92,6 +92,25 @@ describe('Attendance HTTP API', () => {
     await app.close();
   });
 
+  it('rejects professor timestamps on attendance captures', async () => {
+    const app = await testApp();
+    const response = await app.inject({
+      method: 'POST', url: '/internal/v1/attendance/captures',
+      headers: {
+        'x-internal-service-token': token,
+        'idempotency-key': '74b29734-65a8-48b2-9e6e-8cd01f1a0016',
+      },
+      payload: {
+        externalGroupId: '947699', professorExternalId: 'teacher-1', date: '2026-08-02',
+        professorEntryAt: '2026-08-02T08:00:00.000Z',
+        entries: [{ matricula: '2251330007', status: 'PRESENT' }],
+      },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toBe('VALIDATION_ERROR');
+    await app.close();
+  });
+
   it('protects and exposes the coordination reconciliation snapshot internally', async () => {
     const app = await testApp();
     const hidden = await app.inject({ method: 'GET', url: '/internal/v1/attendance/coordination-projection' });

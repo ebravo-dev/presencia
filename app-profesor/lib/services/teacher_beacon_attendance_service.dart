@@ -224,20 +224,10 @@ class TeacherBeaconAttendanceService {
     AltBeaconDetection detection,
   ) async {
     final token = _authStorage.getToken();
-    if (token != null &&
-        grupo.code != null &&
-        grupo.groupLetter != null &&
-        grupo.period != null) {
+    if (token != null) {
       await _apiService.recordProfessorBeaconEntry(
         token: token,
         externalGroupId: grupo.id,
-        code: grupo.code!,
-        groupLetter: grupo.groupLetter!,
-        period: grupo.period!,
-        groupName: grupo.name,
-        classroom: grupo.classroom,
-        level: grupo.level,
-        schedule: grupo.schedule,
         detectedAt: detectedAt,
         beaconUuid: detection.uuid,
         rssi: detection.rssi,

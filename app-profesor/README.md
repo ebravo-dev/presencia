@@ -9,6 +9,7 @@ Esta aplicación permite a los profesores universitarios:
 - **📝 Gestionar grupos y estudiantes**: Organizar clases y listas de alumnos
 - **✅ Tomar asistencia de estudiantes**: Registro manual o automático de la asistencia de los alumnos
 - **📍 Registrar asistencia automática del profesor**: Detección automática de presencia del profesor en el aula mediante beacons Bluetooth
+- **🕒 Hora confiable**: El backend registra la hora efectiva de entrada y salida; la carga de la lista no puede sustituirla con horas creadas por el cliente
 - **📊 Generar reportes**: Estadísticas y reportes de asistencia para seguimiento académico
 
 ### 🎯 Características Principales

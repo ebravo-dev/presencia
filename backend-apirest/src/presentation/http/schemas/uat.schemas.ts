@@ -70,16 +70,6 @@ const fechaUatSchema = z.string().regex(/^\d{2}\/\d{2}\/\d{4}$/, {
   message: 'El formato de fecha debe ser estrictamente DD/MM/YYYY',
 });
 
-const isoLikeDateTimeSchema = z
-  .string()
-  .trim()
-  .optional()
-  .nullable()
-  .transform((value) => value || null)
-  .refine((value) => value == null || !Number.isNaN(Date.parse(value)), {
-    message: 'Debe ser un datetime ISO valido.',
-  });
-
 export const gruposProfesorQuerySchema = z.object({
   Id_Des: z.coerce.number().int().positive(),
   Id_Ciclo: z.coerce.number().int().positive(),
@@ -113,8 +103,6 @@ export const registrarAsistenciasBodySchema = z.object({
   Id_Grupo: z.number().int().positive(),
   Fec_Ini: fechaUatSchema,
   Asistencia: z.array(asistenciaAlumnoInputSchema).min(1),
-  ProfessorEntryAt: isoLikeDateTimeSchema,
-  ProfessorExitAt: isoLikeDateTimeSchema,
 }).strict();
 
 export const sessionParamsSchema = z.object({

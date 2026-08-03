@@ -499,8 +499,6 @@ class ApiService {
     String? classroom,
     String? level,
     Map<String, String?>? schedule,
-    DateTime? professorEntryAt,
-    DateTime? professorExitAt,
     String? groupId,
   }) async {
     return _uploadAttendanceViaBackendApiRest(
@@ -515,8 +513,6 @@ class ApiService {
       schedule: schedule,
       date: date,
       attendances: attendances,
-      professorEntryAt: professorEntryAt,
-      professorExitAt: professorExitAt,
     );
   }
 
@@ -578,8 +574,6 @@ class ApiService {
     Map<String, String?>? schedule,
     required DateTime date,
     required List<Map<String, dynamic>> attendances,
-    DateTime? professorEntryAt,
-    DateTime? professorExitAt,
     bool debugReportOnly = false,
     bool retrySession = true,
   }) async {
@@ -632,8 +626,7 @@ class ApiService {
           '[DEBUG] Registrando asistencia para reportes sin enviar a UAT/API REST externa. '
           'groupId=$idGrupo, code=$code, groupLetter=$groupLetter, period=$period, '
           'date=$formattedDate, alumnos=${asistencia.length}, '
-          'professorEntryAt=${professorEntryAt?.toIso8601String()}, '
-          'professorExitAt=${professorExitAt?.toIso8601String()}',
+          'presenceAuthority=attendance-service',
         );
       }
 
@@ -654,10 +647,6 @@ class ApiService {
             'CreateMissingGroup': true,
             'Date': formattedDate,
           },
-          if (professorEntryAt != null)
-            'ProfessorEntryAt': professorEntryAt.toIso8601String(),
-          if (professorExitAt != null)
-            'ProfessorExitAt': professorExitAt.toIso8601String(),
           'Asistencia': asistencia,
         },
         options: Options(headers: {'X-UAT-Session-Id': token}),
@@ -687,8 +676,6 @@ class ApiService {
             schedule: schedule,
             date: date,
             attendances: attendances,
-            professorEntryAt: professorEntryAt,
-            professorExitAt: professorExitAt,
             debugReportOnly: debugReportOnly,
             retrySession: false,
           );
@@ -892,13 +879,6 @@ class ApiService {
   Future<Either<String, Map<String, dynamic>>> recordProfessorBeaconEntry({
     required String token,
     required String externalGroupId,
-    required String code,
-    required String groupLetter,
-    required String period,
-    String? groupName,
-    String? classroom,
-    String? level,
-    Map<String, String?>? schedule,
     required DateTime detectedAt,
     required String beaconUuid,
     int? rssi,

@@ -18,8 +18,6 @@ export class AttendanceCaptureClient {
     externalGroupId: string;
     professorExternalId: string;
     date: string;
-    professorEntryAt?: string | null;
-    professorExitAt?: string | null;
     entries: Array<{ uatStudentId: number; status: 'PRESENT' | 'ABSENT' }>;
   }) {
     const idempotencyKey = stableUuid(JSON.stringify(input));
@@ -28,8 +26,6 @@ export class AttendanceCaptureClient {
         externalGroupId: input.externalGroupId,
         professorExternalId: input.professorExternalId,
         date: input.date,
-        professorEntryAt: input.professorEntryAt ?? null,
-        professorExitAt: input.professorExitAt ?? null,
         uatSessionId: input.uatSessionId,
         entries: input.entries,
       }, {

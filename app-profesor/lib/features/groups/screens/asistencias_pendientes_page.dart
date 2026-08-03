@@ -297,8 +297,6 @@ class _AsistenciasPendientesPageState
       classroom: grupo.classroom,
       level: grupo.level,
       schedule: grupo.schedule,
-      professorEntryAt: registroActualizado.horaEntrada,
-      professorExitAt: registroActualizado.horaSalida,
     );
 
     final uploadSuccess = await result.fold(

@@ -41,8 +41,6 @@ describe('AsistenciaController', () => {
       externalGroupId: '947699',
       professorExternalId: '308127',
       date: '2026-08-02',
-      professorEntryAt: null,
-      professorExitAt: null,
       entries: [
         { uatStudentId: 515722, status: 'PRESENT' },
         { uatStudentId: 515723, status: 'ABSENT' },
@@ -80,6 +78,26 @@ describe('AsistenciaController', () => {
         Fec_Ini: '27/07/2026',
         Asistencia: [{ id_alumno: 515722, num_pase_lista: 1, num_dia: 1, sn_asistencia: true }],
         DebugReportOnly: true,
+      },
+      uatSession: {
+        id: '74b29734-65a8-48b2-9e6e-8cd01f1a0016', username: 'profesor@uat.edu.mx', login: { parametros: {} },
+      },
+    } as never)).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(capture).not.toHaveBeenCalled();
+  });
+
+  it('rejects client-authored professor timestamps so presence only comes from the verified channel', async () => {
+    const capture = vi.fn(async () => ({}));
+    const controller = new AsistenciaController({} as never, { capture } as never);
+
+    await expect(controller.guardar({
+      id: 'request-forged-presence',
+      body: {
+        Id_Grupo: 947699,
+        Fec_Ini: '27/07/2026',
+        Asistencia: [{ id_alumno: 515722, num_pase_lista: 1, num_dia: 7, sn_asistencia: true }],
+        ProfessorEntryAt: '2026-08-02T08:00:00.000Z',
+        ProfessorExitAt: '2026-08-02T09:00:00.000Z',
       },
       uatSession: {
         id: '74b29734-65a8-48b2-9e6e-8cd01f1a0016', username: 'profesor@uat.edu.mx', login: { parametros: {} },

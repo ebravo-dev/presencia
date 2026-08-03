@@ -235,13 +235,10 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
         where: { groupId_date: { groupId: group.id, date } },
         create: {
           groupId: group.id, date, professorExternalId: command.professorExternalId,
-          professorEntryAt: command.professorEntryAt ?? null, professorExitAt: command.professorExitAt ?? null,
           finalizedAt: new Date(), uploadStatus, version: 1,
         },
         update: {
           professorExternalId: command.professorExternalId,
-          ...(command.professorEntryAt && !existing?.professorEntryAt ? { professorEntryAt: command.professorEntryAt } : {}),
-          ...(command.professorExitAt && !existing?.professorExitAt ? { professorExitAt: command.professorExitAt } : {}),
           finalizedAt: new Date(), uploadStatus, uploadError: null, uploadedAt: null, version: { increment: 1 },
         },
       });

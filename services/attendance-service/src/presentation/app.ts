@@ -68,8 +68,6 @@ export async function buildAttendanceApp(options: {
       ...parsed,
       idempotencyKey,
       correlationId: correlationId(request),
-      professorEntryAt: parsed.professorEntryAt ? new Date(parsed.professorEntryAt) : null,
-      professorExitAt: parsed.professorExitAt ? new Date(parsed.professorExitAt) : null,
     });
     return reply.code(result.duplicate ? 200 : 202).send({ data: result });
   });
