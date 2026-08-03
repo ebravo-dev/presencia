@@ -57,7 +57,7 @@ jobs:
       - name: Verify services and contracts
         run: npm run verify
 
-      - name: Install and verify compatibility backend
+      - name: Verify historical migration and import image
         working-directory: backend
         run: |
           npm ci

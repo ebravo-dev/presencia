@@ -61,7 +61,7 @@ un servicio propietario.
 | `/auth/*`, `/professors/*`, `/groups/*` | Retiradas | Sin referencias en Flutter vigente; el Gateway responde 404 y no permite reactivarlas mediante override |
 | `/attendance/*` | Retirada | El Gateway responde 404; captura vigente usa `/api/uat/asistencia/*` y Attendance |
 | `/api/uat/profesor/presencia/*` | Attendance | BFF UAT autentica al profesor y delega entrada, salida y detecciones sin elevar autorización |
-| `/api/uat/profesor/beacons/resolve` | Attendance | BFF UAT; autorización de sustituciones pasa temporalmente por la fachada y la configuración siempre se lee de Attendance |
+| `/api/uat/profesor/beacons/resolve` | Attendance | BFF UAT; valida la sesión institucional y delega resolución/autorización al propietario Attendance |
 | `/api/beacons/*`, `/api/student-attendance/*` | Retiradas | El Gateway responde 404; la app vigente usa sesión UAT y comandos de Attendance |
 | `/api/student-device-bindings/*` | Attendance | Corte completado; Gateway enruta al propietario y la lectura del profesor pasa por sesión UAT + roster |
 | `/api/superUsuario/auth/*`, `/api/superUsuario/coordinadores/*` | Identity | BFF `backend-apirest`; cuentas históricas se importan una sola vez y su tabla anterior queda sin CRUD runtime |

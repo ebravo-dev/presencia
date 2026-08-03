@@ -1,6 +1,6 @@
 # Plan de migración a microservicios de Presencia
 
-**Estado:** En implementación — Fase 7 (cierre, hardening y retiro gradual del legado)
+**Estado:** Implementación local completada — validación externa pendiente
 
 **Fecha de decisión:** 2026-07-31
 
