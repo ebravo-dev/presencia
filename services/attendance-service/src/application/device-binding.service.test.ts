@@ -86,6 +86,7 @@ function repositoryStub(): AttendanceRepository {
   return {
     async applyRoster() {},
     async deactivateRoster() {},
+    async applyGroupAccessGrant() {},
     async markUploadResult() { return true; },
     async capture() { throw new Error('unexpected'); },
     async bindInitial() { throw new Error('unexpected'); },

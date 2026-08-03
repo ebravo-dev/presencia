@@ -13,7 +13,6 @@ import { CoordinationService } from './application/services/coordination.service
 import { CoordinatorAccountService } from './application/services/coordinator-account.service.js';
 import { CoordinatorAuthService } from './application/services/coordinator-auth.service.js';
 import { WeeklyAttendanceReportService } from './application/services/weekly-attendance-report.service.js';
-import { SharedClassService } from './application/services/shared-class.service.js';
 import { UatStudentService } from './application/services/uat-student.service.js';
 import { AttendanceUploadService } from './application/services/attendance-upload.service.js';
 import { UatService } from './application/services/uat.service.js';
@@ -39,7 +38,6 @@ import { prisma } from './infrastructure/persistence/prisma/prisma.client.js';
 import { PrismaCoordinationRepository } from './infrastructure/persistence/prisma/prisma-coordination.repository.js';
 import { PrismaGroupAssignmentRepository } from './infrastructure/persistence/prisma/prisma-group-assignment.repository.js';
 import { PrismaSubjectRepository } from './infrastructure/persistence/prisma/prisma-subject.repository.js';
-import { PrismaSharedClassAssignmentRepository } from './infrastructure/persistence/prisma/prisma-shared-class-assignment.repository.js';
 import { PrismaTeacherRepository } from './infrastructure/persistence/prisma/prisma-teacher.repository.js';
 import { PrismaAttendanceUploadRepository } from './infrastructure/persistence/prisma/prisma-attendance-upload.repository.js';
 import { CredentialCipher } from './infrastructure/security/credential-cipher.js';
@@ -164,8 +162,6 @@ export async function buildApp() {
   const subjectRepository = new PrismaSubjectRepository(prisma);
   const coordinationRepository = new PrismaCoordinationRepository(prisma);
   const groupAssignmentRepository = new PrismaGroupAssignmentRepository(prisma);
-  const sharedClassRepository = new PrismaSharedClassAssignmentRepository(prisma);
-  const sharedClassService = new SharedClassService(sharedClassRepository, teacherRepository, groupAssignmentRepository);
   const eventBus = new DurableDomainEventBus(
     prisma,
     {
@@ -301,7 +297,7 @@ export async function buildApp() {
     uatService,
     uatStudentService,
     eventBus,
-    sharedClassService,
+    academicServiceClient,
     attendanceBackendClient,
     attendanceUploadService,
     attendanceUploadWorker,
@@ -320,7 +316,7 @@ export async function buildApp() {
     authService: coordinatorAuthService,
     weeklyAttendanceReport,
     attendanceBackendClient,
-    sharedClassService,
+    academicServiceClient,
     ...(attendanceServiceCommands ? { attendanceServiceCommands } : {}),
     ...(coordinationQuery ? { coordinationQuery } : {}),
   });

@@ -19,6 +19,7 @@ model TeacherProfile {
   updatedAt             DateTime @updatedAt @map("updated_at")
 
   groups AcademicGroup[]
+  receivedSharedClasses AcademicSharedClassAssignment[] @relation("AcademicSharedClassAssignee")
 
   @@index([email])
   @@map("teacher_profiles")
@@ -90,10 +91,53 @@ model AcademicGroup {
   subject      AcademicSubject       @relation(fields: [subjectId], references: [id], onDelete: Restrict)
   coordination AcademicCoordination  @relation(fields: [coordinationId], references: [id], onDelete: Restrict)
   enrollments  AcademicEnrollment[]
+  sharedAssignments AcademicSharedClassAssignment[]
 
   @@index([teacherId, cycleId, active])
   @@index([coordinationId, active])
   @@map("academic_groups")
+}
+
+model AcademicSharedClassAssignment {
+  id                 String   @id @default(cuid())
+  groupId            String   @map("group_id")
+  assignedTeacherId  String   @map("assigned_teacher_id")
+  schoolCycleYear    Int      @map("school_cycle_year")
+  schoolCycleTerm    Int      @map("school_cycle_term")
+  active             Boolean  @default(true)
+  notes              String?
+  legacySourceId     String?  @unique @map("legacy_source_id")
+  sourceObservedAt   DateTime @default(now()) @map("source_observed_at")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  group           AcademicGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  assignedTeacher TeacherProfile @relation("AcademicSharedClassAssignee", fields: [assignedTeacherId], references: [id], onDelete: Cascade)
+  auditEvents     AcademicSharedClassAuditEvent[]
+
+  @@unique([groupId, assignedTeacherId, schoolCycleYear, schoolCycleTerm])
+  @@index([assignedTeacherId, schoolCycleYear, schoolCycleTerm, active])
+  @@index([groupId])
+  @@map("academic_shared_class_assignments")
+}
+
+model AcademicSharedClassAuditEvent {
+  id              String   @id @default(cuid())
+  assignmentId    String?  @map("assignment_id")
+  action          String
+  actorIdentityId String   @map("actor_identity_id")
+  actorRole       String   @map("actor_role")
+  reason          String
+  previousValue   Json?    @map("previous_value")
+  newValue        Json?    @map("new_value")
+  correlationId   String   @map("correlation_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  assignment AcademicSharedClassAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+
+  @@index([assignmentId, createdAt])
+  @@index([actorIdentityId, createdAt])
+  @@map("academic_shared_class_audit_events")
 }
 
 model AcademicEnrollment {

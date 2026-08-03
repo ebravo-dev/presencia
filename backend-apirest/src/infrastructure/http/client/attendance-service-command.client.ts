@@ -79,7 +79,7 @@ export class AttendanceServiceCommandClient implements AttendanceBindingClient {
     });
   }
 
-  resolveClassroomBeacons(input: { professorExternalId: string; classrooms: string[] }): Promise<{
+  resolveClassroomBeacons(input: { professorExternalId: string; professorEmail?: string; classrooms: string[] }): Promise<{
     data: ClassroomBeaconResponse[]; missing: string[];
   }> {
     return this.request('/internal/v1/attendance/classroom-beacons/resolve', { method: 'POST', body: input });

@@ -1,14 +1,10 @@
 import type { FastifyRequest } from 'fastify';
 import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
-import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
 import { ApiError } from '../../../errors/api-error.js';
 import { parsePayload, professorBeaconResolveSchema, professorDeviceBindingResolveSchema } from '../schemas/uat.schemas.js';
 
 export class ProfessorDeviceBindingController {
-  constructor(
-    private readonly attendance: AttendanceServiceCommandClient | undefined,
-    private readonly compatibility?: AttendanceBackendClient,
-  ) {}
+  constructor(private readonly attendance: AttendanceServiceCommandClient | undefined) {}
 
   resolve = async (request: FastifyRequest) => {
     if (!this.attendance) {
@@ -25,13 +21,10 @@ export class ProfessorDeviceBindingController {
       throw new ApiError(503, 'ATTENDANCE_SERVICE_REQUIRED', 'Attendance Service no está disponible.');
     }
     const body = parsePayload(professorBeaconResolveSchema, request.body);
-    if (this.compatibility) {
-      return this.compatibility.resolveProfessorClassroomBeacons({
-        professorEmail: request.uatSession.username, classrooms: body.classrooms,
-      });
-    }
     return this.attendance.resolveClassroomBeacons({
-      professorExternalId: professorExternalId(request), classrooms: body.classrooms,
+      professorExternalId: professorExternalId(request),
+      professorEmail: request.uatSession.username,
+      classrooms: body.classrooms,
     });
   };
 }

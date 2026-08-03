@@ -13,6 +13,7 @@ const CONSUMER = 'attendance-service.academic-roster.v1';
 const CONSUMED_EVENTS = [
   'academic.roster_updated.v1',
   'academic.group_deactivated.v1',
+  'academic.substitution_changed.v1',
   'uat.attendance_uploaded.v1',
   'uat.attendance_upload_failed.v1',
 ] as const;
@@ -56,6 +57,17 @@ const uploadResultPayloadSchema = z.object({
   attendanceSessionId: z.string().min(1), version: z.number().int().positive(),
   clientRecordId: z.string().min(1), batchId: z.string().min(1), jobId: z.string().min(1),
   error: z.string().nullable(),
+});
+const groupAccessGrantPayloadSchema = z.object({
+  assignmentId: z.string().min(1),
+  externalGroupId: z.string().min(1),
+  assignedProfessorExternalId: z.string().min(1),
+  assignedProfessorInstitutionalCode: z.string().trim().min(1).nullable().optional(),
+  assignedProfessorEmail: z.string().trim().min(1).nullable().optional(),
+  schoolCycleYear: z.number().int().min(2000).max(2100),
+  schoolCycleTerm: z.number().int().min(1).max(3),
+  active: z.boolean(),
+  observedAt: z.iso.datetime(),
 });
 
 export function toAttendanceEventEnvelope(event: AttendanceOutboxEvent): AttendanceEventEnvelope {
@@ -203,6 +215,19 @@ export class AttendanceEventBus {
       } else if (envelope.eventType === 'academic.group_deactivated.v1') {
         const payload = z.object({ externalGroupId: z.string().min(1) }).parse(envelope.payload);
         await this.repository.deactivateRoster(payload.externalGroupId, new Date(envelope.occurredAt));
+      } else if (envelope.eventType === 'academic.substitution_changed.v1') {
+        const payload = groupAccessGrantPayloadSchema.parse(envelope.payload);
+        await this.repository.applyGroupAccessGrant({
+          assignmentId: payload.assignmentId,
+          externalGroupId: payload.externalGroupId,
+          professorExternalId: payload.assignedProfessorExternalId,
+          professorInstitutionalCode: payload.assignedProfessorInstitutionalCode ?? null,
+          professorEmail: payload.assignedProfessorEmail?.trim().toLowerCase() ?? null,
+          schoolCycleYear: payload.schoolCycleYear,
+          schoolCycleTerm: payload.schoolCycleTerm,
+          active: payload.active,
+          observedAt: new Date(payload.observedAt),
+        });
       } else if (envelope.eventType === 'uat.attendance_uploaded.v1' || envelope.eventType === 'uat.attendance_upload_failed.v1') {
         const payload = uploadResultPayloadSchema.parse(envelope.payload);
         await this.repository.markUploadResult({

@@ -53,6 +53,26 @@ model AttendanceRosterStudent {
   @@map("attendance_roster_students")
 }
 
+model AcademicGroupAccessGrant {
+  assignmentId                  String   @id @map("assignment_id")
+  externalGroupId               String   @map("external_group_id")
+  professorExternalId           String   @map("professor_external_id")
+  professorInstitutionalCode    String?  @map("professor_institutional_code")
+  professorEmail                String?  @map("professor_email")
+  schoolCycleYear               Int      @map("school_cycle_year")
+  schoolCycleTerm               Int      @map("school_cycle_term")
+  active                        Boolean  @default(true)
+  observedAt                    DateTime @map("observed_at")
+  createdAt                     DateTime @default(now()) @map("created_at")
+  updatedAt                     DateTime @updatedAt @map("updated_at")
+
+  @@index([externalGroupId, active])
+  @@index([professorExternalId, active])
+  @@index([professorInstitutionalCode, active])
+  @@index([professorEmail, active])
+  @@map("academic_group_access_grants")
+}
+
 model AttendanceSession {
   id                  String               @id @default(cuid())
   groupId             String               @map("group_id")
@@ -242,4 +262,5 @@ enum AttendanceUploadStatus {
   PROCESSING
   COMPLETED
   FAILED
+  SKIPPED
 }

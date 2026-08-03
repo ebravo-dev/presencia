@@ -60,6 +60,32 @@ describe('Academic HTTP API', () => {
     expect(response.json()).toEqual({ data: [] });
     await app.close();
   });
+
+  it('keeps shared-class authorization private and returns the Flutter-compatible envelope', async () => {
+    const app = await testApp();
+    expect((await app.inject({
+      method: 'POST', url: '/internal/v1/academic/shared-classes/for-teacher', payload: { identity: 'teacher-2' },
+    })).statusCode).toBe(404);
+    const response = await app.inject({
+      method: 'POST', url: '/internal/v1/academic/shared-classes/for-teacher',
+      headers: { 'x-internal-service-token': token }, payload: { identity: 'teacher-2', year: 2026, term: 2 },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ source: 'SHARED_CLASSES', data: [] });
+    await app.close();
+  });
+
+  it('accepts a versioned legacy shared-class import only through the internal route', async () => {
+    const app = await testApp();
+    const response = await app.inject({
+      method: 'POST', url: '/internal/v1/academic/shared-classes/import-legacy',
+      headers: { 'x-internal-service-token': token, 'x-correlation-id': 'migration-1' },
+      payload: { records: [legacySharedClassRecord] },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ data: { imported: 1, updated: 0, unchanged: 0 } });
+    await app.close();
+  });
 });
 
 async function testApp() {
@@ -71,6 +97,14 @@ async function testApp() {
     studentSnapshots: { apply: async (snapshot: { snapshotId: string }) => ({
       snapshotId: snapshot.snapshotId, duplicate: false, activeScheduleEntries: 0,
     }) } as never,
+    sharedClasses: {
+      listOptions: async () => ({ data: { teachers: [], assignments: [] }, meta: { generatedAt: new Date().toISOString() } }),
+      list: async () => ({ data: [], meta: { generatedAt: new Date().toISOString() } }),
+      listForTeacher: async () => ({ source: 'SHARED_CLASSES', data: [], fetchedAt: new Date().toISOString() }),
+      create: async () => { throw new Error('unexpected'); }, update: async () => { throw new Error('unexpected'); },
+      delete: async () => { throw new Error('unexpected'); },
+      importLegacy: async () => ({ imported: 1, updated: 0, unchanged: 0 }),
+    } as never,
     repository: {
       groupsForTeacher: async () => [], groupByExternalId: async () => null, studentByMatricula: async () => null,
       coordinationProjectionSnapshot: async () => [],
@@ -78,3 +112,22 @@ async function testApp() {
     ready: async () => ({ database: true, rabbitmq: true }),
   });
 }
+
+const legacySharedClassRecord = {
+  legacySourceId: 'legacy-shared-1', schoolCycleYear: 2026, schoolCycleTerm: 2,
+  active: true, notes: null, createdAt: '2026-08-01T12:00:00.000Z', observedAt: '2026-08-02T12:00:00.000Z',
+  sourceAssignment: {
+    externalGroupId: '947699', groupCode: 'A', schoolCycleExternalId: '151', schoolCycleName: '2026 - 2',
+    classroom: 'AULA 101', educationLevel: 'LIC', period: '2', schedule: {},
+    teacher: {
+      externalId: 'teacher-1', institutionalCode: '308127', name: 'Profesor Titular',
+      email: 'titular@uat.edu.mx', lastAuthenticatedAt: '2026-08-02T12:00:00.000Z',
+    },
+    subject: { externalId: 'subject-1', code: 'SW-101', name: 'Arquitectura' },
+    coordination: { externalId: 'coord-1', name: 'FIUAT', shortName: 'FI' },
+  },
+  assignedTeacher: {
+    externalId: 'teacher-2', institutionalCode: '308128', name: 'Profesor Sustituto',
+    email: 'sustituto@uat.edu.mx', lastAuthenticatedAt: '2026-08-02T12:00:00.000Z',
+  },
+};

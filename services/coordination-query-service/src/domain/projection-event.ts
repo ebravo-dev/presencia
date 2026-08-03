@@ -25,7 +25,7 @@ const attendancePayloadSchema = z.object({
   professorEntryAt: z.iso.datetime().nullable(), professorExitAt: z.iso.datetime().nullable(),
   entries: z.array(z.unknown()).optional(), entriesCount: z.number().int().nonnegative().optional(),
   version: z.number().int().positive(),
-  uploadStatus: z.enum(['DRAFT', 'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).optional(),
+  uploadStatus: z.enum(['DRAFT', 'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'SKIPPED']).optional(),
   uploadError: z.string().nullable().optional(),
 }).refine((payload) => payload.entries !== undefined || payload.entriesCount !== undefined, {
   message: 'Attendance entries or entriesCount is required',

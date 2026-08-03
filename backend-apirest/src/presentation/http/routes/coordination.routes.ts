@@ -3,7 +3,7 @@ import type { CoordinationService } from '../../../application/services/coordina
 import type { CoordinatorAuthService } from '../../../application/services/coordinator-auth.service.js';
 import type { WeeklyAttendanceReportService } from '../../../application/services/weekly-attendance-report.service.js';
 import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
-import type { SharedClassService } from '../../../application/services/shared-class.service.js';
+import type { AcademicServiceClient } from '../../../infrastructure/http/client/academic-service.client.js';
 import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
 import type { CoordinationQueryClient } from '../../../infrastructure/http/client/coordination-query.client.js';
 import { CoordinationController } from '../controllers/coordination.controller.js';
@@ -15,14 +15,14 @@ export interface CoordinationRoutesOptions {
   authService: CoordinatorAuthService;
   weeklyAttendanceReport: WeeklyAttendanceReportService;
   attendanceBackendClient: AttendanceBackendClient;
-  sharedClassService: SharedClassService;
+  academicServiceClient: AcademicServiceClient;
   attendanceServiceCommands?: AttendanceServiceCommandClient;
   coordinationQuery?: CoordinationQueryClient;
 }
 
 export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> = async (
   fastify,
-  { coordinationService, authService, weeklyAttendanceReport, attendanceBackendClient, sharedClassService, attendanceServiceCommands, coordinationQuery },
+  { coordinationService, authService, weeklyAttendanceReport, attendanceBackendClient, academicServiceClient, attendanceServiceCommands, coordinationQuery },
 ) => {
   fastify.addHook('preHandler', buildCoordinatorAuthHook(authService));
   const requireWriteCoordinator = buildCoordinatorAuthHook(authService, { write: true });
@@ -30,7 +30,7 @@ export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> =
     coordinationService,
     weeklyAttendanceReport,
     attendanceBackendClient,
-    sharedClassService,
+    academicServiceClient,
     attendanceServiceCommands,
     coordinationQuery,
   );

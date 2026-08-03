@@ -34,10 +34,11 @@ El Compose automatiza el orden:
 1. PostgreSQL crea una base y usuario por servicio; Redis y RabbitMQ esperan
    hasta estar sanos.
 2. Los contenedores `*-migrate` ejecutan las migraciones una sola vez.
-3. Arrancan Identity, Academic y Attendance. El job `beacon-import` copia de
-   forma idempotente la configuración legada de salones a Attendance antes de
-   habilitar el backend de compatibilidad; si detecta UUIDs o salones
-   ambiguos, el despliegue se detiene sin modificar la fuente.
+3. Arrancan Identity, Academic y Attendance. Los jobs `beacon-import` y
+   `shared-class-import` copian de forma idempotente la configuración legada de
+   salones a Attendance y las clases compartidas a Academic. Cada permiso se
+   propaga por RabbitMQ a Attendance antes de habilitar UAT Integration; si una
+   importación falla, el despliegue se detiene sin modificar la fuente.
 4. Coordination Query crea su cola durable y reconstruye su modelo desde
    snapshots de Academic y Attendance.
 5. UAT Integration y el backend de compatibilidad arrancan después de sus
@@ -66,8 +67,9 @@ RabbitMQ, migraciones, servicios y web, y ejecuta este mismo smoke test mediante
 `docker-compose.ci.yml`. Después inserta snapshots de profesor y alumno,
 comprueba importación y resolución de beacons por roster, la vinculación del
 celular, la telemetría BLE con tiempo del servidor y estado `DRAFT`, la captura
-idempotente `PENDING` y la proyección del reporte a través de RabbitMQ. El gate
-también analiza y prueba ambas apps
+idempotente `PENDING`, y una clase compartida autorizada/revocada con captura
+delegada `SKIPPED` sin usar credenciales ajenas. También comprueba la proyección
+del reporte a través de RabbitMQ y analiza/prueba ambas apps
 Flutter. Las cuentas y portales UAT reales permanecen fuera de CI.
 
 El dashboard divide el shell en chunks cacheables y carga los exportadores de
@@ -79,7 +81,8 @@ Después ejecutar con cuentas UAT de prueba autorizadas:
 1. login de profesor, descarga de grupos y roster;
 2. login de alumno, horario y vinculación del celular;
 3. captura de asistencia con UAT temporalmente inaccesible;
-4. confirmación de telemetría `DRAFT` antes de finalizar y estado `PENDING` después;
+4. confirmación de telemetría `DRAFT` antes de finalizar, estado `PENDING` para
+   el titular y `SKIPPED` para una captura delegada;
 5. restauración de UAT y confirmación de `COMPLETED` en el dashboard;
 6. desvinculación desde coordinación y revinculación en el siguiente login UAT.
 
@@ -92,7 +95,7 @@ Los contratos públicos existentes no cambian; las rutas UAT de presencia son
 aditivas. `ROUTE_TARGET_OVERRIDES` permite revertir
 una ruta al destino transitorio sin reinstalar las apps móviles. Antes de un
 rollback de aplicación, restaura la imagen anterior y conserva las columnas y
-el valor `DRAFT`; las migraciones de base son forward-only y no eliminan datos.
+los valores `DRAFT`/`SKIPPED`; las migraciones de base son forward-only y no eliminan datos.
 La ruta instalada
 `/api/beacons/resolve` permanece como fachada durante la actualización gradual
 de móviles, pero su configuración se lee de Attendance Service.

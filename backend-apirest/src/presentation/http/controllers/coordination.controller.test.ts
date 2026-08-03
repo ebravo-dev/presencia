@@ -24,6 +24,71 @@ describe('CoordinationController beacon cutover', () => {
     });
     expect(reply.statusCode).toBe(201);
   });
+
+  it('sends coordinator audit metadata when creating a shared class', async () => {
+    let received: unknown;
+    const controller = new CoordinationController(
+      {} as never, {} as never, {} as never,
+      {
+        createSharedClass: async (input: unknown) => {
+          received = input;
+          return { data: { id: 'shared-1' } };
+        },
+      } as never,
+    );
+    const reply = replyStub();
+    await controller.createSharedClass({
+      id: 'request-2', coordinator: { id: 'coord-7', role: 'COORDINATOR' },
+      body: {
+        sourceAssignmentId: 'group-1', assignedTeacherId: 'teacher-2',
+        schoolCycleYear: 2026, schoolCycleTerm: 2,
+      },
+    } as never, reply as never);
+
+    expect(received).toMatchObject({
+      sourceAssignmentId: 'group-1', assignedTeacherId: 'teacher-2',
+      actorIdentityId: 'coord-7', actorRole: 'COORDINATOR', correlationId: 'request-2',
+    });
+    expect(reply.statusCode).toBe(201);
+  });
+
+  it('projects active shared classes into the dashboard instead of legacy substitutions', async () => {
+    const controller = new CoordinationController(
+      {} as never, {} as never,
+      {
+        getInfrastructureSummary: async () => ({
+          data: {
+            counts: { beacons: 9, studentDeviceBindings: 9, studentBleAttendances: 4, activeSubstitutions: 9 },
+            recentBindings: [], recentBeacons: [], recentSubstitutions: [{ id: 'legacy' }],
+          },
+          meta: { generatedAt: '2026-08-01T00:00:00.000Z' },
+        }),
+      } as never,
+      {
+        listSharedClasses: async () => ({
+          data: [{
+            id: 'shared-1', active: true, updatedAt: '2026-08-03T12:00:00.000Z',
+            sourceAssignment: {
+              groupCode: 'A', classroom: 'AULA 101', subject: { name: 'Arquitectura' },
+              teacher: { name: 'Titular' },
+            },
+            assignedTeacher: { name: 'Sustituto' },
+          }],
+          meta: { generatedAt: '2026-08-03T12:00:00.000Z' },
+        }),
+      } as never,
+      {
+        bindingInfrastructureSummary: async () => ({ data: { count: 2, recentBindings: [] } }),
+        listClassroomBeacons: async () => ({ data: [] }),
+      } as never,
+    );
+
+    const result = await controller.infrastructureSummary({} as never, replyStub() as never) as {
+      data: { counts: { activeSubstitutions: number }; recentSubstitutions: Array<{ id: string }> };
+    };
+    expect(result.data.counts.activeSubstitutions).toBe(1);
+    expect(result.data.recentSubstitutions).toEqual([expect.objectContaining({ id: 'shared-1' })]);
+  });
 });
 
 function replyStub() {

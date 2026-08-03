@@ -35,7 +35,25 @@ await request(academicUrl, '/internal/v1/academic/snapshots/professors', {
       coordination: { externalId: 'coord-ci', name: 'Coordinación CI', shortName: 'CI' },
       rosterAuthoritative: true,
       students: [{ matricula: '2251330007', name: 'Ana Alumna', uatStudentId: 515722, listNumber: 1 }],
+    }, {
+      externalGroupId: '947700', code: '1-B', groupLetter: 'B', name: 'Pruebas de Software',
+      level: 'Licenciatura', classroom: 'AULA CI 102', period: '2026-2', schedule: { tuesday: '07:00-09:00' },
+      subject: { externalId: 'subject-ci-2', code: 'SW-102', name: 'Pruebas de Software' },
+      coordination: { externalId: 'coord-ci', name: 'Coordinación CI', shortName: 'CI' },
+      rosterAuthoritative: true,
+      students: [{ matricula: '2251330007', name: 'Ana Alumna', uatStudentId: 515722, listNumber: 1 }],
     }],
+  },
+});
+await request(academicUrl, '/internal/v1/academic/snapshots/professors', {
+  method: 'POST', expected: 202, body: {
+    snapshotId: '33333333-1111-4111-8111-111111111111', correlationId: 'ci-service-flow', causationId: 'ci-service-flow',
+    teacher: {
+      externalId: 'teacher-delegate-ci', institutionalCode: 'CI-43', name: 'Profesor Compartido CI',
+      email: 'teacher-delegate-ci@uat.edu.mx', authenticatedAt: '2026-08-03T12:00:00.000Z',
+    },
+    cycle: { externalId: '2026-2', name: '2026-2' },
+    groups: [],
   },
 });
 await request(academicUrl, '/internal/v1/academic/snapshots/students', {
@@ -180,6 +198,75 @@ if (report.data.rows?.[0]?.cells?.monday?.portalSyncStatus !== 'PENDING') {
   throw new Error('The dashboard did not preserve the pending UAT upload state.');
 }
 pass('RabbitMQ projects professor attendance and pending UAT state into the coordination report');
+
+const sharedOptions = await request(academicUrl, '/internal/v1/academic/shared-classes/options', {
+  method: 'GET', expected: 200,
+});
+const sharedSource = sharedOptions.data?.assignments?.find((item) => item.externalGroupId === '947700');
+const sharedTeacher = sharedOptions.data?.teachers?.find((item) => item.externalId === 'teacher-delegate-ci');
+if (!sharedSource?.id || !sharedTeacher?.id) throw new Error('Academic did not expose shared-class command references.');
+const sharedAssignment = await request(academicUrl, '/internal/v1/academic/shared-classes', {
+  method: 'POST', expected: 201, body: {
+    sourceAssignmentId: sharedSource.id, assignedTeacherId: sharedTeacher.id,
+    schoolCycleYear: 2026, schoolCycleTerm: 2, active: true, notes: 'Cobertura CI',
+    actorIdentityId: 'coord-ci', actorRole: 'COORDINATOR', reason: 'Asignación compartida para verificación CI.',
+  },
+});
+if (!sharedAssignment.data?.id) throw new Error('Academic did not create the shared-class assignment.');
+const sharedForTeacher = await request(academicUrl, '/internal/v1/academic/shared-classes/for-teacher', {
+  method: 'POST', expected: 200, body: { identity: 'teacher-delegate-ci', year: 2026, term: 2 },
+});
+if (sharedForTeacher.data?.[0]?.id !== '947700' || sharedForTeacher.data?.[0]?.source !== 'SHARED') {
+  throw new Error('Academic did not expose the Flutter-compatible shared class.');
+}
+await request(attendanceUrl, '/internal/v1/attendance/classroom-beacons/import', {
+  method: 'POST', expected: 200, body: {
+    beacons: [{ uuid: '66666666-6666-4666-8666-666666666666', classroom: 'AULA CI 102' }],
+    actorIdentityId: 'migration:ci', actorRole: 'SYSTEM', reason: 'Importación de beacon para clase compartida CI.',
+  },
+});
+const delegateBeacons = await eventually(async () => request(
+  attendanceUrl,
+  '/internal/v1/attendance/classroom-beacons/resolve',
+  { method: 'POST', expected: 200, body: { professorExternalId: 'teacher-delegate-ci', classrooms: ['AULA CI 102'] } },
+), (result) => result.data?.length === 1, 'Attendance never consumed the shared-class access grant.');
+if (delegateBeacons.data[0]?.uuid !== '66666666-6666-4666-8666-666666666666') {
+  throw new Error('Attendance resolved an unexpected delegated classroom beacon.');
+}
+const delegateBindings = await request(attendanceUrl, '/internal/v1/attendance/device-bindings/resolve', {
+  method: 'POST', expected: 200,
+  body: { professorExternalId: 'teacher-delegate-ci', matriculas: ['2251330007'] },
+});
+if (delegateBindings.data?.length !== 1) throw new Error('Shared professor could not resolve the assigned roster binding.');
+await request(attendanceUrl, '/internal/v1/attendance/presence/professor-entry', {
+  method: 'POST', expected: [200, 201], body: {
+    professorExternalId: 'teacher-delegate-ci', externalGroupId: '947700', trustedGroupAuthorization: false,
+    beaconUuid: '66666666-6666-4666-8666-666666666666', clientDetectedAt: verificationObservedAt,
+  },
+});
+const delegatedCapture = await request(attendanceUrl, '/internal/v1/attendance/captures', {
+  method: 'POST', expected: 202,
+  requestHeaders: { 'idempotency-key': '77777777-7777-4777-8777-777777777777' },
+  body: {
+    externalGroupId: '947700', professorExternalId: 'teacher-delegate-ci', date: '2026-08-04',
+    entries: [{ matricula: '2251330007', status: 'PRESENT' }],
+  },
+});
+if (delegatedCapture.data?.uploadStatus !== 'SKIPPED') {
+  throw new Error('Delegated attendance must finalize without requesting a UAT upload.');
+}
+pass('Academic grants shared-class access and Attendance authorizes BLE while skipping owner-only UAT upload');
+
+await request(academicUrl, `/internal/v1/academic/shared-classes/${encodeURIComponent(sharedAssignment.data.id)}`, {
+  method: 'DELETE', expected: 204,
+  body: { actorIdentityId: 'coord-ci', actorRole: 'COORDINATOR', reason: 'Revocación de verificación CI.' },
+});
+await eventually(async () => request(
+  attendanceUrl,
+  '/internal/v1/attendance/classroom-beacons/resolve',
+  { method: 'POST', expected: 200, body: { professorExternalId: 'teacher-delegate-ci', classrooms: ['AULA CI 102'] } },
+), (result) => result.data?.length === 0, 'Attendance did not consume the shared-class revocation.');
+pass('Shared-class revocation removes delegated Attendance access');
 
 async function request(baseUrl, path, options) {
   const response = await fetch(new URL(path, baseUrl), {

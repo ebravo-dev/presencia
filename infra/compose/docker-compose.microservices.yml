@@ -262,8 +262,22 @@ services:
     command: ["node", "dist/scripts/create-coordinator.js", "--if-configured"]
     environment: *uat-environment
     depends_on:
+      shared-class-import:
+        condition: service_completed_successfully
+    networks: [private]
+
+  shared-class-import:
+    image: presencia-uat-integration:${IMAGE_TAG:-latest}
+    restart: "no"
+    command: ["npm", "run", "import:shared-classes"]
+    environment: *uat-environment
+    depends_on:
       uat-migrate:
         condition: service_completed_successfully
+      academic-service:
+        condition: service_healthy
+      attendance-service:
+        condition: service_healthy
     networks: [private]
 
   uat-integration:

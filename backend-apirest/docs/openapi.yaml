@@ -665,8 +665,8 @@ paths:
       summary: Resuelve UUID de alumnos pertenecientes al roster del profesor
       description: >
         Valida la sesion UAT del profesor y delega la consulta al propietario
-        Attendance Service. Las matriculas fuera de sus grupos activos nunca se
-        incluyen en la respuesta.
+        Attendance Service. Incluye grupos propios o clases compartidas activas;
+        las matriculas fuera de ese alcance nunca se incluyen en la respuesta.
       parameters:
         - $ref: "#/components/parameters/UatSessionHeader"
       requestBody:
@@ -688,9 +688,9 @@ paths:
       summary: Resuelve beacons de salones pertenecientes al profesor
       description: >
         Valida la sesion UAT y delega la configuración a Attendance Service.
-        Durante el corte, la fachada de compatibilidad conserva la autorización
-        de clases sustituidas. Una solicitud no puede ampliar permisos enviando
-        salones arbitrarios.
+        Attendance consume de Academic los permisos de clases compartidas y los
+        revoca por evento. Una solicitud no puede ampliar permisos enviando salones
+        arbitrarios.
       parameters:
         - $ref: "#/components/parameters/UatSessionHeader"
       requestBody:
@@ -711,9 +711,10 @@ paths:
     post:
       summary: Registra la entrada del profesor detectada por beacon
       description: >
-        Attendance Service valida que el grupo pertenezca al profesor autenticado
-        y que el UUID sea el configurado para el salón. La fecha y hora efectivas
-        siempre provienen del servidor; clientDetectedAt sólo es telemetría diagnóstica.
+        Attendance Service valida que el profesor autenticado sea titular o tenga
+        una clase compartida activa y que el UUID sea el configurado para el salón.
+        La fecha y hora efectivas siempre provienen del servidor; clientDetectedAt
+        sólo es telemetría diagnóstica.
       parameters:
         - $ref: "#/components/parameters/UatSessionHeader"
       requestBody:
@@ -731,7 +732,7 @@ paths:
   /api/uat/profesor/presencia/salida:
     post:
       summary: Registra la salida del profesor
-      description: La hora efectiva se deriva del reloj del servidor y el grupo se valida contra el roster del profesor autenticado.
+      description: La hora efectiva se deriva del reloj del servidor y el grupo se valida contra el roster propio o una clase compartida activa.
       parameters:
         - $ref: "#/components/parameters/UatSessionHeader"
       requestBody:
@@ -794,6 +795,7 @@ paths:
       tags: [Coordinacion]
       security: [{ CoordinatorCookie: [] }]
       summary: Comparte una clase oficial con otro profesor
+      description: Academic Service conserva la asignación, auditoría y evento de autorización; Attendance aplica el permiso de forma idempotente.
       requestBody:
         required: true
         content:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldApplyRosterSnapshot } from './attendance.js';
+import { shouldApplyGroupAccessGrant, shouldApplyRosterSnapshot } from './attendance.js';
 
 describe('shouldApplyRosterSnapshot', () => {
   const current = { rosterVersion: 'snapshot-2', rosterObservedAt: new Date('2026-08-02T12:00:00.000Z') };
@@ -15,5 +15,20 @@ describe('shouldApplyRosterSnapshot', () => {
     expect(shouldApplyRosterSnapshot(current, {
       rosterVersion: 'snapshot-3', rosterObservedAt: new Date('2026-08-02T12:00:01.000Z'),
     })).toBe(true);
+  });
+});
+
+describe('academic group access grant ordering', () => {
+  it('accepts only a newer assignment event so stale activation cannot undo a revocation', () => {
+    const revokedAt = new Date('2026-08-03T14:00:00.000Z');
+    expect(shouldApplyGroupAccessGrant(null, { observedAt: revokedAt })).toBe(true);
+    expect(shouldApplyGroupAccessGrant(
+      { observedAt: revokedAt },
+      { observedAt: new Date('2026-08-03T13:59:59.999Z') },
+    )).toBe(false);
+    expect(shouldApplyGroupAccessGrant(
+      { observedAt: revokedAt },
+      { observedAt: new Date('2026-08-03T14:00:00.001Z') },
+    )).toBe(true);
   });
 });

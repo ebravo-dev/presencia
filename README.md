@@ -34,8 +34,8 @@ El punto público único es `api-gateway`. La migración conserva las rutas de l
 apps y separa datos en bases PostgreSQL independientes:
 
 - `identity-service`: identidades y sesiones revocables;
-- `academic-service`: profesores, alumnos, horarios, grupos y roster;
-- `attendance-service`: asistencia y vinculación matrícula/celular/UUID;
+- `academic-service`: profesores, alumnos, horarios, grupos, roster y clases compartidas;
+- `attendance-service`: asistencia, permisos proyectados y vinculación matrícula/celular/UUID;
 - `coordination-query-service`: dashboard y reportes reconstruibles;
 - `backend-apirest`: integración y anticorrupción con los portales UAT;
 - RabbitMQ: eventos durables con reintentos/DLQ;

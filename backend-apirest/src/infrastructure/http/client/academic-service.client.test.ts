@@ -61,4 +61,38 @@ describe('AcademicServiceClient', () => {
     });
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe('http://academic-service:3300/internal/v1/academic/snapshots/students');
   });
+
+  it('uses the academic shared-class API and forwards audit correlation separately', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ data: { id: 'shared-1' } }), {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const client = new AcademicServiceClient('http://academic-service:3300', 'x'.repeat(32), true);
+
+    await client.createSharedClass({
+      sourceAssignmentId: 'group-1', assignedTeacherId: 'teacher-2',
+      schoolCycleYear: 2026, schoolCycleTerm: 2,
+      actorIdentityId: 'coord-1', actorRole: 'COORDINATOR',
+      reason: 'Alta de clase compartida desde coordinación.', correlationId: 'request-7',
+    });
+
+    const [url, request] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe('http://academic-service:3300/internal/v1/academic/shared-classes');
+    expect(request?.method).toBe('POST');
+    expect(request?.headers).toMatchObject({ 'x-correlation-id': 'request-7' });
+    expect(JSON.parse(String(request?.body))).toMatchObject({
+      sourceAssignmentId: 'group-1', assignedTeacherId: 'teacher-2', actorIdentityId: 'coord-1',
+    });
+    expect(String(request?.body)).not.toContain('correlationId');
+  });
+
+  it('fails closed for shared classes when Academic Service is not configured', async () => {
+    const client = new AcademicServiceClient(undefined, 'x'.repeat(32), false);
+    await expect(client.listSharedClasses()).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'ACADEMIC_SERVICE_REQUIRED',
+    });
+  });
 });

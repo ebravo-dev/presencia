@@ -39,18 +39,23 @@ describe('ProfessorDeviceBindingController', () => {
         username: 'profesor@uat.edu.mx', login: { parametros: { Cve_Usuario_AdmonUAT: 'PROF-42' } },
       },
     } as never);
-    expect(received).toEqual({ professorExternalId: 'PROF-42', classrooms: ['AULA 101'] });
+    expect(received).toEqual({
+      professorExternalId: 'PROF-42', professorEmail: 'profesor@uat.edu.mx', classrooms: ['AULA 101'],
+    });
   });
 
-  it('preserves substitute-class authorization through the compatibility facade', async () => {
+  it('uses Attendance Service for substitute-class authorization when only the username is available', async () => {
     let received: unknown;
-    const controller = new ProfessorDeviceBindingController({} as never, {
-      resolveProfessorClassroomBeacons: async (input: unknown) => { received = input; return { data: [], missing: [] }; },
+    const controller = new ProfessorDeviceBindingController({
+      resolveClassroomBeacons: async (input: unknown) => { received = input; return { data: [], missing: [] }; },
     } as never);
     await controller.resolveBeacons({
       body: { classrooms: ['AULA SUSTITUCIÓN'] },
       uatSession: { username: 'Profesor@UAT.edu.mx', login: { parametros: {} } },
     } as never);
-    expect(received).toEqual({ professorEmail: 'Profesor@UAT.edu.mx', classrooms: ['AULA SUSTITUCIÓN'] });
+    expect(received).toEqual({
+      professorExternalId: 'Profesor@UAT.edu.mx', professorEmail: 'Profesor@UAT.edu.mx',
+      classrooms: ['AULA SUSTITUCIÓN'],
+    });
   });
 });

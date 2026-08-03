@@ -2,8 +2,8 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { UatService } from '../../../application/services/uat.service.js';
 import type { UatStudentService } from '../../../application/services/uat-student.service.js';
 import type { IDomainEventBus } from '../../../domain/events/domain-event-bus.js';
-import type { SharedClassService } from '../../../application/services/shared-class.service.js';
 import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
+import type { AcademicServiceClient } from '../../../infrastructure/http/client/academic-service.client.js';
 import type { AttendanceUploadService } from '../../../application/services/attendance-upload.service.js';
 import type { AttendanceUploadWorker } from '../../../infrastructure/jobs/attendance-upload.worker.js';
 import type { AttendanceCaptureClient } from '../../../infrastructure/http/client/attendance-capture.client.js';
@@ -25,7 +25,7 @@ export interface UatRoutesOptions {
   uatService: UatService;
   uatStudentService: UatStudentService;
   eventBus: IDomainEventBus;
-  sharedClassService: SharedClassService;
+  academicServiceClient: AcademicServiceClient;
   attendanceBackendClient: AttendanceBackendClient;
   attendanceUploadService: AttendanceUploadService;
   attendanceUploadWorker: AttendanceUploadWorker;
@@ -35,7 +35,7 @@ export interface UatRoutesOptions {
 
 export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   fastify,
-  { uatService, uatStudentService, eventBus, sharedClassService, attendanceBackendClient, attendanceUploadService, attendanceUploadWorker, attendanceCaptureClient, attendanceServiceCommands },
+  { uatService, uatStudentService, eventBus, academicServiceClient, attendanceBackendClient, attendanceUploadService, attendanceUploadWorker, attendanceCaptureClient, attendanceServiceCommands },
 ) => {
   fastify.addHook('preHandler', async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return;
@@ -60,8 +60,8 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   const catalogoController = new CatalogoController(uatService);
   const asistenciaController = new AsistenciaController(uatService, attendanceBackendClient, attendanceCaptureClient);
   const attendanceUploadController = new AttendanceUploadController(attendanceUploadService, attendanceUploadWorker);
-  const sharedClassController = new SharedClassController(sharedClassService);
-  const professorDeviceBindingController = new ProfessorDeviceBindingController(attendanceServiceCommands, attendanceBackendClient);
+  const sharedClassController = new SharedClassController(academicServiceClient);
+  const professorDeviceBindingController = new ProfessorDeviceBindingController(attendanceServiceCommands);
   const professorPresenceController = new ProfessorPresenceController(attendanceServiceCommands);
 
   fastify.post('/api/uat/sessions', {

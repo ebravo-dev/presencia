@@ -3,7 +3,9 @@ import { Prisma, type ClassroomBeacon, type PrismaClient, type StudentDeviceBind
 import type { AttendanceCoordinationProjectionSnapshot, AttendanceRepository } from '../domain/attendance.repository.js';
 import {
   AttendanceDomainError,
+  shouldApplyGroupAccessGrant,
   shouldApplyRosterSnapshot,
+  type AcademicGroupAccessGrantInput,
   type AttendanceRosterSnapshot,
   type CaptureAttendanceCommand,
   type CaptureAttendanceResult,
@@ -109,6 +111,40 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
     });
   }
 
+  async applyGroupAccessGrant(grant: AcademicGroupAccessGrantInput): Promise<void> {
+    await this.prisma.$transaction(async (transaction) => {
+      const current = await transaction.academicGroupAccessGrant.findUnique({
+        where: { assignmentId: grant.assignmentId },
+        select: { observedAt: true },
+      });
+      if (!shouldApplyGroupAccessGrant(current, grant)) return;
+      await transaction.academicGroupAccessGrant.upsert({
+        where: { assignmentId: grant.assignmentId },
+        create: {
+          assignmentId: grant.assignmentId,
+          externalGroupId: grant.externalGroupId,
+          professorExternalId: grant.professorExternalId,
+          professorInstitutionalCode: grant.professorInstitutionalCode?.trim() || null,
+          professorEmail: grant.professorEmail?.trim().toLowerCase() || null,
+          schoolCycleYear: grant.schoolCycleYear,
+          schoolCycleTerm: grant.schoolCycleTerm,
+          active: grant.active,
+          observedAt: grant.observedAt,
+        },
+        update: {
+          externalGroupId: grant.externalGroupId,
+          professorExternalId: grant.professorExternalId,
+          professorInstitutionalCode: grant.professorInstitutionalCode?.trim() || null,
+          professorEmail: grant.professorEmail?.trim().toLowerCase() || null,
+          schoolCycleYear: grant.schoolCycleYear,
+          schoolCycleTerm: grant.schoolCycleTerm,
+          active: grant.active,
+          observedAt: grant.observedAt,
+        },
+      });
+    }, { isolationLevel: 'Serializable' });
+  }
+
   async markUploadResult(input: {
     attendanceSessionId: string; version: number; status: 'COMPLETED' | 'FAILED'; error?: string | null;
   }): Promise<boolean> {
@@ -172,9 +208,11 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
         },
       });
       if (!group?.active) throw new AttendanceDomainError('ATTENDANCE_GROUP_NOT_FOUND', 'El grupo no existe o está inactivo.');
-      if (group.professorExternalId !== command.professorExternalId) {
+      const delegated = group.professorExternalId !== command.professorExternalId;
+      if (delegated && !(await this.hasActiveGroupAccess(transaction, group.externalGroupId, command.professorExternalId))) {
         throw new AttendanceDomainError('PROFESSOR_GROUP_FORBIDDEN', 'El profesor no es titular del grupo indicado.');
       }
+      const uploadStatus = delegated ? 'SKIPPED' as const : 'PENDING' as const;
       const rosterByMatricula = new Map(group.students.map((student) => [student.matricula, student]));
       const rosterByUatId = new Map(group.students.flatMap((student) => student.uatStudentId ? [[student.uatStudentId, student] as const] : []));
       const resolvedEntries = command.entries.map((entry) => ({
@@ -198,13 +236,13 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
         create: {
           groupId: group.id, date, professorExternalId: command.professorExternalId,
           professorEntryAt: command.professorEntryAt ?? null, professorExitAt: command.professorExitAt ?? null,
-          finalizedAt: new Date(), uploadStatus: 'PENDING', version: 1,
+          finalizedAt: new Date(), uploadStatus, version: 1,
         },
         update: {
           professorExternalId: command.professorExternalId,
           ...(command.professorEntryAt && !existing?.professorEntryAt ? { professorEntryAt: command.professorEntryAt } : {}),
           ...(command.professorExitAt && !existing?.professorExitAt ? { professorExitAt: command.professorExitAt } : {}),
-          finalizedAt: new Date(), uploadStatus: 'PENDING', uploadError: null, uploadedAt: null, version: { increment: 1 },
+          finalizedAt: new Date(), uploadStatus, uploadError: null, uploadedAt: null, version: { increment: 1 },
         },
       });
       const matriculas = resolvedMatriculas;
@@ -238,10 +276,9 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
         }),
         version: session.version,
       };
-      for (const [type, payload] of [
-        [eventType, uploadPayload],
-        ['attendance.upload_requested.v1', uploadPayload],
-      ] as const) {
+      const events: Array<[string, typeof uploadPayload]> = [[eventType, uploadPayload]];
+      if (!delegated) events.push(['attendance.upload_requested.v1', uploadPayload]);
+      for (const [type, payload] of events) {
         await transaction.attendanceOutboxEvent.create({
           data: {
             eventId: randomUUID(), eventType: type, aggregateId: session.id,
@@ -251,7 +288,7 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
       }
       const response: CaptureAttendanceResult = {
         attendanceSessionId: session.id, externalGroupId: group.externalGroupId, date: command.date,
-        entriesCount: command.entries.length, uploadStatus: 'PENDING',
+        entriesCount: command.entries.length, uploadStatus,
         duplicate: false, version: session.version,
       };
       await transaction.attendanceCommand.create({
@@ -342,6 +379,20 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
     professorEmail?: string;
     classrooms: Array<{ classroom: string; classroomKey: string }>;
   }): Promise<{ data: ClassroomBeaconValue[]; missing: string[] }> {
+    const grantIdentities = [input.professorExternalId, input.professorEmail]
+      .flatMap((value) => value?.trim() ? [value.trim()] : []);
+    const grants = grantIdentities.length === 0 ? [] : await this.prisma.academicGroupAccessGrant.findMany({
+      where: {
+        active: true,
+        OR: grantIdentities.flatMap((identity) => [
+          { professorExternalId: identity },
+          { professorInstitutionalCode: { equals: identity, mode: 'insensitive' as const } },
+          { professorEmail: { equals: identity, mode: 'insensitive' as const } },
+        ]),
+      },
+      select: { externalGroupId: true },
+    });
+    const grantedGroupIds = [...new Set(grants.map(({ externalGroupId }) => externalGroupId))];
     const groups = await this.prisma.attendanceRosterGroup.findMany({
       where: {
         active: true,
@@ -349,6 +400,7 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
         OR: [
           ...(input.professorExternalId ? [{ professorExternalId: input.professorExternalId }] : []),
           ...(input.professorEmail ? [{ professorEmail: input.professorEmail }] : []),
+          ...(grantedGroupIds.length > 0 ? [{ externalGroupId: { in: grantedGroupIds } }] : []),
         ],
       },
       select: { classroom: true },
@@ -624,11 +676,29 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
   }): Promise<{ data: DeviceBindingValue[]; missing: string[] }> {
     const requested = [...new Set(input.matriculas.map((value) => value.trim().toUpperCase()).filter(Boolean))];
     if (requested.length === 0) return { data: [], missing: [] };
+    const grants = await this.prisma.academicGroupAccessGrant.findMany({
+      where: {
+        active: true,
+        OR: [
+          { professorExternalId: input.professorExternalId },
+          { professorInstitutionalCode: { equals: input.professorExternalId, mode: 'insensitive' } },
+          { professorEmail: { equals: input.professorExternalId, mode: 'insensitive' } },
+        ],
+      },
+      select: { externalGroupId: true },
+    });
+    const grantedGroupIds = [...new Set(grants.map(({ externalGroupId }) => externalGroupId))];
     const authorizedStudents = await this.prisma.attendanceRosterStudent.findMany({
       where: {
         active: true,
         matricula: { in: requested },
-        group: { active: true, professorExternalId: input.professorExternalId },
+        group: {
+          active: true,
+          OR: [
+            { professorExternalId: input.professorExternalId },
+            ...(grantedGroupIds.length > 0 ? [{ externalGroupId: { in: grantedGroupIds } }] : []),
+          ],
+        },
       },
       select: { matricula: true },
     });
@@ -738,10 +808,36 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
     if (!group?.active) {
       throw new AttendanceDomainError('ATTENDANCE_GROUP_NOT_FOUND', 'El grupo no existe o está inactivo.');
     }
-    if (!command.trustedGroupAuthorization && group.professorExternalId !== command.professorExternalId) {
+    if (
+      !command.trustedGroupAuthorization
+      && group.professorExternalId !== command.professorExternalId
+      && !(await this.hasActiveGroupAccess(transaction, group.externalGroupId, command.professorExternalId))
+    ) {
       throw new AttendanceDomainError('PROFESSOR_GROUP_FORBIDDEN', 'El profesor no está autorizado para el grupo indicado.');
     }
     return group;
+  }
+
+  private async hasActiveGroupAccess(
+    transaction: Prisma.TransactionClient,
+    externalGroupId: string,
+    professorIdentity: string,
+  ): Promise<boolean> {
+    const identity = professorIdentity.trim();
+    if (!identity) return false;
+    const grant = await transaction.academicGroupAccessGrant.findFirst({
+      where: {
+        externalGroupId,
+        active: true,
+        OR: [
+          { professorExternalId: identity },
+          { professorInstitutionalCode: { equals: identity, mode: 'insensitive' } },
+          { professorEmail: { equals: identity, mode: 'insensitive' } },
+        ],
+      },
+      select: { assignmentId: true },
+    });
+    return grant !== null;
   }
 
   private async processedPresenceCommand<TResult extends { duplicate: boolean }>(
@@ -775,7 +871,7 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
     transaction: Prisma.TransactionClient,
     session: {
       id: string; date: Date; professorExternalId: string; professorEntryAt: Date | null; professorExitAt: Date | null;
-      uploadStatus: 'DRAFT' | 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'; uploadError: string | null; version: number;
+      uploadStatus: 'DRAFT' | 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'SKIPPED'; uploadError: string | null; version: number;
       _count: { entries: number };
     },
     externalGroupId: string,

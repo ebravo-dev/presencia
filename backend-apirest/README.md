@@ -315,14 +315,13 @@ El backend serializa `Asistencia` como JSON comprimido y lo envia al portal UAT
 en `application/x-www-form-urlencoded` contra
 `/Profesor/ControlAsistencia/GuardaAsistencias`.
 
-## Seeder de clases compartidas
+## Clases compartidas
 
-Aplica primero las migraciones y luego crea dos profesores y una clase de prueba:
-
-```powershell
-npm run prisma:deploy
-npm run seed:shared-class
-```
+Academic Service es la autoridad de las clases compartidas. UAT Integration
+sólo conserva la tabla anterior en lectura durante la migración y ejecuta
+`npm run import:shared-classes` como job idempotente antes de habilitar tráfico.
+Las altas, cambios y bajas desde Coordinación se envían a Academic y se
+proyectan por eventos en Attendance.
 
 ## Cola durable de asistencias
 
@@ -331,19 +330,6 @@ Un worker procesa una lista a la vez por profesor, reintenta errores transitorio
 interrumpidos. La clave `ATTENDANCE_JOB_ENCRYPTION_SECRET` cifra las credenciales necesarias para reautenticar
 contra UAT; debe conservarse estable entre despliegues. El cliente puede consultar el lote y reconciliar sus
 registros locales después de cerrar o reiniciar la aplicación.
-
-Para probar el acceso con cuentas UAT reales:
-
-```powershell
-$env:SEED_PRIMARY_EMAIL="titular@uat.edu.mx"
-$env:SEED_SECONDARY_EMAIL="profesor2@uat.edu.mx"
-npm run seed:shared-class
-```
-
-El seeder es idempotente y deja la clase sin compartir. La asignacion se realiza
-desde Coordinacion, en la seccion de clases compartidas. Por defecto usa el ciclo
-`2026 - 1 PRIMAVERA` (`Id_Ciclo_Escolar=150`); puede sobrescribirse con
-`SEED_CYCLE_NAME` y `SEED_CYCLE_EXTERNAL_ID`.
 
 ## Script CLI opcional
 

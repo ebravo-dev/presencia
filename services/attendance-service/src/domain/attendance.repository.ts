@@ -1,4 +1,4 @@
-import type { AttendanceRosterSnapshot, CaptureAttendanceCommand, CaptureAttendanceResult } from './attendance.js';
+import type { AcademicGroupAccessGrantInput, AttendanceRosterSnapshot, CaptureAttendanceCommand, CaptureAttendanceResult } from './attendance.js';
 import type { BindDeviceCommand, BindDeviceResult, ReplaceDeviceBindingCommand } from './device-binding.js';
 import type {
   BeaconActor,
@@ -23,7 +23,7 @@ export interface AttendanceCoordinationProjectionSnapshot {
   professorEntryAt: Date | null;
   professorExitAt: Date | null;
   entriesCount: number;
-  uploadStatus: 'DRAFT' | 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  uploadStatus: 'DRAFT' | 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
   uploadError: string | null;
   version: number;
   observedAt: Date;
@@ -32,6 +32,7 @@ export interface AttendanceCoordinationProjectionSnapshot {
 export interface AttendanceRepository {
   applyRoster(snapshot: AttendanceRosterSnapshot): Promise<void>;
   deactivateRoster(externalGroupId: string, rosterObservedAt: Date): Promise<void>;
+  applyGroupAccessGrant(grant: AcademicGroupAccessGrantInput): Promise<void>;
   markUploadResult(input: {
     attendanceSessionId: string; version: number; status: 'COMPLETED' | 'FAILED'; error?: string | null;
   }): Promise<boolean>;

@@ -1,8 +1,10 @@
 import { ApplyAcademicSnapshotService } from './application/apply-academic-snapshot.service.js';
 import { ApplyStudentAcademicSnapshotService } from './application/apply-student-academic-snapshot.service.js';
+import { SharedClassService } from './application/shared-class.service.js';
 import { loadAcademicEnv } from './infrastructure/config.js';
 import { PrismaClient } from './generated/prisma/index.js';
 import { PrismaAcademicRepository } from './infrastructure/prisma-academic.repository.js';
+import { PrismaSharedClassRepository } from './infrastructure/prisma-shared-class.repository.js';
 import { buildAcademicApp } from './presentation/app.js';
 import { AcademicOutboxPublisher } from './infrastructure/academic-outbox.publisher.js';
 
@@ -10,6 +12,7 @@ const env = loadAcademicEnv();
 const prisma = new PrismaClient();
 await prisma.$connect();
 const repository = new PrismaAcademicRepository(prisma);
+const sharedClassRepository = new PrismaSharedClassRepository(prisma);
 const outbox = new AcademicOutboxPublisher(prisma, env.RABBITMQ_URL, env.OUTBOX_POLL_INTERVAL_MS, console);
 await outbox.start();
 const app = await buildAcademicApp({
@@ -17,6 +20,7 @@ const app = await buildAcademicApp({
   repository,
   snapshots: new ApplyAcademicSnapshotService(repository),
   studentSnapshots: new ApplyStudentAcademicSnapshotService(repository),
+  sharedClasses: new SharedClassService(sharedClassRepository),
   ready: async () => {
     const database = await prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false);
     return { database, rabbitmq: outbox.isReady() };

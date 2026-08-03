@@ -653,9 +653,11 @@ Avance al 3 de agosto de 2026: contratos públicos conservados, Gateway único,
 rutas internas bloqueadas, cortes configurables y documentación de Dokploy,
 smoke test y rollback implementados. Attendance ya posee la configuración de
 beacons y la telemetría BLE, con importación idempotente y fachadas para móviles
-instalados. El proceso legado aún es necesario para sustituciones y otras rutas
-de compatibilidad; la compatibilidad de tokens móviles ya se retiró. El resto
-se retirará sólo después del periodo de observación en
+instalados. Academic ya posee las clases compartidas, importa el estado anterior
+y entrega a Attendance permisos revocables por eventos. El proceso legado aún
+es necesario para las sustituciones temporales antiguas y otras rutas de
+compatibilidad; la compatibilidad de tokens móviles ya se retiró. El resto se
+retirará sólo después del periodo de observación en
 producción.
 
 Entregables:

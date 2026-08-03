@@ -13,9 +13,9 @@ prueba de funcionamiento integral.
 | Login estudiantil como única alta | El vínculo inicial sólo se ejecuta después de que el portal devuelve login, carrera y matrícula válidos. No existe alta manual pública. | Implementado y probado en servicios. |
 | Vincular matrícula, teléfono y UUID | Attendance posee `StudentDeviceBinding`, rechaza identificadores duplicados y entrega un token acotado. El Gateway renueva únicamente el vínculo exacto; el profesor lo resuelve mediante sesión UAT y pertenencia al roster, sin dual-write legado. | Implementado y probado. |
 | Cambio de UUID sólo por coordinación | Attendance permite reemplazo/desvinculación sólo por comando interno con rol y motivo auditables; el endpoint público únicamente repite el vínculo exacto. | Implementado y probado. |
-| Captura local y subida posterior a UAT | Attendance conserva entrada/salida y detecciones BLE como `DRAFT`; al finalizar usa transacción serializable, idempotencia y outbox. UAT Integration consume, cifra credenciales, reintenta y usa DLQ. | Implementado; CI distingue borrador de captura `PENDING`, falta caos contra UAT real. |
+| Captura local y subida posterior a UAT | Attendance conserva entrada/salida y detecciones BLE como `DRAFT`; al finalizar usa transacción serializable, idempotencia y outbox. El titular queda `PENDING`; una clase compartida queda `SKIPPED` porque no puede usar credenciales ajenas. UAT Integration consume, cifra credenciales, reintenta y usa DLQ. | Implementado; falta caos contra UAT real. |
 | Asistencia del profesor en dashboard | Coordination Query consume roster/asistencia, reconcilia snapshots y genera reportes semanal/rango. | Implementado; CI prueba la proyección cruzando PostgreSQL y RabbitMQ. |
-| Microservicios y datos separados | Gateway, Identity, Academic, Attendance, UAT Integration y Coordination Query usan límites y bases lógicas propios. Attendance posee beacons, dispositivos y telemetría BLE con migraciones auditables. | Núcleo implementado; sustituciones y otras fachadas móviles conservan compatibilidad heredada hasta un corte observado. |
+| Microservicios y datos separados | Gateway, Identity, Academic, Attendance, UAT Integration y Coordination Query usan límites y bases lógicas propios. Academic posee clases compartidas y publica permisos revocables; Attendance posee beacons, dispositivos y telemetría BLE con migraciones auditables. | Núcleo y clases compartidas implementados; las sustituciones temporales antiguas y otras fachadas conservan compatibilidad hasta un corte observado. |
 | Docker y Dokploy | Compose crea bases/usuarios, migraciones one-shot, Redis AOF, RabbitMQ, redes privadas, egreso UAT, readiness y apagado controlado. | Implementado; workflow CI ejecuta el stack, pendiente primera corrida remota y despliegue Dokploy. |
 | Credenciales móviles | El alumno usa almacenamiento seguro nativo. El profesor migra los tokens de Hive a Keychain/Keystore, elimina la contraseña heredada y sólo la conserva efímeramente en memoria para reintentos del proceso actual. | Implementado y probado; falta auditoría en dispositivos físicos. |
 | Tests | Unitarios, contratos HTTP/eventos, clientes UAT simulados, apps Flutter, dashboard web, smoke público y flujo integral del Compose. | Implementado; E2E UAT/dispositivos requiere infraestructura externa. |
@@ -34,6 +34,8 @@ imágenes. La prueba `verify-service-flow.mjs` comprueba:
 7. Attendance finaliza la captura idempotente y la cambia a `PENDING`;
 8. RabbitMQ entrega la asistencia a Coordination Query y el reporte refleja la publicación pendiente;
 9. Nginx/Gateway publican health y rutas de clientes, pero no `/internal/*`.
+10. Academic crea/revoca una clase compartida y Attendance aplica el permiso a
+    beacons, roster, presencia y captura `SKIPPED` sin generar una subida UAT.
 
 El mismo workflow ejecuta `flutter analyze` y `flutter test` en las apps de
 alumno y profesor. El bundle inicial del dashboard separa React, consultas e

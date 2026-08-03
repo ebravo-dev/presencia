@@ -27,7 +27,7 @@ export const attendanceProjectionSnapshotSchema = z.object({
   professorEntryAt: z.iso.datetime({ offset: true }).nullable(),
   professorExitAt: z.iso.datetime({ offset: true }).nullable(),
   entriesCount: z.number().int().nonnegative(),
-  uploadStatus: z.enum(['DRAFT', 'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']),
+  uploadStatus: z.enum(['DRAFT', 'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'SKIPPED']),
   uploadError: nullableText, version: z.number().int().positive(),
   observedAt: z.iso.datetime({ offset: true }),
 });

@@ -45,9 +45,28 @@ export interface CaptureAttendanceResult {
   readonly externalGroupId: string;
   readonly date: string;
   readonly entriesCount: number;
-  readonly uploadStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  readonly uploadStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
   readonly duplicate: boolean;
   readonly version: number;
+}
+
+export interface AcademicGroupAccessGrantInput {
+  readonly assignmentId: string;
+  readonly externalGroupId: string;
+  readonly professorExternalId: string;
+  readonly professorInstitutionalCode?: string | null | undefined;
+  readonly professorEmail?: string | null | undefined;
+  readonly schoolCycleYear: number;
+  readonly schoolCycleTerm: number;
+  readonly active: boolean;
+  readonly observedAt: Date;
+}
+
+export function shouldApplyGroupAccessGrant(
+  current: { observedAt: Date } | null,
+  incoming: Pick<AcademicGroupAccessGrantInput, 'observedAt'>,
+): boolean {
+  return current === null || current.observedAt.getTime() < incoming.observedAt.getTime();
 }
 
 export class AttendanceDomainError extends Error {
