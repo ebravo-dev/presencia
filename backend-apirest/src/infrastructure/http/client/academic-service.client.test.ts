@@ -9,7 +9,6 @@ describe('AcademicServiceClient', () => {
     const client = new AcademicServiceClient(
       'http://academic-service:3300',
       'test-internal-service-token-with-at-least-32-characters',
-      true,
     );
 
     await client.publishProfessorSnapshot({
@@ -37,21 +36,9 @@ describe('AcademicServiceClient', () => {
     expect(serialized).not.toMatch(/password|cookie|sessionId/i);
   });
 
-  it('supports an optional service during route migration', async () => {
-    const client = new AcademicServiceClient(undefined, 'x'.repeat(32), false);
-    await expect(client.publishProfessorSnapshot({
-      snapshotId: '59d3f009-f4c4-5bda-bd0a-cbbf2e7a31ee',
-      correlationId: 'request-1',
-      causationId: 'event-1',
-      teacher: { externalId: '1', name: 'Profesor', authenticatedAt: '2026-08-02T12:00:00.000Z' },
-      cycle: { externalId: '150', name: '2026-1' },
-      groups: [],
-    })).resolves.toBeUndefined();
-  });
-
   it('publishes student schedules through the dedicated internal endpoint', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 202 }));
-    const client = new AcademicServiceClient('http://academic-service:3300', 'x'.repeat(32), true);
+    const client = new AcademicServiceClient('http://academic-service:3300', 'x'.repeat(32));
     await client.publishStudentSnapshot({
       snapshotId: '6af650f3-6772-4d72-b23b-837390c24701', correlationId: 'request-1', causationId: 'request-1',
       synchronizedAt: '2026-08-02T12:00:00.000Z',
@@ -69,7 +56,7 @@ describe('AcademicServiceClient', () => {
         headers: { 'content-type': 'application/json' },
       }),
     );
-    const client = new AcademicServiceClient('http://academic-service:3300', 'x'.repeat(32), true);
+    const client = new AcademicServiceClient('http://academic-service:3300', 'x'.repeat(32));
 
     await client.createSharedClass({
       sourceAssignmentId: 'group-1', assignedTeacherId: 'teacher-2',
@@ -88,11 +75,12 @@ describe('AcademicServiceClient', () => {
     expect(String(request?.body)).not.toContain('correlationId');
   });
 
-  it('fails closed for shared classes when Academic Service is not configured', async () => {
-    const client = new AcademicServiceClient(undefined, 'x'.repeat(32), false);
+  it('fails visibly when Academic Service is unavailable', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('connection refused'));
+    const client = new AcademicServiceClient('http://academic-service:3300', 'x'.repeat(32));
     await expect(client.listSharedClasses()).rejects.toMatchObject({
       statusCode: 503,
-      code: 'ACADEMIC_SERVICE_REQUIRED',
+      code: 'ACADEMIC_SERVICE_UNAVAILABLE',
     });
   });
 });

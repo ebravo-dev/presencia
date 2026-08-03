@@ -52,6 +52,8 @@ DATABASE_MIGRATION_MAX_ATTEMPTS=10
 DATABASE_MIGRATION_RETRY_MS=3000
 COORDINATION_WEB_ORIGIN=https://tu-dominio.example
 COORDINATION_COOKIE_SECURE=true
+IDENTITY_SERVICE_URL=http://identity-service:3200
+ACADEMIC_SERVICE_URL=http://academic-service:3300
 ATTENDANCE_SERVICE_URL=http://attendance-service:3400
 COORDINATION_QUERY_SERVICE_URL=http://coordination-query-service:3500
 ATTENDANCE_BACKEND_SERVICE_TOKEN=token-interno-compartido-de-al-menos-32-caracteres
@@ -317,10 +319,11 @@ en `application/x-www-form-urlencoded` contra
 ## Clases compartidas
 
 Academic Service es la autoridad de las clases compartidas. UAT Integration
-sólo conserva la tabla anterior en lectura durante la migración y ejecuta
-`npm run import:shared-classes` como job idempotente antes de habilitar tráfico.
-Las altas, cambios y bajas desde Coordinación se envían a Academic y se
-proyectan por eventos en Attendance.
+ya no escribe su proyección académica anterior: publica un único snapshot a
+Academic después de consultar grupos, horarios y roster UAT. La tabla histórica
+sólo se lee desde `npm run import:shared-classes`, un job idempotente previo al
+tráfico. Las altas, cambios y bajas desde Coordinación se envían a Academic y
+se proyectan por eventos en Attendance.
 
 ## Cola durable de asistencias
 

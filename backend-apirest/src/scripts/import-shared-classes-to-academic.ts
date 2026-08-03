@@ -11,7 +11,7 @@ export async function importSharedClassesToAcademic() {
   const academicServiceUrl = requiredEnv('ACADEMIC_SERVICE_URL');
   const internalToken = requiredEnv('INTERNAL_API_TOKEN');
   const prisma = new PrismaClient();
-  const client = new AcademicServiceClient(academicServiceUrl, internalToken, true, 30_000);
+  const client = new AcademicServiceClient(academicServiceUrl, internalToken, 30_000);
   try {
     const assignments = await prisma.sharedClassAssignment.findMany({
       include: {

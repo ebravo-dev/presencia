@@ -32,10 +32,6 @@ import { RedisKeyValueStore } from './infrastructure/persistence/redis-key-value
 import { RedisUatSessionStore } from './infrastructure/persistence/redis-session.store.js';
 import { StudentSessionCodec, TeacherSessionCodec } from './infrastructure/persistence/session-codec.js';
 import { prisma } from './infrastructure/persistence/prisma/prisma.client.js';
-import { PrismaCoordinationRepository } from './infrastructure/persistence/prisma/prisma-coordination.repository.js';
-import { PrismaGroupAssignmentRepository } from './infrastructure/persistence/prisma/prisma-group-assignment.repository.js';
-import { PrismaSubjectRepository } from './infrastructure/persistence/prisma/prisma-subject.repository.js';
-import { PrismaTeacherRepository } from './infrastructure/persistence/prisma/prisma-teacher.repository.js';
 import { PrismaAttendanceUploadRepository } from './infrastructure/persistence/prisma/prisma-attendance-upload.repository.js';
 import { CredentialCipher } from './infrastructure/security/credential-cipher.js';
 import { AttendanceUploadWorker } from './infrastructure/jobs/attendance-upload.worker.js';
@@ -43,7 +39,6 @@ import { coordinationRoutes } from './presentation/http/routes/coordination.rout
 import { coordinatorAuthRoutes } from './presentation/http/routes/coordinator-auth.routes.js';
 import { superUserRoutes } from './presentation/http/routes/super-user.routes.js';
 import { uatRoutes } from './presentation/http/routes/uat.routes.js';
-import type { DebugProfessorInput, HarvestDebugOptions } from './application/use-cases/harvest-teacher-data.use-case.js';
 
 const SERVER_TIME_ZONE = env.APP_TIME_ZONE;
 
@@ -101,12 +96,10 @@ export async function buildApp() {
   const identityServiceClient = new IdentityServiceClient(
     env.IDENTITY_SERVICE_URL,
     env.INTERNAL_API_TOKEN,
-    env.IDENTITY_SERVICE_REQUIRED,
   );
   const academicServiceClient = new AcademicServiceClient(
     env.ACADEMIC_SERVICE_URL,
     env.INTERNAL_API_TOKEN,
-    env.ACADEMIC_SERVICE_REQUIRED,
   );
   const uatService = new UatService(sessionRepository, clientFactory, credentialCipher, identityServiceClient);
   const attendanceServiceCommands = new AttendanceServiceCommandClient(
@@ -154,10 +147,6 @@ export async function buildApp() {
   } else {
     await attendanceUploadWorker.start();
   }
-  const teacherRepository = new PrismaTeacherRepository(prisma);
-  const subjectRepository = new PrismaSubjectRepository(prisma);
-  const coordinationRepository = new PrismaCoordinationRepository(prisma);
-  const groupAssignmentRepository = new PrismaGroupAssignmentRepository(prisma);
   const eventBus = new DurableDomainEventBus(
     prisma,
     {
@@ -168,17 +157,10 @@ export async function buildApp() {
   );
   const harvestTeacherData = new HarvestTeacherDataUseCase(
     uatService,
-    teacherRepository,
-    subjectRepository,
-    coordinationRepository,
-    groupAssignmentRepository,
-    {
-      preferredCycleId: env.PRESENCIA_DEBUG_MODE ? env.PRESENCIA_DEBUG_CYCLE_ID : env.UAT_ID_CICLO_ESCOLAR,
-      debug: buildHarvestDebugOptions(),
-    },
+    academicServiceClient,
+    { preferredCycleId: env.UAT_ID_CICLO_ESCOLAR },
     undefined,
     fastify.log,
-    academicServiceClient,
   );
   const unsubscribeSync = new SyncTeacherDataListener(eventBus, harvestTeacherData, fastify.log).register();
   await eventBus.start();
@@ -241,7 +223,7 @@ export async function buildApp() {
   }));
 
   fastify.get('/health/ready', async (_request, reply) => {
-    const [database, redisStatus, coordinationQueryStatus] = await Promise.all([
+    const [database, redisStatus, identityStatus, academicStatus, attendanceStatus, coordinationQueryStatus] = await Promise.all([
       prisma.$queryRaw`SELECT 1`.then(() => ({ ok: true })).catch((error: unknown) => ({
         ok: false,
         error: error instanceof Error ? error.message : 'Unknown PostgreSQL error',
@@ -249,6 +231,15 @@ export async function buildApp() {
       redis.ping().then((result) => ({ ok: result === 'PONG' })).catch((error: unknown) => ({
         ok: false,
         error: error instanceof Error ? error.message : 'Unknown Redis error',
+      })),
+      identityServiceClient.health().then(() => ({ ok: true })).catch((error: unknown) => ({
+        ok: false, error: error instanceof Error ? error.message : 'Unknown Identity error',
+      })),
+      academicServiceClient.health().then(() => ({ ok: true })).catch((error: unknown) => ({
+        ok: false, error: error instanceof Error ? error.message : 'Unknown Academic error',
+      })),
+      attendanceServiceCommands.health().then(() => ({ ok: true })).catch((error: unknown) => ({
+        ok: false, error: error instanceof Error ? error.message : 'Unknown Attendance error',
       })),
       coordinationQuery.health().then(() => ({ ok: true })).catch((error: unknown) => ({
         ok: false, error: error instanceof Error ? error.message : 'Unknown Coordination Query error',
@@ -259,11 +250,21 @@ export async function buildApp() {
       ok: env.PRESENCIA_DEBUG_MODE || attendanceUploadConsumer.isReady(),
       disabled: env.PRESENCIA_DEBUG_MODE,
     };
-    const ready = database.ok && redisStatus.ok && rabbitmq.ok && attendanceConsumer.ok && coordinationQueryStatus.ok;
+    const ready = database.ok && redisStatus.ok && rabbitmq.ok && attendanceConsumer.ok
+      && identityStatus.ok && academicStatus.ok && attendanceStatus.ok && coordinationQueryStatus.ok;
     return reply.code(ready ? 200 : 503).send({
       status: ready ? 'ok' : 'degraded',
       service: 'backend-apirest',
-      dependencies: { database, redis: redisStatus, rabbitmq, attendanceConsumer, coordinationQuery: coordinationQueryStatus },
+      dependencies: {
+        database,
+        redis: redisStatus,
+        rabbitmq,
+        attendanceConsumer,
+        identity: identityStatus,
+        academic: academicStatus,
+        attendance: attendanceStatus,
+        coordinationQuery: coordinationQueryStatus,
+      },
     });
   });
 
@@ -317,28 +318,6 @@ export async function buildApp() {
   });
 
   return fastify;
-}
-
-function buildHarvestDebugOptions(): HarvestDebugOptions {
-  return {
-    enabled: env.PRESENCIA_DEBUG_MODE,
-    cycleId: env.PRESENCIA_DEBUG_CYCLE_ID,
-    cycleName: env.PRESENCIA_DEBUG_CYCLE_NAME,
-    extraProfessorCount: env.PRESENCIA_DEBUG_EXTRA_PROFESSORS,
-    extraProfessors: parseDebugProfessors(env.PRESENCIA_DEBUG_EXTRA_PROFESSORS_JSON),
-    verboseLogs: env.PRESENCIA_DEBUG_MODE || env.PRESENCIA_DEBUG_VERBOSE_LOGS,
-  };
-}
-
-function parseDebugProfessors(value?: string): DebugProfessorInput[] | undefined {
-  if (!value?.trim()) return undefined;
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) return undefined;
-    return parsed.filter((item): item is DebugProfessorInput => typeof item === 'object' && item !== null);
-  } catch {
-    return undefined;
-  }
 }
 
 async function start(): Promise<void> {

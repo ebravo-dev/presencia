@@ -16,7 +16,6 @@ describe('IdentityServiceClient', () => {
     const client = new IdentityServiceClient(
       'http://identity-service:3200',
       'test-internal-service-token-with-at-least-32-characters',
-      true,
     );
 
     const result = await client.createAuthenticatedSession({
@@ -35,12 +34,13 @@ describe('IdentityServiceClient', () => {
     expect(JSON.parse(String(request?.body))).toMatchObject({ institutionalIdentifier: '2251330007' });
   });
 
-  it('can remain optional during the reversible migration window', async () => {
-    const client = new IdentityServiceClient(undefined, 'x'.repeat(32), false);
+  it('fails visibly when Identity Service is unavailable', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('connection refused'));
+    const client = new IdentityServiceClient('http://identity-service:3200', 'x'.repeat(32));
     await expect(client.createAuthenticatedSession({
       kind: 'PROFESSOR', role: 'PROFESSOR', institutionalIdentifier: '123',
       displayName: 'Profesor', source: 'UAT_TEACHER', correlationId: 'request-1',
-    })).resolves.toBeUndefined();
+    })).rejects.toMatchObject({ statusCode: 503, code: 'IDENTITY_SERVICE_UNAVAILABLE' });
   });
 
   it('delegates staff credential verification and account administration to Identity', async () => {
@@ -50,7 +50,7 @@ describe('IdentityServiceClient', () => {
         identityId: 'identity-1', sessionId: 'session-1', accessToken: 'token-1', expiresAt: '2026-08-03T00:00:00.000Z',
       },
     }), { status: 201, headers: { 'content-type': 'application/json' } }));
-    const client = new IdentityServiceClient('http://identity-service:3200', 'x'.repeat(32), true);
+    const client = new IdentityServiceClient('http://identity-service:3200', 'x'.repeat(32));
 
     await expect(client.createStaffSession('coord@uat.edu.mx', 'password')).resolves.toMatchObject({ accessToken: 'token-1' });
     expect(fetchMock).toHaveBeenCalledWith(expect.any(URL), expect.objectContaining({

@@ -36,10 +36,6 @@ export const envSchema = z.object({
     (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
     z.boolean().default(false),
   ),
-  PRESENCIA_DEBUG_CYCLE_ID: z.coerce.number().int().positive().default(150),
-  PRESENCIA_DEBUG_CYCLE_NAME: z.string().default('2026 - 1 PRIMAVERA'),
-  PRESENCIA_DEBUG_EXTRA_PROFESSORS: z.coerce.number().int().min(0).max(25).default(4),
-  PRESENCIA_DEBUG_EXTRA_PROFESSORS_JSON: z.string().optional(),
   PRESENCIA_DEBUG_VERBOSE_LOGS: z.preprocess(
     (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
     z.boolean().default(false),
@@ -60,16 +56,8 @@ export const envSchema = z.object({
   ),
   ATTENDANCE_SERVICE_URL: z.string().url().default('http://localhost:3400'),
   COORDINATION_QUERY_SERVICE_URL: z.string().url().default('http://localhost:3500'),
-  IDENTITY_SERVICE_URL: z.string().url().optional(),
-  IDENTITY_SERVICE_REQUIRED: z.preprocess(
-    (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
-    z.boolean().default(false),
-  ),
-  ACADEMIC_SERVICE_URL: z.string().url().optional(),
-  ACADEMIC_SERVICE_REQUIRED: z.preprocess(
-    (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
-    z.boolean().default(false),
-  ),
+  IDENTITY_SERVICE_URL: z.string().url().default('http://localhost:3200'),
+  ACADEMIC_SERVICE_URL: z.string().url().default('http://localhost:3300'),
   ATTENDANCE_BACKEND_SERVICE_TOKEN: z.string().min(32).default('development-internal-service-token-change-me'),
   ATTENDANCE_JOB_ENCRYPTION_SECRET: z.string().min(32).default('development-attendance-job-secret-change-me'),
   UAT_SESSION_ENCRYPTION_SECRET: z.string().min(32).default('development-uat-session-secret-change-me'),
@@ -124,20 +112,6 @@ export const envSchema = z.object({
     });
   }
 
-  if (value.IDENTITY_SERVICE_REQUIRED && !value.IDENTITY_SERVICE_URL) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['IDENTITY_SERVICE_URL'],
-      message: 'Identity Service URL is required when identity integration is enabled',
-    });
-  }
-  if (value.ACADEMIC_SERVICE_REQUIRED && !value.ACADEMIC_SERVICE_URL) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['ACADEMIC_SERVICE_URL'],
-      message: 'Academic Service URL is required when academic integration is enabled',
-    });
-  }
   const rabbitmq = new URL(value.RABBITMQ_URL);
   if (rabbitmq.username === 'guest' || rabbitmq.password === 'guest') {
     ctx.addIssue({

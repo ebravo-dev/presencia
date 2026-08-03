@@ -42,17 +42,16 @@ export interface StaffSessionGrant {
 
 export class IdentityServiceClient {
   constructor(
-    private readonly baseUrl: string | undefined,
+    private readonly baseUrl: string,
     private readonly internalToken: string,
-    private readonly required: boolean,
     private readonly timeoutMs = 5_000,
   ) {}
 
-  async createAuthenticatedSession(input: CreateVerifiedIdentitySessionInput): Promise<IdentitySessionGrant | undefined> {
-    if (!this.baseUrl) {
-      if (this.required) throw new ApiError(503, 'IDENTITY_SERVICE_REQUIRED', 'Identity Service no está configurado.');
-      return undefined;
-    }
+  health(): Promise<unknown> {
+    return this.request('/health/ready', { method: 'GET' });
+  }
+
+  async createAuthenticatedSession(input: CreateVerifiedIdentitySessionInput): Promise<IdentitySessionGrant> {
     const response = await this.request<IdentityServiceResponse>('/internal/v1/authenticated-sessions', {
       method: 'POST',
       body: input,
@@ -70,7 +69,6 @@ export class IdentityServiceClient {
   }
 
   async revoke(accessToken: string): Promise<void> {
-    if (!this.baseUrl) return;
     await this.request('/internal/v1/sessions/current', {
       method: 'DELETE',
       body: { token: accessToken },

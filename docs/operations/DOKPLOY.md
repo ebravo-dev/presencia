@@ -46,8 +46,9 @@ El Compose automatiza el orden:
    snapshots de Academic y Attendance.
 6. UAT Integration arranca después de sus dependencias. El proceso HTTP del
    monolito ya no forma parte del runtime.
-7. El Gateway sólo queda listo cuando todos los upstreams requeridos responden
-   en readiness; después arranca la web.
+7. UAT Integration comprueba PostgreSQL, Redis, RabbitMQ, Identity, Academic,
+   Attendance y Coordination Query en su readiness. El Gateway también exige
+   readiness de todos sus upstreams antes de que arranque la web.
 
 No se deben ejecutar migraciones dentro de réplicas HTTP. Para escalar, aumenta
 réplicas únicamente de `api-gateway`, `uat-integration`, `identity-service`,

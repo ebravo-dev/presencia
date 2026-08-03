@@ -36,7 +36,7 @@ export class UatService {
     private readonly sessionRepository: IUatSessionRepository,
     private readonly clientFactory: UatClientFactory,
     private readonly credentialCipher: CredentialCipher,
-    private readonly identityService?: IdentityServiceClient,
+    private readonly identityService: IdentityServiceClient,
   ) {}
 
   async createSession(credentials: UatCredentials, context: { correlationId?: string } = {}): Promise<StoredUatSession> {
@@ -44,7 +44,7 @@ export class UatService {
     const login = await client.authenticate(credentials);
     const plantillaId = login.parametros?.Id_Plantilla_AdmonUAT?.trim();
     const institutionalCode = login.parametros?.Cve_Usuario_AdmonUAT?.trim();
-    const identitySession = await this.identityService?.createAuthenticatedSession({
+    const identitySession = await this.identityService.createAuthenticatedSession({
       kind: 'PROFESSOR',
       role: 'PROFESSOR',
       institutionalIdentifier: plantillaId || institutionalCode || credentials.username.trim().toLowerCase(),
@@ -60,7 +60,7 @@ export class UatService {
       credentialCipher: this.credentialCipher.encrypt(credentials.password),
       client,
       login,
-      ...(identitySession ? { identitySession } : {}),
+      identitySession,
       createdAt: now,
       lastUsedAt: now,
       expiresAt: now,
@@ -85,7 +85,7 @@ export class UatService {
 
   async deleteSession(sessionId: string): Promise<boolean> {
     const session = await this.sessionRepository.get(sessionId);
-    if (session?.identitySession && this.identityService) {
+    if (session?.identitySession) {
       await this.identityService.revoke(session.identitySession.accessToken);
     }
     return this.sessionRepository.delete(sessionId);

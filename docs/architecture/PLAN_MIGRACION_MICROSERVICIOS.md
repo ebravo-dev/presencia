@@ -665,7 +665,10 @@ consumen UAT Integration y los microservicios propietarios; el Gateway rechaza
 las rutas antiguas. El proceso HTTP `backend` fue retirado del Compose y las
 herramientas debug quedaron deshabilitadas con mutaciones `410`. Sólo permanecen
 la imagen y la base histórica para los imports one-shot de beacons y migraciones
-hasta validar el primer despliegue y su restauración.
+hasta validar el primer despliegue y su restauración. La cosecha UAT dejó de
+escribir la proyección local de profesores, materias, coordinaciones y grupos:
+Academic es su único destino y Identity/Academic son dependencias obligatorias
+con readiness explícito.
 
 Entregables:
 

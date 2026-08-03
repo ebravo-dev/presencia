@@ -14,7 +14,7 @@ import { UatStudentService } from './uat-student.service.js';
 describe('UatStudentService', () => {
   it('crea sesion seleccionando la primera carrera cuando no se envia plan', async () => {
     const client = fakeStudentClient();
-    const service = new UatStudentService(memoryRepository(), fakeFactory(client));
+    const service = makeService(client);
 
     const session = await service.createSession({ username: 'ALUMNO@UAT.EDU.MX', password: 'secret' });
 
@@ -25,7 +25,7 @@ describe('UatStudentService', () => {
 
   it('crea sesion seleccionando la carrera solicitada', async () => {
     const client = fakeStudentClient();
-    const service = new UatStudentService(memoryRepository(), fakeFactory(client));
+    const service = makeService(client);
 
     await service.createSession({ username: 'alumno@uat.edu.mx', password: 'secret', idPlanEstudio: 3314 });
 
@@ -35,16 +35,14 @@ describe('UatStudentService', () => {
   it('vincula el celular con la matricula devuelta por UAT cuando recibe UUID', async () => {
     const client = fakeStudentClient();
     const bindings: unknown[] = [];
-    const service = new UatStudentService(
-      memoryRepository(),
-      fakeFactory(client),
-      {
+    const service = makeService(client, {
+      binding: {
         createStudentDeviceBinding: async (input: unknown) => {
           bindings.push(input);
           return { data: { bindingToken: 'signed-binding-token' } };
         },
       } as never,
-    );
+    });
 
     const session = await service.createSession({
       username: 'alumno@uat.edu.mx',
@@ -66,18 +64,27 @@ describe('UatStudentService', () => {
     expect(session.deviceBindingToken).toBe('signed-binding-token');
   });
 
-  it('falla cerrado si se solicita vincular y Attendance Service no está configurado', async () => {
-    const service = new UatStudentService(memoryRepository(), fakeFactory(fakeStudentClient()));
+  it('falla cerrado si Attendance Service rechaza la vinculacion', async () => {
+    const service = makeService(fakeStudentClient(), {
+      binding: {
+        createStudentDeviceBinding: async () => {
+          throw Object.assign(new Error('Attendance unavailable'), {
+            statusCode: 503,
+            code: 'ATTENDANCE_SERVICE_UNAVAILABLE',
+          });
+        },
+      } as never,
+    });
     await expect(service.createSession({
       username: 'alumno@uat.edu.mx', password: 'secret',
       attendanceUuid: '12345678-1234-4234-9234-123456789abc',
       deviceBindingId: '12345678-1234-4234-9234-123456789abd',
-    })).rejects.toMatchObject({ statusCode: 503, code: 'ATTENDANCE_SERVICE_NOT_CONFIGURED' });
+    })).rejects.toMatchObject({ statusCode: 503, code: 'ATTENDANCE_SERVICE_UNAVAILABLE' });
   });
 
   it('rechaza un plan que no pertenece al alumno', async () => {
     const client = fakeStudentClient();
-    const service = new UatStudentService(memoryRepository(), fakeFactory(client));
+    const service = makeService(client);
 
     await expect(
       service.createSession({ username: 'alumno@uat.edu.mx', password: 'secret', idPlanEstudio: 9999 }),
@@ -94,13 +101,9 @@ describe('UatStudentService', () => {
       Txt_Nombre_Profesor: 'Profesor UAT', Txt_Lunes: '07:00 - 08:00',
     }];
     const snapshots: unknown[] = [];
-    const service = new UatStudentService(
-      memoryRepository(),
-      fakeFactory(client),
-      undefined,
-      undefined,
-      { publishStudentSnapshot: async (snapshot: unknown) => { snapshots.push(snapshot); } } as never,
-    );
+    const service = makeService(client, {
+      academic: { publishStudentSnapshot: async (snapshot: unknown) => { snapshots.push(snapshot); } } as never,
+    });
     const session = await service.createSession({ username: 'alumno@uat.edu.mx', password: 'secret' });
 
     await service.getScheduleBySession(session.id, { correlationId: 'request-1' });
@@ -116,6 +119,32 @@ describe('UatStudentService', () => {
     expect(JSON.stringify(snapshots[0])).not.toMatch(/password|cookie|sessionId/i);
   });
 });
+
+function makeService(
+  client: UatStudentPortalClientPort,
+  overrides: { binding?: unknown; identity?: unknown; academic?: unknown } = {},
+) {
+  const binding = overrides.binding ?? {
+    createStudentDeviceBinding: async () => ({ data: { bindingToken: 'signed-binding-token' } }),
+  };
+  const identity = overrides.identity ?? {
+    createAuthenticatedSession: async () => ({
+      identityId: 'identity-student-1',
+      sessionId: 'identity-session-1',
+      accessToken: 'identity-token-1',
+      expiresAt: '2026-08-03T00:00:00.000Z',
+    }),
+    revoke: async () => undefined,
+  };
+  const academic = overrides.academic ?? { publishStudentSnapshot: async () => undefined };
+  return new UatStudentService(
+    memoryRepository(),
+    fakeFactory(client),
+    binding as never,
+    identity as never,
+    academic as never,
+  );
+}
 
 function memoryRepository(): IUatSessionRepository<StoredUatStudentSession> {
   const sessions = new Map<string, StoredUatStudentSession>();

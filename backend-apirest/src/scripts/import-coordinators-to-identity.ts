@@ -36,7 +36,7 @@ for (const account of readConfiguredCoordinators()) {
   });
 }
 
-const identity = new IdentityServiceClient(env.IDENTITY_SERVICE_URL, env.INTERNAL_API_TOKEN, true);
+const identity = new IdentityServiceClient(env.IDENTITY_SERVICE_URL, env.INTERNAL_API_TOKEN);
 await identity.importStaffAccounts([...records.values()], {
   actorIdentityId: 'migration:coordinator-account-import',
   correlationId: 'migration:coordinator-account-import',

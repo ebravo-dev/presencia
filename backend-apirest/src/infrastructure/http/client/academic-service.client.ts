@@ -8,11 +8,14 @@ import type {
 
 export class AcademicServiceClient implements AcademicSnapshotPublisher, StudentAcademicSnapshotPublisher {
   constructor(
-    private readonly baseUrl: string | undefined,
+    private readonly baseUrl: string,
     private readonly internalToken: string,
-    private readonly required: boolean,
     private readonly timeoutMs = 15_000,
   ) {}
+
+  health(): Promise<unknown> {
+    return this.request('/health/ready', { method: 'GET' });
+  }
 
   async publishProfessorSnapshot(snapshot: ProfessorAcademicSnapshotInput): Promise<void> {
     return this.publish('/internal/v1/academic/snapshots/professors', snapshot);
@@ -64,10 +67,6 @@ export class AcademicServiceClient implements AcademicSnapshotPublisher, Student
     path: string,
     snapshot: ProfessorAcademicSnapshotInput | StudentAcademicSnapshotInput,
   ): Promise<void> {
-    if (!this.baseUrl) {
-      if (this.required) throw new ApiError(503, 'ACADEMIC_SERVICE_REQUIRED', 'Academic Service no está configurado.');
-      return;
-    }
     await this.request(path, { method: 'POST', body: snapshot, correlationId: snapshot.correlationId });
   }
 
@@ -75,7 +74,6 @@ export class AcademicServiceClient implements AcademicSnapshotPublisher, Student
     path: string,
     options: { method: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; correlationId?: string },
   ): Promise<T> {
-    if (!this.baseUrl) throw new ApiError(503, 'ACADEMIC_SERVICE_REQUIRED', 'Academic Service no está configurado.');
     let response: Response;
     try {
       response = await fetch(new URL(path, this.baseUrl), {

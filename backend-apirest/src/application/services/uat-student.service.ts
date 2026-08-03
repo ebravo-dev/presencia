@@ -41,9 +41,9 @@ export class UatStudentService {
   constructor(
     private readonly sessionRepository: IUatSessionRepository<StoredUatStudentSession>,
     private readonly clientFactory: UatStudentClientFactory,
-    private readonly attendanceBindingClient?: AttendanceBindingClient,
-    private readonly identityService?: IdentityServiceClient,
-    private readonly academicSnapshotPublisher?: StudentAcademicSnapshotPublisher,
+    private readonly attendanceBindingClient: AttendanceBindingClient,
+    private readonly identityService: IdentityServiceClient,
+    private readonly academicSnapshotPublisher: StudentAcademicSnapshotPublisher,
     private readonly logger?: StudentAcademicSyncLogger,
   ) {}
 
@@ -65,7 +65,7 @@ export class UatStudentService {
     if (!matricula) {
       throw new ApiError(502, 'UAT_STUDENT_MATRICULA_MISSING', 'El portal de alumnos no devolvio matricula para crear la identidad.');
     }
-    const identitySession = await this.identityService?.createAuthenticatedSession({
+    const identitySession = await this.identityService.createAuthenticatedSession({
       kind: 'STUDENT',
       role: 'STUDENT',
       institutionalIdentifier: matricula,
@@ -79,7 +79,7 @@ export class UatStudentService {
     try {
       deviceBindingToken = await this.bindStudentDeviceIfRequested(input, selectedCareer, career);
     } catch (error) {
-      if (identitySession && this.identityService) {
+      if (identitySession) {
         await this.identityService.revoke(identitySession.accessToken).catch(() => undefined);
       }
       throw error;
@@ -93,7 +93,7 @@ export class UatStudentService {
       careers,
       selectedCareer,
       deviceBindingToken,
-      ...(identitySession ? { identitySession } : {}),
+      identitySession,
       createdAt: now,
       lastUsedAt: now,
       expiresAt: now,
@@ -118,7 +118,7 @@ export class UatStudentService {
 
   async deleteSession(sessionId: string): Promise<boolean> {
     const session = await this.sessionRepository.get(sessionId);
-    if (session?.identitySession && this.identityService) {
+    if (session?.identitySession) {
       await this.identityService.revoke(session.identitySession.accessToken);
     }
     return this.sessionRepository.delete(sessionId);
@@ -216,10 +216,6 @@ export class UatStudentService {
     fallbackCareer: UatStudentCareerItem,
   ): Promise<string | undefined> {
     if (!input.attendanceUuid) return undefined;
-    if (!this.attendanceBindingClient) {
-      throw new ApiError(503, 'ATTENDANCE_SERVICE_NOT_CONFIGURED', 'Attendance Service es obligatorio para vincular alumnos.');
-    }
-
     const matricula = readStudentMatricula(selectedCareer, fallbackCareer);
     if (!matricula) {
       throw new ApiError(502, 'UAT_STUDENT_MATRICULA_MISSING', 'El portal de alumnos no devolvio matricula para vincular el celular.', {
@@ -247,7 +243,6 @@ export class UatStudentService {
     schedule: UatStudentScheduleItem[],
     correlationId: string,
   ): Promise<void> {
-    if (!this.academicSnapshotPublisher) return;
     const career = currentCareer(session.selectedCareer, session.careers);
     const matricula = readStudentMatricula(session.selectedCareer, career);
     if (!matricula) return;

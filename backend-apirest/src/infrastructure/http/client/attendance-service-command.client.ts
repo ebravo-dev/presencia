@@ -12,6 +12,10 @@ export class AttendanceServiceCommandClient implements AttendanceBindingClient {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
   }
 
+  health(): Promise<unknown> {
+    return this.request('/health/ready', { method: 'GET' });
+  }
+
   createStudentDeviceBinding(input: StudentDeviceBindingInput): Promise<StudentDeviceBindingResponse> {
     return this.request('/internal/v1/attendance/device-bindings/initial', {
       method: 'POST',
