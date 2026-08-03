@@ -84,6 +84,8 @@ jobs:
       - name: Validate infrastructure files
         run: |
           sh -n infra/postgres/init-databases.sh
+          sh -n infra/scripts/verify-postgres-backup-restore.sh
+          sh -n infra/scripts/verify-redis-backup-restore.sh
           docker compose --env-file infra/compose/.env.dokploy.example --file infra/compose/docker-compose.microservices.yml config --quiet
 
       - name: Audit backend production dependencies
@@ -117,6 +119,12 @@ jobs:
           --file infra/compose/docker-compose.microservices.yml
           --file infra/compose/docker-compose.ci.yml
           up --build --detach
+          --scale api-gateway=2
+          --scale uat-integration=2
+          --scale identity-service=2
+          --scale academic-service=2
+          --scale attendance-service=2
+          --scale coordination-query-service=2
 
       - name: Run public deployment smoke checks
         env:
@@ -136,6 +144,31 @@ jobs:
           --volume "$PWD/infra/scripts:/scripts:ro"
           node:24-alpine
           node /scripts/verify-service-flow.mjs
+
+      - name: Verify PostgreSQL backup restoration
+        run: >-
+          docker compose --project-name presencia-ci
+          --env-file /tmp/presencia-ci.env
+          --file infra/compose/docker-compose.microservices.yml
+          --file infra/compose/docker-compose.ci.yml
+          exec --no-TTY
+          --env PRESENCIA_BACKUP_VERIFY_ALLOW=ci
+          postgres /bin/sh -s
+          < infra/scripts/verify-postgres-backup-restore.sh
+
+      - name: Verify Redis backup restoration
+        env:
+          PRESENCIA_BACKUP_VERIFY_ALLOW: ci
+        run: sh infra/scripts/verify-redis-backup-restore.sh presencia-ci
+
+      - name: Verify API Gateway replica failover
+        env:
+          PRESENCIA_BASE_URL: http://127.0.0.1:18080
+        run: |
+          gateway_container=presencia-ci-api-gateway-1
+          trap 'docker start "$gateway_container" >/dev/null 2>&1 || true' EXIT
+          docker stop "$gateway_container"
+          node infra/scripts/smoke-deployment.mjs
 
       - name: Show container diagnostics on failure
         if: failure()

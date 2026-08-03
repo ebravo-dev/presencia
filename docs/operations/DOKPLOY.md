@@ -33,6 +33,11 @@ token interno, token de métricas y clave de cifrado debe ser aleatorio y
 distinto. `RSA_PRIVATE_KEY` conserva el formato requerido únicamente por la
 imagen histórica que ejecuta los jobs one-shot de migración e importación.
 
+En el host de Docker, Redis necesita `vm.overcommit_memory=1` para que los
+guardados en segundo plano y la replicación no fallen bajo presión de memoria.
+Configúralo de forma persistente en el sistema operativo del nodo y verifícalo
+antes del despliegue; el Compose no modifica parámetros globales del host.
+
 ## Orden de arranque
 
 El Compose automatiza el orden:
@@ -61,6 +66,8 @@ réplicas únicamente de `api-gateway`, `uat-integration`, `identity-service`,
 `academic-service`, `attendance-service` y `coordination-query-service`. Los
 jobs `*-migrate`, `*-import`, PostgreSQL, Redis y RabbitMQ permanecen únicos
 salvo que se sustituyan por servicios administrados de alta disponibilidad.
+Nginx vuelve a resolver `api-gateway` mediante el DNS interno de Docker, por lo
+que el frontend conserva servicio si una réplica desaparece.
 
 ## Verificación posterior
 
@@ -69,7 +76,14 @@ plano y dejar que el smoke espere readiness:
 
 ```bash
 docker compose --env-file infra/compose/.env.dokploy \
-  -f infra/compose/docker-compose.microservices.yml up --build --detach
+  -f infra/compose/docker-compose.microservices.yml \
+  up --build --detach \
+  --scale api-gateway=2 \
+  --scale uat-integration=2 \
+  --scale identity-service=2 \
+  --scale academic-service=2 \
+  --scale attendance-service=2 \
+  --scale coordination-query-service=2
 PRESENCIA_BASE_URL=https://presencia.example.edu.mx \
   node infra/scripts/smoke-deployment.mjs
 ```
@@ -95,10 +109,14 @@ horario del alumno, vincula su celular, registra telemetría BLE con tiempo del
 servidor y finaliza la lista por la ruta pública del profesor. Antes del `202`
 se crea el job PostgreSQL; el worker vuelve a autenticarse, escribe exactamente
 una vez en el portal simulado y el dashboard recibe `COMPLETED` por RabbitMQ.
-También prueba una clase compartida autorizada/revocada con captura delegada
-`SKIPPED`, y analiza/prueba ambas apps Flutter. El simulador se ejecuta sin root,
-con filesystem de sólo lectura y sin acceso a los portales reales; las cuentas
-UAT autorizadas permanecen fuera de CI.
+El simulador fuerza un reintento transitorio y un fallo terminal de cinco
+intentos; al restaurarlo, el mismo comando completa sin una escritura duplicada.
+El gate también comprueba una DLQ real, una clase compartida
+autorizada/revocada con captura delegada `SKIPPED`, el failover de una réplica
+del Gateway y la restauración aislada de PostgreSQL/Redis. Además analiza y
+prueba ambas apps Flutter. El simulador se ejecuta sin root, con filesystem de
+sólo lectura y sin acceso a los portales reales; las cuentas UAT autorizadas
+permanecen fuera de CI.
 
 El login de coordinación y superusuario, sus sesiones revocables y las cuentas
 del personal pertenecen a Identity. El BFF conserva `/api/coordinacion/auth/*`
@@ -152,3 +170,9 @@ volúmenes mientras existan mensajes pendientes o en DLQ.
 La restauración se valida en un entorno aislado: restaurar bases, ejecutar los
 jobs de migración, iniciar servicios fuente y comprobar que Coordination Query
 reconcilia antes de habilitar el dominio público.
+
+El workflow ejecuta `verify-postgres-backup-restore.sh` para las seis bases y
+`verify-redis-backup-restore.sh` para un RDB de Redis. Ambos scripts requieren
+`PRESENCIA_BACKUP_VERIFY_ALLOW=ci`; crean únicamente destinos efímeros y los
+eliminan al terminar. Esta prueba valida el procedimiento, pero no sustituye la
+programación, cifrado, retención externa ni alertas de los backups de producción.

@@ -15,6 +15,9 @@ export function createUatPortalMockServer() {
   const state = {
     teacherLogins: 0,
     studentLogins: 0,
+    attendanceWriteAttempts: 0,
+    attendanceFailures: 0,
+    attendanceFaultsRemaining: 0,
     attendanceWrites: [],
   };
   const server = createServer((request, response) => {
@@ -31,6 +34,9 @@ async function handleRequest(request, response, state) {
     }
     if (request.method === 'GET' && url.pathname === '/__mock/state') {
       return json(response, 200, state);
+    }
+    if (request.method === 'POST' && url.pathname === '/__mock/faults/attendance') {
+      return configureAttendanceFaults(response, await readBody(request), state);
     }
     if (request.method === 'GET' && url.pathname === '/') {
       response.setHeader('set-cookie', 'ASP.NET_SessionId=student-ci-session; Path=/; HttpOnly; SameSite=Lax');
@@ -144,12 +150,33 @@ function saveAttendance(response, body, state) {
   if (form.get('Id_Grupo') !== String(MOCK_UAT.groupId) || !Array.isArray(attendances) || attendances.length !== 1) {
     return json(response, 400, { exito: false, mensaje: 'Lista de asistencia CI invalida.' });
   }
+  state.attendanceWriteAttempts += 1;
+  if (state.attendanceFaultsRemaining > 0) {
+    state.attendanceFaultsRemaining -= 1;
+    state.attendanceFailures += 1;
+    return json(response, 503, { exito: false, mensaje: 'Falla UAT transitoria simulada.' });
+  }
   state.attendanceWrites.push({
     idGrupo: Number(form.get('Id_Grupo')),
     fechaInicio: form.get('Fec_Ini'),
     attendances,
   });
   return json(response, 200, { exito: true, mensaje: 'Guardado' });
+}
+
+function configureAttendanceFaults(response, body, state) {
+  let input;
+  try {
+    input = JSON.parse(body);
+  } catch {
+    return json(response, 400, { error: 'INVALID_FAULT_CONFIGURATION' });
+  }
+  const failures = input?.failures;
+  if (!Number.isInteger(failures) || failures < 0 || failures > 20) {
+    return json(response, 400, { error: 'INVALID_FAULT_CONFIGURATION' });
+  }
+  state.attendanceFaultsRemaining = failures;
+  return json(response, 200, { attendanceFaultsRemaining: failures });
 }
 
 function teacherGroup() {

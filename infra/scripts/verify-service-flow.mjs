@@ -7,6 +7,10 @@ const attendanceUrl = process.env.ATTENDANCE_SERVICE_URL ?? 'http://attendance-s
 const queryUrl = process.env.COORDINATION_QUERY_SERVICE_URL ?? 'http://coordination-query-service:3500';
 const gatewayUrl = process.env.API_GATEWAY_URL ?? 'http://api-gateway:8080';
 const uatPortalMockUrl = process.env.UAT_PORTAL_MOCK_URL ?? 'http://uat-portal-mock:3900';
+const rabbitmqManagementUrl = process.env.RABBITMQ_MANAGEMENT_URL ?? 'http://rabbitmq:15672';
+const rabbitmqUser = process.env.RABBITMQ_USER;
+const rabbitmqPassword = process.env.RABBITMQ_PASSWORD;
+if (!rabbitmqUser || !rabbitmqPassword) throw new Error('RabbitMQ management credentials are required.');
 const headers = { 'x-internal-service-token': internalToken, 'x-correlation-id': 'ci-service-flow' };
 const now = new Date();
 const verificationObservedAt = now.toISOString();
@@ -230,6 +234,9 @@ const captureBody = {
     sn_asistencia: true,
   }],
 };
+await request(uatPortalMockUrl, '/__mock/faults/attendance', {
+  method: 'POST', expected: 200, body: { failures: 1 },
+});
 const capture = await eventually(async () => request(gatewayUrl, '/api/uat/profesor/control-asistencia/asistencias', {
   method: 'POST', expected: [202, 404],
   requestHeaders: professorSessionHeader, body: captureBody,
@@ -247,12 +254,87 @@ const uploadStatus = await eventually(async () => request(gatewayUrl, '/api/uat/
   requestHeaders: professorSessionHeader,
   body: { clientRecordIds: [captureBody.ClientRecordId] },
 }), (result) => result.data?.[0]?.status === 'COMPLETED', 'The durable UAT upload job never completed.');
-if (uploadStatus.data[0]?.attempts !== 1) throw new Error('The idempotent UAT job was processed more than once.');
+if (uploadStatus.data[0]?.attempts !== 2) throw new Error('The UAT job did not recover after exactly one transient failure.');
 const mockState = await request(uatPortalMockUrl, '/__mock/state', { method: 'GET', expected: 200 });
-if (mockState.attendanceWrites?.length !== 1) {
-  throw new Error('The UAT portal did not receive exactly one attendance write.');
+if (mockState.attendanceWrites?.length !== 1
+  || mockState.attendanceWriteAttempts !== 2
+  || mockState.attendanceFailures !== 1) {
+  throw new Error('The UAT portal retry did not produce exactly one successful attendance write.');
 }
-pass('The BFF persists one idempotent UAT job before 202 and the worker completes the portal write');
+pass('The durable UAT worker retries a transient portal failure and produces exactly one successful write');
+
+const failedCaptureBody = {
+  ...captureBody,
+  ClientRecordId: 'ci-professor-attendance-recovery',
+  Asistencia: captureBody.Asistencia.map((entry) => ({ ...entry, sn_asistencia: false })),
+};
+await request(uatPortalMockUrl, '/__mock/faults/attendance', {
+  method: 'POST', expected: 200, body: { failures: 5 },
+});
+const failedCapture = await request(gatewayUrl, '/api/uat/profesor/control-asistencia/asistencias', {
+  method: 'POST', expected: 202, requestHeaders: professorSessionHeader, body: failedCaptureBody,
+});
+if (failedCapture.data?.uploadStatus !== 'PENDING' || failedCapture.data?.duplicate !== false) {
+  throw new Error('The failure-recovery capture was not persisted before publication.');
+}
+const terminalFailure = await eventually(async () => request(gatewayUrl, '/api/uat/asistencia/registros/estado', {
+  method: 'POST', expected: 200, requestHeaders: professorSessionHeader,
+  body: { clientRecordIds: [failedCaptureBody.ClientRecordId] },
+}), (result) => result.data?.[0]?.status === 'FAILED', 'The UAT worker never reached its terminal failure state.');
+if (terminalFailure.data[0]?.attempts !== 5 || !terminalFailure.data[0]?.error) {
+  throw new Error('The terminal UAT failure does not expose its bounded attempts and diagnostic.');
+}
+await request(uatPortalMockUrl, '/__mock/faults/attendance', {
+  method: 'POST', expected: 200, body: { failures: 0 },
+});
+const recoveredCapture = await request(gatewayUrl, '/api/uat/profesor/control-asistencia/asistencias', {
+  method: 'POST', expected: 202, requestHeaders: professorSessionHeader, body: failedCaptureBody,
+});
+if (recoveredCapture.data?.duplicate !== true) {
+  throw new Error('A retry after terminal failure did not preserve Attendance idempotency.');
+}
+const recoveredUpload = await eventually(async () => request(gatewayUrl, '/api/uat/asistencia/registros/estado', {
+  method: 'POST', expected: 200, requestHeaders: professorSessionHeader,
+  body: { clientRecordIds: [failedCaptureBody.ClientRecordId] },
+}), (result) => result.data?.[0]?.status === 'COMPLETED', 'The failed UAT job did not recover after the portal was restored.');
+if (recoveredUpload.data[0]?.attempts !== 1) {
+  throw new Error('The recovered UAT job did not reset its bounded attempt counter.');
+}
+const recoveredMockState = await request(uatPortalMockUrl, '/__mock/state', { method: 'GET', expected: 200 });
+if (recoveredMockState.attendanceWrites?.length !== 2
+  || recoveredMockState.attendanceFailures !== 6
+  || recoveredMockState.attendanceWriteAttempts !== 8) {
+  throw new Error('UAT restoration produced an unexpected number of attempts or successful writes.');
+}
+pass('A terminal UAT failure is durable, diagnostic, and recoverable without duplicating a portal write');
+
+const malformedEventId = `ci-malformed-${Date.now()}`;
+const publishMalformed = await rabbitRequest('/api/exchanges/%2F/presencia.domain.v1/publish', {
+  method: 'POST',
+  body: {
+    properties: {
+      message_id: malformedEventId,
+      content_type: 'application/json',
+      delivery_mode: 2,
+      headers: { 'x-retry-count': 3 },
+    },
+    routing_key: 'uat.teacher_authenticated.v1',
+    payload: JSON.stringify({ eventType: 'uat.teacher_authenticated.v1' }),
+    payload_encoding: 'string',
+  },
+});
+if (publishMalformed.routed !== true) throw new Error('RabbitMQ did not route the malformed verification event.');
+await eventually(async () => rabbitRequest('/api/queues/%2F/presencia.uat-integration.dead.v1', { method: 'GET' }),
+  (queue) => queue.messages_ready >= 1,
+  'RabbitMQ never dead-lettered the exhausted malformed event.');
+const deadMessages = await rabbitRequest('/api/queues/%2F/presencia.uat-integration.dead.v1/get', {
+  method: 'POST',
+  body: { count: 10, ackmode: 'ack_requeue_false', encoding: 'auto', truncate: 50_000 },
+});
+if (!deadMessages.some((message) => message.properties?.message_id === malformedEventId)) {
+  throw new Error('The expected exhausted event was not observable in the UAT Integration DLQ.');
+}
+pass('RabbitMQ routes an exhausted malformed domain event to the durable UAT Integration DLQ');
 
 const bindings = await request(attendanceUrl, `/internal/v1/attendance/device-bindings?q=${encodeURIComponent(matricula)}`, { method: 'GET', expected: 200 });
 if (bindings.data?.length !== 1 || !bindings.data[0]?.students?.some(
@@ -362,6 +444,22 @@ async function request(baseUrl, path, options) {
     throw new Error(`${options.method} ${path} returned ${response.status}: ${JSON.stringify(payload)}`);
   }
   return { status: response.status, responseHeaders: response.headers, ...payload };
+}
+
+async function rabbitRequest(path, options) {
+  const response = await fetch(new URL(path, rabbitmqManagementUrl), {
+    method: options.method,
+    signal: AbortSignal.timeout(10_000),
+    headers: {
+      accept: 'application/json',
+      authorization: `Basic ${Buffer.from(`${rabbitmqUser}:${rabbitmqPassword}`).toString('base64')}`,
+      ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
+    },
+    ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+  });
+  const payload = await response.json().catch(() => undefined);
+  if (!response.ok) throw new Error(`${options.method} ${path} returned ${response.status}: ${JSON.stringify(payload)}`);
+  return payload;
 }
 
 function cookieFrom(responseHeaders, name) {

@@ -130,6 +130,9 @@ test('the public web proxy exposes gateway health but never internal routes', as
   const nginx = await readFile(new URL('../../frontend-coord/nginx/default.conf.template', import.meta.url), 'utf8');
   assert.match(nginx, /\|health\|metrics\)/);
   assert.doesNotMatch(nginx, /\|internal\|/);
+  assert.match(nginx, /resolver 127\.0\.0\.11 valid=10s ipv6=off/);
+  assert.match(nginx, /set \$presencia_gateway http:\/\/\$\{API_GATEWAY_UPSTREAM\}/);
+  assert.match(nginx, /proxy_pass \$presencia_gateway/);
 });
 
 test('Compose CI replaces both UAT portals with an isolated non-root simulator', async () => {
@@ -145,7 +148,26 @@ test('the cross-service verifier also runs with the hardened Node 24 runtime', a
   assert.doesNotMatch(workflow, /node(?:-version:|:) 24\.7/);
   assert.doesNotMatch(workflow, /up --build --detach --wait/);
   assert.match(workflow, /up --build --detach/);
+  for (const service of [
+    'api-gateway', 'uat-integration', 'identity-service',
+    'academic-service', 'attendance-service', 'coordination-query-service',
+  ]) assert.match(workflow, new RegExp(`--scale ${service}=2`));
+  assert.match(workflow, /Verify PostgreSQL backup restoration[\s\S]*PRESENCIA_BACKUP_VERIFY_ALLOW=ci/);
+  assert.match(workflow, /Verify Redis backup restoration[\s\S]*PRESENCIA_BACKUP_VERIFY_ALLOW: ci/);
+  assert.match(workflow, /Verify API Gateway replica failover[\s\S]*docker stop "\$gateway_container"[\s\S]*smoke-deployment\.mjs/);
   assert.match(workflow, /docker run --rm[\s\S]*--user node[\s\S]*--read-only[\s\S]*--cap-drop ALL[\s\S]*node:24-alpine/);
+});
+
+test('destructive restore checks require an explicit CI-only guard', async () => {
+  for (const script of ['verify-postgres-backup-restore.sh', 'verify-redis-backup-restore.sh']) {
+    const source = await readFile(new URL(script, import.meta.url), 'utf8');
+    assert.match(source, /PRESENCIA_BACKUP_VERIFY_ALLOW:-/);
+    assert.match(source, /!= "ci"/);
+  }
+  const redisRestore = await readFile(new URL('verify-redis-backup-restore.sh', import.meta.url), 'utf8');
+  assert.match(redisRestore, /--network none/);
+  assert.match(redisRestore, /--user redis/);
+  assert.match(redisRestore, /--cap-drop ALL/);
 });
 
 test('OpenAPI exactly matches the implemented public UAT routes', async () => {

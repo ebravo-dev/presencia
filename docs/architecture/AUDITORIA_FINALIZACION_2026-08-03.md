@@ -13,12 +13,12 @@ prueba de funcionamiento integral.
 | Login estudiantil como única alta | Cada login exige UUID BLE, identificador estable y plataforma móvil; el vínculo sólo se ejecuta después de que UAT devuelve login, carrera y matrícula válidos. La misma identidad se reconcilia idempotentemente durante la actualización académica y no existe alta manual pública. | Implementado y probado en BFF, Attendance y Flutter. |
 | Vincular matrícula, teléfono y UUID | Attendance posee `StudentDeviceBinding`, rechaza identificadores duplicados y entrega un token acotado. El Gateway renueva únicamente el vínculo exacto; el profesor lo resuelve mediante sesión UAT y pertenencia al roster, sin dual-write legado. | Implementado y probado. |
 | Cambio de UUID sólo por coordinación | Attendance permite reemplazo/desvinculación sólo por comando interno con rol y motivo auditables; el endpoint público únicamente repite el vínculo exacto. | Implementado y probado. |
-| Captura local y subida posterior a UAT | La presencia del profesor entra únicamente por el canal de beacon/entrada/salida y usa hora del servidor; la captura de alumnos no puede inyectar timestamps de profesor. Attendance usa transacción serializable e idempotencia. Antes del `202`, UAT Integration persiste un job con credencial cifrada, separado del TTL de Redis; el móvil conserva su `ClientRecordId` hasta recibir `COMPLETED`. El titular queda `PENDING`; una clase compartida queda `SKIPPED`. | Implementado; falta caos contra UAT real. |
+| Captura local y subida posterior a UAT | La presencia del profesor entra únicamente por el canal de beacon/entrada/salida y usa hora del servidor; la captura de alumnos no puede inyectar timestamps de profesor. Attendance usa transacción serializable e idempotencia. Antes del `202`, UAT Integration persiste un job con credencial cifrada, separado del TTL de Redis; el móvil conserva su `ClientRecordId` hasta recibir `COMPLETED`. El titular queda `PENDING`; una clase compartida queda `SKIPPED`. El Compose fuerza fallos transitorios y terminales y comprueba recuperación sin duplicar la escritura. | Implementado y probado contra el simulador; falta caos contra UAT real. |
 | Asistencia del profesor en dashboard | Coordination Query consume roster/asistencia, reconcilia snapshots y genera reportes semanal/rango. | Implementado; CI prueba la proyección cruzando PostgreSQL y RabbitMQ. |
 | Microservicios y datos separados | Gateway, Identity, Academic, Attendance, UAT Integration y Coordination Query usan límites y bases lógicas propios. Identity es obligatorio para cada login; Academic recibe el único snapshot de profesor/alumno; Attendance posee beacons, dispositivos y telemetría BLE. UAT Integration no mantiene una segunda proyección académica. | El proceso HTTP monolítico y las fachadas móviles antiguas están fuera del runtime; se conservan únicamente imports one-shot idempotentes mientras se valida el primer despliegue. |
-| Docker y Dokploy | Compose crea bases/usuarios, migraciones/importaciones one-shot, Redis AOF, RabbitMQ, redes privadas, egreso UAT, readiness y apagado controlado. Las imágenes de aplicación usan usuarios sin privilegios; los runtimes eliminan capacidades, bloquean escalamiento de privilegios y montan el filesystem como sólo lectura con `tmpfs` explícitos. Una construcción limpia local validó imágenes, jobs, servicios, web y el flujo integral con Docker 29.7.1 y Compose 5.3.1. | Implementado y validado localmente; faltan la primera corrida remota y el despliegue Dokploy. |
+| Docker y Dokploy | Compose crea bases/usuarios, migraciones/importaciones one-shot, Redis AOF, RabbitMQ, redes privadas, egreso UAT, readiness y apagado controlado. Las imágenes de aplicación usan usuarios sin privilegios; los runtimes eliminan capacidades, bloquean escalamiento de privilegios y montan el filesystem como sólo lectura con `tmpfs` explícitos. Una construcción limpia local validó dos réplicas de los seis servicios, failover del Gateway, jobs, web y el flujo integral con Docker 29.7.1 y Compose 5.3.1. | Implementado y validado localmente; faltan la primera corrida remota y el despliegue Dokploy. |
 | Credenciales móviles | El alumno usa almacenamiento seguro nativo. El profesor migra los tokens de Hive a Keychain/Keystore, elimina la contraseña heredada y sólo la conserva efímeramente en memoria para reintentos del proceso actual. | Implementado y probado; falta auditoría en dispositivos físicos. |
-| Tests | Unitarios, contratos HTTP/eventos, clientes UAT simulados, apps Flutter, dashboard web, smoke público y flujo integral del Compose. El smoke UAT real de sólo lectura verifica ambos portales sin imprimir datos académicos. | Implementado; la escritura al simulador UAT pasó E2E. La escritura UAT real y los dispositivos físicos aún requieren autorización e infraestructura externa. |
+| Tests | Unitarios, contratos HTTP/eventos, clientes UAT simulados, apps Flutter, dashboard web, smoke público, flujo integral escalado, DLQ y restauración de datos. El smoke UAT real de sólo lectura verifica ambos portales sin imprimir datos académicos. | Implementado; escritura, reintento y recuperación pasaron contra el simulador UAT. La escritura UAT real y los dispositivos físicos aún requieren autorización e infraestructura externa. |
 
 ## Evidencia UAT real de sólo lectura
 
@@ -41,8 +41,17 @@ Docker 29.7.1 y Compose 5.3.1. Los jobs de aprovisionamiento, migración e impor
 terminaron con código cero y los servicios de ejecución alcanzaron sus sondas
 de salud. El smoke público completó ocho comprobaciones de web, health,
 readiness, autenticación y bloqueo de rutas internas. El flujo integral
-completó once etapas entre Gateway, Identity, Academic, Attendance, UAT
-Integration, Coordination Query, PostgreSQL, Redis y RabbitMQ.
+completó trece etapas entre Gateway, Identity, Academic, Attendance, UAT
+Integration, Coordination Query, PostgreSQL, Redis y RabbitMQ. Se levantaron
+dos réplicas de cada servicio HTTP; al detener una réplica del Gateway, las
+ocho comprobaciones continuaron pasando a través del mismo frontend.
+
+El worker UAT superó un fallo transitorio, registró un fallo terminal acotado a
+cinco intentos y, al restaurarse el portal, reutilizó el comando idempotente sin
+duplicar la escritura. Un evento malformado con reintentos agotados llegó a la
+DLQ durable real de RabbitMQ. Las seis bases PostgreSQL se respaldaron y
+restauraron en bases efímeras con conteos idénticos por tabla; un snapshot RDB
+de Redis restauró sus diez keys en un contenedor aislado y sin red.
 
 La ejecución descubrió y corrigió cuatro diferencias respecto de la validación
 estática: el script de aprovisionamiento montado debe invocarse mediante
@@ -66,11 +75,17 @@ prueba `verify-service-flow.mjs` comprueba:
 5. Attendance importa beacons idempotentemente y limita su resolución al roster;
 6. Gateway valida la renovación acotada del vínculo estudiantil;
 7. Las rutas públicas del profesor validan beacon, roster y UUID, deduplican al alumno y proyectan telemetría `DRAFT` con tiempo del servidor;
-8. La ruta pública de captura crea un job durable antes del `202`, deduplica el reintento y el worker escribe exactamente una vez en UAT;
-9. RabbitMQ entrega `COMPLETED` a Attendance y Coordination Query para el dashboard;
-10. Nginx/Gateway publican health y rutas de clientes, pero no `/internal/*`.
-11. Academic crea/revoca una clase compartida y Attendance aplica el permiso a
+8. La ruta pública de captura crea un job durable antes del `202`, deduplica el comando y supera un fallo UAT transitorio;
+9. el worker alcanza `FAILED` después de cinco fallos, conserva el diagnóstico y completa el mismo comando al restaurarse UAT sin duplicar la escritura;
+10. RabbitMQ envía un evento inválido con reintentos agotados a la DLQ durable;
+11. RabbitMQ entrega `COMPLETED` a Attendance y Coordination Query para el dashboard;
+12. Nginx/Gateway publican health y rutas de clientes, pero no `/internal/*`, y el frontend continúa atendiendo al detener una réplica del Gateway;
+13. Academic crea/revoca una clase compartida y Attendance aplica el permiso a
     beacons, roster, presencia y captura `SKIPPED` sin generar una subida UAT.
+
+Después del flujo, el gate restaura las seis bases PostgreSQL y Redis en
+destinos efímeros aislados y compara los conteos respaldados. Los verificadores
+destructivos se niegan a ejecutar si no reciben la guarda explícita de CI.
 
 El mismo workflow ejecuta `flutter analyze` y `flutter test` en las apps de
 alumno y profesor. El bundle inicial del dashboard separa React, consultas e
@@ -81,8 +96,8 @@ iconos en chunks cacheables; Excel y PDF continúan como imports bajo demanda.
 - ventana, grupo y lista expresamente autorizados para una escritura UAT real;
 - Android e iOS físicos para BLE, UUID y revinculación;
 - despliegue Dokploy con dos réplicas por servicio;
-- caída/restauración controlada contra UAT real y verificación de reintento/DLQ;
-- backup y restauración de las bases y Redis.
+- caída/restauración controlada contra UAT real; reintento y DLQ ya están validados en el simulador;
+- programación, retención externa y monitoreo de backups de producción; la restauración aislada ya está automatizada.
 
 El runtime legado está retirado del Compose. La base histórica y su imagen no
 deben eliminarse hasta ejecutar el primer despliegue, comprobar los imports

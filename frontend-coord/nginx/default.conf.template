@@ -5,6 +5,8 @@ server {
   port_in_redirect off;
   server_name_in_redirect off;
   root /usr/share/nginx/html;
+  resolver 127.0.0.11 valid=10s ipv6=off;
+  set $presencia_gateway http://${API_GATEWAY_UPSTREAM};
 
   location = / {
     return 302 /coordinacion/;
@@ -32,7 +34,7 @@ server {
   # El navegador sólo conoce al API Gateway. La selección del microservicio
   # propietario ocurre dentro de la red privada.
   location ~ ^/(api|attendance|auth|professors|groups|health|metrics)(/|$) {
-    proxy_pass http://${API_GATEWAY_UPSTREAM};
+    proxy_pass $presencia_gateway;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
