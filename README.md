@@ -80,9 +80,10 @@ COORDINATOR_NAME=Coordinacion Academica
 COORDINATOR_PASSWORD=una-clave-segura-de-al-menos-12-caracteres
 ```
 
-Para varios coordinadores usa `COORDINATORS_JSON`; cada despliegue realiza UPSERT
-por correo, por lo que permite agregar usuarios o rotar contraseñas sin
-duplicados.
+Para varios coordinadores usa `COORDINATORS_JSON`. En el primer despliegue el
+job `staff-account-import` adopta esas cuentas en Identity. Después administra
+altas, roles, bloqueos y rotación de contraseñas desde el panel de superusuario;
+los despliegues posteriores no sobrescriben esos cambios.
 
 ## Verificación local
 

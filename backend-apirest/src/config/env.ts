@@ -5,7 +5,6 @@ export const UAT_PORTAL_BASE_URL = 'https://administracionescolar.uat.edu.mx';
 export const UAT_ALUMNOS_BASE_URL = 'https://alumnossur.uat.edu.mx';
 
 const DEVELOPMENT_SECRETS = new Set([
-  'development-coordination-jwt-secret-change-me',
   'development-internal-service-token-change-me',
   'development-attendance-job-secret-change-me',
   'development-uat-session-secret-change-me',
@@ -53,7 +52,6 @@ export const envSchema = z.object({
     .string()
     .min(1)
     .default('postgresql://postgres:postgres@localhost:5432/presencia_coordination?schema=public'),
-  COORDINATION_JWT_SECRET: z.string().min(32).default('development-coordination-jwt-secret-change-me'),
   INTERNAL_API_TOKEN: z.string().min(32).default('development-internal-service-token-change-me'),
   COORDINATION_WEB_ORIGIN: z.string().url().default('http://localhost:5173'),
   COORDINATION_COOKIE_SECURE: z.preprocess(
@@ -89,7 +87,6 @@ export const envSchema = z.object({
   if (value.NODE_ENV !== 'production') return;
 
   const secretFields = [
-    'COORDINATION_JWT_SECRET',
     'INTERNAL_API_TOKEN',
     'ATTENDANCE_BACKEND_SERVICE_TOKEN',
     'ATTENDANCE_JOB_ENCRYPTION_SECRET',
@@ -107,7 +104,6 @@ export const envSchema = z.object({
   }
 
   const identitySecrets = [
-    value.COORDINATION_JWT_SECRET,
     value.ATTENDANCE_JOB_ENCRYPTION_SECRET,
     value.UAT_SESSION_ENCRYPTION_SECRET,
   ];
@@ -116,8 +112,8 @@ export const envSchema = z.object({
     || new Set(identitySecrets).size !== identitySecrets.length) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ['COORDINATION_JWT_SECRET'],
-      message: 'JWT and encryption secrets must be distinct from service tokens and from each other',
+      path: ['ATTENDANCE_JOB_ENCRYPTION_SECRET'],
+      message: 'Encryption secrets must be distinct from service tokens and from each other',
     });
   }
 

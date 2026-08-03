@@ -50,7 +50,6 @@ ATTENDANCE_JOB_ENCRYPTION_SECRET=un-secreto-estable-de-al-menos-32-caracteres
 DATABASE_URL=postgresql://usuario:password@postgres:5432/presencia_coordination?schema=public
 DATABASE_MIGRATION_MAX_ATTEMPTS=10
 DATABASE_MIGRATION_RETRY_MS=3000
-COORDINATION_JWT_SECRET=cambia-este-secreto-de-al-menos-32-caracteres
 COORDINATION_WEB_ORIGIN=https://tu-dominio.example
 COORDINATION_COOKIE_SECURE=true
 ATTENDANCE_BACKEND_URL=http://backend:3000
@@ -69,8 +68,9 @@ agrega los parametros SSL exigidos por el proveedor.
 Al desplegar una revisión, el Compose realiza en orden:
 
 1. `prisma migrate deploy`, con reintentos mientras PostgreSQL arranca.
-2. UPSERT idempotente de las cuentas definidas en `COORDINATORS_JSON` o en las
-   tres variables `COORDINATOR_*`.
+2. Aprovisionamiento legado de las cuentas definidas en `COORDINATORS_JSON` o
+   en las tres variables `COORDINATOR_*`, seguido por adopción única en Identity.
+   Las ejecuciones posteriores no pisan cambios administrados en Identity.
 3. Inicio de `backend-apirest` en el puerto configurado, después de Identity,
    Academic, Attendance y Coordination Query.
 

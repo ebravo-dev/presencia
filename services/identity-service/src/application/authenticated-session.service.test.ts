@@ -48,6 +48,18 @@ const fakeIdentities: IdentityRepository = {
       lastAuthenticatedAt: new Date(),
     };
   },
+  async findById(id) {
+    return id === 'identity-1' ? {
+      id,
+      kind: 'STUDENT',
+      role: 'STUDENT',
+      institutionalIdentifier: '2251330007',
+      email: null,
+      displayName: 'Alumno Prueba',
+      disabledAt: null,
+      lastAuthenticatedAt: new Date(),
+    } : null;
+  },
 };
 
 class FakeSessionStore implements IdentitySessionStore {

@@ -48,4 +48,28 @@ describe('Identity HTTP API', () => {
     expect(response.json().data.accessToken).toBe('signed-token');
     await app.close();
   });
+
+  it('keeps staff authentication private and returns the Identity session contract', async () => {
+    const app = await buildIdentityApp({
+      env: identityEnvSchema.parse({ NODE_ENV: 'test', INTERNAL_API_TOKEN: internalToken }),
+      sessions: {} as never,
+      staff: {
+        login: async () => ({
+          user: { id: 'staff-1', identityId: 'identity-1', email: 'coord@uat.edu.mx', name: 'Coord', role: 'COORDINATOR', disabled: false },
+          identity: { id: 'identity-1' }, sessionId: 'session-1', accessToken: 'signed-token', expiresAt: '2026-08-03T00:00:00.000Z',
+        }),
+      } as never,
+      readiness: { check: async () => ({ database: true, redis: true }) },
+    });
+
+    expect((await app.inject({ method: 'POST', url: '/internal/v1/staff/sessions', payload: {} })).statusCode).toBe(404);
+    const response = await app.inject({
+      method: 'POST', url: '/internal/v1/staff/sessions',
+      headers: { 'x-internal-service-token': internalToken },
+      payload: { email: 'coord@uat.edu.mx', password: 'secret' },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json().data).toMatchObject({ identityId: 'identity-1', accessToken: 'signed-token' });
+    await app.close();
+  });
 });

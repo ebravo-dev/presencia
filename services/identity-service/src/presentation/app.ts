@@ -2,9 +2,19 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { Counter, Registry, collectDefaultMetrics } from 'prom-client';
+import { z } from 'zod';
 import type { AuthenticatedSessionService } from '../application/authenticated-session.service.js';
+import type { StaffAccessService } from '../application/staff-access.service.js';
 import type { IdentityEnv } from '../infrastructure/config.js';
-import { authenticatedSessionSchema, tokenSchema } from './schemas.js';
+import {
+  authenticatedSessionSchema,
+  staffAccountCreateSchema,
+  staffAccountImportSchema,
+  staffAccountUpdateSchema,
+  staffLoginSchema,
+  superUserLoginSchema,
+  tokenSchema,
+} from './schemas.js';
 
 export interface IdentityReadiness {
   check(): Promise<{ database: boolean; redis: boolean }>;
@@ -13,6 +23,7 @@ export interface IdentityReadiness {
 export interface IdentityAppOptions {
   readonly env: IdentityEnv;
   readonly sessions: AuthenticatedSessionService;
+  readonly staff?: StaffAccessService;
   readonly readiness: IdentityReadiness;
 }
 
@@ -89,11 +100,72 @@ export async function buildIdentityApp(options: IdentityAppOptions) {
     return reply.code(204).send();
   });
 
+  app.post('/internal/v1/staff/sessions', {
+    preHandler: requireInternal,
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const input = staffLoginSchema.parse(request.body);
+    const result = await requireStaff(options).login(input.email, input.password, request.id);
+    return reply.code(201).send({ data: sessionResponse(result) });
+  });
+
+  app.post('/internal/v1/super-user/sessions', {
+    preHandler: requireInternal,
+    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const input = superUserLoginSchema.parse(request.body);
+    const result = await requireStaff(options).loginSuperUser(input.password, request.id);
+    return reply.code(201).send({ data: sessionResponse(result) });
+  });
+
+  app.get('/internal/v1/staff/accounts', { preHandler: requireInternal }, async () => ({
+    data: await requireStaff(options).list(),
+    meta: { generatedAt: new Date().toISOString() },
+  }));
+
+  app.post('/internal/v1/staff/accounts', { preHandler: requireInternal }, async (request, reply) => {
+    const input = staffAccountCreateSchema.parse(request.body);
+    const { actorIdentityId, correlationId, reason, ...account } = input;
+    return reply.code(201).send({ data: await requireStaff(options).create(account, {
+      actorIdentityId, correlationId, reason, source: 'SUPER_USER',
+    }) });
+  });
+
+  app.put<{ Params: { id: string } }>('/internal/v1/staff/accounts/:id', { preHandler: requireInternal }, async (request) => {
+    const input = staffAccountUpdateSchema.parse(request.body);
+    const { actorIdentityId, correlationId, reason, ...account } = input;
+    return { data: await requireStaff(options).update(request.params.id, account, {
+      actorIdentityId, correlationId, reason, source: 'SUPER_USER',
+    }) };
+  });
+
+  app.delete<{ Params: { id: string } }>('/internal/v1/staff/accounts/:id', { preHandler: requireInternal }, async (request, reply) => {
+    const audit = staffAuditSchemaForDelete(request.body);
+    await requireStaff(options).delete(request.params.id, { ...audit, source: 'SUPER_USER' });
+    return reply.code(204).send();
+  });
+
+  app.post('/internal/v1/staff/accounts/import', { preHandler: requireInternal }, async (request) => {
+    const input = staffAccountImportSchema.parse(request.body);
+    const { actorIdentityId, correlationId, reason } = input;
+    return {
+      data: await requireStaff(options).import(input.accounts, {
+        actorIdentityId, correlationId, reason, source: 'LEGACY_IMPORT',
+      }),
+      meta: { imported: input.accounts.length },
+    };
+  });
+
   app.setErrorHandler((error, request, reply) => {
     request.log.error({ err: error }, 'Identity request failed.');
     if (error instanceof Error && (error.message === 'IDENTITY_DISABLED' || error.message === 'SESSION_REVOKED')) {
       return reply.code(401).send({ error: error.message });
     }
+    if (error instanceof Error && ['INVALID_STAFF_CREDENTIALS', 'INVALID_SUPER_USER_PASSWORD'].includes(error.message)) {
+      return reply.code(401).send({ error: error.message });
+    }
+    if (errorCode(error) === 'P2002') return reply.code(409).send({ error: 'STAFF_ACCOUNT_EXISTS' });
+    if (errorCode(error) === 'P2025') return reply.code(404).send({ error: 'STAFF_ACCOUNT_NOT_FOUND' });
     if (typeof error === 'object' && error !== null && 'issues' in error) {
       return reply.code(400).send({ error: 'VALIDATION_ERROR', message: 'Solicitud inválida.' });
     }
@@ -101,4 +173,38 @@ export async function buildIdentityApp(options: IdentityAppOptions) {
   });
 
   return app;
+}
+
+function staffAuditSchemaForDelete(value: unknown) {
+  return z.object({
+    actorIdentityId: z.string().trim().min(1).max(160),
+    correlationId: z.string().trim().min(1).max(128),
+    reason: z.string().trim().min(1).max(500),
+  }).parse(value);
+}
+
+function requireStaff(options: IdentityAppOptions): StaffAccessService {
+  if (!options.staff) throw new Error('STAFF_ACCESS_NOT_CONFIGURED');
+  return options.staff;
+}
+
+function sessionResponse(result: {
+  user: unknown;
+  identity: { id: string };
+  sessionId: string;
+  accessToken: string;
+  expiresAt: string;
+}) {
+  return {
+    user: result.user,
+    identityId: result.identity.id,
+    sessionId: result.sessionId,
+    accessToken: result.accessToken,
+    expiresAt: result.expiresAt,
+  };
+}
+
+function errorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return undefined;
+  return typeof error.code === 'string' ? error.code : undefined;
 }

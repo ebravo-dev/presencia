@@ -8,6 +8,7 @@ const checks = [
   { path: '/metrics', expected: 401 },
   { path: '/api/uat/alumnos/horario', expected: 401 },
   { path: '/api/coordinacion/auth/me', expected: 401 },
+  { path: '/api/superUsuario/auth/me', expected: 401 },
   { path: '/internal/v1/attendance/coordination-projection', expected: 404 },
 ];
 

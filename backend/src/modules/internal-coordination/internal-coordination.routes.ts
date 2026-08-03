@@ -15,6 +15,12 @@ import { authorizeClassroomsForProfessor } from '../beacons/beacons.routes.js';
 import { AttendanceServiceCommandClient } from '../super-user/attendance-service-command.client.js';
 import { attendanceDateFromServerNow, serverLocalHourMinute, serverNow } from '../../core/time/server-time.js';
 import { getAttendanceSettings } from '../settings/attendance-settings.service.js';
+import { SuperUserService } from '../super-user/super-user.service.js';
+import {
+  debugClassCreateSchema,
+  debugClassUpdateSchema,
+  debugSettingsUpdateSchema,
+} from '../super-user/super-user.schemas.js';
 
 const querySchema = z.object({
   professorEmail: z.string().email().transform((value) => value.toLowerCase()),
@@ -27,6 +33,7 @@ const substituteAssignment = (prisma as any).substituteAssignment;
 const attendanceCommands = env.ATTENDANCE_SERVICE_URL
   ? new AttendanceServiceCommandClient(env.ATTENDANCE_SERVICE_URL, env.INTERNAL_API_TOKEN)
   : undefined;
+const debugService = new SuperUserService();
 
 const beaconSchema = z.object({
   classroom: z.string().trim().min(1).transform(normalizeClassroomDisplay),
@@ -452,6 +459,28 @@ export async function internalCoordinationRoutes(fastify: FastifyInstance): Prom
       message: 'Modo debug: asistencia registrada en backend principal para reportes, sin enviar al portal/API REST.',
     });
   });
+
+  fastify.get('/internal/coordination/debug/status', async () => debugService.getDebugStatus());
+  fastify.get('/internal/coordination/debug/settings', async () => debugService.getDebugSettings());
+  fastify.put('/internal/coordination/debug/settings', async (request, reply) => {
+    const parsed = debugSettingsUpdateSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'VALIDATION_ERROR', details: parsed.error.flatten() });
+    return debugService.updateDebugSettings(parsed.data);
+  });
+  fastify.get('/internal/coordination/debug/classes', async () => debugService.listDebugClasses());
+  fastify.post('/internal/coordination/debug/classes', async (request, reply) => {
+    const parsed = debugClassCreateSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'VALIDATION_ERROR', details: parsed.error.flatten() });
+    return reply.code(201).send(await debugService.createDebugClass(parsed.data));
+  });
+  fastify.put<{ Params: { id: string } }>('/internal/coordination/debug/classes/:id', async (request, reply) => {
+    const parsed = debugClassUpdateSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'VALIDATION_ERROR', details: parsed.error.flatten() });
+    const updated = await debugService.updateDebugClass(request.params.id, parsed.data);
+    return updated ?? reply.code(404).send({ error: 'DEBUG_CLASS_NOT_FOUND' });
+  });
+  fastify.get('/internal/coordination/debug/student-attendance', async () => debugService.listDebugStudentAttendance());
+  fastify.get('/internal/coordination/debug/flow-logs', async () => debugService.listDebugFlowLogs());
 
   fastify.get('/internal/coordination/beacons', async (_request, reply) => {
     const beacons = await prisma.beacon.findMany({ orderBy: { classroom: 'asc' } });

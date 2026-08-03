@@ -1,9 +1,11 @@
 import { Redis } from 'ioredis';
 import { AuthenticatedSessionService } from './application/authenticated-session.service.js';
+import { StaffAccessService } from './application/staff-access.service.js';
 import { IdentityTokenService } from './application/token.service.js';
 import { loadIdentityEnv } from './infrastructure/config.js';
 import { PrismaClient } from './generated/prisma/index.js';
 import { PrismaIdentityRepository } from './infrastructure/prisma-identity.repository.js';
+import { PrismaStaffAccountRepository } from './infrastructure/prisma-staff-account.repository.js';
 import { RedisIdentitySessionStore } from './infrastructure/redis-session.store.js';
 import { buildIdentityApp } from './presentation/app.js';
 
@@ -20,15 +22,24 @@ const tokens = new IdentityTokenService(
   env.IDENTITY_JWT_AUDIENCE,
   env.IDENTITY_SESSION_TTL_SECONDS,
 );
+const identityRepository = new PrismaIdentityRepository(prisma);
 const sessions = new AuthenticatedSessionService(
-  new PrismaIdentityRepository(prisma),
+  identityRepository,
   new RedisIdentitySessionStore(redis),
   tokens,
   env.IDENTITY_SESSION_TTL_SECONDS * 1_000,
 );
+const staff = new StaffAccessService(
+  new PrismaStaffAccountRepository(prisma),
+  sessions,
+  env.SUPER_USER_PASSWORD,
+  env.STAFF_SESSION_TTL_SECONDS * 1_000,
+  env.SUPER_USER_SESSION_TTL_SECONDS * 1_000,
+);
 const app = await buildIdentityApp({
   env,
   sessions,
+  staff,
   readiness: {
     async check() {
       const [database, redisReady] = await Promise.all([

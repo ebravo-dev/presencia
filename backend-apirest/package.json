@@ -17,6 +17,7 @@
     "coordinator:create": "tsx src/scripts/create-coordinator.ts",
     "coordinator:create:production": "node dist/scripts/create-coordinator.js",
     "import:shared-classes": "node dist/scripts/import-shared-classes-to-academic.js",
+    "import:staff-accounts": "node dist/scripts/import-coordinators-to-identity.js",
     "test": "NODE_ENV=test vitest run",
     "fetch:horarios": "tsx src/scripts/fetch-horarios.ts"
   },

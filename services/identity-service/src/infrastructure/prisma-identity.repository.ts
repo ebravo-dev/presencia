@@ -21,6 +21,7 @@ export class PrismaIdentityRepository implements IdentityRepository {
         },
         update: {
           ...(input.email ? { email } : {}),
+          ...(input.kind === 'STAFF' ? { role: input.role, disabledAt: null } : {}),
           displayName: input.displayName.trim(),
           lastAuthenticatedAt: new Date(),
         },
@@ -36,5 +37,9 @@ export class PrismaIdentityRepository implements IdentityRepository {
       });
       return identity;
     });
+  }
+
+  findById(id: string): Promise<Identity | null> {
+    return this.prisma.identity.findUnique({ where: { id } });
   }
 }

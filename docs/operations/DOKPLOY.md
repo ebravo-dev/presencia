@@ -39,11 +39,14 @@ El Compose automatiza el orden:
    salones a Attendance y las clases compartidas a Academic. Cada permiso se
    propaga por RabbitMQ a Attendance antes de habilitar UAT Integration; si una
    importación falla, el despliegue se detiene sin modificar la fuente.
-4. Coordination Query crea su cola durable y reconstruye su modelo desde
+4. `staff-account-import` adopta una sola vez las cuentas coordinadoras legadas
+   en Identity. Las ejecuciones posteriores no sobrescriben contraseñas, roles
+   ni bloqueos administrados desde Identity.
+5. Coordination Query crea su cola durable y reconstruye su modelo desde
    snapshots de Academic y Attendance.
-5. UAT Integration y el backend de compatibilidad arrancan después de sus
+6. UAT Integration y el backend de compatibilidad arrancan después de sus
    dependencias.
-6. El Gateway sólo queda listo cuando todos los upstreams requeridos responden
+7. El Gateway sólo queda listo cuando todos los upstreams requeridos responden
    en readiness; después arranca la web.
 
 No se deben ejecutar migraciones dentro de réplicas HTTP. Para escalar, aumenta
@@ -71,6 +74,12 @@ idempotente `PENDING`, y una clase compartida autorizada/revocada con captura
 delegada `SKIPPED` sin usar credenciales ajenas. También comprueba la proyección
 del reporte a través de RabbitMQ y analiza/prueba ambas apps
 Flutter. Las cuentas y portales UAT reales permanecen fuera de CI.
+
+El login de coordinación y superusuario, sus sesiones revocables y las cuentas
+del personal pertenecen a Identity. El BFF conserva `/api/coordinacion/auth/*`
+y `/api/superUsuario/*`; delega beacons y vinculaciones a Attendance. Las
+herramientas debug se aíslan detrás de un endpoint interno del backend de
+compatibilidad y nunca se publican directamente.
 
 El dashboard divide el shell en chunks cacheables y carga los exportadores de
 Excel/PDF sólo cuando se solicitan, reduciendo el JavaScript inicial servido por

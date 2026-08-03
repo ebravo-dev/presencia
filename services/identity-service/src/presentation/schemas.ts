@@ -16,3 +16,42 @@ export const authenticatedSessionSchema = z.object({
 });
 
 export const tokenSchema = z.object({ token: z.string().min(1) });
+
+export const staffLoginSchema = z.object({
+  email: z.email(),
+  password: z.string().min(1).max(256),
+});
+
+export const superUserLoginSchema = z.object({
+  password: z.string().min(1).max(256),
+});
+
+const staffAccountSchema = z.object({
+  email: z.email(),
+  name: z.string().trim().min(1).max(160),
+  password: z.string().min(8).max(256),
+  role: z.enum(['COORDINATOR', 'READ_ONLY']).default('COORDINATOR'),
+});
+
+const staffAuditSchema = z.object({
+  actorIdentityId: z.string().trim().min(1).max(160),
+  correlationId: z.string().trim().min(1).max(128),
+  reason: z.string().trim().min(1).max(500),
+});
+
+export const staffAccountCreateSchema = staffAccountSchema.extend(staffAuditSchema.shape);
+
+export const staffAccountUpdateSchema = staffAccountSchema.partial().extend({
+  disabled: z.boolean().optional(),
+}).extend(staffAuditSchema.shape);
+
+export const staffAccountImportSchema = z.object({
+  accounts: z.array(z.object({
+    legacySourceId: z.string().min(1).max(160),
+    email: z.email(),
+    name: z.string().trim().min(1).max(160),
+    passwordHash: z.string().min(20),
+    role: z.enum(['COORDINATOR', 'READ_ONLY']).default('COORDINATOR'),
+    disabled: z.boolean().optional(),
+  })).max(1_000),
+}).extend(staffAuditSchema.shape);

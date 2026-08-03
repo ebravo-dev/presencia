@@ -30,7 +30,6 @@ x-uat-environment: &uat-environment
   UAT_HTTP_TIMEOUT_MS: ${UAT_HTTP_TIMEOUT_MS:-30000}
   UAT_SESSION_TTL_MINUTES: ${UAT_SESSION_TTL_MINUTES:-45}
   UAT_ID_CICLO_ESCOLAR: ${UAT_ID_CICLO_ESCOLAR:-150}
-  COORDINATION_JWT_SECRET: ${COORDINATION_JWT_SECRET:?COORDINATION_JWT_SECRET is required}
   INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
   COORDINATION_WEB_ORIGIN: ${COORDINATION_WEB_ORIGIN:?COORDINATION_WEB_ORIGIN is required}
   COORDINATION_COOKIE_SECURE: "true"
@@ -62,6 +61,9 @@ x-identity-environment: &identity-environment
   IDENTITY_SESSION_TTL_SECONDS: ${IDENTITY_SESSION_TTL_SECONDS:-604800}
   INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
   METRICS_TOKEN: ${IDENTITY_METRICS_TOKEN:?IDENTITY_METRICS_TOKEN is required}
+  SUPER_USER_PASSWORD: ${SUPER_USER_PASSWORD:?SUPER_USER_PASSWORD is required}
+  STAFF_SESSION_TTL_SECONDS: ${STAFF_SESSION_TTL_SECONDS:-28800}
+  SUPER_USER_SESSION_TTL_SECONDS: ${SUPER_USER_SESSION_TTL_SECONDS:-14400}
 
 x-academic-environment: &academic-environment
   NODE_ENV: production
@@ -288,7 +290,7 @@ services:
     command: ["node", "dist/app.js"]
     environment: *uat-environment
     depends_on:
-      uat-provision:
+      staff-account-import:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
@@ -314,6 +316,18 @@ services:
     # Needs outbound HTTPS access to the UAT portals. The service still has no
     # published port and remains reachable internally only through `private`.
     networks: [private, uat-egress]
+
+  staff-account-import:
+    image: presencia-uat-integration:${IMAGE_TAG:-latest}
+    restart: "no"
+    command: ["npm", "run", "import:staff-accounts"]
+    environment: *uat-environment
+    depends_on:
+      uat-provision:
+        condition: service_completed_successfully
+      identity-service:
+        condition: service_healthy
+    networks: [private]
 
   identity-migrate:
     image: presencia-identity:${IMAGE_TAG:-latest}

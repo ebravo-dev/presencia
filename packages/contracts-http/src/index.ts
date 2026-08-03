@@ -31,7 +31,7 @@ export const publicRouteContracts = [
   { prefix: '/api/beacons', owner: 'attendance', transitionalTarget: 'legacy-backend' },
   { prefix: '/api/student-device-bindings', owner: 'attendance', transitionalTarget: 'attendance' },
   { prefix: '/api/student-attendance', owner: 'attendance', transitionalTarget: 'legacy-backend' },
-  { prefix: '/api/superUsuario', owner: 'identity', transitionalTarget: 'legacy-backend' },
+  { prefix: '/api/superUsuario', owner: 'identity', transitionalTarget: 'uat-integration' },
 ] as const satisfies readonly PublicRouteContract[];
 
 function matchesPrefix(pathname: string, prefix: string): boolean {

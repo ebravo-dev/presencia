@@ -4,6 +4,7 @@ const developmentSecrets = new Set([
   'development-identity-jwt-secret-change-me',
   'development-internal-service-token-change-me',
   'development-metrics-token-change-me',
+  'development-super-user-password',
 ]);
 
 export const identityEnvSchema = z.object({
@@ -19,16 +20,20 @@ export const identityEnvSchema = z.object({
   IDENTITY_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(604_800),
   INTERNAL_API_TOKEN: z.string().min(32).default('development-internal-service-token-change-me'),
   METRICS_TOKEN: z.string().min(32).default('development-metrics-token-change-me'),
+  SUPER_USER_PASSWORD: z.string().min(12).default('development-super-user-password'),
+  STAFF_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(28_800),
+  SUPER_USER_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(14_400),
 }).superRefine((value, context) => {
   if (value.NODE_ENV !== 'production') return;
   for (const [field, secret] of [
     ['IDENTITY_JWT_SECRET', value.IDENTITY_JWT_SECRET],
     ['INTERNAL_API_TOKEN', value.INTERNAL_API_TOKEN],
     ['METRICS_TOKEN', value.METRICS_TOKEN],
+    ['SUPER_USER_PASSWORD', value.SUPER_USER_PASSWORD],
   ] as const) {
     if (developmentSecrets.has(secret)) context.addIssue({ code: 'custom', path: [field], message: 'Production secret is required' });
   }
-  const secrets = [value.IDENTITY_JWT_SECRET, value.INTERNAL_API_TOKEN, value.METRICS_TOKEN];
+  const secrets = [value.IDENTITY_JWT_SECRET, value.INTERNAL_API_TOKEN, value.METRICS_TOKEN, value.SUPER_USER_PASSWORD];
   if (new Set(secrets).size !== secrets.length) {
     context.addIssue({ code: 'custom', path: ['IDENTITY_JWT_SECRET'], message: 'Identity, internal and metrics secrets must be distinct' });
   }

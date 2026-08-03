@@ -21,11 +21,26 @@ model Identity {
   updatedAt               DateTime        @updatedAt @map("updated_at")
 
   auditEvents SecurityAuditEvent[]
+  staffCredential StaffCredential?
 
   @@unique([kind, institutionalIdentifier])
   @@index([email])
   @@index([role, disabledAt])
   @@map("identities")
+}
+
+model StaffCredential {
+  id           String   @id @default(cuid())
+  identityId   String   @unique @map("identity_id")
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  legacySourceId String? @unique @map("legacy_source_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  identity Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  @@map("staff_credentials")
 }
 
 model SecurityAuditEvent {

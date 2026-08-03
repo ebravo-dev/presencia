@@ -9,6 +9,7 @@ describe('resolveGatewayTarget', () => {
     ['/api/student-device-bindings', 'attendance'],
     ['/api/student-device-bindings/resolve', 'attendance'],
     ['/api/beacons/resolve', 'legacy-backend'],
+    ['/api/superUsuario/auth/me', 'uat-integration'],
     ['/health/ready', 'gateway'],
   ])('routes %s to %s', (url, target) => {
     expect(resolveGatewayTarget(url)).toBe(target);

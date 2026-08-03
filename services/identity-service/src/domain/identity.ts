@@ -13,11 +13,11 @@ export interface Identity {
 }
 
 export interface ResolveVerifiedIdentityInput {
-  readonly kind: Extract<IdentityKind, 'PROFESSOR' | 'STUDENT'>;
-  readonly role: Extract<IdentityRole, 'PROFESSOR' | 'STUDENT'>;
+  readonly kind: IdentityKind;
+  readonly role: IdentityRole;
   readonly institutionalIdentifier: string;
   readonly email?: string | undefined;
   readonly displayName: string;
-  readonly source: 'UAT_TEACHER' | 'UAT_STUDENT';
+  readonly source: 'UAT_TEACHER' | 'UAT_STUDENT' | 'LOCAL_STAFF' | 'SUPER_USER';
   readonly correlationId: string;
 }

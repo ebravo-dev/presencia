@@ -17,7 +17,7 @@ export class IdentityTokenService {
     private readonly ttlSeconds: number,
   ) {}
 
-  sign(identity: Identity, sessionId: string): string {
+  sign(identity: Identity, sessionId: string, ttlSeconds = this.ttlSeconds): string {
     return jwt.sign(
       { sessionId, role: identity.role, kind: identity.kind },
       this.activeSecret,
@@ -26,7 +26,7 @@ export class IdentityTokenService {
         subject: identity.id,
         issuer: this.issuer,
         audience: this.audience,
-        expiresIn: this.ttlSeconds,
+        expiresIn: ttlSeconds,
       },
     );
   }

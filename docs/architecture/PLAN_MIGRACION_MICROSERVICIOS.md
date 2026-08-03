@@ -556,11 +556,11 @@ Criterio de salida:
 
 ### Fase 3 — Identity Service
 
-Avance al 2 de agosto de 2026: servicio aislado con base propia, sesión única en
-Redis, JWT revocable/rotable, auditoría e integración posterior a autenticación
-UAT implementados. La migración de cuentas de coordinación/superusuario y el
-corte de las rutas administrativas históricas siguen pendientes del periodo de
-compatibilidad.
+Avance al 3 de agosto de 2026: Redis, JWT revocable/rotable, auditoría e
+integración posterior a autenticación UAT implementados. Identity ya posee las
+cuentas coordinadoras y las sesiones de coordinación/superusuario. Un job
+idempotente adopta las cuentas legadas sin sobrescribir cambios posteriores;
+el BFF conserva las URLs públicas y delega los recursos a su propietario.
 
 Entregables:
 
@@ -579,11 +579,12 @@ Criterio de salida:
 
 ### Fase 4 — Academic Service
 
-Avance al 2 de agosto de 2026: servicio aislado con base propia, snapshots
+Avance al 3 de agosto de 2026: servicio aislado con base propia, snapshots
 diferenciales de profesores/grupos/rosters y alumnos/carreras/horarios,
 idempotencia, conservación no destructiva y outbox RabbitMQ implementados. El
 backfill/reconciliación de grupos para Coordination Query implementados. Clases
-compartidas/sustituciones conservan por ahora su fachada histórica.
+compartidas y permisos revocables hacia Attendance implementados. Sólo el
+modelo distinto de sustituciones temporales conserva su fachada histórica.
 
 Entregables:
 
@@ -658,7 +659,9 @@ y entrega a Attendance permisos revocables por eventos. El proceso legado aún
 es necesario para las sustituciones temporales antiguas y otras rutas de
 compatibilidad; la compatibilidad de tokens móviles ya se retiró. El resto se
 retirará sólo después del periodo de observación en
-producción.
+producción. Las rutas duplicadas de sustituciones ya se retiraron del BFF y el
+panel de superusuario usa Identity/Attendance; el backend legado sólo aporta
+herramientas debug mediante la red privada.
 
 Entregables:
 

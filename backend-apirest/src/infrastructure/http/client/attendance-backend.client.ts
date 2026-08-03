@@ -117,6 +117,38 @@ export class AttendanceBackendClient {
     await this.request(() => this.http.delete(`/internal/coordination/student-device-bindings/${encodeURIComponent(matricula)}`));
   }
 
+  getDebugStatus() {
+    return this.request(() => this.http.get('/internal/coordination/debug/status'));
+  }
+
+  getDebugSettings() {
+    return this.request(() => this.http.get('/internal/coordination/debug/settings'));
+  }
+
+  updateDebugSettings(input: unknown) {
+    return this.request(() => this.http.put('/internal/coordination/debug/settings', input));
+  }
+
+  listDebugClasses() {
+    return this.request(() => this.http.get('/internal/coordination/debug/classes'));
+  }
+
+  createDebugClass(input: unknown) {
+    return this.request(() => this.http.post('/internal/coordination/debug/classes', input));
+  }
+
+  updateDebugClass(id: string, input: unknown) {
+    return this.request(() => this.http.put(`/internal/coordination/debug/classes/${encodeURIComponent(id)}`, input));
+  }
+
+  listDebugStudentAttendance() {
+    return this.request(() => this.http.get('/internal/coordination/debug/student-attendance'));
+  }
+
+  listDebugFlowLogs() {
+    return this.request(() => this.http.get('/internal/coordination/debug/flow-logs'));
+  }
+
   private async request<T>(call: () => Promise<{ data: T }>): Promise<T> {
     try {
       return (await call()).data;

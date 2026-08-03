@@ -20,6 +20,34 @@ if (typeof accessToken !== 'string' || accessToken.split('.').length !== 3) thro
 await request(identityUrl, '/internal/v1/sessions/verify', { method: 'POST', expected: 200, body: { token: accessToken } });
 pass('Identity creates and verifies a UAT-authorized professor session');
 
+const superUserPassword = process.env.SUPER_USER_PASSWORD;
+if (!superUserPassword) throw new Error('SUPER_USER_PASSWORD is required.');
+const superLogin = await request(gatewayUrl, '/api/superUsuario/auth/login', {
+  method: 'POST', expected: 200, body: { password: superUserPassword },
+});
+const superCookie = cookieFrom(superLogin.responseHeaders, 'super_user_session');
+await request(gatewayUrl, '/api/superUsuario/coordinadores', {
+  method: 'POST', expected: 201, requestHeaders: { cookie: superCookie },
+  body: {
+    email: 'coord-ci@uat.edu.mx', name: 'Coordinación CI', password: 'coordinator-ci-password', role: 'COORDINATOR',
+  },
+});
+const staffAccounts = await request(gatewayUrl, '/api/superUsuario/coordinadores', {
+  method: 'GET', expected: 200, requestHeaders: { cookie: superCookie },
+});
+if (staffAccounts.data?.length !== 1 || staffAccounts.data[0]?.email !== 'coord-ci@uat.edu.mx') {
+  throw new Error('Super-user BFF did not delegate staff administration to Identity.');
+}
+const coordinatorLogin = await request(gatewayUrl, '/api/coordinacion/auth/login', {
+  method: 'POST', expected: 200, body: { email: 'coord-ci@uat.edu.mx', password: 'coordinator-ci-password' },
+});
+const coordinatorCookie = cookieFrom(coordinatorLogin.responseHeaders, 'coord_session');
+const coordinatorMe = await request(gatewayUrl, '/api/coordinacion/auth/me', {
+  method: 'GET', expected: 200, requestHeaders: { cookie: coordinatorCookie },
+});
+if (coordinatorMe.data?.user?.role !== 'COORDINATOR') throw new Error('Coordinator session is not backed by Identity.');
+pass('Identity owns coordinator and super-user sessions behind the stable BFF contracts');
+
 await request(academicUrl, '/internal/v1/academic/snapshots/professors', {
   method: 'POST', expected: 202, body: {
     snapshotId: '11111111-1111-4111-8111-111111111111', correlationId: 'ci-service-flow', causationId: 'ci-service-flow',
@@ -283,7 +311,14 @@ async function request(baseUrl, path, options) {
   if (!expected.includes(response.status)) {
     throw new Error(`${options.method} ${path} returned ${response.status}: ${JSON.stringify(payload)}`);
   }
-  return { status: response.status, ...payload };
+  return { status: response.status, responseHeaders: response.headers, ...payload };
+}
+
+function cookieFrom(responseHeaders, name) {
+  const setCookie = responseHeaders.get('set-cookie');
+  const cookie = setCookie?.split(',').map((value) => value.trim()).find((value) => value.startsWith(`${name}=`));
+  if (!cookie) throw new Error(`Response did not set ${name}.`);
+  return cookie.split(';', 1)[0];
 }
 
 async function eventually(action, predicate, message) {

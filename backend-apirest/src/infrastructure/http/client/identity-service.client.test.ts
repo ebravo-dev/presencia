@@ -42,4 +42,19 @@ describe('IdentityServiceClient', () => {
       displayName: 'Profesor', source: 'UAT_TEACHER', correlationId: 'request-1',
     })).resolves.toBeUndefined();
   });
+
+  it('delegates staff credential verification and account administration to Identity', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: {
+        user: { id: 'staff-1', identityId: 'identity-1', email: 'coord@uat.edu.mx', name: 'Coord', role: 'COORDINATOR', disabled: false },
+        identityId: 'identity-1', sessionId: 'session-1', accessToken: 'token-1', expiresAt: '2026-08-03T00:00:00.000Z',
+      },
+    }), { status: 201, headers: { 'content-type': 'application/json' } }));
+    const client = new IdentityServiceClient('http://identity-service:3200', 'x'.repeat(32), true);
+
+    await expect(client.createStaffSession('coord@uat.edu.mx', 'password')).resolves.toMatchObject({ accessToken: 'token-1' });
+    expect(fetchMock).toHaveBeenCalledWith(expect.any(URL), expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ email: 'coord@uat.edu.mx', password: 'password' }),
+    }));
+  });
 });

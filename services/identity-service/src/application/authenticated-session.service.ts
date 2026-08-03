@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { IdentityRepository } from '../domain/identity.repository.js';
-import type { ResolveVerifiedIdentityInput } from '../domain/identity.js';
+import type { Identity, ResolveVerifiedIdentityInput } from '../domain/identity.js';
 import type { IdentitySessionStore, StoredIdentitySession } from './session-store.js';
 import { IdentityTokenService } from './token.service.js';
 
@@ -16,7 +16,7 @@ export class AuthenticatedSessionService {
     private readonly ttlMs: number,
   ) {}
 
-  async create(input: CreateAuthenticatedSessionInput) {
+  async create(input: CreateAuthenticatedSessionInput, ttlMs = this.ttlMs) {
     const identity = await this.identities.resolveVerified(input);
     if (identity.disabledAt) throw new Error('IDENTITY_DISABLED');
     const now = new Date();
@@ -26,22 +26,24 @@ export class AuthenticatedSessionService {
       role: identity.role,
       ...(input.deviceId ? { deviceId: input.deviceId } : {}),
       createdAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + this.ttlMs).toISOString(),
+      expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
     };
-    await this.sessions.replaceActive(session, this.ttlMs);
+    await this.sessions.replaceActive(session, ttlMs);
     return {
       identity,
       sessionId: session.sessionId,
-      accessToken: this.tokens.sign(identity, session.sessionId),
+      accessToken: this.tokens.sign(identity, session.sessionId, Math.ceil(ttlMs / 1_000)),
       expiresAt: session.expiresAt,
     };
   }
 
-  async verify(token: string): Promise<{ valid: true; claims: ReturnType<IdentityTokenService['verify']> }> {
+  async verify(token: string): Promise<{ valid: true; claims: ReturnType<IdentityTokenService['verify']>; identity: Identity }> {
     const claims = this.tokens.verify(token);
     const session = await this.sessions.get(claims.sessionId);
     if (!session || session.identityId !== claims.sub) throw new Error('SESSION_REVOKED');
-    return { valid: true, claims };
+    const identity = await this.identities.findById(claims.sub);
+    if (!identity || identity.disabledAt) throw new Error('IDENTITY_DISABLED');
+    return { valid: true, claims, identity };
   }
 
   async revoke(token: string): Promise<void> {
