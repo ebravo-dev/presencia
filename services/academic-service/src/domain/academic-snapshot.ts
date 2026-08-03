@@ -11,6 +11,7 @@ export interface AcademicGroupSnapshot {
   readonly name: string;
   readonly level?: string | null | undefined;
   readonly classroom?: string | null | undefined;
+  readonly period?: string | null | undefined;
   readonly schedule: Record<string, unknown>;
   readonly subject: { readonly externalId: string; readonly code?: string | null | undefined; readonly name: string };
   readonly coordination: { readonly externalId: string; readonly name: string; readonly shortName?: string | null | undefined };

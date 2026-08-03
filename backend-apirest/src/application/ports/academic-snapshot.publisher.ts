@@ -12,6 +12,7 @@ export interface AcademicSnapshotGroup {
   name: string;
   level?: string | null;
   classroom?: string | null;
+  period?: string | null;
   schedule: Record<string, unknown>;
   subject: { externalId: string; code?: string | null; name: string };
   coordination: { externalId: string; name: string; shortName?: string | null };

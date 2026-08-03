@@ -12,6 +12,7 @@ const groupSchema = z.object({
   name: z.string().trim().min(1).max(240),
   level: z.string().trim().max(160).nullable().optional(),
   classroom: z.string().trim().max(160).nullable().optional(),
+  period: z.string().trim().max(80).nullable().optional(),
   schedule: z.record(z.string(), z.unknown()),
   subject: z.object({
     externalId: z.string().trim().min(1).max(160), code: z.string().trim().max(80).nullable().optional(),

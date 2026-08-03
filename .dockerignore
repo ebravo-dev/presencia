@@ -14,3 +14,5 @@
 !services/academic-service/**
 !services/attendance-service/
 !services/attendance-service/**
+!services/coordination-query-service/
+!services/coordination-query-service/**

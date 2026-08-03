@@ -118,15 +118,22 @@ export async function buildGateway(options: BuildGatewayOptions = {}): Promise<F
   }));
 
   app.get('/health/ready', { config: { rateLimit: false } }, async (_request, reply) => {
-    const [legacyBackend, uatIntegration, redisResult] = await Promise.all([
-      checkHttpDependency(env.LEGACY_BACKEND_URL, env.UPSTREAM_TIMEOUT_MS),
-      checkHttpDependency(env.UAT_INTEGRATION_URL, env.UPSTREAM_TIMEOUT_MS),
-      redis.ping().then((value) => ({ ok: value === 'PONG' })).catch((error: unknown) => ({
-        ok: false,
-        error: error instanceof Error ? error.message : 'Unknown Redis error',
-      })),
-    ]);
-    const dependencies = { legacyBackend, uatIntegration, redis: redisResult };
+    const configured = {
+      legacyBackend: env.LEGACY_BACKEND_URL,
+      uatIntegration: env.UAT_INTEGRATION_URL,
+      ...(env.IDENTITY_SERVICE_URL ? { identity: env.IDENTITY_SERVICE_URL } : {}),
+      ...(env.ACADEMIC_SERVICE_URL ? { academic: env.ACADEMIC_SERVICE_URL } : {}),
+      ...(env.ATTENDANCE_SERVICE_URL ? { attendance: env.ATTENDANCE_SERVICE_URL } : {}),
+      ...(env.COORDINATION_QUERY_SERVICE_URL ? { coordinationQuery: env.COORDINATION_QUERY_SERVICE_URL } : {}),
+    };
+    const checks = await Promise.all(Object.entries(configured).map(async ([name, url]) => [
+      name, await checkHttpDependency(url, env.UPSTREAM_TIMEOUT_MS),
+    ] as const));
+    const redisResult = await redis.ping().then((value) => ({ ok: value === 'PONG' })).catch((error: unknown) => ({
+      ok: false,
+      error: error instanceof Error ? error.message : 'Unknown Redis error',
+    }));
+    const dependencies = { ...Object.fromEntries(checks), redis: redisResult };
     const ready = Object.values(dependencies).every(({ ok }) => ok);
     return reply.code(ready ? 200 : 503).send({
       status: ready ? 'ok' : 'degraded',

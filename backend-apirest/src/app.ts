@@ -29,6 +29,7 @@ import { IdentityServiceClient } from './infrastructure/http/client/identity-ser
 import { AcademicServiceClient } from './infrastructure/http/client/academic-service.client.js';
 import { AttendanceServiceCommandClient } from './infrastructure/http/client/attendance-service-command.client.js';
 import { AttendanceCaptureClient } from './infrastructure/http/client/attendance-capture.client.js';
+import { CoordinationQueryClient } from './infrastructure/http/client/coordination-query.client.js';
 import { DurableDomainEventBus } from './infrastructure/events/durable-domain-event-bus.js';
 import { AttendanceUploadRequestedConsumer } from './infrastructure/events/attendance-upload-requested.consumer.js';
 import { RedisKeyValueStore } from './infrastructure/persistence/redis-key-value.store.js';
@@ -125,6 +126,9 @@ export async function buildApp() {
     : attendanceBackendClient;
   const attendanceCaptureClient = env.ATTENDANCE_SERVICE_URL
     ? new AttendanceCaptureClient(env.ATTENDANCE_SERVICE_URL, env.ATTENDANCE_BACKEND_SERVICE_TOKEN)
+    : undefined;
+  const coordinationQuery = env.COORDINATION_QUERY_SERVICE_URL
+    ? new CoordinationQueryClient(env.COORDINATION_QUERY_SERVICE_URL, env.INTERNAL_API_TOKEN)
     : undefined;
   const uatStudentService = new UatStudentService(
     studentSessionRepository,
@@ -258,7 +262,7 @@ export async function buildApp() {
   }));
 
   fastify.get('/health/ready', async (_request, reply) => {
-    const [database, redisStatus] = await Promise.all([
+    const [database, redisStatus, coordinationQueryStatus] = await Promise.all([
       prisma.$queryRaw`SELECT 1`.then(() => ({ ok: true })).catch((error: unknown) => ({
         ok: false,
         error: error instanceof Error ? error.message : 'Unknown PostgreSQL error',
@@ -267,17 +271,22 @@ export async function buildApp() {
         ok: false,
         error: error instanceof Error ? error.message : 'Unknown Redis error',
       })),
+      coordinationQuery
+        ? coordinationQuery.health().then(() => ({ ok: true })).catch((error: unknown) => ({
+          ok: false, error: error instanceof Error ? error.message : 'Unknown Coordination Query error',
+        }))
+        : Promise.resolve({ ok: !env.COORDINATION_QUERY_SERVICE_REQUIRED }),
     ]);
     const rabbitmq = { ok: eventBus.isReady() };
     const attendanceConsumer = {
       ok: env.PRESENCIA_DEBUG_MODE || attendanceUploadConsumer.isReady(),
       disabled: env.PRESENCIA_DEBUG_MODE,
     };
-    const ready = database.ok && redisStatus.ok && rabbitmq.ok && attendanceConsumer.ok;
+    const ready = database.ok && redisStatus.ok && rabbitmq.ok && attendanceConsumer.ok && coordinationQueryStatus.ok;
     return reply.code(ready ? 200 : 503).send({
       status: ready ? 'ok' : 'degraded',
       service: 'backend-apirest',
-      dependencies: { database, redis: redisStatus, rabbitmq, attendanceConsumer },
+      dependencies: { database, redis: redisStatus, rabbitmq, attendanceConsumer, coordinationQuery: coordinationQueryStatus },
     });
   });
 
@@ -314,6 +323,7 @@ export async function buildApp() {
     attendanceBackendClient,
     sharedClassService,
     ...(attendanceServiceCommands ? { attendanceServiceCommands } : {}),
+    ...(coordinationQuery ? { coordinationQuery } : {}),
   });
 
   const webDist = resolve(env.COORDINATION_WEB_DIST || resolve(process.cwd(), '../frontend-coord/dist'));

@@ -66,6 +66,11 @@ export const envSchema = z.object({
     (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
     z.boolean().default(false),
   ),
+  COORDINATION_QUERY_SERVICE_URL: z.string().url().optional(),
+  COORDINATION_QUERY_SERVICE_REQUIRED: z.preprocess(
+    (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
+    z.boolean().default(false),
+  ),
   IDENTITY_SERVICE_URL: z.string().url().optional(),
   IDENTITY_SERVICE_REQUIRED: z.preprocess(
     (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
@@ -151,6 +156,13 @@ export const envSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['ATTENDANCE_SERVICE_URL'],
       message: 'Attendance Service URL is required when attendance migration is enabled',
+    });
+  }
+  if (value.COORDINATION_QUERY_SERVICE_REQUIRED && !value.COORDINATION_QUERY_SERVICE_URL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['COORDINATION_QUERY_SERVICE_URL'],
+      message: 'Coordination Query Service URL is required when the read-model cutover is enabled',
     });
   }
 

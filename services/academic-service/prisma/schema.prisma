@@ -75,6 +75,7 @@ model AcademicGroup {
   name            String
   level           String?
   classroom       String?
+  period          String?
   schedule        Json
   active          Boolean  @default(true)
   teacherId       String   @map("teacher_id")

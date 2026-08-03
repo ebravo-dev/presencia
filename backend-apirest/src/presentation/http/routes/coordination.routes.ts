@@ -5,6 +5,7 @@ import type { WeeklyAttendanceReportService } from '../../../application/service
 import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
 import type { SharedClassService } from '../../../application/services/shared-class.service.js';
 import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
+import type { CoordinationQueryClient } from '../../../infrastructure/http/client/coordination-query.client.js';
 import { CoordinationController } from '../controllers/coordination.controller.js';
 import { coordinationRouteSchemas } from '../schemas/coordination.schemas.js';
 import { buildCoordinatorAuthHook } from '../hooks/coordinator-auth.hook.js';
@@ -16,11 +17,12 @@ export interface CoordinationRoutesOptions {
   attendanceBackendClient: AttendanceBackendClient;
   sharedClassService: SharedClassService;
   attendanceServiceCommands?: AttendanceServiceCommandClient;
+  coordinationQuery?: CoordinationQueryClient;
 }
 
 export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> = async (
   fastify,
-  { coordinationService, authService, weeklyAttendanceReport, attendanceBackendClient, sharedClassService, attendanceServiceCommands },
+  { coordinationService, authService, weeklyAttendanceReport, attendanceBackendClient, sharedClassService, attendanceServiceCommands, coordinationQuery },
 ) => {
   fastify.addHook('preHandler', buildCoordinatorAuthHook(authService));
   const requireWriteCoordinator = buildCoordinatorAuthHook(authService, { write: true });
@@ -30,6 +32,7 @@ export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> =
     attendanceBackendClient,
     sharedClassService,
     attendanceServiceCommands,
+    coordinationQuery,
   );
 
   fastify.get('/api/coordinacion/resumen', { schema: coordinationRouteSchemas.overview }, controller.overview);

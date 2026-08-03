@@ -382,6 +382,7 @@ function toAcademicSnapshot(
       name: mapped.subject.name,
       level: mapped.group.educationLevel,
       classroom: mapped.group.classroom,
+      period: mapped.group.period,
       schedule: Object.fromEntries(Object.entries(mapped.group.schedule)),
       subject: {
         externalId: mapped.subject.externalId,

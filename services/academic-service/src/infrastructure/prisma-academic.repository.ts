@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma, type PrismaClient } from '../generated/prisma/index.js';
-import type { AcademicRepository } from '../domain/academic.repository.js';
+import type { AcademicCoordinationProjectionSnapshot, AcademicRepository } from '../domain/academic.repository.js';
 import type { AppliedAcademicSnapshot, ProfessorAcademicSnapshot } from '../domain/academic-snapshot.js';
 import type { AppliedStudentAcademicSnapshot, StudentAcademicSnapshot } from '../domain/student-academic-snapshot.js';
 
@@ -90,6 +90,7 @@ export class PrismaAcademicRepository implements AcademicRepository {
             name: groupSnapshot.name,
             level: groupSnapshot.level ?? null,
             classroom: groupSnapshot.classroom ?? null,
+            period: groupSnapshot.period ?? null,
             schedule: sanitizeJson(groupSnapshot.schedule),
             active: true,
             teacherId: teacher.id,
@@ -103,6 +104,7 @@ export class PrismaAcademicRepository implements AcademicRepository {
             name: groupSnapshot.name,
             level: groupSnapshot.level ?? null,
             classroom: groupSnapshot.classroom ?? null,
+            period: groupSnapshot.period ?? null,
             schedule: sanitizeJson(groupSnapshot.schedule),
             active: true,
             teacherId: teacher.id,
@@ -154,6 +156,26 @@ export class PrismaAcademicRepository implements AcademicRepository {
               schedule: groupSnapshot.schedule,
               students: groupSnapshot.rosterAuthoritative ? groupSnapshot.students : null,
               rosterVersion: snapshot.snapshotId,
+              teacher: {
+                externalId: snapshot.teacher.externalId,
+                institutionalCode: snapshot.teacher.institutionalCode ?? null,
+                name: snapshot.teacher.name,
+                email: snapshot.teacher.email ?? null,
+                lastAuthenticatedAt: snapshot.teacher.authenticatedAt.toISOString(),
+              },
+              cycle: snapshot.cycle,
+              group: {
+                externalGroupId: groupSnapshot.externalGroupId,
+                code: groupSnapshot.code,
+                groupLetter: groupSnapshot.groupLetter,
+                name: groupSnapshot.name,
+                level: groupSnapshot.level ?? null,
+                classroom: groupSnapshot.classroom ?? null,
+                period: groupSnapshot.period ?? null,
+                schedule: groupSnapshot.schedule,
+              },
+              subject: groupSnapshot.subject,
+              coordination: groupSnapshot.coordination,
             }),
           },
         });
@@ -190,6 +212,43 @@ export class PrismaAcademicRepository implements AcademicRepository {
       },
       orderBy: [{ active: 'desc' }, { name: 'asc' }],
     });
+  }
+
+  async coordinationProjectionSnapshot(): Promise<AcademicCoordinationProjectionSnapshot[]> {
+    const groups = await this.prisma.academicGroup.findMany({
+      include: { teacher: true, cycle: true, subject: true, coordination: true },
+      orderBy: { externalGroupId: 'asc' },
+    });
+    return groups.map((group) => ({
+      externalGroupId: group.externalGroupId,
+      active: group.active,
+      observedAt: group.updatedAt,
+      rosterVersion: `reconciliation:${group.updatedAt.toISOString()}`,
+      teacher: {
+        externalId: group.teacher.externalId,
+        institutionalCode: group.teacher.institutionalCode,
+        name: group.teacher.name,
+        email: group.teacher.email,
+        lastAuthenticatedAt: group.teacher.lastAuthenticatedAt,
+      },
+      cycle: { externalId: group.cycle.externalId, name: group.cycle.name },
+      group: {
+        externalGroupId: group.externalGroupId,
+        code: group.code,
+        groupLetter: group.groupLetter,
+        name: group.name,
+        level: group.level,
+        classroom: group.classroom,
+        period: group.period,
+        schedule: group.schedule,
+      },
+      subject: { externalId: group.subject.externalId, code: group.subject.code, name: group.subject.name },
+      coordination: {
+        externalId: group.coordination.externalId,
+        name: group.coordination.name,
+        shortName: group.coordination.shortName,
+      },
+    }));
   }
 
   async applyStudentSnapshot(snapshot: StudentAcademicSnapshot): Promise<AppliedStudentAcademicSnapshot> {

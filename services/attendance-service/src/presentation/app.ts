@@ -95,6 +95,10 @@ export async function buildAttendanceApp(options: {
     return reply.code(204).send();
   });
 
+  app.get('/internal/v1/attendance/coordination-projection', { preHandler: internal }, async () => ({
+    data: await options.repository.coordinationProjectionSnapshot(),
+  }));
+
   app.setErrorHandler((error, request, reply) => {
     request.log.error({ err: error }, 'Attendance request failed.');
     if (error instanceof AttendanceDomainError) {

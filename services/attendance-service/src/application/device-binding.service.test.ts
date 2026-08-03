@@ -39,5 +39,6 @@ function repositoryStub(): AttendanceRepository {
     async replaceBinding() { throw new Error('unexpected'); },
     async unbind() { return false; },
     async bindingByMatricula() { return null; },
+    async coordinationProjectionSnapshot() { return []; },
   };
 }

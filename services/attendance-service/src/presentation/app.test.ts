@@ -36,6 +36,19 @@ describe('Attendance HTTP API', () => {
     expect(response.json().error).toBe('IDEMPOTENCY_KEY_REQUIRED');
     await app.close();
   });
+
+  it('protects and exposes the coordination reconciliation snapshot internally', async () => {
+    const app = await testApp();
+    const hidden = await app.inject({ method: 'GET', url: '/internal/v1/attendance/coordination-projection' });
+    expect(hidden.statusCode).toBe(404);
+    const response = await app.inject({
+      method: 'GET', url: '/internal/v1/attendance/coordination-projection',
+      headers: { 'x-internal-service-token': token },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ data: [] });
+    await app.close();
+  });
 });
 
 async function testApp() {
@@ -45,7 +58,7 @@ async function testApp() {
       NODE_ENV: 'test', INTERNAL_API_TOKEN: token,
       BINDING_JWT_SECRET: 'test-binding-jwt-secret-with-at-least-32-characters',
     }),
-    repository: { applyRoster: async () => {} } as never,
+    repository: { applyRoster: async () => {}, coordinationProjectionSnapshot: async () => [] } as never,
     captures: { capture: async () => { throw new Error('unexpected'); } } as never,
     bindings: {
       bindAfterUatAuthentication: async (command: { matricula: string; attendanceUuid: string; deviceBindingId?: string }) => ({

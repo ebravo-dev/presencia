@@ -16,6 +16,9 @@ set -eu
 : "${ATTENDANCE_SERVICE_DB_NAME:?ATTENDANCE_SERVICE_DB_NAME is required}"
 : "${ATTENDANCE_SERVICE_DB_USER:?ATTENDANCE_SERVICE_DB_USER is required}"
 : "${ATTENDANCE_SERVICE_DB_PASSWORD:?ATTENDANCE_SERVICE_DB_PASSWORD is required}"
+: "${COORDINATION_QUERY_DB_NAME:?COORDINATION_QUERY_DB_NAME is required}"
+: "${COORDINATION_QUERY_DB_USER:?COORDINATION_QUERY_DB_USER is required}"
+: "${COORDINATION_QUERY_DB_PASSWORD:?COORDINATION_QUERY_DB_PASSWORD is required}"
 
 psql --set ON_ERROR_STOP=1 \
   --username "$POSTGRES_USER" \
@@ -34,7 +37,10 @@ psql --set ON_ERROR_STOP=1 \
   --set academic_password="$ACADEMIC_DB_PASSWORD" \
   --set attendance_service_db="$ATTENDANCE_SERVICE_DB_NAME" \
   --set attendance_service_user="$ATTENDANCE_SERVICE_DB_USER" \
-  --set attendance_service_password="$ATTENDANCE_SERVICE_DB_PASSWORD" <<'SQL'
+  --set attendance_service_password="$ATTENDANCE_SERVICE_DB_PASSWORD" \
+  --set coordination_query_db="$COORDINATION_QUERY_DB_NAME" \
+  --set coordination_query_user="$COORDINATION_QUERY_DB_USER" \
+  --set coordination_query_password="$COORDINATION_QUERY_DB_PASSWORD" <<'SQL'
 SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'attendance_user', :'attendance_password')
 WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'attendance_user') \gexec
 
@@ -50,6 +56,9 @@ WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'academic_user') \gexec
 SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'attendance_service_user', :'attendance_service_password')
 WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'attendance_service_user') \gexec
 
+SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'coordination_query_user', :'coordination_query_password')
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'coordination_query_user') \gexec
+
 SELECT format('CREATE DATABASE %I OWNER %I', :'attendance_db', :'attendance_user')
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'attendance_db') \gexec
 
@@ -64,4 +73,7 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'academic_db') \gexec
 
 SELECT format('CREATE DATABASE %I OWNER %I', :'attendance_service_db', :'attendance_service_user')
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'attendance_service_db') \gexec
+
+SELECT format('CREATE DATABASE %I OWNER %I', :'coordination_query_db', :'coordination_query_user')
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'coordination_query_db') \gexec
 SQL

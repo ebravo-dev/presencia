@@ -4,6 +4,7 @@ import type { WeeklyAttendanceReportService } from '../../../application/service
 import type { SharedClassService, SharedClassInput } from '../../../application/services/shared-class.service.js';
 import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
 import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
+import type { CoordinationQueryClient } from '../../../infrastructure/http/client/coordination-query.client.js';
 import {
   parseCoordinationPayload,
   rangeReportQuerySchema,
@@ -22,33 +23,40 @@ export class CoordinationController {
     private readonly attendanceBackendClient: AttendanceBackendClient,
     private readonly sharedClassService: SharedClassService,
     private readonly attendanceServiceCommands?: AttendanceServiceCommandClient,
+    private readonly coordinationQuery?: CoordinationQueryClient,
   ) {}
 
   overview = async (_request: FastifyRequest, reply: FastifyReply) => {
+    if (this.coordinationQuery) return reply.code(200).send(await this.coordinationQuery.overview());
     return reply.code(200).send(await this.coordinationService.getOverview());
   };
 
   coordinations = async (_request: FastifyRequest, reply: FastifyReply) => {
+    if (this.coordinationQuery) return reply.code(200).send(await this.coordinationQuery.coordinations());
     return reply.code(200).send(await this.coordinationService.listCoordinations());
   };
 
   teachers = async (request: FastifyRequest, reply: FastifyReply) => {
     const query = parseCoordinationPayload(teacherListQuerySchema, request.query);
+    if (this.coordinationQuery) return reply.code(200).send(await this.coordinationQuery.teachers(query));
     return reply.code(200).send(await this.coordinationService.listTeachers(query));
   };
 
   teacherAssignments = async (request: FastifyRequest, reply: FastifyReply) => {
     const { teacherId } = parseCoordinationPayload(teacherParamsSchema, request.params);
+    if (this.coordinationQuery) return reply.code(200).send(await this.coordinationQuery.teacherAssignments(teacherId));
     return reply.code(200).send(await this.coordinationService.getTeacherAssignments(teacherId));
   };
 
   weeklyReport = async (request: FastifyRequest, reply: FastifyReply) => {
     const query = parseCoordinationPayload(weeklyReportQuerySchema, request.query);
+    if (this.coordinationQuery) return reply.send(await this.coordinationQuery.weeklyReport(query));
     return reply.send(await this.weeklyAttendanceReport.getReport(query.teacherId, query.weekStart));
   };
 
   rangeReport = async (request: FastifyRequest, reply: FastifyReply) => {
     const query = parseCoordinationPayload(rangeReportQuerySchema, request.query);
+    if (this.coordinationQuery) return reply.send(await this.coordinationQuery.rangeReport(query));
     return reply.send(await this.weeklyAttendanceReport.getRangeReport(query.teacherId, query.startDate, query.endDate));
   };
 

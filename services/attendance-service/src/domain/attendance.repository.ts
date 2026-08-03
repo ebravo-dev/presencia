@@ -1,6 +1,20 @@
 import type { AttendanceRosterSnapshot, CaptureAttendanceCommand, CaptureAttendanceResult } from './attendance.js';
 import type { BindDeviceCommand, BindDeviceResult, ReplaceDeviceBindingCommand } from './device-binding.js';
 
+export interface AttendanceCoordinationProjectionSnapshot {
+  attendanceSessionId: string;
+  externalGroupId: string;
+  professorExternalId: string;
+  date: string;
+  professorEntryAt: Date | null;
+  professorExitAt: Date | null;
+  entriesCount: number;
+  uploadStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  uploadError: string | null;
+  version: number;
+  observedAt: Date;
+}
+
 export interface AttendanceRepository {
   applyRoster(snapshot: AttendanceRosterSnapshot): Promise<void>;
   deactivateRoster(externalGroupId: string, rosterObservedAt: Date): Promise<void>;
@@ -15,4 +29,5 @@ export interface AttendanceRepository {
     reason: string; correlationId: string;
   }): Promise<boolean>;
   bindingByMatricula(matricula: string): Promise<BindDeviceResult['binding'] | null>;
+  coordinationProjectionSnapshot(): Promise<AttendanceCoordinationProjectionSnapshot[]>;
 }

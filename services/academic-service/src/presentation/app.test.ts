@@ -47,6 +47,19 @@ describe('Academic HTTP API', () => {
     expect(response.json().data).toMatchObject({ activeScheduleEntries: 0 });
     await app.close();
   });
+
+  it('protects and exposes the coordination reconciliation snapshot internally', async () => {
+    const app = await testApp();
+    const hidden = await app.inject({ method: 'GET', url: '/internal/v1/academic/coordination-projection' });
+    expect(hidden.statusCode).toBe(404);
+    const response = await app.inject({
+      method: 'GET', url: '/internal/v1/academic/coordination-projection',
+      headers: { 'x-internal-service-token': token },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ data: [] });
+    await app.close();
+  });
 });
 
 async function testApp() {
@@ -60,6 +73,7 @@ async function testApp() {
     }) } as never,
     repository: {
       groupsForTeacher: async () => [], groupByExternalId: async () => null, studentByMatricula: async () => null,
+      coordinationProjectionSnapshot: async () => [],
     } as never,
     ready: async () => true,
   });

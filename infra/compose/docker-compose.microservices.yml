@@ -44,6 +44,8 @@ x-uat-environment: &uat-environment
   IDENTITY_SERVICE_REQUIRED: "true"
   ACADEMIC_SERVICE_URL: http://academic-service:3300
   ACADEMIC_SERVICE_REQUIRED: "true"
+  COORDINATION_QUERY_SERVICE_URL: http://coordination-query-service:3500
+  COORDINATION_QUERY_SERVICE_REQUIRED: "true"
   COORDINATOR_EMAIL: ${COORDINATOR_EMAIL:-}
   COORDINATOR_NAME: ${COORDINATOR_NAME:-Coordinacion Academica}
   COORDINATOR_PASSWORD: ${COORDINATOR_PASSWORD:-}
@@ -80,6 +82,18 @@ x-attendance-service-environment: &attendance-service-environment
   BINDING_JWT_SECRET: ${BINDING_JWT_SECRET:?BINDING_JWT_SECRET is required}
   METRICS_TOKEN: ${ATTENDANCE_METRICS_TOKEN:?ATTENDANCE_METRICS_TOKEN is required}
 
+x-coordination-query-environment: &coordination-query-environment
+  NODE_ENV: production
+  HOST: 0.0.0.0
+  PORT: 3500
+  DATABASE_URL: ${COORDINATION_QUERY_DATABASE_URL:?COORDINATION_QUERY_DATABASE_URL is required}
+  RABBITMQ_URL: ${RABBITMQ_URL:?RABBITMQ_URL is required}
+  ACADEMIC_SERVICE_URL: http://academic-service:3300
+  ATTENDANCE_SERVICE_URL: http://attendance-service:3400
+  RECONCILE_INTERVAL_MS: ${COORDINATION_QUERY_RECONCILE_INTERVAL_MS:-300000}
+  INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
+  METRICS_TOKEN: ${COORDINATION_QUERY_METRICS_TOKEN:?COORDINATION_QUERY_METRICS_TOKEN is required}
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -103,6 +117,9 @@ services:
       ATTENDANCE_SERVICE_DB_NAME: ${ATTENDANCE_SERVICE_DB_NAME:-presencia_attendance_service}
       ATTENDANCE_SERVICE_DB_USER: ${ATTENDANCE_SERVICE_DB_USER:-presencia_attendance_service}
       ATTENDANCE_SERVICE_DB_PASSWORD: ${ATTENDANCE_SERVICE_DB_PASSWORD:?ATTENDANCE_SERVICE_DB_PASSWORD is required}
+      COORDINATION_QUERY_DB_NAME: ${COORDINATION_QUERY_DB_NAME:-presencia_coordination_query}
+      COORDINATION_QUERY_DB_USER: ${COORDINATION_QUERY_DB_USER:-presencia_coordination_query}
+      COORDINATION_QUERY_DB_PASSWORD: ${COORDINATION_QUERY_DB_PASSWORD:?COORDINATION_QUERY_DB_PASSWORD is required}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ../postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
@@ -137,6 +154,9 @@ services:
       ATTENDANCE_SERVICE_DB_NAME: ${ATTENDANCE_SERVICE_DB_NAME:-presencia_attendance_service}
       ATTENDANCE_SERVICE_DB_USER: ${ATTENDANCE_SERVICE_DB_USER:-presencia_attendance_service}
       ATTENDANCE_SERVICE_DB_PASSWORD: ${ATTENDANCE_SERVICE_DB_PASSWORD:?ATTENDANCE_SERVICE_DB_PASSWORD is required}
+      COORDINATION_QUERY_DB_NAME: ${COORDINATION_QUERY_DB_NAME:-presencia_coordination_query}
+      COORDINATION_QUERY_DB_USER: ${COORDINATION_QUERY_DB_USER:-presencia_coordination_query}
+      COORDINATION_QUERY_DB_PASSWORD: ${COORDINATION_QUERY_DB_PASSWORD:?COORDINATION_QUERY_DB_PASSWORD is required}
     volumes:
       - ../postgres/init-databases.sh:/opt/presencia/init-databases.sh:ro
     depends_on:
@@ -251,6 +271,8 @@ services:
         condition: service_healthy
       attendance-service:
         condition: service_healthy
+      coordination-query-service:
+        condition: service_healthy
     expose: ["3100"]
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3100/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -335,6 +357,35 @@ services:
     expose: ["3400"]
     networks: [private]
 
+  coordination-query-migrate:
+    image: presencia-coordination-query:${IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: services/coordination-query-service/Dockerfile
+    restart: "no"
+    command: ["npm", "run", "prisma:deploy", "--workspace", "@presencia/coordination-query-service"]
+    environment: *coordination-query-environment
+    depends_on:
+      postgres-provision:
+        condition: service_completed_successfully
+    networks: [private]
+
+  coordination-query-service:
+    image: presencia-coordination-query:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment: *coordination-query-environment
+    depends_on:
+      coordination-query-migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      academic-service:
+        condition: service_healthy
+      attendance-service:
+        condition: service_healthy
+    expose: ["3500"]
+    networks: [private]
+
   api-gateway:
     image: presencia-api-gateway:${IMAGE_TAG:-latest}
     build:
@@ -350,6 +401,7 @@ services:
       IDENTITY_SERVICE_URL: http://identity-service:3200
       ACADEMIC_SERVICE_URL: http://academic-service:3300
       ATTENDANCE_SERVICE_URL: http://attendance-service:3400
+      COORDINATION_QUERY_SERVICE_URL: http://coordination-query-service:3500
       ROUTE_TARGET_OVERRIDES: ${ROUTE_TARGET_OVERRIDES:-{}}
       REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
       CORS_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
@@ -364,6 +416,8 @@ services:
       academic-service:
         condition: service_healthy
       attendance-service:
+        condition: service_healthy
+      coordination-query-service:
         condition: service_healthy
       redis:
         condition: service_healthy

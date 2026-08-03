@@ -12,6 +12,7 @@ describe('ApplyAcademicSnapshotService', () => {
       async groupsForTeacher() { return []; },
       async groupByExternalId() { return null; },
       async studentByMatricula() { return null; },
+      async coordinationProjectionSnapshot() { return []; },
     });
     const snapshot = makeSnapshot();
     await expect(service.apply({ ...snapshot, groups: [snapshot.groups[0]!, snapshot.groups[0]!] }))
@@ -28,6 +29,7 @@ describe('ApplyAcademicSnapshotService', () => {
       async groupsForTeacher() { return []; },
       async groupByExternalId() { return null; },
       async studentByMatricula() { return null; },
+      async coordinationProjectionSnapshot() { return []; },
     };
     await expect(new ApplyAcademicSnapshotService(repository).apply(makeSnapshot())).resolves.toMatchObject({ activeGroups: 1 });
   });

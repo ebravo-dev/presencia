@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma, type PrismaClient, type StudentDeviceBinding } from '../generated/prisma/index.js';
-import type { AttendanceRepository } from '../domain/attendance.repository.js';
+import type { AttendanceCoordinationProjectionSnapshot, AttendanceRepository } from '../domain/attendance.repository.js';
 import {
   AttendanceDomainError,
   shouldApplyRosterSnapshot,
@@ -98,6 +98,26 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
     return updated.count === 1;
   }
 
+  async coordinationProjectionSnapshot(): Promise<AttendanceCoordinationProjectionSnapshot[]> {
+    const sessions = await this.prisma.attendanceSession.findMany({
+      include: { group: { select: { externalGroupId: true } }, _count: { select: { entries: true } } },
+      orderBy: [{ date: 'asc' }, { id: 'asc' }],
+    });
+    return sessions.map((session) => ({
+      attendanceSessionId: session.id,
+      externalGroupId: session.group.externalGroupId,
+      professorExternalId: session.professorExternalId,
+      date: session.date.toISOString().slice(0, 10),
+      professorEntryAt: session.professorEntryAt,
+      professorExitAt: session.professorExitAt,
+      entriesCount: session._count.entries,
+      uploadStatus: session.uploadStatus,
+      uploadError: session.uploadError,
+      version: session.version,
+      observedAt: session.updatedAt,
+    }));
+  }
+
   async capture(command: CaptureAttendanceCommand, requestHash: string): Promise<CaptureAttendanceResult> {
     return this.withTransactionRetry(() => this.captureOnce(command, requestHash));
   }
@@ -181,6 +201,8 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
         uatGroupId: group.uatGroupId,
         date: command.date,
         professorExternalId: command.professorExternalId,
+        professorEntryAt: session.professorEntryAt?.toISOString() ?? null,
+        professorExitAt: session.professorExitAt?.toISOString() ?? null,
         uatSessionId: command.uatSessionId ?? null,
         entries: resolvedEntries.map((entry) => {
           const roster = entry.roster!;

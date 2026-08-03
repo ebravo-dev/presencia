@@ -66,6 +66,9 @@ export async function buildAcademicApp(options: {
     const student = await options.repository.studentByMatricula(matricula);
     return student ? { data: student } : reply.code(404).send({ error: 'STUDENT_NOT_FOUND' });
   });
+  app.get('/internal/v1/academic/coordination-projection', { preHandler: internal }, async () => ({
+    data: await options.repository.coordinationProjectionSnapshot(),
+  }));
   app.setErrorHandler((error, request, reply) => {
     request.log.error({ err: error }, 'Academic request failed.');
     if (error instanceof Error && error.message.startsWith('DUPLICATE_')) return reply.code(409).send({ error: error.message });
