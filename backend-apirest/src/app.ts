@@ -286,7 +286,26 @@ export async function buildApp() {
     attendanceService: attendanceServiceCommands,
     attendanceCapture: attendanceCaptureClient,
     academicService: academicServiceClient,
+    coordinationQuery,
     demoPortal,
+    resetLocalDemoData: async () => {
+      const [teacherSessions, studentSessions] = await Promise.all([
+        sessionRepository.clear(),
+        studentSessionRepository.clear(),
+      ]);
+      await prisma.$transaction(async (transaction) => {
+        await transaction.sharedClassAssignment.deleteMany();
+        await transaction.groupAssignment.deleteMany();
+        await transaction.subject.deleteMany();
+        await transaction.coordination.deleteMany();
+        await transaction.teacher.deleteMany();
+        await transaction.attendanceUploadJob.deleteMany();
+        await transaction.attendanceUploadBatch.deleteMany();
+        await transaction.processedDomainEvent.deleteMany();
+        await transaction.domainOutboxEvent.deleteMany();
+      });
+      return { teacherSessions, studentSessions };
+    },
   });
   await fastify.register(coordinationRoutes, {
     authService: coordinatorAuthService,

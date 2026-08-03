@@ -30,6 +30,7 @@ function repository(): CoordinationQueryRepository {
   return {
     async project() { return true; }, async overview() { return {}; }, async coordinations() { return {}; },
     async teachers() { return {}; }, async teacherAssignments() { return null; },
+    async resetDemoData() {},
     async teacherReportSource() {
       return {
         teacher: { id: 'teacher-1', name: 'Profesor', email: 'profesor@uat.edu.mx', institutionalCode: '308127', coordinations: [] },

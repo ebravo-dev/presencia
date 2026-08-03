@@ -62,6 +62,23 @@ describe('RedisUatSessionStore', () => {
     expect(await store.get('expired')).toBeNull();
     expect(await store.size()).toBe(0);
   });
+
+  it('clears only sessions that belong to its own prefix', async () => {
+    const keyValueStore = new FakeKeyValueStore();
+    const store = new RedisUatSessionStore(keyValueStore, testCodec, {
+      prefix: 'test:teacher-session', ttlMs: 60_000,
+    });
+    const now = new Date();
+    await store.create('teacher-1', {
+      id: 'teacher-1', username: 'teacher@uat.edu.mx', value: 'teacher',
+      createdAt: now, lastUsedAt: now, expiresAt: now,
+    });
+    await keyValueStore.setWithTtl('test:student-session:student-1', 'preserved', 60_000);
+
+    expect(await store.clear()).toBe(1);
+    expect(await store.size()).toBe(0);
+    expect(await keyValueStore.get('test:student-session:student-1')).toBe('preserved');
+  });
 });
 
 const testCodec: SessionCodec<TestSession> = {

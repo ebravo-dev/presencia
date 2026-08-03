@@ -1,7 +1,7 @@
 import cookie from '@fastify/cookie';
 import Fastify from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
-import { superUserRoutes } from './super-user.routes.js';
+import { resetDemoEnvironment, superUserRoutes } from './super-user.routes.js';
 
 describe('superUserRoutes', () => {
   it('keeps the public contract while delegating beacon writes with the Identity actor', async () => {
@@ -19,7 +19,9 @@ describe('superUserRoutes', () => {
       attendanceService: { createClassroomBeacon: createBeacon } as never,
       attendanceCapture: {} as never,
       academicService: {} as never,
+      coordinationQuery: {} as never,
       demoPortal: {} as never,
+      resetLocalDemoData: async () => ({ teacherSessions: 0, studentSessions: 0 }),
     });
 
     const login = await app.inject({ method: 'POST', url: '/api/superUsuario/auth/login', payload: { password: 'master-password' } });
@@ -63,6 +65,38 @@ describe('superUserRoutes', () => {
     });
     expect(disabledMutation.statusCode).toBe(404);
     expect(disabledMutation.json()).toMatchObject({ error: 'DEBUG_MODE_DISABLED' });
+    const disabledReset = await app.inject({
+      method: 'DELETE', url: '/api/superUsuario/debug/data',
+      headers: { cookie: 'super_user_session=identity-token' },
+      payload: { confirmation: 'BORRAR DEMO' },
+    });
+    expect(disabledReset.statusCode).toBe(404);
     await app.close();
+  });
+
+  it('coordinates every isolated demo store during a reset', async () => {
+    const demoPortal = { resetData: vi.fn(async () => ({
+      data: { deleted: { teachers: 2, students: 4, classes: 3, attendanceWrites: 5 } },
+    })) };
+    const identityService = { resetDemoData: vi.fn(async () => ({ data: { identities: 6 } })) };
+    const academicService = { resetDemoData: vi.fn(async () => undefined) };
+    const attendanceService = { resetDemoData: vi.fn(async () => undefined) };
+    const coordinationQuery = { resetDemoData: vi.fn(async () => undefined) };
+    const resetLocalDemoData = vi.fn(async () => ({ teacherSessions: 7, studentSessions: 8 }));
+
+    await expect(resetDemoEnvironment({
+      demoPortal: demoPortal as never,
+      identityService: identityService as never,
+      academicService: academicService as never,
+      attendanceService: attendanceService as never,
+      coordinationQuery: coordinationQuery as never,
+      resetLocalDemoData,
+    })).resolves.toEqual({
+      teachers: 2, students: 4, classes: 3, attendanceWrites: 5,
+      identities: 6, teacherSessions: 7, studentSessions: 8,
+    });
+    expect(academicService.resetDemoData).toHaveBeenCalledOnce();
+    expect(attendanceService.resetDemoData).toHaveBeenCalledOnce();
+    expect(coordinationQuery.resetDemoData).toHaveBeenCalledOnce();
   });
 });

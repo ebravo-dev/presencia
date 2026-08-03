@@ -72,4 +72,30 @@ describe('Identity HTTP API', () => {
     expect(response.json().data).toMatchObject({ identityId: 'identity-1', accessToken: 'signed-token' });
     await app.close();
   });
+
+  it('preserves staff data by exposing demo identity cleanup only in demo mode', async () => {
+    let resets = 0;
+    const build = (debugMode: boolean) => buildIdentityApp({
+      env: identityEnvSchema.parse({
+        NODE_ENV: 'test', INTERNAL_API_TOKEN: internalToken, PRESENCIA_DEBUG_MODE: debugMode,
+      }),
+      sessions: { resetDemoIdentities: async () => { resets += 1; return 3; } } as never,
+      readiness: { check: async () => ({ database: true, redis: true }) },
+    });
+
+    const disabled = await build(false);
+    expect((await disabled.inject({
+      method: 'DELETE', url: '/internal/v1/identities/demo-data', headers: { 'x-internal-service-token': internalToken },
+    })).statusCode).toBe(404);
+    await disabled.close();
+
+    const enabled = await build(true);
+    const response = await enabled.inject({
+      method: 'DELETE', url: '/internal/v1/identities/demo-data', headers: { 'x-internal-service-token': internalToken },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ data: { identities: 3 } });
+    expect(resets).toBe(1);
+    await enabled.close();
+  });
 });

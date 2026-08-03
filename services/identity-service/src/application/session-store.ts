@@ -11,4 +11,5 @@ export interface IdentitySessionStore {
   replaceActive(session: StoredIdentitySession, ttlMs: number): Promise<void>;
   get(sessionId: string): Promise<StoredIdentitySession | null>;
   revoke(sessionId: string, identityId: string): Promise<void>;
+  revokeIdentities(identityIds: string[]): Promise<void>;
 }

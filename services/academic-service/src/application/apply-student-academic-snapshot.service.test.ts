@@ -35,6 +35,7 @@ function repositoryStub(applyStudentSnapshot: AcademicRepository['applyStudentSn
     async groupByExternalId() { return null; },
     async studentByMatricula() { return null; },
     async coordinationProjectionSnapshot() { return []; },
+    async resetDemoData() {},
   };
 }
 

@@ -1,9 +1,15 @@
 import { z } from 'zod';
 
+const booleanValue = z.preprocess(
+  (value) => value === true || value === 'true' ? true : value === false || value === 'false' ? false : value,
+  z.boolean(),
+);
+
 export const coordinationQueryEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().positive().default(3500),
+  PRESENCIA_DEBUG_MODE: booleanValue.default(false),
   DATABASE_URL: z.string().min(1).default('postgresql://postgres:postgres@localhost:5432/presencia_coordination_query?schema=public'),
   RABBITMQ_URL: z.string().min(1).default('amqp://guest:guest@localhost:5672'),
   ACADEMIC_SERVICE_URL: z.url().default('http://localhost:3300'),

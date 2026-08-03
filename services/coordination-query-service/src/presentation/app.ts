@@ -52,6 +52,11 @@ export async function buildCoordinationQueryApp(options: {
     const result = await options.reports.range(query.teacherId, query.startDate, query.endDate);
     return result ? result : reply.code(404).send({ error: 'TEACHER_NOT_FOUND', message: 'Profesor no encontrado.' });
   });
+  app.delete('/internal/v1/coordination/demo-data', { preHandler: internal }, async (_request, reply) => {
+    if (!options.env.PRESENCIA_DEBUG_MODE) return reply.code(404).send({ error: 'DEMO_MODE_DISABLED' });
+    await options.repository.resetDemoData();
+    return reply.code(204).send();
+  });
   app.setErrorHandler((error, request, reply) => {
     request.log.error({ err: error }, 'Coordination Query request failed.');
     if (typeof error === 'object' && error !== null && 'issues' in error) return reply.code(400).send({ error: 'VALIDATION_ERROR' });

@@ -71,6 +71,7 @@ responden `404 DEBUG_MODE_DISABLED` cuando el flag está apagado:
 | Padrón | `POST /api/superUsuario/debug/classes/:id/students`, `DELETE /api/superUsuario/debug/classes/:id/students/:studentId` |
 | Prueba | `POST /api/superUsuario/debug/classes/:id/simulate-attendance`, `POST /api/superUsuario/debug/synchronize` |
 | Evidencia | `GET /api/superUsuario/debug/student-attendance`, `GET /api/superUsuario/debug/flow-logs` |
+| Reinicio | `DELETE /api/superUsuario/debug/data` con `{ "confirmation": "BORRAR DEMO" }` |
 
 Las aplicaciones siguen usando `/api/uat/*`; no conocen las rutas internas ni
 el hostname del portal simulado.
@@ -86,5 +87,10 @@ el hostname del portal simulado.
 - Desactivar el flag oculta todas las rutas de administración demo y restaura
   los clientes UAT reales en el siguiente despliegue. No convierte datos demo
   en datos reales.
-- Para comenzar desde cero, recrea el proyecto demo o sus volúmenes aislados;
-  no borres volúmenes de un proyecto cuyo alcance no hayas verificado.
+- Para comenzar desde cero, usa **Borrar datos demo** en la sección Debug. La
+  confirmación escrita elimina catálogo, identidades no administrativas,
+  sesiones UAT simuladas, vínculos, beacons, asistencias y proyecciones. No
+  elimina migraciones, cuentas coordinadoras ni la cuenta de superusuario.
+- La operación está protegida en cada microservicio: aunque se invocara una
+  ruta interna directamente, responde `404` cuando `PRESENCIA_DEBUG_MODE` no
+  está activo.

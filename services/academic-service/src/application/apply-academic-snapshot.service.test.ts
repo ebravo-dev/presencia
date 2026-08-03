@@ -13,6 +13,7 @@ describe('ApplyAcademicSnapshotService', () => {
       async groupByExternalId() { return null; },
       async studentByMatricula() { return null; },
       async coordinationProjectionSnapshot() { return []; },
+      async resetDemoData() {},
     });
     const snapshot = makeSnapshot();
     await expect(service.apply({ ...snapshot, groups: [snapshot.groups[0]!, snapshot.groups[0]!] }))
@@ -30,6 +31,7 @@ describe('ApplyAcademicSnapshotService', () => {
       async groupByExternalId() { return null; },
       async studentByMatricula() { return null; },
       async coordinationProjectionSnapshot() { return []; },
+      async resetDemoData() {},
     };
     await expect(new ApplyAcademicSnapshotService(repository).apply(makeSnapshot())).resolves.toMatchObject({ activeGroups: 1 });
   });

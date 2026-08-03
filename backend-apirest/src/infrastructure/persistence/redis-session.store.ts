@@ -56,6 +56,17 @@ implements IUatSessionRepository<TSession> {
     return total;
   }
 
+  async clear(): Promise<number> {
+    let cursor = '0';
+    let deleted = 0;
+    do {
+      const [nextCursor, keys] = await this.store.scan(cursor, `${this.options.prefix}:*`, 250);
+      cursor = nextCursor;
+      for (const key of keys) if (await this.store.delete(key)) deleted += 1;
+    } while (cursor !== '0');
+    return deleted;
+  }
+
   private async persist(sessionId: string, session: TSession): Promise<void> {
     await this.store.setWithTtl(this.key(sessionId), this.codec.encode(session), this.options.ttlMs);
   }

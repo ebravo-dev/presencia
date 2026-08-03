@@ -39,6 +39,16 @@ export class RedisIdentitySessionStore implements IdentitySessionStore {
     await transaction.exec();
   }
 
+  async revokeIdentities(identityIds: string[]): Promise<void> {
+    for (const identityId of identityIds) {
+      const sessionId = await this.redis.get(this.activeKey(identityId));
+      const transaction = this.redis.multi();
+      transaction.del(this.activeKey(identityId));
+      if (sessionId) transaction.del(this.sessionKey(sessionId));
+      await transaction.exec();
+    }
+  }
+
   private activeKey(identityId: string): string {
     return `${this.prefix}:active:${identityId}`;
   }

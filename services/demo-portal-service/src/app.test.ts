@@ -45,4 +45,19 @@ describe('demo portal HTTP compatibility', () => {
     expect((await app.inject({ method: 'GET', url: '/internal/v1/demo/catalog', headers: { 'x-internal-service-token': env.INTERNAL_API_TOKEN } })).statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: '/Login' })).statusCode).toBe(404);
   });
+
+  it('clears the demo catalog only through the authenticated internal route', async () => {
+    const catalog = new DemoCatalogService(new MemoryDemoPortalRepository(), env);
+    await catalog.initialize();
+    app = await buildDemoPortalApp({ env, catalog, ready: async () => true });
+
+    expect((await app.inject({ method: 'DELETE', url: '/internal/v1/demo/data' })).statusCode).toBe(404);
+    const response = await app.inject({
+      method: 'DELETE', url: '/internal/v1/demo/data',
+      headers: { 'x-internal-service-token': env.INTERNAL_API_TOKEN },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.deleted).toMatchObject({ teachers: 1, students: 1, classes: 1 });
+    expect(await catalog.snapshot()).toMatchObject({ teachers: [], students: [], classes: [], attendanceWrites: [] });
+  });
 });

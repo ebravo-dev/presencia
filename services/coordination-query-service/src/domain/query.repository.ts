@@ -10,4 +10,5 @@ export interface CoordinationQueryRepository {
   teachers(query: TeacherListQuery): Promise<unknown>;
   teacherAssignments(teacherId: string): Promise<unknown | null>;
   teacherReportSource(teacherId: string, startDate: string, endDate: string): Promise<unknown | null>;
+  resetDemoData(): Promise<void>;
 }

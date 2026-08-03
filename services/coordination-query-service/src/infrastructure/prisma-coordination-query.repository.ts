@@ -174,6 +174,18 @@ export class PrismaCoordinationQueryRepository implements CoordinationQueryRepos
     return { data: { counts: { teachers, subjects, coordinations, assignments }, coordinations: items }, meta: generatedMeta() };
   }
 
+  async resetDemoData(): Promise<void> {
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.attendanceUploadResultProjection.deleteMany();
+      await transaction.attendanceProjection.deleteMany();
+      await transaction.groupProjection.deleteMany();
+      await transaction.subjectProjection.deleteMany();
+      await transaction.coordinationProjection.deleteMany();
+      await transaction.teacherProjection.deleteMany();
+      await transaction.processedQueryEvent.deleteMany();
+    });
+  }
+
   async coordinations() {
     return { data: await this.coordinationItems(), meta: generatedMeta() };
   }

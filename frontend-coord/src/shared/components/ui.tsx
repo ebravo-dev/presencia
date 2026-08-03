@@ -12,6 +12,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary: 'bg-[#C8102E] px-4 py-2.5 text-white shadow-sm hover:bg-[#b00e28] hover:shadow-md active:scale-[.97]',
+        danger: 'bg-red-700 px-4 py-2.5 text-white shadow-sm hover:bg-red-800 hover:shadow-md active:scale-[.97] dark:bg-red-700 dark:hover:bg-red-600',
         secondary: 'border border-slate-200 bg-white px-4 py-2.5 text-slate-700 shadow-sm hover:bg-slate-50 hover:border-slate-300 active:scale-[.97] dark:border-[#2e3138] dark:bg-[#1a1d23] dark:text-slate-200 dark:hover:bg-[#22252b] dark:hover:border-[#3a3e47]',
         ghost: 'px-3 py-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-200',
       },

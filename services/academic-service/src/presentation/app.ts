@@ -131,6 +131,11 @@ export async function buildAcademicApp(options: {
   app.get('/internal/v1/academic/coordination-projection', { preHandler: internal }, async () => ({
     data: await options.repository.coordinationProjectionSnapshot(),
   }));
+  app.delete('/internal/v1/academic/demo-data', { preHandler: internal }, async (_request, reply) => {
+    if (!options.env.PRESENCIA_DEBUG_MODE) return reply.code(404).send({ error: 'DEMO_MODE_DISABLED' });
+    await options.repository.resetDemoData();
+    return reply.code(204).send();
+  });
   app.setErrorHandler((error, request, reply) => {
     request.log.error({ err: error }, 'Academic request failed.');
     if (error instanceof SharedClassDomainError) {

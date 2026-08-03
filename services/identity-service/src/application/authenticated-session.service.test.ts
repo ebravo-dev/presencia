@@ -60,6 +60,7 @@ const fakeIdentities: IdentityRepository = {
       lastAuthenticatedAt: new Date(),
     } : null;
   },
+  async resetDemoIdentities() { return ['identity-1']; },
 };
 
 class FakeSessionStore implements IdentitySessionStore {
@@ -76,5 +77,11 @@ class FakeSessionStore implements IdentitySessionStore {
 
   async revoke(sessionId: string): Promise<void> {
     this.sessions.delete(sessionId);
+  }
+
+  async revokeIdentities(identityIds: string[]): Promise<void> {
+    for (const [sessionId, session] of this.sessions) {
+      if (identityIds.includes(session.identityId)) this.sessions.delete(sessionId);
+    }
   }
 }

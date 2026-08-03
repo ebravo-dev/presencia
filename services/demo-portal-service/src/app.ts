@@ -94,6 +94,9 @@ export async function buildDemoPortalApp(options: {
   app.put('/internal/v1/demo/settings', { preHandler: internal }, async (request) => ({
     data: await options.catalog.updateSettings(updateDemoSettingsSchema.parse(request.body)),
   }));
+  app.delete('/internal/v1/demo/data', { preHandler: internal }, async () => ({
+    data: { deleted: await options.catalog.reset() },
+  }));
 
   app.get('/', async (_request, reply) => {
     if (!options.env.PRESENCIA_DEBUG_MODE) return disabled(reply);

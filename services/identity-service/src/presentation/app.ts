@@ -156,6 +156,12 @@ export async function buildIdentityApp(options: IdentityAppOptions) {
     };
   });
 
+  app.delete('/internal/v1/identities/demo-data', { preHandler: requireInternal }, async (_request, reply) => {
+    if (!options.env.PRESENCIA_DEBUG_MODE) return reply.code(404).send({ error: 'DEMO_MODE_DISABLED' });
+    const deleted = await options.sessions.resetDemoIdentities();
+    return { data: { identities: deleted } };
+  });
+
   app.setErrorHandler((error, request, reply) => {
     request.log.error({ err: error }, 'Identity request failed.');
     if (error instanceof Error && (error.message === 'IDENTITY_DISABLED' || error.message === 'SESSION_REVOKED')) {

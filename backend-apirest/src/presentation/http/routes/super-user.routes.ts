@@ -6,6 +6,7 @@ import type { AcademicServiceClient } from '../../../infrastructure/http/client/
 import type { AttendanceCaptureClient } from '../../../infrastructure/http/client/attendance-capture.client.js';
 import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
 import type { IdentityServiceClient } from '../../../infrastructure/http/client/identity-service.client.js';
+import type { CoordinationQueryClient } from '../../../infrastructure/http/client/coordination-query.client.js';
 import type {
   DemoPortalAttendanceWrite,
   DemoPortalClass,
@@ -22,7 +23,9 @@ interface SuperUserRoutesOptions {
   attendanceService: AttendanceServiceCommandClient;
   attendanceCapture: AttendanceCaptureClient;
   academicService: AcademicServiceClient;
+  coordinationQuery: CoordinationQueryClient;
   demoPortal: DemoPortalClient;
+  resetLocalDemoData: () => Promise<{ teacherSessions: number; studentSessions: number }>;
 }
 
 const loginSchema = z.object({ password: z.string().min(1).max(256) });
@@ -72,10 +75,11 @@ const debugAttendanceSimulationSchema = z.object({
     status: z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED']),
   })).min(1).max(1_000),
 });
+const debugResetSchema = z.object({ confirmation: z.literal('BORRAR DEMO') }).strict();
 
 export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async (
   fastify,
-  { authService, identityService, attendanceService, attendanceCapture, academicService, demoPortal },
+  { authService, identityService, attendanceService, attendanceCapture, academicService, coordinationQuery, demoPortal, resetLocalDemoData },
 ) => {
   fastify.post('/api/superUsuario/auth/login', {
     config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
@@ -276,6 +280,24 @@ export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async
       meta: { synchronizedAt: new Date().toISOString() },
     };
   });
+  fastify.delete('/api/superUsuario/debug/data', {
+    config: { rateLimit: { max: 2, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    debugResetSchema.parse(request.body);
+
+    const deleted = await resetDemoEnvironment({
+      demoPortal, identityService, academicService, attendanceService, coordinationQuery, resetLocalDemoData,
+    });
+
+    return {
+      data: {
+        reset: true,
+        deleted,
+        resetAt: new Date().toISOString(),
+      },
+    };
+  });
   fastify.post<{ Params: { id: string } }>('/api/superUsuario/debug/classes/:id/simulate-attendance', async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
     const input = debugAttendanceSimulationSchema.parse(request.body);
@@ -322,6 +344,32 @@ export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async
     };
   });
 };
+
+export async function resetDemoEnvironment(services: {
+  demoPortal: DemoPortalClient;
+  identityService: IdentityServiceClient;
+  academicService: AcademicServiceClient;
+  attendanceService: AttendanceServiceCommandClient;
+  coordinationQuery: CoordinationQueryClient;
+  resetLocalDemoData: () => Promise<{ teacherSessions: number; studentSessions: number }>;
+}) {
+  const portal = await services.demoPortal.resetData();
+  const [identity, local] = await Promise.all([
+    services.identityService.resetDemoData(),
+    services.resetLocalDemoData(),
+  ]);
+  await Promise.all([
+    services.academicService.resetDemoData(),
+    services.attendanceService.resetDemoData(),
+  ]);
+  await services.coordinationQuery.resetDemoData();
+  return {
+    ...portal.data.deleted,
+    identities: identity.data.identities,
+    teacherSessions: local.teacherSessions,
+    studentSessions: local.studentSessions,
+  };
+}
 
 function debugDisabled(reply: FastifyReply) {
   return reply.code(404).send({

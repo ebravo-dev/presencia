@@ -86,11 +86,27 @@ describe('Academic HTTP API', () => {
     expect(response.json()).toEqual({ data: { imported: 1, updated: 0, unchanged: 0 } });
     await app.close();
   });
+
+  it('allows database cleanup only when demo mode is active', async () => {
+    let resets = 0;
+    const disabled = await testApp({ resetDemoData: async () => { resets += 1; } });
+    expect((await disabled.inject({
+      method: 'DELETE', url: '/internal/v1/academic/demo-data', headers: { 'x-internal-service-token': token },
+    })).statusCode).toBe(404);
+    await disabled.close();
+
+    const enabled = await testApp({ debugMode: true, resetDemoData: async () => { resets += 1; } });
+    expect((await enabled.inject({
+      method: 'DELETE', url: '/internal/v1/academic/demo-data', headers: { 'x-internal-service-token': token },
+    })).statusCode).toBe(204);
+    expect(resets).toBe(1);
+    await enabled.close();
+  });
 });
 
-async function testApp() {
+async function testApp(options: { debugMode?: boolean; resetDemoData?: () => Promise<void> } = {}) {
   return buildAcademicApp({
-    env: academicEnvSchema.parse({ NODE_ENV: 'test', INTERNAL_API_TOKEN: token }),
+    env: academicEnvSchema.parse({ NODE_ENV: 'test', INTERNAL_API_TOKEN: token, PRESENCIA_DEBUG_MODE: options.debugMode ?? false }),
     snapshots: { apply: async (snapshot: { snapshotId: string }) => ({
       snapshotId: snapshot.snapshotId, duplicate: false, activeGroups: 0, activeEnrollments: 0, deactivatedGroups: 0,
     }) } as never,
@@ -108,6 +124,7 @@ async function testApp() {
     repository: {
       groupsForTeacher: async () => [], groupByExternalId: async () => null, studentByMatricula: async () => null,
       coordinationProjectionSnapshot: async () => [],
+      resetDemoData: options.resetDemoData ?? (async () => undefined),
     } as never,
     ready: async () => ({ database: true, rabbitmq: true }),
   });

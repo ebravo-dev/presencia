@@ -185,6 +185,22 @@ export class DemoCatalogService {
     });
   }
 
+  async reset() {
+    const current = this.mutation.then(async () => {
+      const previous = await this.state();
+      const cleared = emptyState();
+      await this.repository.save(cleared);
+      return {
+        teachers: previous.teachers.length,
+        students: previous.students.length,
+        classes: previous.classes.length,
+        attendanceWrites: previous.attendanceWrites.length,
+      };
+    });
+    this.mutation = current.then(() => undefined, () => undefined);
+    return current;
+  }
+
   async authenticateTeacher(username: string, password: string) {
     const teacher = (await this.state()).teachers.find(({ email }) => email === username.trim().toLowerCase());
     return teacher && await verifyPassword(password, teacher.passwordHash) ? publicTeacher(teacher) : null;

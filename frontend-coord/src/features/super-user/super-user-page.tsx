@@ -297,6 +297,8 @@ function DebugAdmin() {
   const [selectedStudents, setSelectedStudents] = useState<Record<string, string>>({});
   const [simulationDate, setSimulationDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [simulationStatus, setSimulationStatus] = useState<'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED'>('PRESENT');
+  const [showResetConfirmation, setShowResetConfirmation] = useState(false);
+  const [resetConfirmation, setResetConfirmation] = useState('');
   const status = useQuery({ queryKey: ['super-user', 'debug', 'status'], queryFn: superUserApi.debugStatus, refetchInterval: REFRESH_INTERVAL_MS });
   const debugEnabled = status.data?.data.enabled === true;
   const catalog = useQuery({ queryKey: ['super-user', 'debug', 'catalog'], queryFn: superUserApi.debugCatalog, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
@@ -326,6 +328,20 @@ function DebugAdmin() {
   });
   const deleteClass = useMutation({ mutationFn: superUserApi.deleteDebugClass, onSuccess: refreshDebug });
   const synchronize = useMutation({ mutationFn: superUserApi.synchronizeDebugCatalog, onSuccess: refreshDebug });
+  const resetDemoData = useMutation({
+    mutationFn: superUserApi.resetDebugData,
+    onSuccess: async () => {
+      setShowResetConfirmation(false);
+      setResetConfirmation('');
+      setSelectedStudents({});
+      resetClassEditor();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['super-user'] }),
+        queryClient.invalidateQueries({ queryKey: ['coordination'] }),
+        queryClient.invalidateQueries({ queryKey: ['shared-classes'] }),
+      ]);
+    },
+  });
   const simulateAttendance = useMutation({
     mutationFn: (item: DebugClass) => superUserApi.simulateDebugAttendance(item.id, {
       date: simulationDate,
@@ -498,6 +514,11 @@ function DebugAdmin() {
             <Button variant="secondary" onClick={() => synchronize.mutate()} disabled={synchronize.isPending}>
               <RefreshCw size={16} />{synchronize.isPending ? 'Sincronizando...' : 'Sincronizar datos'}
             </Button>
+            {enabled && (
+              <Button variant="danger" onClick={() => { setShowResetConfirmation(true); resetDemoData.reset(); }} disabled={resetDemoData.isPending}>
+                <Trash2 size={16} />Borrar datos demo
+              </Button>
+            )}
             <span className={cn('rounded-full px-3 py-1 text-xs font-black uppercase', enabled ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800')}>
               {enabled ? 'Demo activo' : 'Release real'}
             </span>
@@ -508,7 +529,43 @@ function DebugAdmin() {
           <InfoBox label="Tolerancia profesor" value={`${status.data?.data.settings.teacherAttendanceToleranceMinutes ?? settings.data?.data.teacherAttendanceToleranceMinutes ?? '-'} min`} />
           <InfoBox label="Actualizado" value={status.data?.meta.generatedAt ? new Date(status.data.meta.generatedAt).toLocaleTimeString('es-MX') : '-'} />
         </div>
+        {resetDemoData.isSuccess && (
+          <p role="status" className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
+            Los datos demo fueron eliminados correctamente. La cuenta de superusuario y las migraciones se conservaron.
+          </p>
+        )}
       </Card>
+
+      {showResetConfirmation && (
+        <Card role="alertdialog" aria-labelledby="demo-reset-title" aria-describedby="demo-reset-description" className="border-red-300 bg-red-50 p-5 dark:border-red-900 dark:bg-red-950/20">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-red-100 p-2.5 text-red-700 dark:bg-red-950 dark:text-red-300"><Trash2 size={21} /></div>
+            <div className="min-w-0 flex-1">
+              <h2 id="demo-reset-title" className="font-black text-red-900 dark:text-red-200">Borrar todos los datos de la demo</h2>
+              <p id="demo-reset-description" className="mt-1 text-sm text-red-800/80 dark:text-red-300/80">
+                Se eliminarán profesores, alumnos, materias, asistencias, vínculos de teléfonos, beacons y sesiones demo. Esta acción no se puede deshacer.
+              </p>
+              <label className="mt-4 block max-w-md text-sm font-bold text-red-900 dark:text-red-200">
+                Escribe <span className="font-mono">BORRAR DEMO</span> para confirmar
+                <input
+                  className="field mt-1 border-red-300 bg-white font-mono dark:border-red-900 dark:bg-[#15181d]"
+                  value={resetConfirmation}
+                  onChange={(event) => setResetConfirmation(event.target.value)}
+                  autoComplete="off"
+                  autoFocus
+                />
+              </label>
+              {resetDemoData.isError && <p role="alert" className="mt-3 text-sm font-semibold text-red-700 dark:text-red-300">No se pudo completar el borrado. Los servicios conservaron sus protecciones; vuelve a intentarlo.</p>}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button variant="danger" disabled={resetConfirmation !== 'BORRAR DEMO' || resetDemoData.isPending} onClick={() => resetDemoData.mutate()}>
+                  <Trash2 size={16} />{resetDemoData.isPending ? 'Borrando...' : 'Borrar definitivamente'}
+                </Button>
+                <Button variant="secondary" disabled={resetDemoData.isPending} onClick={() => { setShowResetConfirmation(false); setResetConfirmation(''); resetDemoData.reset(); }}>Cancelar</Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Card className="p-5">

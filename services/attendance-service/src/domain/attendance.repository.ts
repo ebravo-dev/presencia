@@ -56,6 +56,7 @@ export interface AttendanceRepository {
     recentBeacons: ClassroomBeaconValue[];
   }>;
   coordinationProjectionSnapshot(): Promise<AttendanceCoordinationProjectionSnapshot[]>;
+  resetDemoData(): Promise<void>;
   listClassroomBeacons(): Promise<ClassroomBeaconValue[]>;
   createClassroomBeacon(command: SaveClassroomBeaconCommand): Promise<ClassroomBeaconValue>;
   updateClassroomBeacon(command: UpdateClassroomBeaconCommand): Promise<ClassroomBeaconValue>;

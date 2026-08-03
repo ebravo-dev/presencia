@@ -118,6 +118,22 @@ describe('Attendance HTTP API', () => {
     await app.close();
   });
 
+  it('allows attendance cleanup only when demo mode is active', async () => {
+    let resets = 0;
+    const disabled = await testApp({ resetDemoData: async () => { resets += 1; } });
+    expect((await disabled.inject({
+      method: 'DELETE', url: '/internal/v1/attendance/demo-data', headers: { 'x-internal-service-token': token },
+    })).statusCode).toBe(404);
+    await disabled.close();
+
+    const enabled = await testApp({ debugMode: true, resetDemoData: async () => { resets += 1; } });
+    expect((await enabled.inject({
+      method: 'DELETE', url: '/internal/v1/attendance/demo-data', headers: { 'x-internal-service-token': token },
+    })).statusCode).toBe(204);
+    expect(resets).toBe(1);
+    await enabled.close();
+  });
+
   it('rejects professor timestamps on attendance captures', async () => {
     const app = await testApp();
     const response = await app.inject({
@@ -258,6 +274,7 @@ describe('Attendance HTTP API', () => {
 async function testApp(options: {
   debugMode?: boolean;
   capture?: (input: unknown) => Promise<unknown>;
+  resetDemoData?: () => Promise<void>;
 } = {}) {
   const now = new Date('2026-08-02T12:00:00.000Z');
   const binding = {
@@ -268,6 +285,7 @@ async function testApp(options: {
   };
   const repository = {
     applyRoster: async () => {}, coordinationProjectionSnapshot: async () => [],
+    resetDemoData: options.resetDemoData ?? (async () => undefined),
     listDeviceBindings: async () => [], bindingInfrastructureSummary: async () => ({ count: 0, recentBindings: [] }),
     infrastructureSummary: async () => ({
       counts: { beacons: 0, studentDeviceBindings: 0, studentBleAttendances: 0 },

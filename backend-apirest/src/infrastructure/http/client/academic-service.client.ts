@@ -29,6 +29,10 @@ export class AcademicServiceClient implements AcademicSnapshotPublisher, Student
     return this.request('/internal/v1/academic/shared-classes/options', { method: 'GET' });
   }
 
+  async resetDemoData(): Promise<void> {
+    await this.request('/internal/v1/academic/demo-data', { method: 'DELETE' });
+  }
+
   listSharedClasses(): Promise<SharedClassListResponse> {
     return this.request('/internal/v1/academic/shared-classes', { method: 'GET' });
   }

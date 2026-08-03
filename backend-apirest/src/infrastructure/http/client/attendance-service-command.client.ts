@@ -137,6 +137,10 @@ export class AttendanceServiceCommandClient implements AttendanceBindingClient {
     return this.request('/internal/v1/attendance/infrastructure/summary', { method: 'GET' });
   }
 
+  async resetDemoData(): Promise<void> {
+    await this.request('/internal/v1/attendance/demo-data', { method: 'DELETE' });
+  }
+
   private async request<T = unknown>(
     path: string,
     options: {

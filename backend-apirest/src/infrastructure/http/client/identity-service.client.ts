@@ -117,6 +117,10 @@ export class IdentityServiceClient {
     return this.request('/internal/v1/staff/accounts/import', { method: 'POST', body: { accounts, ...audit } });
   }
 
+  resetDemoData(): Promise<{ data: { identities: number } }> {
+    return this.request('/internal/v1/identities/demo-data', { method: 'DELETE' });
+  }
+
   private async request<T>(path: string, options: { method: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown }): Promise<T> {
     let response: Response;
     try {

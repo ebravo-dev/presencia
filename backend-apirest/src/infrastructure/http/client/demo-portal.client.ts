@@ -103,6 +103,7 @@ export class DemoPortalClient {
     entries: Array<{ studentId: string; status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' }>;
   }) { return this.request<{ data: DemoPortalAttendanceWrite }>(`/internal/v1/demo/classes/${encodeURIComponent(classId)}/simulate-attendance`, { method: 'POST', body: input }); }
   updateSettings(input: { teacherAttendanceToleranceMinutes: number }) { return this.request<{ data: { teacherAttendanceToleranceMinutes: number } }>('/internal/v1/demo/settings', { method: 'PUT', body: input }); }
+  resetData() { return this.request<{ data: { deleted: { teachers: number; students: number; classes: number; attendanceWrites: number } } }>('/internal/v1/demo/data', { method: 'DELETE' }); }
 
   private async request<T>(path: string, options: { method: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; authenticate?: boolean }): Promise<T> {
     let response: Response;

@@ -50,4 +50,10 @@ export class AuthenticatedSessionService {
     const claims = this.tokens.verify(token);
     await this.sessions.revoke(claims.sessionId, claims.sub);
   }
+
+  async resetDemoIdentities(): Promise<number> {
+    const identityIds = await this.identities.resetDemoIdentities();
+    await this.sessions.revokeIdentities(identityIds);
+    return identityIds.length;
+  }
 }

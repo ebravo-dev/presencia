@@ -42,4 +42,18 @@ export class PrismaIdentityRepository implements IdentityRepository {
   findById(id: string): Promise<Identity | null> {
     return this.prisma.identity.findUnique({ where: { id } });
   }
+
+  async resetDemoIdentities(): Promise<string[]> {
+    return this.prisma.$transaction(async (transaction) => {
+      const identities = await transaction.identity.findMany({
+        where: { kind: { in: ['PROFESSOR', 'STUDENT'] } },
+        select: { id: true },
+      });
+      const ids = identities.map(({ id }) => id);
+      if (ids.length === 0) return [];
+      await transaction.securityAuditEvent.deleteMany({ where: { identityId: { in: ids } } });
+      await transaction.identity.deleteMany({ where: { id: { in: ids } } });
+      return ids;
+    });
+  }
 }

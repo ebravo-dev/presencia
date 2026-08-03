@@ -217,6 +217,11 @@ export async function buildAttendanceApp(options: {
   app.get('/internal/v1/attendance/coordination-projection', { preHandler: internal }, async () => ({
     data: await options.repository.coordinationProjectionSnapshot(),
   }));
+  app.delete('/internal/v1/attendance/demo-data', { preHandler: internal }, async (_request, reply) => {
+    if (!options.env.PRESENCIA_DEBUG_MODE) return reply.code(404).send({ error: 'DEMO_MODE_DISABLED' });
+    await options.repository.resetDemoData();
+    return reply.code(204).send();
+  });
 
   app.setErrorHandler((error, request, reply) => {
     request.log.error({ err: error }, 'Attendance request failed.');

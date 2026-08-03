@@ -25,4 +25,5 @@ export interface AcademicRepository {
   groupByExternalId(externalGroupId: string): Promise<unknown | null>;
   studentByMatricula(matricula: string): Promise<unknown | null>;
   coordinationProjectionSnapshot(): Promise<AcademicCoordinationProjectionSnapshot[]>;
+  resetDemoData(): Promise<void>;
 }

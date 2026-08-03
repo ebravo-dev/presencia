@@ -179,6 +179,24 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
     }));
   }
 
+  async resetDemoData(): Promise<void> {
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.studentPresenceDetection.deleteMany();
+      await transaction.attendanceEntry.deleteMany();
+      await transaction.attendanceSession.deleteMany();
+      await transaction.attendanceRosterStudent.deleteMany();
+      await transaction.attendanceRosterGroup.deleteMany();
+      await transaction.academicGroupAccessGrant.deleteMany();
+      await transaction.deviceBindingAuditEvent.deleteMany();
+      await transaction.studentDeviceBinding.deleteMany();
+      await transaction.classroomBeaconAuditEvent.deleteMany();
+      await transaction.classroomBeacon.deleteMany();
+      await transaction.attendanceCommand.deleteMany();
+      await transaction.processedAttendanceEvent.deleteMany();
+      await transaction.attendanceOutboxEvent.deleteMany();
+    });
+  }
+
   async capture(command: CaptureAttendanceCommand, requestHash: string): Promise<CaptureAttendanceResult> {
     return this.withTransactionRetry(() => this.captureOnce(command, requestHash));
   }

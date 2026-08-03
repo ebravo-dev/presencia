@@ -71,6 +71,11 @@ export const superUserApi = {
   addDebugStudentToClass: async (classId: string, studentId: string) => (await superApi.post(`/superUsuario/debug/classes/${classId}/students`, { studentId })).data,
   removeDebugStudentFromClass: async (classId: string, studentId: string) => { await superApi.delete(`/superUsuario/debug/classes/${classId}/students/${studentId}`); },
   synchronizeDebugCatalog: async () => (await superApi.post<{ data: { teachers: number; students: number; classes: number } }>('/superUsuario/debug/synchronize')).data,
+  resetDebugData: async () => (await superApi.delete<{ data: {
+    reset: boolean;
+    deleted: { teachers: number; students: number; classes: number; attendanceWrites: number; identities: number; teacherSessions: number; studentSessions: number };
+    resetAt: string;
+  } }>('/superUsuario/debug/data', { data: { confirmation: 'BORRAR DEMO' } })).data,
   simulateDebugAttendance: async (classId: string, input: {
     date: string;
     entries: Array<{ studentId: string; status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' }>;

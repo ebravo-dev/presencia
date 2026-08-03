@@ -357,6 +357,23 @@ export class PrismaAcademicRepository implements AcademicRepository {
     });
   }
 
+  async resetDemoData(): Promise<void> {
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.academicSharedClassAuditEvent.deleteMany();
+      await transaction.academicSharedClassAssignment.deleteMany();
+      await transaction.studentScheduleEntry.deleteMany();
+      await transaction.studentAcademicProfile.deleteMany();
+      await transaction.academicEnrollment.deleteMany();
+      await transaction.academicGroup.deleteMany();
+      await transaction.academicSubject.deleteMany();
+      await transaction.academicCoordination.deleteMany();
+      await transaction.teacherProfile.deleteMany();
+      await transaction.academicCycle.deleteMany();
+      await transaction.processedAcademicSnapshot.deleteMany();
+      await transaction.academicOutboxEvent.deleteMany();
+    });
+  }
+
   private async snapshotResult(
     transaction: Prisma.TransactionClient,
     snapshot: ProfessorAcademicSnapshot,
