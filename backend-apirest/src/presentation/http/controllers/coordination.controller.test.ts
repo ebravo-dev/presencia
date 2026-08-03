@@ -55,15 +55,7 @@ describe('CoordinationController beacon cutover', () => {
   it('projects active shared classes into the dashboard instead of legacy substitutions', async () => {
     const controller = new CoordinationController(
       {} as never, {} as never,
-      {
-        getInfrastructureSummary: async () => ({
-          data: {
-            counts: { beacons: 9, studentDeviceBindings: 9, studentBleAttendances: 4, activeSubstitutions: 9 },
-            recentBindings: [], recentBeacons: [], recentSubstitutions: [{ id: 'legacy' }],
-          },
-          meta: { generatedAt: '2026-08-01T00:00:00.000Z' },
-        }),
-      } as never,
+      {} as never,
       {
         listSharedClasses: async () => ({
           data: [{
@@ -78,8 +70,13 @@ describe('CoordinationController beacon cutover', () => {
         }),
       } as never,
       {
-        bindingInfrastructureSummary: async () => ({ data: { count: 2, recentBindings: [] } }),
-        listClassroomBeacons: async () => ({ data: [] }),
+        infrastructureSummary: async () => ({
+          data: {
+            counts: { beacons: 3, studentDeviceBindings: 2, studentBleAttendances: 4 },
+            recentBindings: [], recentBeacons: [],
+          },
+          meta: { generatedAt: '2026-08-03T12:00:00.000Z' },
+        }),
       } as never,
     );
 

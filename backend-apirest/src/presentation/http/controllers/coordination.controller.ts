@@ -67,28 +67,22 @@ export class CoordinationController {
   };
 
   infrastructureSummary = async (_request: FastifyRequest, reply: FastifyReply) => {
-    const legacy = await this.attendanceBackendClient.getInfrastructureSummary() as InfrastructureSummaryResponse;
-    if (!this.attendanceServiceCommands) return reply.send(legacy);
-    const [bindings, beacons, sharedClasses] = await Promise.all([
-      this.attendanceServiceCommands.bindingInfrastructureSummary(),
-      this.attendanceServiceCommands.listClassroomBeacons(),
+    if (!this.attendanceServiceCommands) {
+      return reply.send(await this.attendanceBackendClient.getInfrastructureSummary());
+    }
+    const [attendance, sharedClasses] = await Promise.all([
+      this.attendanceServiceCommands.infrastructureSummary(),
       this.academicService.listSharedClasses(),
     ]);
     const activeSharedClasses = sharedClasses.data.filter(({ active }) => active);
     return reply.send({
-      ...legacy,
       data: {
-        ...legacy.data,
         counts: {
-          ...legacy.data.counts,
-          beacons: beacons.data.length,
-          studentDeviceBindings: bindings.data.count,
+          ...attendance.data.counts,
           activeSubstitutions: activeSharedClasses.length,
         },
-        recentBindings: bindings.data.recentBindings,
-        recentBeacons: [...beacons.data]
-          .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
-          .slice(0, 6),
+        recentBindings: attendance.data.recentBindings,
+        recentBeacons: attendance.data.recentBeacons,
         recentSubstitutions: activeSharedClasses
           .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
           .slice(0, 6)
@@ -103,7 +97,7 @@ export class CoordinationController {
             substituteProfessor: { name: assignment.assignedTeacher.name },
           })),
       },
-      meta: { generatedAt: new Date().toISOString() },
+      meta: { generatedAt: attendance.meta.generatedAt },
     });
   };
 
@@ -248,14 +242,6 @@ export class CoordinationController {
     await this.attendanceBackendClient.deleteSubstituteAssignment(request.params.id);
     return reply.code(204).send();
   };
-}
-
-interface InfrastructureSummaryResponse {
-  data: {
-    counts: { beacons: number; studentDeviceBindings: number; studentBleAttendances: number; activeSubstitutions: number };
-    recentBindings: unknown[]; recentBeacons: unknown[]; recentSubstitutions: unknown[];
-  };
-  meta: { generatedAt: string };
 }
 
 function requireCoordinator(request: FastifyRequest) {

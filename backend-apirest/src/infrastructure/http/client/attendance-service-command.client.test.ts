@@ -106,4 +106,21 @@ describe('AttendanceServiceCommandClient', () => {
     });
     expect(JSON.parse(String(request?.body))).not.toHaveProperty('correlationId');
   });
+
+  it('reads dashboard telemetry from Attendance Service', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: {
+        counts: { beacons: 2, studentDeviceBindings: 3, studentBleAttendances: 4 },
+        recentBindings: [], recentBeacons: [],
+      },
+      meta: { generatedAt: '2026-08-03T12:00:00.000Z' },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    const client = new AttendanceServiceCommandClient('http://attendance-service:3400', 'x'.repeat(32));
+    await expect(client.infrastructureSummary()).resolves.toMatchObject({
+      data: { counts: { studentBleAttendances: 4 } },
+    });
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      'http://attendance-service:3400/internal/v1/attendance/infrastructure/summary',
+    );
+  });
 });

@@ -50,6 +50,11 @@ export interface AttendanceRepository {
   }): Promise<{ data: BindDeviceResult['binding'][]; missing: string[] }>;
   listDeviceBindings(query?: string): Promise<unknown[]>;
   bindingInfrastructureSummary(): Promise<{ count: number; recentBindings: unknown[] }>;
+  infrastructureSummary(): Promise<{
+    counts: { beacons: number; studentDeviceBindings: number; studentBleAttendances: number };
+    recentBindings: unknown[];
+    recentBeacons: ClassroomBeaconValue[];
+  }>;
   coordinationProjectionSnapshot(): Promise<AttendanceCoordinationProjectionSnapshot[]>;
   listClassroomBeacons(): Promise<ClassroomBeaconValue[]>;
   createClassroomBeacon(command: SaveClassroomBeaconCommand): Promise<ClassroomBeaconValue>;

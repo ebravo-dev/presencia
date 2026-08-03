@@ -102,6 +102,21 @@ describe('Attendance HTTP API', () => {
     await app.close();
   });
 
+  it('serves dashboard telemetry only on the internal summary route', async () => {
+    const app = await testApp();
+    const hidden = await app.inject({ method: 'GET', url: '/internal/v1/attendance/infrastructure/summary' });
+    expect(hidden.statusCode).toBe(404);
+    const response = await app.inject({
+      method: 'GET', url: '/internal/v1/attendance/infrastructure/summary',
+      headers: { 'x-internal-service-token': token },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.counts).toEqual({
+      beacons: 0, studentDeviceBindings: 0, studentBleAttendances: 0,
+    });
+    await app.close();
+  });
+
   it('resolves bindings only through the private professor-scoped command', async () => {
     const app = await testApp();
     const hidden = await app.inject({
@@ -191,6 +206,10 @@ async function testApp() {
   const repository = {
     applyRoster: async () => {}, coordinationProjectionSnapshot: async () => [],
     listDeviceBindings: async () => [], bindingInfrastructureSummary: async () => ({ count: 0, recentBindings: [] }),
+    infrastructureSummary: async () => ({
+      counts: { beacons: 0, studentDeviceBindings: 0, studentBleAttendances: 0 },
+      recentBindings: [], recentBeacons: [],
+    }),
     bindInitial: async () => ({ binding, created: true, duplicate: false }),
     bindingByMatricula: async () => binding,
     resolveDeviceBindings: async () => ({ data: [], missing: [] }),

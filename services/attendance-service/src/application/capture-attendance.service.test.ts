@@ -71,6 +71,7 @@ function repositoryStub(): AttendanceRepository {
     async resolveDeviceBindings() { return { data: [], missing: [] }; },
     async listDeviceBindings() { return []; },
     async bindingInfrastructureSummary() { return { count: 0, recentBindings: [] }; },
+    async infrastructureSummary() { return { counts: { beacons: 0, studentDeviceBindings: 0, studentBleAttendances: 0 }, recentBindings: [], recentBeacons: [] }; },
     async coordinationProjectionSnapshot() { return []; },
     async listClassroomBeacons() { return []; },
     async createClassroomBeacon() { throw new Error('unexpected'); },

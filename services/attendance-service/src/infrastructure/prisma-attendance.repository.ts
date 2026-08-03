@@ -764,6 +764,25 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
     return { count, recentBindings };
   }
 
+  async infrastructureSummary(): Promise<{
+    counts: { beacons: number; studentDeviceBindings: number; studentBleAttendances: number };
+    recentBindings: unknown[];
+    recentBeacons: ClassroomBeaconValue[];
+  }> {
+    const [beacons, studentDeviceBindings, studentBleAttendances, recentBindings, recentBeacons] = await Promise.all([
+      this.prisma.classroomBeacon.count(),
+      this.prisma.studentDeviceBinding.count({ where: { active: true } }),
+      this.prisma.studentPresenceDetection.count(),
+      this.listDeviceBindings(undefined, 6),
+      this.prisma.classroomBeacon.findMany({ orderBy: { updatedAt: 'desc' }, take: 6 }),
+    ]);
+    return {
+      counts: { beacons, studentDeviceBindings, studentBleAttendances },
+      recentBindings,
+      recentBeacons,
+    };
+  }
+
   private async assertDeviceIdentifiersAvailable(
     transaction: Prisma.TransactionClient,
     command: BindDeviceCommand,

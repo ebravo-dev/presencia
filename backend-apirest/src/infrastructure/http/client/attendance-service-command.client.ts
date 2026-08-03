@@ -115,6 +115,17 @@ export class AttendanceServiceCommandClient implements AttendanceBindingClient {
     return this.request('/internal/v1/attendance/infrastructure/bindings', { method: 'GET' });
   }
 
+  infrastructureSummary(): Promise<{
+    data: {
+      counts: { beacons: number; studentDeviceBindings: number; studentBleAttendances: number };
+      recentBindings: unknown[];
+      recentBeacons: ClassroomBeaconResponse[];
+    };
+    meta: { generatedAt: string };
+  }> {
+    return this.request('/internal/v1/attendance/infrastructure/summary', { method: 'GET' });
+  }
+
   private async request<T = unknown>(
     path: string,
     options: {

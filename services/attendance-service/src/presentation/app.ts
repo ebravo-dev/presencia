@@ -210,6 +210,11 @@ export async function buildAttendanceApp(options: {
     meta: { generatedAt: new Date().toISOString() },
   }));
 
+  app.get('/internal/v1/attendance/infrastructure/summary', { preHandler: internal }, async () => ({
+    data: await options.repository.infrastructureSummary(),
+    meta: { generatedAt: new Date().toISOString() },
+  }));
+
   app.get('/internal/v1/attendance/coordination-projection', { preHandler: internal }, async () => ({
     data: await options.repository.coordinationProjectionSnapshot(),
   }));
