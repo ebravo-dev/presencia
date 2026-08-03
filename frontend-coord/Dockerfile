@@ -6,7 +6,8 @@ COPY . .
 RUN npm run build
 
 FROM nginx:1.27-alpine AS production
-ENV BACKEND_API_UPSTREAM=backend-apirest:3100
+ENV BACKEND_API_UPSTREAM=backend-apirest:3100 \
+    ATTENDANCE_BACKEND_UPSTREAM=backend:3000
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=builder /app/dist /usr/share/nginx/html/coordinacion
 EXPOSE 8080

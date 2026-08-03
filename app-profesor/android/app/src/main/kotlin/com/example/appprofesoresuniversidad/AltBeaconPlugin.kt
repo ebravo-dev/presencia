@@ -1,13 +1,8 @@
 package com.example.appprofesoresuniversidad
 
 import android.Manifest
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.bluetooth.BluetoothManager
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
@@ -35,8 +30,6 @@ class AltBeaconPlugin(
         private const val METHOD_CHANNEL = "com.presencia/altbeacon"
         private const val EVENT_CHANNEL = "com.presencia/altbeacon_events"
         private const val REGION_ID = "com.presencia.altbeacon.region"
-        private const val NOTIFICATION_CHANNEL_ID = "presencia_altbeacon_scan"
-        private const val NOTIFICATION_ID = 4512
     }
 
     private val context: Context get() = activity.applicationContext
@@ -48,8 +41,14 @@ class AltBeaconPlugin(
     private var eventSink: EventChannel.EventSink? = null
     private var activeRegion: Region? = null
     private var activeUuids: Set<String> = emptySet()
+    @Volatile
+    private var isActivityInForeground = true
 
     private val rangeNotifier = RangeNotifier { beacons, _ ->
+        if (!isActivityInForeground || activeUuids.isEmpty()) {
+            return@RangeNotifier
+        }
+
         val targetUuids = activeUuids
         val payload = beacons
             .asSequence()
@@ -62,15 +61,32 @@ class AltBeaconPlugin(
 
         if (payload.isNotEmpty()) {
             mainHandler.post {
-                eventSink?.success(payload)
+                if (isActivityInForeground) {
+                    eventSink?.success(payload)
+                }
             }
         }
     }
 
     fun register(messenger: BinaryMessenger) {
         setupBeaconParsers()
+        // AltBeacon enables scheduled scan jobs by default on Android 8+.
+        // They can continue scanning without a visible app, so use the regular
+        // activity-bound service exclusively for this app.
+        beaconManager.setEnableScheduledScanJobs(false)
         MethodChannel(messenger, METHOD_CHANNEL).setMethodCallHandler(this)
         EventChannel(messenger, EVENT_CHANNEL).setStreamHandler(this)
+    }
+
+    /** Stops any active ranging as soon as the Flutter activity loses foreground. */
+    fun onActivityPaused() {
+        isActivityInForeground = false
+        stopScanning()
+    }
+
+    /** Scanning is never resumed automatically; the visible Flutter flow starts it again. */
+    fun onActivityResumed() {
+        isActivityInForeground = true
     }
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
@@ -124,11 +140,13 @@ class AltBeaconPlugin(
     }
 
     private fun startScanning(uuids: List<String>) {
+        if (!isActivityInForeground) {
+            throw IllegalStateException("El escaneo de beacons solo está disponible con la app en primer plano")
+        }
         ensureRuntimePermissions()
         stopScanning()
 
         activeUuids = uuids.map { normalizeUuid(it) }.filter { it.isNotEmpty() }.toSet()
-        setupForegroundServiceNotification()
 
         if (activeUuids.isEmpty()) {
             throw IllegalArgumentException("UUID inválido")
@@ -163,46 +181,6 @@ class AltBeaconPlugin(
         beaconManager.shutdownIfIdle()
         activeRegion = null
         activeUuids = emptySet()
-    }
-
-    private fun setupForegroundServiceNotification() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val channel = NotificationChannel(
-                NOTIFICATION_CHANNEL_ID,
-                "Escaneo de beacons",
-                NotificationManager.IMPORTANCE_LOW,
-            )
-            manager.createNotificationChannel(channel)
-        }
-
-        val intent = Intent(activity, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
-            activity,
-            0,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-
-        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(activity, NOTIFICATION_CHANNEL_ID)
-        } else {
-            Notification.Builder(activity)
-        }
-
-        val notification = builder
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("Presencia")
-            .setContentText("Buscando beacons de asistencia")
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .build()
-
-        try {
-            beaconManager.enableForegroundServiceScanning(notification, NOTIFICATION_ID)
-        } catch (error: IllegalStateException) {
-            Log.w(TAG, "Foreground service already active: ${error.message}")
-        }
     }
 
     private fun ensureRuntimePermissions() {

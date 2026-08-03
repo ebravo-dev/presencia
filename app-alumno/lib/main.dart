@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'services/local_storage_service.dart';
 import 'services/ble_advertiser_service.dart';
 import 'services/attendance_session_service.dart';
-import 'services/student_auth_service.dart';
+import 'services/student_device_binding_service.dart';
 import 'screens/setup_screen.dart';
 import 'screens/home_screen.dart';
 
@@ -14,10 +14,11 @@ void main() async {
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
-      statusBarBrightness: Brightness.light,
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Color(0xFFF7FAFE),
-      systemNavigationBarIconBrightness: Brightness.dark,
+      statusBarColor: Color(0xFF0B0F14),
+      statusBarBrightness: Brightness.dark,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Color(0xFF0B0F14),
+      systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
 
@@ -30,7 +31,7 @@ void main() async {
     storage: storage,
     advertiser: bleService,
   );
-  final studentAuthService = StudentAuthService();
+  final deviceBindingService = StudentDeviceBindingService();
 
   // Sync student identity to native so attendance services can read it.
   if (storage.isProfileSet) {
@@ -39,6 +40,8 @@ void main() async {
       attendanceUuid: storage.attendanceUuid,
       deviceBindingId: storage.deviceBindingId,
     );
+    final synced = await deviceBindingService.sync(storage);
+    await storage.setDeviceBindingSyncPending(!synced);
   }
 
   runApp(
@@ -46,7 +49,7 @@ void main() async {
       storage: storage,
       bleService: bleService,
       attendanceSession: attendanceSession,
-      studentAuthService: studentAuthService,
+      deviceBindingService: deviceBindingService,
     ),
   );
 }
@@ -55,14 +58,14 @@ class PresenciaAlumnoApp extends StatelessWidget {
   final LocalStorageService storage;
   final BleAdvertiserService bleService;
   final AttendanceSessionService attendanceSession;
-  final StudentAuthService studentAuthService;
+  final StudentDeviceBindingService deviceBindingService;
 
   const PresenciaAlumnoApp({
     super.key,
     required this.storage,
     required this.bleService,
     required this.attendanceSession,
-    required this.studentAuthService,
+    required this.deviceBindingService,
   });
 
   @override
@@ -71,72 +74,65 @@ class PresenciaAlumnoApp extends StatelessWidget {
       title: 'Presencia Alumno',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        brightness: Brightness.light,
+        brightness: Brightness.dark,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF2348ED),
-          brightness: Brightness.light,
-          primary: const Color(0xFF2348ED),
-          secondary: const Color(0xFF10AF74),
-          surface: const Color(0xFFFFFFFF),
+          seedColor: const Color(0xFF62D6A2),
+          brightness: Brightness.dark,
+          primary: const Color(0xFF62D6A2),
+          surface: const Color(0xFF111923),
         ),
-        scaffoldBackgroundColor: const Color(0xFFF7FAFE),
+        scaffoldBackgroundColor: const Color(0xFF0B0F14),
         fontFamily: 'Roboto',
-        textButtonTheme: TextButtonThemeData(
-          style: TextButton.styleFrom(
-            foregroundColor: const Color(0xFF2348ED),
-            textStyle: const TextStyle(fontWeight: FontWeight.w800),
-          ),
-        ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xFF2348ED),
-            foregroundColor: Colors.white,
-            disabledBackgroundColor: const Color(0xFFE0ECFF),
-            disabledForegroundColor: const Color(0xFF65728B),
+            backgroundColor: const Color(0xFF62D6A2),
+            foregroundColor: const Color(0xFF07110D),
+            disabledBackgroundColor: const Color(0xFF27313B),
+            disabledForegroundColor: const Color(0xFF8F9BA8),
             textStyle: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w800,
             ),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(8),
             ),
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: Colors.white,
+          fillColor: const Color(0xFF111923),
           labelStyle: const TextStyle(
-            color: Color(0xFF65728B),
+            color: Color(0xFF8F9BA8),
             fontWeight: FontWeight.w700,
           ),
           hintStyle: TextStyle(
-            color: const Color(0xFF65728B).withValues(alpha: 0.62),
+            color: Colors.white.withValues(alpha: 0.28),
             fontWeight: FontWeight.w700,
           ),
-          prefixIconColor: const Color(0xFF65728B),
+          prefixIconColor: const Color(0xFF8F9BA8),
           errorStyle: const TextStyle(
-            color: Color(0xFFED4444),
+            color: Color(0xFFFF7A70),
             fontWeight: FontWeight.w700,
           ),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(18),
-            borderSide: const BorderSide(color: Color(0xFFDAE2F0)),
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFF223040)),
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(18),
-            borderSide: const BorderSide(color: Color(0xFFDAE2F0)),
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFF223040)),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(18),
-            borderSide: const BorderSide(color: Color(0xFF2348ED), width: 1.4),
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFF62D6A2), width: 1.4),
           ),
           errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(18),
-            borderSide: const BorderSide(color: Color(0xFFED4444)),
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFFFF7A70)),
           ),
           focusedErrorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(18),
-            borderSide: const BorderSide(color: Color(0xFFED4444), width: 1.4),
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFFFF7A70), width: 1.4),
           ),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
@@ -148,7 +144,7 @@ class PresenciaAlumnoApp extends StatelessWidget {
         storage: storage,
         bleService: bleService,
         attendanceSession: attendanceSession,
-        studentAuthService: studentAuthService,
+        deviceBindingService: deviceBindingService,
       ),
     );
   }
@@ -159,13 +155,13 @@ class _AppRouter extends StatefulWidget {
   final LocalStorageService storage;
   final BleAdvertiserService bleService;
   final AttendanceSessionService attendanceSession;
-  final StudentAuthService studentAuthService;
+  final StudentDeviceBindingService deviceBindingService;
 
   const _AppRouter({
     required this.storage,
     required this.bleService,
     required this.attendanceSession,
-    required this.studentAuthService,
+    required this.deviceBindingService,
   });
 
   @override
@@ -185,27 +181,15 @@ class _AppRouterState extends State<_AppRouter> {
   Widget build(BuildContext context) {
     if (!_profileSet) {
       return SetupScreen(
-        onComplete: ({required username, required password}) async {
-          final authResult = await widget.studentAuthService.loginAndBind(
-            username: username,
-            password: password,
-            storage: widget.storage,
-          );
-          await widget.storage.saveInstitutionalCredentials(
-            username: username,
-            password: password,
-          );
-          await widget.storage.saveProfile(
-            authResult.matricula,
-            institutionalEmail: username.trim().toLowerCase(),
-            uatStudentSessionId: authResult.sessionId,
-          );
+        onComplete: (matricula) async {
+          await widget.storage.saveProfile(matricula);
           await widget.bleService.setStudentIdentity(
-            matricula: authResult.matricula,
+            matricula: matricula,
             attendanceUuid: widget.storage.attendanceUuid,
             deviceBindingId: widget.storage.deviceBindingId,
           );
-          await widget.storage.setDeviceBindingSyncPending(false);
+          final synced = await widget.deviceBindingService.sync(widget.storage);
+          await widget.storage.setDeviceBindingSyncPending(!synced);
           setState(() => _profileSet = true);
         },
       );
@@ -215,7 +199,6 @@ class _AppRouterState extends State<_AppRouter> {
       storage: widget.storage,
       bleService: widget.bleService,
       attendanceSession: widget.attendanceSession,
-      studentAuthService: widget.studentAuthService,
     );
   }
 }

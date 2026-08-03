@@ -15,7 +15,15 @@ class ApiConstants {
   );
   static const String attendanceBackendBaseUrl = String.fromEnvironment(
     'ATTENDANCE_BACKEND_URL',
-    defaultValue: baseUrl,
+    defaultValue: 'https://debugasistencia.duckdns.org/',
+  );
+  static const String mainBackendBaseUrl = String.fromEnvironment(
+    'MAIN_BACKEND_API_URL',
+    defaultValue: 'https://debugasistencia.duckdns.org/',
+  );
+  static const bool useBackendApiRest = bool.fromEnvironment(
+    'USE_BACKEND_API_REST',
+    defaultValue: true,
   );
   static const bool presenciaDebugMode = bool.fromEnvironment(
     'PRESENCIA_DEBUG_MODE',
@@ -91,6 +99,8 @@ class ApiConstants {
     Logger.info('   Backend baseUrl: $baseUrl');
     Logger.info('   Presencia baseUrl: $presenceApiBaseUrl');
     Logger.info('   Attendance backend baseUrl: $attendanceBackendBaseUrl');
+    Logger.info('   Main backend baseUrl: $mainBackendBaseUrl');
+    Logger.info('   Use backend API REST: $useBackendApiRest');
     Logger.info('   Debug mode: $presenciaDebugMode');
     Logger.info(
       '   Skip API REST attendance upload: $skipApiRestAttendanceUpload',

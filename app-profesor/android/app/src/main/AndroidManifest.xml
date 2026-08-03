@@ -11,10 +11,12 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Beacon detection is only available while the activity is visible. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" tools:node="remove" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
     
     <!-- Características de hardware (no requeridas para que funcione en dispositivos sin Bluetooth) -->
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
@@ -52,11 +54,13 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Prevent AltBeacon from rescheduling scans outside the visible app. -->
+        <receiver
+            android:name="org.altbeacon.beacon.startup.StartupBroadcastReceiver"
+            tools:node="remove" />
         <service
-            android:name="org.altbeacon.beacon.service.BeaconService"
-            android:exported="false"
-            android:foregroundServiceType="location|connectedDevice"
-            tools:node="merge" />
+            android:name="org.altbeacon.bluetooth.BluetoothTestJob"
+            tools:node="remove" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

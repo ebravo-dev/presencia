@@ -13,6 +13,7 @@ class AuthStorageService {
 
   static const String _authBox = 'auth';
   static const String _tokenKey = 'jwt_token';
+  static const String _mainBackendTokenKey = 'main_backend_jwt_token';
   static const String _profesorKey = 'profesor_data';
   static const String _gruposKey = 'grupos_data';
   static const String _syncInProgressKey = 'sync_in_progress';
@@ -52,6 +53,32 @@ class AuthStorageService {
       return token;
     } catch (e, stackTrace) {
       Logger.error('Error al obtener token', e, stackTrace);
+      return null;
+    }
+  }
+
+  Future<void> saveMainBackendToken(String token) async {
+    try {
+      await _box?.put(_mainBackendTokenKey, token);
+      Logger.info('Sesion del backend principal guardada correctamente');
+    } catch (e, stackTrace) {
+      Logger.error(
+        'Error al guardar sesion del backend principal',
+        e,
+        stackTrace,
+      );
+    }
+  }
+
+  String? getMainBackendToken() {
+    try {
+      return _box?.get(_mainBackendTokenKey) as String?;
+    } catch (e, stackTrace) {
+      Logger.error(
+        'Error al obtener sesion del backend principal',
+        e,
+        stackTrace,
+      );
       return null;
     }
   }
@@ -140,6 +167,7 @@ class AuthStorageService {
   Future<void> clearSession() async {
     try {
       await _box?.delete(_tokenKey);
+      await _box?.delete(_mainBackendTokenKey);
       await _box?.delete(_profesorKey);
       await _box?.delete(_gruposKey);
       await _box?.delete(_syncInProgressKey);

@@ -25,7 +25,7 @@ class GruposPage extends ConsumerStatefulWidget {
 }
 
 class _GruposPageState extends ConsumerState<GruposPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final ScrollController _scrollController = ScrollController();
   bool _isExpanded = false; // Control de expansión de tarjetas
   bool _showTitle = true; // Control de visibilidad del título
@@ -54,6 +54,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     // Animación pulsante para el indicador de clase actual
     _pulseController = AnimationController(
@@ -77,12 +78,20 @@ class _GruposPageState extends ConsumerState<GruposPage>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _titleVisibilityTimer?.cancel();
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     _pulseController.dispose();
     TeacherBeaconAttendanceService().stop();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      TeacherBeaconAttendanceService().stop();
+    }
   }
 
   /// Checks sync status on app start and handles accordingly

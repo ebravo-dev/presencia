@@ -1,3 +1,9 @@
+/*
+  El scraping del portal de alumnos UAT está desactivado temporalmente.
+  Se conserva esta implementación para retomarla en una iteración posterior.
+*/
+
+/*
 import 'dart:convert';
 import 'dart:io';
 
@@ -59,7 +65,7 @@ class StudentAuthService {
 
     if (sessionId.isEmpty || matricula.isEmpty) {
       throw const StudentAuthException(
-        'El backend no devolvió la sesión o matrícula del alumno.',
+        'No pudimos preparar tu cuenta. Inténtalo de nuevo.',
       );
     }
 
@@ -72,7 +78,7 @@ class StudentAuthService {
     final credentials = await storage.readInstitutionalCredentials();
     if (credentials == null) {
       throw const StudentAuthException(
-        'No se encontraron credenciales guardadas. Inicia sesión de nuevo.',
+        'No pudimos acceder a tus datos de UAT. Inicia sesión de nuevo.',
         authenticationFailed: true,
       );
     }
@@ -86,7 +92,7 @@ class StudentAuthService {
     final sessionId = session['sessionId']?.toString() ?? '';
     if (sessionId.isEmpty) {
       throw const StudentAuthException(
-        'No se pudo abrir una sesión UAT para sincronizar.',
+        'No pudimos actualizar tus datos de UAT. Inténtalo de nuevo.',
       );
     }
 
@@ -138,9 +144,6 @@ class StudentAuthService {
           : jsonDecode(body);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        final message = decoded is Map<String, dynamic>
-            ? decoded['message']?.toString()
-            : null;
         final error = decoded is Map<String, dynamic>
             ? decoded['error']?.toString()
             : null;
@@ -149,16 +152,16 @@ class StudentAuthService {
             error == 'UAT_LOGIN_FAILED' ||
             error == 'UNAUTHORIZED';
         throw StudentAuthException(
-          message?.isNotEmpty == true
-              ? message!
-              : 'No fue posible iniciar sesión. Revisa tus datos.',
+          isAuthError
+              ? 'No pudimos iniciar sesión. Revisa tus datos.'
+              : 'No pudimos conectar con UAT. Inténtalo de nuevo.',
           authenticationFailed: isAuthError,
         );
       }
 
       if (decoded is! Map<String, dynamic>) {
         throw const StudentAuthException(
-          'El backend devolvió una respuesta inválida.',
+          'No pudimos conectar con UAT. Inténtalo de nuevo.',
         );
       }
 
@@ -166,11 +169,15 @@ class StudentAuthService {
     } on StudentAuthException {
       rethrow;
     } on SocketException {
-      throw const StudentAuthException('No hay conexión con el backend.');
+      throw const StudentAuthException('No hay conexión a internet.');
     } on FormatException {
-      throw const StudentAuthException('El backend devolvió JSON inválido.');
+      throw const StudentAuthException(
+        'No pudimos conectar con UAT. Inténtalo de nuevo.',
+      );
     } catch (_) {
-      throw const StudentAuthException('No fue posible iniciar sesión.');
+      throw const StudentAuthException(
+        'No pudimos iniciar sesión. Inténtalo de nuevo.',
+      );
     } finally {
       client.close(force: true);
     }
@@ -191,13 +198,10 @@ class StudentAuthService {
           : jsonDecode(body);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        final message = decoded is Map<String, dynamic>
-            ? decoded['message']?.toString()
-            : null;
         throw StudentAuthException(
-          message?.isNotEmpty == true
-              ? message!
-              : 'No se pudo sincronizar información UAT.',
+          response.statusCode == 401
+              ? 'No pudimos actualizar tus datos de UAT. Inicia sesión de nuevo.'
+              : 'No pudimos actualizar tus datos de UAT. Inténtalo de nuevo.',
           authenticationFailed: response.statusCode == 401,
         );
       }
@@ -212,7 +216,7 @@ class StudentAuthService {
       rethrow;
     } catch (_) {
       throw const StudentAuthException(
-        'No se pudo sincronizar información UAT.',
+        'No pudimos actualizar tus datos de UAT. Inténtalo de nuevo.',
       );
     } finally {
       client.close(force: true);
@@ -265,3 +269,4 @@ class StudentAuthService {
     return '';
   }
 }
+*/

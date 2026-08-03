@@ -52,7 +52,7 @@ class GrupoDetailPage extends StatefulWidget {
 }
 
 class _GrupoDetailPageState extends State<GrupoDetailPage>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   // Mapa para controlar el estado de asistencia de cada estudiante
   final Map<String, bool> _asistencias = {};
   final AuthStorageService _authStorage = AuthStorageService();
@@ -103,6 +103,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Configurar status bar transparente
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(statusBarColor: Colors.transparent),
@@ -232,6 +233,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _scrollController.removeListener(_scrollListener);
     _buttonAnimationController.dispose();
@@ -242,6 +244,14 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     _studentBeaconSubscription?.cancel();
     _studentBeaconService.stopScanning();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      _bleBeaconService.cancelScan();
+      _stopStudentBeaconScan();
+    }
   }
 
   @override
@@ -947,11 +957,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                   ? () {
                       HapticFeedback.mediumImpact();
                       if (_puedeMarcarSalida()) {
-                        setState(() {
-                          _salidaProfesor = DateTime.now();
-                        });
-                        _guardarAsistencia();
-                        _sincronizarSalidaProfesor();
+                        _verificarBeaconYMarcarSalida();
                       } else {
                         _mostrarMensajeHorario(_getMensajeVentanaSalida());
                       }
@@ -1100,12 +1106,38 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     );
   }
 
-  // ── Verificación BLE Beacon para Marcar Entrada ───────────────
+  // ── Verificación BLE Beacon para entrada y salida ─────────────
 
-  /// Inicia la verificación BLE y muestra el modal de escaneo.
-  /// Si detecta el beacon, marca la entrada verificada.
-  /// Si no, permite marcar con motivo (entrada parcial).
   Future<void> _verificarBeaconYMarcarEntrada() async {
+    final resultado = await _verificarBeaconDelSalon(permitirMotivo: true);
+    if (!mounted || resultado == null || !resultado.debeMarcarAsistencia) {
+      return;
+    }
+
+    HapticFeedback.heavyImpact();
+    setState(() {
+      _entradaProfesor = DateTime.now();
+      _entradaVerificada = resultado.verificada;
+      _motivoEntrada = resultado.motivo;
+    });
+    await _guardarAsistencia();
+  }
+
+  Future<void> _verificarBeaconYMarcarSalida() async {
+    final resultado = await _verificarBeaconDelSalon(permitirMotivo: false);
+    if (!mounted || resultado == null || !resultado.verificada) return;
+
+    HapticFeedback.heavyImpact();
+    setState(() {
+      _salidaProfesor = DateTime.now();
+    });
+    await _guardarAsistencia();
+    await _sincronizarSalidaProfesor();
+  }
+
+  Future<_BleDialogResult?> _verificarBeaconDelSalon({
+    required bool permitirMotivo,
+  }) async {
     // Buscar el UUID del beacon asignado al salón de este grupo
     final authStorage = AuthStorageService();
     var beaconUuid = authStorage.getBeaconUuidForClassroom(
@@ -1147,7 +1179,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
     final resolvedBeaconUuid = beaconUuid;
     if (resolvedBeaconUuid == null || resolvedBeaconUuid.isEmpty) {
-      if (!mounted) return;
+      if (!mounted) return null;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -1158,10 +1190,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           duration: const Duration(seconds: 4),
         ),
       );
-      return;
+      return null;
     }
 
-    if (!mounted) return;
+    if (!mounted) return null;
     final resultado = await showDialog<_BleDialogResult>(
       context: context,
       barrierDismissible: false,
@@ -1169,20 +1201,11 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         bleService: _bleBeaconService,
         beaconUuid: resolvedBeaconUuid,
         gradientColors: widget.gradientColors,
+        permitirMotivo: permitirMotivo,
       ),
     );
 
-    if (!mounted || resultado == null) return;
-
-    if (resultado.marcarEntrada) {
-      HapticFeedback.heavyImpact();
-      setState(() {
-        _entradaProfesor = DateTime.now();
-        _entradaVerificada = resultado.verificada;
-        _motivoEntrada = resultado.motivo;
-      });
-      await _guardarAsistencia();
-    }
+    return resultado;
   }
 
   String _formatTime(DateTime dateTime) {
@@ -1734,17 +1757,28 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           for (final alumno in widget.grupo.students)
             if (alumno.id != null) alumno.id!: _alumnoKey(alumno),
         };
+        final studentKeysByMatricula = {
+          for (final alumno in widget.grupo.students)
+            if (alumno.matricula?.trim().isNotEmpty ?? false)
+              alumno.matricula!.trim().toUpperCase(): _alumnoKey(alumno),
+        };
 
         for (final binding in bindings) {
           final studentId = binding['studentId']?.toString();
+          final matricula = binding['matricula']?.toString();
           final beaconUuid = binding['beaconUuid']?.toString();
-          if (studentId == null ||
-              studentId.isEmpty ||
-              beaconUuid == null ||
-              beaconUuid.isEmpty) {
+          if (beaconUuid == null || beaconUuid.isEmpty) {
             continue;
           }
-          final studentKey = studentKeys[studentId] ?? studentId;
+          final studentKey =
+              (matricula == null || matricula.trim().isEmpty
+                  ? null
+                  : studentKeysByMatricula[matricula.trim().toUpperCase()]) ??
+              (studentId == null || studentId.isEmpty
+                  ? null
+                  : studentKeys[studentId]) ??
+              studentId;
+          if (studentKey == null || studentKey.isEmpty) continue;
           final normalized = _normalizeBeaconUuid(beaconUuid);
           if (normalized.isEmpty) continue;
           resolved[normalized] = studentKey;
@@ -2560,23 +2594,26 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 // ══════════════════════════════════════════════════════════════════
 
 class _BleDialogResult {
-  final bool marcarEntrada;
+  final bool debeMarcarAsistencia;
   final bool verificada;
   final String? motivo;
 
   const _BleDialogResult({
-    required this.marcarEntrada,
+    required this.debeMarcarAsistencia,
     required this.verificada,
     this.motivo,
   });
 
-  /// Beacon detectado — entrada verificada
+  /// Beacon detectado — asistencia verificada
   factory _BleDialogResult.verified() =>
-      const _BleDialogResult(marcarEntrada: true, verificada: true);
+      const _BleDialogResult(debeMarcarAsistencia: true, verificada: true);
 
   /// Beacon no detectado — entrada parcial con motivo
-  factory _BleDialogResult.withMotivo(String motivo) =>
-      _BleDialogResult(marcarEntrada: true, verificada: false, motivo: motivo);
+  factory _BleDialogResult.withMotivo(String motivo) => _BleDialogResult(
+    debeMarcarAsistencia: true,
+    verificada: false,
+    motivo: motivo,
+  );
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -2597,11 +2634,13 @@ class _BleBeaconScanDialog extends StatefulWidget {
   final BleBeaconVerificationService bleService;
   final String beaconUuid;
   final List<Color> gradientColors;
+  final bool permitirMotivo;
 
   const _BleBeaconScanDialog({
     required this.bleService,
     required this.beaconUuid,
     required this.gradientColors,
+    required this.permitirMotivo,
   });
 
   @override
@@ -2609,7 +2648,7 @@ class _BleBeaconScanDialog extends StatefulWidget {
 }
 
 class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
@@ -2624,6 +2663,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     _pulseController = AnimationController(
       vsync: this,
@@ -2706,10 +2746,19 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    widget.bleService.cancelScan();
     _pulseController.dispose();
     _progressSub?.cancel();
     _otroMotivoController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      widget.bleService.cancelScan();
+    }
   }
 
   @override
@@ -2876,7 +2925,9 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
     return Column(
       children: [
         Text(
-          'No pudimos verificar tu ubicación.\nPuedes reintentar o indicar un motivo.',
+          widget.permitirMotivo
+              ? 'No pudimos verificar tu ubicación.\nPuedes reintentar o indicar un motivo.'
+              : 'No pudimos verificar tu ubicación.\nAcércate al beacon e inténtalo de nuevo.',
           textAlign: TextAlign.center,
           style: TextStyle(color: palette.textSecondary, fontSize: 14),
         ),
@@ -2904,32 +2955,33 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
             ),
           ),
         ),
-        const SizedBox(height: 10),
-        // Marcar con motivo
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () {
-              setState(() {
-                _phase = _ScanPhase.motivo;
-                _statusText = 'Indica el motivo';
-              });
-            },
-            icon: const Icon(Icons.edit_note_rounded, size: 20),
-            label: const Text(
-              'Marcar con motivo',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-            ),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: palette.textSecondary,
-              side: BorderSide(color: palette.border),
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+        if (widget.permitirMotivo) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                setState(() {
+                  _phase = _ScanPhase.motivo;
+                  _statusText = 'Indica el motivo';
+                });
+              },
+              icon: const Icon(Icons.edit_note_rounded, size: 20),
+              label: const Text(
+                'Marcar con motivo',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: palette.textSecondary,
+                side: BorderSide(color: palette.border),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
           ),
-        ),
+        ],
         const SizedBox(height: 8),
         TextButton(
           onPressed: () => Navigator.of(context).pop(),

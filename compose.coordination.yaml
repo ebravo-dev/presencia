@@ -44,6 +44,7 @@ services:
     restart: unless-stopped
     environment:
       BACKEND_API_UPSTREAM: backend-apirest:3100
+      ATTENDANCE_BACKEND_UPSTREAM: ${ATTENDANCE_BACKEND_UPSTREAM:-backend:3000}
     depends_on:
       backend-apirest:
         condition: service_healthy

@@ -20,8 +20,10 @@ import UIKit
   private var isAdvertising = false
   private var activeAttendanceUuid: String?
   private var attendanceUuidValue: Data?
+  private var waitingForGattService = false
 
   private var locationManager: CLLocationManager?
+  private var pendingLocationPermissionResult: FlutterResult?
   private var activeConstraints: [String: CLBeaconIdentityConstraint] = [:]
   private var monitoredRegions: [String: CLBeaconRegion] = [:]
   private var backgroundTaskIdentifier: UIBackgroundTaskIdentifier = .invalid
@@ -143,11 +145,8 @@ import UIKit
 
     switch call.method {
     case "checkBluetoothState":
-      guard CLLocationManager.isRangingAvailable() else {
-        result("unsupported")
-        return
-      }
-      result(CLLocationManager.locationServicesEnabled() ? "poweredOn" : "poweredOff")
+      let state = peripheralManager?.state ?? .unknown
+      result(state == .poweredOn ? "poweredOn" : "poweredOff")
 
     case "requestPermissions":
       requestLocationPermissions(result: result)
@@ -178,12 +177,12 @@ import UIKit
     configurePeripheralManager()
     activeAttendanceUuid = uuid.uuidString
     attendanceUuidValue = uuid.uuidString.data(using: .utf8)
-    configureAttendanceGattService()
     pendingAdvertisementData = [
       CBAdvertisementDataServiceUUIDsKey: [attendanceServiceUuid],
       CBAdvertisementDataLocalNameKey: "Presencia"
     ]
-    triggerAdvertisingIfPossible()
+    waitingForGattService = true
+    configureAttendanceGattService()
   }
 
   private func stopBeacon() {
@@ -192,12 +191,13 @@ import UIKit
     pendingAdvertisementData = nil
     activeAttendanceUuid = nil
     attendanceUuidValue = nil
+    waitingForGattService = false
     isAdvertising = false
     advertiserChannel?.invokeMethod("onAdvertisingStateChanged", arguments: false)
   }
 
   private func configureAttendanceGattService() {
-    guard let manager = peripheralManager else { return }
+    guard let manager = peripheralManager, manager.state == .poweredOn else { return }
     manager.removeAllServices()
 
     let uuidCharacteristic = CBMutableCharacteristic(
@@ -221,6 +221,7 @@ import UIKit
     guard
       let manager = peripheralManager,
       manager.state == .poweredOn,
+      !waitingForGattService,
       let data = pendingAdvertisementData
     else {
       return
@@ -281,8 +282,8 @@ import UIKit
 
     let status = authorizationStatus(for: manager)
     if status == .notDetermined {
+      pendingLocationPermissionResult = result
       manager.requestWhenInUseAuthorization()
-      result(false)
       return
     }
 
@@ -401,7 +402,6 @@ extension AppDelegate: CBPeripheralManagerDelegate {
       if activeAttendanceUuid != nil {
         configureAttendanceGattService()
       }
-      triggerAdvertisingIfPossible()
     case .poweredOff:
       state = "poweredOff"
       isAdvertising = false
@@ -425,6 +425,21 @@ extension AppDelegate: CBPeripheralManagerDelegate {
       pendingAdvertisementData = nil
     }
     advertiserChannel?.invokeMethod("onAdvertisingStateChanged", arguments: isAdvertising)
+  }
+
+  func peripheralManager(_ peripheral: CBPeripheralManager, didAdd service: CBService, error: Error?) {
+    guard service.uuid == attendanceServiceUuid else { return }
+
+    if error != nil {
+      waitingForGattService = false
+      pendingAdvertisementData = nil
+      isAdvertising = false
+      advertiserChannel?.invokeMethod("onAdvertisingStateChanged", arguments: false)
+      return
+    }
+
+    waitingForGattService = false
+    triggerAdvertisingIfPossible()
   }
 
   func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
@@ -453,6 +468,16 @@ extension AppDelegate: CBPeripheralManagerDelegate {
 }
 
 extension AppDelegate: CLLocationManagerDelegate {
+  func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    guard let result = pendingLocationPermissionResult else { return }
+
+    let status = authorizationStatus(for: manager)
+    guard status != .notDetermined else { return }
+
+    pendingLocationPermissionResult = nil
+    result(status == .authorizedAlways || status == .authorizedWhenInUse)
+  }
+
   func locationManager(
     _ manager: CLLocationManager,
     didRange beacons: [CLBeacon],
