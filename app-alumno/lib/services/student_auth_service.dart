@@ -3,14 +3,13 @@ import 'dart:io';
 
 import '../config/app_environment.dart';
 import 'local_storage_service.dart';
+import 'student_session_request.dart';
 
 class StudentAuthResult {
-  final String sessionId;
   final String matricula;
   final String deviceBindingToken;
 
   const StudentAuthResult({
-    required this.sessionId,
     required this.matricula,
     required this.deviceBindingToken,
   });
@@ -56,24 +55,29 @@ class StudentAuthService {
       username: username,
       password: password,
       storage: storage,
-      bindDevice: true,
     );
 
     final sessionId = decoded['sessionId']?.toString() ?? '';
-    final matricula = _extractMatricula(decoded);
-    final deviceBindingToken = decoded['deviceBindingToken']?.toString() ?? '';
+    try {
+      final matricula = _extractMatricula(decoded);
+      final deviceBindingToken =
+          decoded['deviceBindingToken']?.toString() ?? '';
 
-    if (sessionId.isEmpty || matricula.isEmpty || deviceBindingToken.isEmpty) {
-      throw const StudentAuthException(
-        'No pudimos preparar tu cuenta. Inténtalo de nuevo.',
+      if (sessionId.isEmpty ||
+          matricula.isEmpty ||
+          deviceBindingToken.isEmpty) {
+        throw const StudentAuthException(
+          'No pudimos preparar tu cuenta. Inténtalo de nuevo.',
+        );
+      }
+
+      return StudentAuthResult(
+        matricula: matricula,
+        deviceBindingToken: deviceBindingToken,
       );
+    } finally {
+      if (sessionId.isNotEmpty) await _deleteStudentSession(sessionId);
     }
-
-    return StudentAuthResult(
-      sessionId: sessionId,
-      matricula: matricula,
-      deviceBindingToken: deviceBindingToken,
-    );
   }
 
   Future<StudentInfoSyncResult> syncAcademicInfo(
@@ -91,7 +95,6 @@ class StudentAuthService {
       username: credentials.username,
       password: credentials.password,
       storage: storage,
-      bindDevice: false,
     );
     final sessionId = session['sessionId']?.toString() ?? '';
     if (sessionId.isEmpty) {
@@ -122,8 +125,8 @@ class StudentAuthService {
     required String username,
     required String password,
     required LocalStorageService storage,
-    required bool bindDevice,
   }) async {
+    await storage.ensureDeviceIdentity();
     final client = HttpClient()..connectionTimeout = _timeout;
     try {
       final uri = Uri.parse(baseUrl).resolve('/api/uat/alumnos/sessions');
@@ -131,14 +134,16 @@ class StudentAuthService {
       request.headers.contentType = ContentType.json;
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
       request.write(
-        jsonEncode({
-          'username': username.trim(),
-          'password': password,
-          if (bindDevice) 'attendanceUuid': storage.attendanceUuid,
-          if (bindDevice) 'deviceBindingId': storage.deviceBindingId,
-          if (bindDevice) 'platform': Platform.operatingSystem,
-          if (bindDevice) 'deviceInfo': Platform.operatingSystemVersion,
-        }),
+        jsonEncode(
+          buildStudentSessionRequest(
+            username: username,
+            password: password,
+            attendanceUuid: storage.attendanceUuid,
+            deviceBindingId: storage.deviceBindingId,
+            platform: Platform.operatingSystem,
+            deviceInfo: Platform.operatingSystemVersion,
+          ),
+        ),
       );
 
       final response = await request.close().timeout(_timeout);

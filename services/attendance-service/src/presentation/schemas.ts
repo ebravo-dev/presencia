@@ -29,9 +29,9 @@ export const captureAttendanceSchema = z.object({
   })).min(1).max(1_000),
 });
 export const deviceBindingSchema = z.object({
-  matricula: z.string().trim().min(1).max(40), attendanceUuid: z.uuid(), deviceBindingId: z.uuid().nullable().optional(),
-  platform: z.string().trim().max(40).nullable().optional(), deviceInfo: z.string().trim().max(500).nullable().optional(),
-});
+  matricula: z.string().trim().min(1).max(40), attendanceUuid: z.uuid(), deviceBindingId: z.uuid(),
+  platform: z.enum(['android', 'ios']), deviceInfo: z.string().trim().max(500).nullable().optional(),
+}).strict();
 export const resolveDeviceBindingsSchema = z.object({
   professorExternalId: z.string().trim().min(1).max(160),
   matriculas: z.array(z.string().trim().min(1).max(40)).min(1).max(1_000),

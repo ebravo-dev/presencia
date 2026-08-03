@@ -31,9 +31,9 @@ export interface StudentAcademicSyncLogger {
 
 export interface CreateUatStudentSessionInput extends UatCredentials {
   idPlanEstudio?: number;
-  attendanceUuid?: string;
-  deviceBindingId?: string;
-  platform?: string;
+  attendanceUuid: string;
+  deviceBindingId: string;
+  platform: 'android' | 'ios';
   deviceInfo?: string;
 }
 
@@ -73,11 +73,11 @@ export class UatStudentService {
       displayName: input.username.trim(),
       source: 'UAT_STUDENT',
       correlationId: context.correlationId ?? randomUUID(),
-      ...(input.deviceBindingId ? { deviceId: input.deviceBindingId } : {}),
+      deviceId: input.deviceBindingId,
     });
-    let deviceBindingToken: string | undefined;
+    let deviceBindingToken: string;
     try {
-      deviceBindingToken = await this.bindStudentDeviceIfRequested(input, selectedCareer, career);
+      deviceBindingToken = await this.bindStudentDevice(input, selectedCareer, career);
     } catch (error) {
       if (identitySession) {
         await this.identityService.revoke(identitySession.accessToken).catch(() => undefined);
@@ -99,8 +99,13 @@ export class UatStudentService {
       expiresAt: now,
     };
 
-    await this.sessionRepository.create(session.id, session);
-    return session;
+    try {
+      await this.sessionRepository.create(session.id, session);
+      return session;
+    } catch (error) {
+      await this.identityService.revoke(identitySession.accessToken).catch(() => undefined);
+      throw error;
+    }
   }
 
   async getSessionOrThrow(sessionId?: string): Promise<StoredUatStudentSession> {
@@ -129,6 +134,13 @@ export class UatStudentService {
   }
 
   async toSessionResponse(session: StoredUatStudentSession): Promise<UatStudentSessionResponse> {
+    if (!session.deviceBindingToken || !session.identitySession) {
+      throw new ApiError(
+        503,
+        'UAT_STUDENT_SESSION_INCOMPLETE',
+        'La sesión estudiantil no tiene identidad y vínculo de dispositivo completos.',
+      );
+    }
     return {
       sessionId: session.id,
       authenticated: true,
@@ -136,7 +148,7 @@ export class UatStudentService {
       careers: session.careers,
       selectedCareer: session.selectedCareer,
       deviceBindingToken: session.deviceBindingToken,
-      ...(session.identitySession ? { identitySession: session.identitySession } : {}),
+      identitySession: session.identitySession,
       createdAt: session.createdAt.toISOString(),
       lastUsedAt: session.lastUsedAt.toISOString(),
       expiresAt: session.expiresAt.toISOString(),
@@ -210,12 +222,11 @@ export class UatStudentService {
     };
   }
 
-  private async bindStudentDeviceIfRequested(
+  private async bindStudentDevice(
     input: CreateUatStudentSessionInput,
     selectedCareer: UatStudentCareerSelection,
     fallbackCareer: UatStudentCareerItem,
-  ): Promise<string | undefined> {
-    if (!input.attendanceUuid) return undefined;
+  ): Promise<string> {
     const matricula = readStudentMatricula(selectedCareer, fallbackCareer);
     if (!matricula) {
       throw new ApiError(502, 'UAT_STUDENT_MATRICULA_MISSING', 'El portal de alumnos no devolvio matricula para vincular el celular.', {

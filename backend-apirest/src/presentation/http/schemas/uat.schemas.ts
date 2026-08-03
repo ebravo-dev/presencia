@@ -8,11 +8,11 @@ export const credentialsSchema = z.object({
 
 export const studentCredentialsSchema = credentialsSchema.extend({
   idPlanEstudio: z.coerce.number().int().positive().optional(),
-  attendanceUuid: z.string().uuid().optional(),
-  deviceBindingId: z.string().uuid().optional(),
-  platform: z.string().max(40).optional(),
+  attendanceUuid: z.string().uuid(),
+  deviceBindingId: z.string().uuid(),
+  platform: z.enum(['android', 'ios']),
   deviceInfo: z.string().max(500).optional(),
-});
+}).strict();
 
 export const professorDeviceBindingResolveSchema = z.object({
   matriculas: z.array(z.string().trim().min(1).max(40)).min(1).max(1_000),

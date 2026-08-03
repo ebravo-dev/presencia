@@ -147,9 +147,9 @@ curl -X POST http://localhost:3100/api/uat/alumnos/sessions \
 
 `idPlanEstudio` es opcional. Si no se envia, la API selecciona la primera
 carrera devuelta por `/Home/CarrerasAlumno`.
-`attendanceUuid` y `deviceBindingId` son opcionales para clientes de consulta,
-pero la app de alumnos los envia para que el backend vincule la matricula UAT
-con el UUID BLE estable del celular.
+`attendanceUuid`, `deviceBindingId` y `platform` son obligatorios en cada login.
+Attendance Service acepta nuevamente el mismo vínculo, pero rechaza cualquier
+cambio de UUID o dispositivo; ese cambio sólo puede realizarlo Coordinación.
 
 Consultar datos de alumno:
 

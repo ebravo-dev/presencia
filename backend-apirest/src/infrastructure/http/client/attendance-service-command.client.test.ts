@@ -12,6 +12,7 @@ describe('AttendanceServiceCommandClient', () => {
 
     await expect(client.createStudentDeviceBinding({
       matricula: '2251330007', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+      deviceBindingId: '12345678-1234-4234-9234-123456789abd', platform: 'android',
     })).resolves.toEqual({ data: { bindingToken: 'scoped-token' } });
 
     const [url, request] = fetchMock.mock.calls[0] ?? [];

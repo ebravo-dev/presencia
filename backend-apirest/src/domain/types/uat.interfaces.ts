@@ -373,8 +373,8 @@ export interface UatStudentSessionResponse {
   login: UatSafeLogin;
   careers: UatStudentCareerItem[];
   selectedCareer: UatStudentCareerSelection;
-  deviceBindingToken?: string;
-  identitySession?: IdentitySessionGrant;
+  deviceBindingToken: string;
+  identitySession: IdentitySessionGrant;
   createdAt: string;
   lastUsedAt: string;
   expiresAt: string;

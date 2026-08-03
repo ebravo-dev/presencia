@@ -9,14 +9,14 @@ import type {
   UatStudentPortalClientPort,
 } from '../../domain/types/uat.interfaces.js';
 import type { UatStudentClientFactory } from '../../infrastructure/http/client/uat-student-client.factory.js';
-import { UatStudentService } from './uat-student.service.js';
+import { UatStudentService, type CreateUatStudentSessionInput } from './uat-student.service.js';
 
 describe('UatStudentService', () => {
   it('crea sesion seleccionando la primera carrera cuando no se envia plan', async () => {
     const client = fakeStudentClient();
     const service = makeService(client);
 
-    const session = await service.createSession({ username: 'ALUMNO@UAT.EDU.MX', password: 'secret' });
+    const session = await service.createSession(studentLoginInput({ username: 'ALUMNO@UAT.EDU.MX' }));
 
     expect(session.username).toBe('alumno@uat.edu.mx');
     expect(client.selectedPlans).toEqual([3313]);
@@ -27,7 +27,7 @@ describe('UatStudentService', () => {
     const client = fakeStudentClient();
     const service = makeService(client);
 
-    await service.createSession({ username: 'alumno@uat.edu.mx', password: 'secret', idPlanEstudio: 3314 });
+    await service.createSession(studentLoginInput({ idPlanEstudio: 3314 }));
 
     expect(client.selectedPlans).toEqual([3314]);
   });
@@ -75,11 +75,9 @@ describe('UatStudentService', () => {
         },
       } as never,
     });
-    await expect(service.createSession({
-      username: 'alumno@uat.edu.mx', password: 'secret',
-      attendanceUuid: '12345678-1234-4234-9234-123456789abc',
-      deviceBindingId: '12345678-1234-4234-9234-123456789abd',
-    })).rejects.toMatchObject({ statusCode: 503, code: 'ATTENDANCE_SERVICE_UNAVAILABLE' });
+    await expect(service.createSession(studentLoginInput())).rejects.toMatchObject({
+      statusCode: 503, code: 'ATTENDANCE_SERVICE_UNAVAILABLE',
+    });
   });
 
   it('rechaza un plan que no pertenece al alumno', async () => {
@@ -87,7 +85,7 @@ describe('UatStudentService', () => {
     const service = makeService(client);
 
     await expect(
-      service.createSession({ username: 'alumno@uat.edu.mx', password: 'secret', idPlanEstudio: 9999 }),
+      service.createSession(studentLoginInput({ idPlanEstudio: 9999 })),
     ).rejects.toMatchObject({
       statusCode: 404,
       code: 'UAT_STUDENT_CAREER_NOT_FOUND',
@@ -104,7 +102,7 @@ describe('UatStudentService', () => {
     const service = makeService(client, {
       academic: { publishStudentSnapshot: async (snapshot: unknown) => { snapshots.push(snapshot); } } as never,
     });
-    const session = await service.createSession({ username: 'alumno@uat.edu.mx', password: 'secret' });
+    const session = await service.createSession(studentLoginInput());
 
     await service.getScheduleBySession(session.id, { correlationId: 'request-1' });
 
@@ -118,11 +116,48 @@ describe('UatStudentService', () => {
     });
     expect(JSON.stringify(snapshots[0])).not.toMatch(/password|cookie|sessionId/i);
   });
+
+  it('revoca la identidad si Redis no puede conservar la sesion UAT', async () => {
+    const revoked: string[] = [];
+    const repository = memoryRepository();
+    repository.create = async () => { throw new Error('Redis unavailable'); };
+    const service = makeService(fakeStudentClient(), {
+      repository,
+      identity: {
+        createAuthenticatedSession: async () => ({
+          identityId: 'identity-student-1', sessionId: 'identity-session-1',
+          accessToken: 'identity-token-1', expiresAt: '2026-08-03T00:00:00.000Z',
+        }),
+        revoke: async (token: string) => { revoked.push(token); },
+      },
+    });
+
+    await expect(service.createSession(studentLoginInput())).rejects.toThrow('Redis unavailable');
+    expect(revoked).toEqual(['identity-token-1']);
+  });
 });
+
+function studentLoginInput(
+  overrides: Partial<CreateUatStudentSessionInput> = {},
+): CreateUatStudentSessionInput {
+  return {
+    username: 'alumno@uat.edu.mx',
+    password: 'secret',
+    attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+    deviceBindingId: '12345678-1234-4234-9234-123456789abd',
+    platform: 'android',
+    ...overrides,
+  };
+}
 
 function makeService(
   client: UatStudentPortalClientPort,
-  overrides: { binding?: unknown; identity?: unknown; academic?: unknown } = {},
+  overrides: {
+    repository?: IUatSessionRepository<StoredUatStudentSession>;
+    binding?: unknown;
+    identity?: unknown;
+    academic?: unknown;
+  } = {},
 ) {
   const binding = overrides.binding ?? {
     createStudentDeviceBinding: async () => ({ data: { bindingToken: 'signed-binding-token' } }),
@@ -138,7 +173,7 @@ function makeService(
   };
   const academic = overrides.academic ?? { publishStudentSnapshot: async () => undefined };
   return new UatStudentService(
-    memoryRepository(),
+    overrides.repository ?? memoryRepository(),
     fakeFactory(client),
     binding as never,
     identity as never,

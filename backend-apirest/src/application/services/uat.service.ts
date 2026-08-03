@@ -66,8 +66,13 @@ export class UatService {
       expiresAt: now,
     };
 
-    await this.sessionRepository.create(session.id, session);
-    return session;
+    try {
+      await this.sessionRepository.create(session.id, session);
+      return session;
+    } catch (error) {
+      await this.identityService.revoke(identitySession.accessToken).catch(() => undefined);
+      throw error;
+    }
   }
 
   async getSessionOrThrow(sessionId?: string): Promise<StoredUatSession> {

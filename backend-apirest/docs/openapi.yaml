@@ -329,7 +329,8 @@ paths:
       description: >
         Obtiene __RequestVerificationToken, ejecuta Login/Accesar_Dominio,
         valida la sesion, consulta carreras y selecciona el plan solicitado o
-        el primero disponible.
+        el primero disponible. Registra o valida obligatoriamente el UUID y el
+        dispositivo del alumno en Attendance Service.
       requestBody:
         required: true
         content:
@@ -958,6 +959,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/Credentials"
         - type: object
+          required: [attendanceUuid, deviceBindingId, platform]
           properties:
             idPlanEstudio:
               type: integer
@@ -973,6 +975,7 @@ components:
               description: Identificador estable de la instalacion/dispositivo.
             platform:
               type: string
+              enum: [android, ios]
               example: android
             deviceInfo:
               type: string
@@ -1032,7 +1035,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/SessionResponse"
         - type: object
-          required: [careers, selectedCareer]
+          required: [careers, selectedCareer, deviceBindingToken, identitySession]
           properties:
             careers:
               type: array

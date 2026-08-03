@@ -34,6 +34,21 @@ describe('Attendance HTTP API', () => {
     await app.close();
   });
 
+  it('rejects an initial binding without a complete phone identity', async () => {
+    const app = await testApp();
+    const response = await app.inject({
+      method: 'POST', url: '/internal/v1/attendance/device-bindings/initial',
+      headers: { 'x-internal-service-token': token },
+      payload: {
+        matricula: '2251330007',
+        attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+      },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toBe('VALIDATION_ERROR');
+    await app.close();
+  });
+
   it('lets the student app refresh only its exact active binding through the public route', async () => {
     const app = await testApp();
     const initial = await app.inject({

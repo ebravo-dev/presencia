@@ -39,6 +39,7 @@ class LocalStorageService {
   Future<void> init() async {
     await Hive.initFlutter();
     _profile = await Hive.openBox(_profileBox);
+    await _profile.delete('uat_student_session_id');
   }
 
   // ── Profile ──────────────────────────────────────────────────
@@ -55,9 +56,6 @@ class LocalStorageService {
 
   String get institutionalEmail =>
       _profile.get('institutional_email', defaultValue: '');
-
-  String get uatStudentSessionId =>
-      _profile.get('uat_student_session_id', defaultValue: '');
 
   String get classroomBeaconUuid =>
       _profile.get('classroom_beacon_uuid', defaultValue: '');
@@ -119,7 +117,6 @@ class LocalStorageService {
   Future<void> saveProfile(
     String matricula, {
     String? institutionalEmail,
-    String? uatStudentSessionId,
   }) async {
     await ensureDeviceIdentity();
 
@@ -127,10 +124,6 @@ class LocalStorageService {
     if (institutionalEmail != null) {
       await _profile.put('institutional_email', institutionalEmail);
     }
-    if (uatStudentSessionId != null) {
-      await _profile.put('uat_student_session_id', uatStudentSessionId);
-    }
-
     await _syncNativeIdentity(
       matricula: matricula,
       attendanceUuid: attendanceUuid,

@@ -1,8 +1,8 @@
 export interface StudentDeviceBindingInput {
   matricula: string;
   attendanceUuid: string;
-  deviceBindingId?: string;
-  platform?: string;
+  deviceBindingId: string;
+  platform: 'android' | 'ios';
   deviceInfo?: string;
 }
 

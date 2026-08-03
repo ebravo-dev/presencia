@@ -139,7 +139,6 @@ class _AppRouterState extends State<_AppRouter> {
           await widget.storage.saveProfile(
             result.matricula,
             institutionalEmail: username,
-            uatStudentSessionId: result.sessionId,
           );
           await widget.bleService.setStudentIdentity(
             matricula: result.matricula,
