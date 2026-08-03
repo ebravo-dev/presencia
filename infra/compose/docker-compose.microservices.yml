@@ -258,16 +258,6 @@ services:
         condition: service_completed_successfully
     networks: [private]
 
-  uat-provision:
-    image: presencia-uat-integration:${IMAGE_TAG:-latest}
-    restart: "no"
-    command: ["node", "dist/scripts/create-coordinator.js", "--if-configured"]
-    environment: *uat-environment
-    depends_on:
-      shared-class-import:
-        condition: service_completed_successfully
-    networks: [private]
-
   shared-class-import:
     image: presencia-uat-integration:${IMAGE_TAG:-latest}
     restart: "no"
@@ -323,7 +313,7 @@ services:
     command: ["npm", "run", "import:staff-accounts"]
     environment: *uat-environment
     depends_on:
-      uat-provision:
+      shared-class-import:
         condition: service_completed_successfully
       identity-service:
         condition: service_healthy

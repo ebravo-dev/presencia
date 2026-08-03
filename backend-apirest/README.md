@@ -248,26 +248,22 @@ npm run prisma:generate
 npm run prisma:deploy
 ```
 
-Los jobs `uat-migrate` y `uat-provision` ejecutan migraciones y
-aprovisionamiento una sola vez antes de iniciar réplicas HTTP.
+Los jobs `uat-migrate` y `staff-account-import` ejecutan migraciones y adoptan
+cuentas históricas/configuradas en Identity antes de iniciar réplicas HTTP.
 
-Provisiona o rota una cuenta de coordinación sin guardar su contraseña en el
-frontend:
+Configura la primera cuenta sin guardar su contraseña en el frontend:
 
 ```powershell
 $env:COORDINATOR_EMAIL="coordinacion@uat.edu.mx"
 $env:COORDINATOR_NAME="Coordinación Académica"
 $env:COORDINATOR_PASSWORD="una-clave-segura-de-12-caracteres"
-npm run coordinator:create
 ```
 
 Para varias cuentas define `COORDINATORS_JSON` como un arreglo de objetos con
-`email`, `name` y `password`, y ejecuta el mismo comando. Omitir una cuenta del
-arreglo no la elimina ni la deshabilita automaticamente.
-
-Desde la terminal del contenedor en Dokploy se puede repetir el aprovisionamiento
-con `npm run coordinator:create:production`; toma las variables actuales del
-servicio y nunca imprime las contraseñas.
+`email`, `name`, `password` y opcionalmente `role`. El job de importación las
+crea en Identity sólo si todavía no fueron adoptadas. Después, toda rotación,
+baja o cambio de rol se realiza desde el panel de superusuario y no es
+sobrescrito por despliegues posteriores.
 
 La SPA vive en `frontend-coord`. En desarrollo usa Vite y proxy a `:3100`; en
 producción se sirve desde el contenedor independiente `frontend-coord` bajo

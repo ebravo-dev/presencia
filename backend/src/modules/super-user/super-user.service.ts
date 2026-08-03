@@ -7,7 +7,7 @@ import {
     getAttendanceSettings,
     updateAttendanceSettings,
 } from '../settings/attendance-settings.service.js';
-import type { CoordinatorCreateInput, CoordinatorUpdateInput, DebugClassCreateInput, DebugClassUpdateInput, DebugSettingsUpdateInput } from './super-user.schemas.js';
+import type { DebugClassCreateInput, DebugClassUpdateInput, DebugSettingsUpdateInput } from './super-user.schemas.js';
 import { AttendanceServiceCommandClient } from './attendance-service-command.client.js';
 
 const studentDeviceBinding = (prisma as any).studentDeviceBinding;
@@ -60,30 +60,6 @@ export class SuperUserService {
         } catch {
             return null;
         }
-    }
-
-    listCoordinators() {
-        return this.requestCoordinationApi('/api/internal/coordinacion/coordinadores');
-    }
-
-    createCoordinator(input: CoordinatorCreateInput) {
-        return this.requestCoordinationApi('/api/internal/coordinacion/coordinadores', {
-            method: 'POST',
-            body: input,
-        });
-    }
-
-    updateCoordinator(id: string, input: CoordinatorUpdateInput) {
-        return this.requestCoordinationApi(`/api/internal/coordinacion/coordinadores/${encodeURIComponent(id)}`, {
-            method: 'PUT',
-            body: input,
-        });
-    }
-
-    async deleteCoordinator(id: string): Promise<void> {
-        await this.requestCoordinationApi(`/api/internal/coordinacion/coordinadores/${encodeURIComponent(id)}`, {
-            method: 'DELETE',
-        });
     }
 
     listBeacons() {
@@ -457,29 +433,6 @@ export class SuperUserService {
         const expected = Buffer.from(env.SUPER_USER_PASSWORD);
         const actual = Buffer.from(candidate);
         return expected.length === actual.length && timingSafeEqual(expected, actual);
-    }
-
-    private async requestCoordinationApi(path: string, options: { method?: string; body?: unknown } = {}) {
-        const response = await fetch(`${env.BACKEND_API_REST_URL.replace(/\/+$/, '')}${path}`, {
-            method: options.method ?? 'GET',
-            headers: {
-                Authorization: `Bearer ${env.INTERNAL_API_TOKEN}`,
-                ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
-            },
-            body: options.body === undefined ? undefined : JSON.stringify(options.body),
-        });
-
-        if (response.status === 204) return undefined;
-
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-            throw Object.assign(new Error(payload.message ?? 'Error del servicio interno de coordinacion'), {
-                statusCode: response.status,
-                payload,
-            });
-        }
-
-        return payload;
     }
 
     private defaultDebugSchedule() {

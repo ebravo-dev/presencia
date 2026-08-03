@@ -2,8 +2,6 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { env } from '../../core/config/env.js';
 import { SuperUserService } from './super-user.service.js';
 import {
-    coordinatorCreateSchema,
-    coordinatorUpdateSchema,
     debugClassCreateSchema,
     debugClassUpdateSchema,
     debugSettingsUpdateSchema,
@@ -54,37 +52,6 @@ export async function superUserRoutes(fastify: FastifyInstance) {
         clearSuperUserCookie(reply);
         return reply.code(204).send();
     });
-
-    fastify.get('/api/superUsuario/coordinadores', { preHandler: requireSuperUser }, async (_request, reply) => {
-        return reply.send(await superUserService.listCoordinators());
-    });
-
-    fastify.post('/api/superUsuario/coordinadores', { preHandler: requireSuperUser }, async (request, reply) => {
-        const parsed = coordinatorCreateSchema.safeParse(request.body);
-        if (!parsed.success) return sendValidationError(reply, parsed.error.errors.map((issue) => issue.message));
-
-        return reply.code(201).send(await superUserService.createCoordinator(parsed.data));
-    });
-
-    fastify.put<{ Params: { id: string } }>(
-        '/api/superUsuario/coordinadores/:id',
-        { preHandler: requireSuperUser },
-        async (request, reply) => {
-            const parsed = coordinatorUpdateSchema.safeParse(request.body);
-            if (!parsed.success) return sendValidationError(reply, parsed.error.errors.map((issue) => issue.message));
-
-            return reply.send(await superUserService.updateCoordinator(request.params.id, parsed.data));
-        }
-    );
-
-    fastify.delete<{ Params: { id: string } }>(
-        '/api/superUsuario/coordinadores/:id',
-        { preHandler: requireSuperUser },
-        async (request, reply) => {
-            await superUserService.deleteCoordinator(request.params.id);
-            return reply.code(204).send();
-        }
-    );
 
     fastify.get('/api/superUsuario/beacons', { preHandler: requireSuperUser }, async (_request, reply) => {
         return reply.send({ data: await superUserService.listBeacons() });

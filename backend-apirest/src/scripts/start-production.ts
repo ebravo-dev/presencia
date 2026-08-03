@@ -24,12 +24,11 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
 }
 
 const provisionExitCode = await run(process.execPath, [
-  resolve(process.cwd(), 'dist', 'scripts', 'create-coordinator.js'),
-  '--if-configured',
+  resolve(process.cwd(), 'dist', 'scripts', 'import-coordinators-to-identity.js'),
 ]);
 
 if (provisionExitCode !== 0) {
-  console.error('No fue posible provisionar la cuenta de coordinacion. La API no se iniciara.');
+  console.error('No fue posible adoptar/provisionar las cuentas en Identity. La API no se iniciara.');
   process.exit(1);
 }
 

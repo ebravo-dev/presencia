@@ -52,7 +52,7 @@ El Compose automatiza el orden:
 No se deben ejecutar migraciones dentro de réplicas HTTP. Para escalar, aumenta
 réplicas únicamente de `api-gateway`, `uat-integration`, `identity-service`,
 `academic-service`, `attendance-service` y `coordination-query-service`. Los
-jobs `*-migrate`, `*-provision`, PostgreSQL, Redis y RabbitMQ permanecen únicos
+jobs `*-migrate`, `*-import`, PostgreSQL, Redis y RabbitMQ permanecen únicos
 salvo que se sustituyan por servicios administrados de alta disponibilidad.
 
 ## Verificación posterior

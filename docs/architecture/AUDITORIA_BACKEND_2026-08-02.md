@@ -64,7 +64,7 @@ un servicio propietario.
 | `/api/uat/profesor/beacons/resolve` | Attendance | BFF UAT; autorización de sustituciones pasa temporalmente por la fachada y la configuración siempre se lee de Attendance |
 | `/api/beacons/*` | Attendance | Fachada autenticada para móviles instalados; delega la resolución a Attendance sin leer configuración legada |
 | `/api/student-device-bindings/*` | Attendance | Corte completado; Gateway enruta al propietario y la lectura del profesor pasa por sesión UAT + roster |
-| `/api/superUsuario/auth/*`, `/api/superUsuario/coordinadores/*` | Identity | BFF `backend-apirest`; cuentas legadas se importan una sola vez |
+| `/api/superUsuario/auth/*`, `/api/superUsuario/coordinadores/*` | Identity | BFF `backend-apirest`; cuentas históricas se importan una sola vez y su tabla anterior queda sin CRUD runtime |
 | `/api/superUsuario/beacons/*`, `/api/superUsuario/alumnos-vinculados/*` | Attendance | BFF `backend-apirest` autentica con Identity y delega comandos auditados |
 
 Las rutas `/internal/*` nunca se publicarán en el gateway. Sólo estarán

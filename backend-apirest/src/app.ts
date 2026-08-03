@@ -10,7 +10,6 @@ import { pathToFileURL } from 'node:url';
 import { Redis } from 'ioredis';
 import { SyncTeacherDataListener } from './application/listeners/sync-teacher-data.listener.js';
 import { CoordinationService } from './application/services/coordination.service.js';
-import { CoordinatorAccountService } from './application/services/coordinator-account.service.js';
 import { CoordinatorAuthService } from './application/services/coordinator-auth.service.js';
 import { SuperUserAuthService } from './application/services/super-user-auth.service.js';
 import { WeeklyAttendanceReportService } from './application/services/weekly-attendance-report.service.js';
@@ -46,7 +45,6 @@ import { AttendanceUploadWorker } from './infrastructure/jobs/attendance-upload.
 import { coordinationRoutes } from './presentation/http/routes/coordination.routes.js';
 import { coordinatorAuthRoutes } from './presentation/http/routes/coordinator-auth.routes.js';
 import { superUserRoutes } from './presentation/http/routes/super-user.routes.js';
-import { internalCoordinationRoutes } from './presentation/http/routes/internal-coordination.routes.js';
 import { uatRoutes } from './presentation/http/routes/uat.routes.js';
 import type { DebugProfessorInput, HarvestDebugOptions } from './application/use-cases/harvest-teacher-data.use-case.js';
 
@@ -197,7 +195,6 @@ export async function buildApp() {
   );
   const coordinatorAuthService = new CoordinatorAuthService(identityServiceClient);
   const superUserAuthService = new SuperUserAuthService(identityServiceClient);
-  const coordinatorAccountService = new CoordinatorAccountService(prisma);
   const weeklyAttendanceReport = new WeeklyAttendanceReportService(
     teacherRepository,
     attendanceBackendClient,
@@ -317,11 +314,6 @@ export async function buildApp() {
       attendanceBackend: attendanceBackendClient,
     });
   }
-  await fastify.register(internalCoordinationRoutes, {
-    coordinatorAccountService,
-    internalToken: env.INTERNAL_API_TOKEN,
-  });
-
   await fastify.register(coordinationRoutes, {
     coordinationService,
     authService: coordinatorAuthService,

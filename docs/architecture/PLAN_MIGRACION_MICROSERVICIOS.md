@@ -560,7 +560,9 @@ Avance al 3 de agosto de 2026: Redis, JWT revocable/rotable, auditoría e
 integración posterior a autenticación UAT implementados. Identity ya posee las
 cuentas coordinadoras y las sesiones de coordinación/superusuario. Un job
 idempotente adopta las cuentas legadas sin sobrescribir cambios posteriores;
-el BFF conserva las URLs públicas y delega los recursos a su propietario.
+el BFF conserva las URLs públicas y delega los recursos a su propietario. Se
+retiraron el JWT, el CRUD runtime y el job de escritura de cuentas locales; el
+bootstrap configurado se crea directamente en Identity.
 
 Entregables:
 
