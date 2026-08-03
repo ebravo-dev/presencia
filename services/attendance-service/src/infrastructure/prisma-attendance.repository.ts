@@ -24,6 +24,14 @@ import {
   type SaveClassroomBeaconCommand,
   type UpdateClassroomBeaconCommand,
 } from '../domain/classroom-beacon.js';
+import type {
+  ProfessorEntryObservationCommand,
+  ProfessorExitObservationCommand,
+  ProfessorPresenceObservationResult,
+  PresenceActor,
+  StudentPresenceObservationCommand,
+  StudentPresenceObservationResult,
+} from '../domain/presence-observation.js';
 
 export class PrismaAttendanceRepository implements AttendanceRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -190,13 +198,13 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
         create: {
           groupId: group.id, date, professorExternalId: command.professorExternalId,
           professorEntryAt: command.professorEntryAt ?? null, professorExitAt: command.professorExitAt ?? null,
-          uploadStatus: 'PENDING', version: 1,
+          finalizedAt: new Date(), uploadStatus: 'PENDING', version: 1,
         },
         update: {
           professorExternalId: command.professorExternalId,
           ...(command.professorEntryAt && !existing?.professorEntryAt ? { professorEntryAt: command.professorEntryAt } : {}),
           ...(command.professorExitAt && !existing?.professorExitAt ? { professorExitAt: command.professorExitAt } : {}),
-          uploadStatus: 'PENDING', uploadError: null, uploadedAt: null, version: { increment: 1 },
+          finalizedAt: new Date(), uploadStatus: 'PENDING', uploadError: null, uploadedAt: null, version: { increment: 1 },
         },
       });
       const matriculas = resolvedMatriculas;
@@ -243,7 +251,7 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
       }
       const response: CaptureAttendanceResult = {
         attendanceSessionId: session.id, externalGroupId: group.externalGroupId, date: command.date,
-        entriesCount: command.entries.length, uploadStatus: session.uploadStatus,
+        entriesCount: command.entries.length, uploadStatus: 'PENDING',
         duplicate: false, version: session.version,
       };
       await transaction.attendanceCommand.create({
@@ -359,6 +367,165 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
     });
     const found = new Set(beacons.map(({ classroomKey }) => classroomKey));
     return { data: beacons, missing: requested.filter(({ classroomKey }) => !found.has(classroomKey)).map(({ classroom }) => classroom) };
+  }
+
+  async observeProfessorEntry(command: ProfessorEntryObservationCommand): Promise<ProfessorPresenceObservationResult> {
+    return this.withTransactionRetry(() => this.prisma.$transaction(async (transaction) => {
+      const duplicate = await this.processedPresenceCommand<ProfessorPresenceObservationResult>(transaction, command, 'PROFESSOR_ENTRY');
+      if (duplicate) return duplicate;
+      const group = await this.authorizedPresenceGroup(transaction, command);
+      const classroomKey = group.classroom ? normalizeClassroomKey(group.classroom) : '';
+      const classroomBeacon = classroomKey
+        ? await transaction.classroomBeacon.findUnique({ where: { classroomKey } })
+        : null;
+      if (!classroomBeacon) {
+        throw new AttendanceDomainError('CLASSROOM_BEACON_NOT_CONFIGURED', `No hay beacon asignado al salón ${group.classroom ?? ''}.`);
+      }
+      if (classroomBeacon.uuid !== command.beaconUuid) {
+        throw new AttendanceDomainError('ROOM_BEACON_MISMATCH', 'El beacon detectado no corresponde al salón del grupo.');
+      }
+      const date = attendanceDate(command.attendanceDate);
+      const existing = await transaction.attendanceSession.findUnique({
+        where: { groupId_date: { groupId: group.id, date } }, include: { _count: { select: { entries: true } } },
+      });
+      if (existing?.professorEntryAt) {
+        const result = professorPresenceResult(existing, group.externalGroupId, true);
+        await this.recordPresenceCommand(transaction, command, 'PROFESSOR_ENTRY', result);
+        return result;
+      }
+      const session = await transaction.attendanceSession.upsert({
+        where: { groupId_date: { groupId: group.id, date } },
+        create: {
+          groupId: group.id, date, professorExternalId: presenceProfessorExternalId(group, command),
+          professorEntryAt: command.observedAt, roomBeaconUuid: command.beaconUuid,
+          roomBeaconRssi: command.rssi ?? null, roomBeaconDistance: command.distance ?? null,
+          roomBeaconAddress: command.bluetoothAddress ?? null,
+        },
+        update: {
+          professorEntryAt: command.observedAt, roomBeaconUuid: command.beaconUuid,
+          roomBeaconRssi: command.rssi ?? null, roomBeaconDistance: command.distance ?? null,
+          roomBeaconAddress: command.bluetoothAddress ?? null,
+          ...(!existing?.finalizedAt ? { version: { increment: 1 } } : {}),
+        },
+        include: { _count: { select: { entries: true } } },
+      });
+      await this.attendanceProjectionEvent(transaction, session, group.externalGroupId, existing ? 'attendance.corrected.v1' : 'attendance.recorded.v1', command.correlationId);
+      const result = professorPresenceResult(session, group.externalGroupId, false);
+      await this.recordPresenceCommand(transaction, command, 'PROFESSOR_ENTRY', result);
+      return result;
+    }, { isolationLevel: 'Serializable' }));
+  }
+
+  async observeProfessorExit(command: ProfessorExitObservationCommand): Promise<ProfessorPresenceObservationResult> {
+    return this.withTransactionRetry(() => this.prisma.$transaction(async (transaction) => {
+      const duplicate = await this.processedPresenceCommand<ProfessorPresenceObservationResult>(transaction, command, 'PROFESSOR_EXIT');
+      if (duplicate) return duplicate;
+      const group = await this.authorizedPresenceGroup(transaction, command);
+      const date = attendanceDate(command.attendanceDate);
+      const existing = await transaction.attendanceSession.findUnique({
+        where: { groupId_date: { groupId: group.id, date } }, include: { _count: { select: { entries: true } } },
+      });
+      if (existing?.professorExitAt) {
+        const result = professorPresenceResult(existing, group.externalGroupId, true);
+        await this.recordPresenceCommand(transaction, command, 'PROFESSOR_EXIT', result);
+        return result;
+      }
+      const session = await transaction.attendanceSession.upsert({
+        where: { groupId_date: { groupId: group.id, date } },
+        create: {
+          groupId: group.id, date, professorExternalId: presenceProfessorExternalId(group, command),
+          professorExitAt: command.observedAt,
+        },
+        update: {
+          professorExitAt: command.observedAt,
+          ...(!existing?.finalizedAt ? { version: { increment: 1 } } : {}),
+        },
+        include: { _count: { select: { entries: true } } },
+      });
+      await this.attendanceProjectionEvent(transaction, session, group.externalGroupId, existing ? 'attendance.corrected.v1' : 'attendance.recorded.v1', command.correlationId);
+      const result = professorPresenceResult(session, group.externalGroupId, false);
+      await this.recordPresenceCommand(transaction, command, 'PROFESSOR_EXIT', result);
+      return result;
+    }, { isolationLevel: 'Serializable' }));
+  }
+
+  async observeStudentPresence(command: StudentPresenceObservationCommand): Promise<StudentPresenceObservationResult> {
+    return this.withTransactionRetry(() => this.prisma.$transaction(async (transaction) => {
+      const duplicate = await this.processedPresenceCommand<StudentPresenceObservationResult>(transaction, command, 'STUDENT_DETECTIONS');
+      if (duplicate) return duplicate;
+      const group = await this.authorizedPresenceGroup(transaction, command);
+      const students = await transaction.attendanceRosterStudent.findMany({
+        where: { groupId: group.id, active: true }, select: { id: true, matricula: true },
+      });
+      const bindings = await transaction.studentDeviceBinding.findMany({
+        where: { active: true, matricula: { in: students.map(({ matricula }) => matricula) } },
+        select: { matricula: true, attendanceUuid: true },
+      });
+      const studentByMatricula = new Map(students.map((student) => [student.matricula, student]));
+      const matriculaByUuid = new Map(bindings.map(({ matricula, attendanceUuid }) => [attendanceUuid.toLowerCase(), matricula]));
+      const matchedByMatricula = new Map<string, { studentId: string; detection: StudentPresenceObservationCommand['detections'][number] }>();
+      for (const detection of command.detections) {
+        const matricula = matriculaByUuid.get(detection.beaconUuid);
+        const student = matricula ? studentByMatricula.get(matricula) : undefined;
+        if (student) matchedByMatricula.set(matricula!, { studentId: student.id, detection });
+      }
+      if (matchedByMatricula.size === 0) {
+        const result: StudentPresenceObservationResult = {
+          attendanceSessionId: null, externalGroupId: group.externalGroupId, date: command.attendanceDate,
+          matchedCount: 0, matched: [], duplicate: false, version: null,
+        };
+        await this.recordPresenceCommand(transaction, command, 'STUDENT_DETECTIONS', result);
+        return result;
+      }
+      const date = attendanceDate(command.attendanceDate);
+      const existing = await transaction.attendanceSession.findUnique({
+        where: { groupId_date: { groupId: group.id, date } },
+      });
+      const session = await transaction.attendanceSession.upsert({
+        where: { groupId_date: { groupId: group.id, date } },
+        create: { groupId: group.id, date, professorExternalId: presenceProfessorExternalId(group, command) },
+        update: { ...(!existing?.finalizedAt ? { version: { increment: 1 } } : {}) },
+      });
+      const matched: StudentPresenceObservationResult['matched'][number][] = [];
+      for (const [matricula, { studentId, detection }] of matchedByMatricula) {
+        if (!existing?.finalizedAt) {
+          await transaction.attendanceEntry.upsert({
+            where: { sessionId_matricula: { sessionId: session.id, matricula } },
+            create: { sessionId: session.id, matricula, status: 'PRESENT' },
+            update: { status: 'PRESENT' },
+          });
+        }
+        await transaction.studentPresenceDetection.upsert({
+          where: { sessionId_matricula: { sessionId: session.id, matricula } },
+          create: {
+            sessionId: session.id, matricula, beaconUuid: detection.beaconUuid,
+            firstDetectedAt: command.observedAt, lastDetectedAt: command.observedAt,
+            clientDetectedAt: detection.clientDetectedAt ?? null, rssi: detection.rssi ?? null,
+            distance: detection.distance ?? null, txPower: detection.txPower ?? null,
+            bluetoothAddress: detection.bluetoothAddress ?? null, major: detection.major ?? null, minor: detection.minor ?? null,
+          },
+          update: {
+            beaconUuid: detection.beaconUuid, lastDetectedAt: command.observedAt,
+            clientDetectedAt: detection.clientDetectedAt ?? null, rssi: detection.rssi ?? null,
+            distance: detection.distance ?? null, txPower: detection.txPower ?? null,
+            bluetoothAddress: detection.bluetoothAddress ?? null, major: detection.major ?? null, minor: detection.minor ?? null,
+          },
+        });
+        matched.push({ studentId, matricula, beaconUuid: detection.beaconUuid, detectedAt: command.observedAt.toISOString() });
+      }
+      if (!existing?.finalizedAt) {
+        const withCount = await transaction.attendanceSession.findUniqueOrThrow({
+          where: { id: session.id }, include: { _count: { select: { entries: true } } },
+        });
+        await this.attendanceProjectionEvent(transaction, withCount, group.externalGroupId, existing ? 'attendance.corrected.v1' : 'attendance.recorded.v1', command.correlationId);
+      }
+      const result: StudentPresenceObservationResult = {
+        attendanceSessionId: session.id, externalGroupId: group.externalGroupId, date: command.attendanceDate,
+        matchedCount: matched.length, matched, duplicate: false, version: session.version,
+      };
+      await this.recordPresenceCommand(transaction, command, 'STUDENT_DETECTIONS', result);
+      return result;
+    }, { isolationLevel: 'Serializable' }));
   }
 
   async bindInitial(command: BindDeviceCommand): Promise<BindDeviceResult> {
@@ -561,6 +728,77 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
     });
   }
 
+  private async authorizedPresenceGroup(transaction: Prisma.TransactionClient, command: PresenceActor) {
+    const group = await transaction.attendanceRosterGroup.findUnique({
+      where: { externalGroupId: command.externalGroupId },
+      select: {
+        id: true, externalGroupId: true, professorExternalId: true, classroom: true, active: true,
+      },
+    });
+    if (!group?.active) {
+      throw new AttendanceDomainError('ATTENDANCE_GROUP_NOT_FOUND', 'El grupo no existe o está inactivo.');
+    }
+    if (!command.trustedGroupAuthorization && group.professorExternalId !== command.professorExternalId) {
+      throw new AttendanceDomainError('PROFESSOR_GROUP_FORBIDDEN', 'El profesor no está autorizado para el grupo indicado.');
+    }
+    return group;
+  }
+
+  private async processedPresenceCommand<TResult extends { duplicate: boolean }>(
+    transaction: Prisma.TransactionClient,
+    command: PresenceActor,
+    operation: 'PROFESSOR_ENTRY' | 'PROFESSOR_EXIT' | 'STUDENT_DETECTIONS',
+  ): Promise<TResult | null> {
+    const processed = await transaction.attendanceCommand.findUnique({ where: { idempotencyKey: command.idempotencyKey } });
+    if (!processed) return null;
+    if (processed.operation !== operation || processed.requestHash !== command.idempotencyKey) {
+      throw new AttendanceDomainError('IDEMPOTENCY_KEY_REUSED', 'La clave de idempotencia ya se usó con otra solicitud.');
+    }
+    return { ...(processed.response as unknown as TResult), duplicate: true };
+  }
+
+  private async recordPresenceCommand(
+    transaction: Prisma.TransactionClient,
+    command: PresenceActor,
+    operation: 'PROFESSOR_ENTRY' | 'PROFESSOR_EXIT' | 'STUDENT_DETECTIONS',
+    response: ProfessorPresenceObservationResult | StudentPresenceObservationResult,
+  ): Promise<void> {
+    await transaction.attendanceCommand.create({
+      data: {
+        idempotencyKey: command.idempotencyKey, operation, requestHash: command.idempotencyKey,
+        response: json(response),
+      },
+    });
+  }
+
+  private async attendanceProjectionEvent(
+    transaction: Prisma.TransactionClient,
+    session: {
+      id: string; date: Date; professorExternalId: string; professorEntryAt: Date | null; professorExitAt: Date | null;
+      uploadStatus: 'DRAFT' | 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'; uploadError: string | null; version: number;
+      _count: { entries: number };
+    },
+    externalGroupId: string,
+    eventType: 'attendance.recorded.v1' | 'attendance.corrected.v1',
+    correlationId: string,
+  ): Promise<void> {
+    await transaction.attendanceOutboxEvent.create({
+      data: {
+        eventId: randomUUID(), eventType, aggregateId: session.id,
+        correlationId, causationId: correlationId,
+        payload: json({
+          attendanceSessionId: session.id, externalGroupId,
+          professorExternalId: session.professorExternalId,
+          date: session.date.toISOString().slice(0, 10),
+          professorEntryAt: session.professorEntryAt?.toISOString() ?? null,
+          professorExitAt: session.professorExitAt?.toISOString() ?? null,
+          entriesCount: session._count.entries, uploadStatus: session.uploadStatus,
+          uploadError: session.uploadError, version: session.version,
+        }),
+      },
+    });
+  }
+
   private async assertBeaconIdentifiersAvailable(
     transaction: Prisma.TransactionClient,
     uuid: string,
@@ -674,4 +912,30 @@ function mapBeaconConstraintError(error: unknown): unknown {
     return new ClassroomBeaconDomainError('CLASSROOM_BEACON_EXISTS', 'Ya existe un beacon asignado a ese salón.');
   }
   return error;
+}
+
+function attendanceDate(value: string): Date {
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+function professorPresenceResult(
+  session: {
+    id: string; date: Date; professorEntryAt: Date | null; professorExitAt: Date | null; version: number;
+  },
+  externalGroupId: string,
+  duplicate: boolean,
+): ProfessorPresenceObservationResult {
+  return {
+    attendanceSessionId: session.id, externalGroupId, date: session.date.toISOString().slice(0, 10),
+    professorEntryAt: session.professorEntryAt?.toISOString() ?? null,
+    professorExitAt: session.professorExitAt?.toISOString() ?? null,
+    duplicate, version: session.version,
+  };
+}
+
+function presenceProfessorExternalId(
+  group: { professorExternalId: string },
+  command: PresenceActor,
+): string {
+  return command.trustedGroupAuthorization ? group.professorExternalId : command.professorExternalId;
 }

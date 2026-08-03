@@ -85,6 +85,30 @@ export class AttendanceServiceCommandClient implements AttendanceBindingClient {
     return this.request('/internal/v1/attendance/classroom-beacons/resolve', { method: 'POST', body: input });
   }
 
+  observeProfessorEntry(input: ProfessorPresenceBase & {
+    beaconUuid: string; clientDetectedAt?: string | null; rssi?: number | null;
+    distance?: number | null; bluetoothAddress?: string | null;
+  }) {
+    return this.request('/internal/v1/attendance/presence/professor-entry', {
+      method: 'POST', correlationId: input.correlationId, body: withoutCorrelationId(input),
+    });
+  }
+
+  observeProfessorExit(input: ProfessorPresenceBase & { clientDetectedAt?: string | null }) {
+    return this.request('/internal/v1/attendance/presence/professor-exit', {
+      method: 'POST', correlationId: input.correlationId, body: withoutCorrelationId(input),
+    });
+  }
+
+  observeStudentPresence(input: ProfessorPresenceBase & { detections: Array<{
+    beaconUuid: string; detectedAt?: string | null; rssi?: number | null; distance?: number | null;
+    txPower?: number | null; bluetoothAddress?: string | null; major?: number | null; minor?: number | null;
+  }> }) {
+    return this.request('/internal/v1/attendance/presence/student-detections', {
+      method: 'POST', correlationId: input.correlationId, body: withoutCorrelationId(input),
+    });
+  }
+
   bindingInfrastructureSummary(): Promise<{
     data: { count: number; recentBindings: unknown[] }; meta: { generatedAt: string };
   }> {
@@ -149,6 +173,13 @@ interface BeaconActorInput {
   actorIdentityId: string;
   actorRole: 'COORDINATOR' | 'SUPER_USER';
   reason: string;
+  correlationId: string;
+}
+
+interface ProfessorPresenceBase {
+  professorExternalId: string;
+  externalGroupId: string;
+  trustedGroupAuthorization: boolean;
   correlationId: string;
 }
 

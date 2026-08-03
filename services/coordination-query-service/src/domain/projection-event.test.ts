@@ -18,4 +18,18 @@ describe('parseProjectionEvent', () => {
     });
     expect(event.payload).toMatchObject({ teacher: { externalId: '308127' }, coordination: { externalId: '12' } });
   });
+
+  it('distinguishes a BLE draft from an attendance waiting for UAT upload', () => {
+    const event = parseProjectionEvent({
+      eventId: '7bdf4fdc-09da-4e37-986f-ee8666456ee9', eventType: 'attendance.recorded.v1',
+      occurredAt: '2026-08-02T12:00:00.000Z', correlationId: 'request-2', causationId: 'request-2',
+      producer: 'attendance-service', aggregateId: 'session-1', schemaVersion: 1,
+      payload: {
+        attendanceSessionId: 'session-1', externalGroupId: '947699', professorExternalId: '308127',
+        date: '2026-08-02', professorEntryAt: '2026-08-02T12:00:00.000Z', professorExitAt: null,
+        entriesCount: 0, uploadStatus: 'DRAFT', uploadError: null, version: 1,
+      },
+    });
+    expect(event.payload).toMatchObject({ uploadStatus: 'DRAFT', entriesCount: 0 });
+  });
 });

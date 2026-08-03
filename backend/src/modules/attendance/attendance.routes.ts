@@ -6,6 +6,7 @@ import { uatRestSyncService } from '../uat-rest/index.js';
 import { findBeaconByClassroom } from '../beacons/beacons.service.js';
 import { attendanceDateFromServerNow, serverNow } from '../../core/time/server-time.js';
 import { env } from '../../core/config/env.js';
+import { AttendanceServiceCommandClient } from '../super-user/attendance-service-command.client.js';
 import {
     registerAttendanceSchema,
     attendanceHistoryQuerySchema,
@@ -23,6 +24,9 @@ import {
 
 const studentDeviceBinding = (prisma as any).studentDeviceBinding;
 const substituteAssignment = (prisma as any).substituteAssignment;
+const attendanceCommands = env.ATTENDANCE_SERVICE_URL
+    ? new AttendanceServiceCommandClient(env.ATTENDANCE_SERVICE_URL, env.INTERNAL_API_TOKEN)
+    : undefined;
 
 type StudentDeviceBindingRow = {
     matricula: string;
@@ -36,6 +40,20 @@ interface AuthenticatedRequest extends FastifyRequest {
 }
 
 class AttendanceSyncInProgressError extends Error {}
+
+function attendanceServiceError(error: unknown): { statusCode: number; error: string; message: string } | null {
+    if (!error || typeof error !== 'object' || !('statusCode' in error)) return null;
+    const source = error as Record<string, unknown>;
+    const statusCode = Number(source.statusCode);
+    if (!Number.isInteger(statusCode) || statusCode < 400 || statusCode > 599) return null;
+    return {
+        statusCode,
+        error: typeof source.code === 'string'
+            ? source.code
+            : 'ATTENDANCE_SERVICE_ERROR',
+        message: error instanceof Error ? error.message : 'Attendance Service rechazó la operación.',
+    };
+}
 
 function normalizeUuid(uuid: string): string {
     return uuid.replace(/-/g, '').toLowerCase().trim();
@@ -538,6 +556,13 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                 }
 
                 const { group, attendanceProfessorId } = resolvedGroup;
+                if (attendanceCommands) {
+                    return reply.code(201).send(await attendanceCommands.observeProfessorEntry({
+                        professorExternalId: `legacy:${professorId}`, externalGroupId: group.code,
+                        beaconUuid, clientDetectedAt: validated.detectedAt, rssi, distance, bluetoothAddress,
+                        correlationId: request.id,
+                    }));
+                }
                 const classroomBeacon = await findBeaconByClassroom(group.classroom);
 
                 if (!classroomBeacon) {
@@ -605,6 +630,8 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                 });
             } catch (error) {
                 request.log.error(error);
+                const delegatedError = attendanceCommands ? attendanceServiceError(error) : null;
+                if (delegatedError) return reply.code(delegatedError.statusCode).send(delegatedError);
                 return reply.code(500).send({
                     statusCode: 500,
                     error: 'Internal Server Error',
@@ -634,6 +661,12 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                 }
 
                 const { group, attendanceProfessorId } = resolvedGroup;
+                if (attendanceCommands) {
+                    return reply.code(201).send(await attendanceCommands.observeProfessorExit({
+                        professorExternalId: `legacy:${professorId}`, externalGroupId: group.code,
+                        clientDetectedAt: validated.detectedAt, correlationId: request.id,
+                    }));
+                }
                 const existingRecord = await prisma.attendanceRecord.findUnique({
                     where: {
                         date_groupId: {
@@ -674,6 +707,8 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                 });
             } catch (error) {
                 request.log.error(error);
+                const delegatedError = attendanceCommands ? attendanceServiceError(error) : null;
+                if (delegatedError) return reply.code(delegatedError.statusCode).send(delegatedError);
                 return reply.code(500).send({
                     statusCode: 500,
                     error: 'Internal Server Error',
@@ -701,6 +736,12 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                 }
 
                 const { group, attendanceProfessorId } = resolvedGroup;
+                if (attendanceCommands) {
+                    return reply.code(201).send(await attendanceCommands.observeStudentPresence({
+                        professorExternalId: `legacy:${professorId}`, externalGroupId: group.code,
+                        detections, correlationId: request.id,
+                    }));
+                }
                 const attendanceRecord = await prisma.attendanceRecord.upsert({
                     where: {
                         date_groupId: {
@@ -817,6 +858,8 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                 });
             } catch (error) {
                 request.log.error(error);
+                const delegatedError = attendanceCommands ? attendanceServiceError(error) : null;
+                if (delegatedError) return reply.code(delegatedError.statusCode).send(delegatedError);
                 return reply.code(500).send({
                     statusCode: 500,
                     error: 'Internal Server Error',

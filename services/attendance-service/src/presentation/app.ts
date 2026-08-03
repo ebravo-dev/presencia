@@ -5,6 +5,7 @@ import { Registry, collectDefaultMetrics } from 'prom-client';
 import type { CaptureAttendanceService } from '../application/capture-attendance.service.js';
 import type { ClassroomBeaconService } from '../application/classroom-beacon.service.js';
 import type { DeviceBindingService } from '../application/device-binding.service.js';
+import type { PresenceObservationService } from '../application/presence-observation.service.js';
 import { AttendanceDomainError } from '../domain/attendance.js';
 import type { AttendanceRepository } from '../domain/attendance.repository.js';
 import { ClassroomBeaconDomainError } from '../domain/classroom-beacon.js';
@@ -14,6 +15,7 @@ import {
   captureAttendanceSchema, coordinatorBindingSchema, coordinatorUnbindSchema, createClassroomBeaconSchema,
   deleteClassroomBeaconSchema, deviceBindingSchema, importClassroomBeaconsSchema, resolveClassroomBeaconsSchema,
   resolveAuthorizedClassroomBeaconsSchema, resolveDeviceBindingsSchema, rosterSnapshotSchema, updateClassroomBeaconSchema,
+  professorEntryObservationSchema, professorExitObservationSchema, studentPresenceObservationSchema,
 } from './schemas.js';
 
 export async function buildAttendanceApp(options: {
@@ -22,6 +24,7 @@ export async function buildAttendanceApp(options: {
   captures: CaptureAttendanceService;
   bindings: DeviceBindingService;
   beacons: ClassroomBeaconService;
+  presence: PresenceObservationService;
   ready: () => Promise<{ database: boolean; rabbitmq: boolean }>;
 }) {
   const app = Fastify({ logger: { level: options.env.NODE_ENV === 'test' ? 'silent' : 'info' } });
@@ -161,6 +164,24 @@ export async function buildAttendanceApp(options: {
     return options.beacons.resolveAuthorized(parsed.classrooms);
   });
 
+  app.post('/internal/v1/attendance/presence/professor-entry', { preHandler: internal }, async (request, reply) => {
+    const parsed = professorEntryObservationSchema.parse(request.body);
+    const result = await options.presence.observeProfessorEntry({ ...parsed, correlationId: correlationId(request) });
+    return reply.code(result.duplicate ? 200 : 201).send({ data: result, message: 'Entrada del profesor registrada por beacon.' });
+  });
+
+  app.post('/internal/v1/attendance/presence/professor-exit', { preHandler: internal }, async (request, reply) => {
+    const parsed = professorExitObservationSchema.parse(request.body);
+    const result = await options.presence.observeProfessorExit({ ...parsed, correlationId: correlationId(request) });
+    return reply.code(result.duplicate ? 200 : 201).send({ data: result, message: 'Salida del profesor registrada.' });
+  });
+
+  app.post('/internal/v1/attendance/presence/student-detections', { preHandler: internal }, async (request, reply) => {
+    const parsed = studentPresenceObservationSchema.parse(request.body);
+    const result = await options.presence.observeStudentPresence({ ...parsed, correlationId: correlationId(request) });
+    return reply.code(result.duplicate ? 200 : 201).send({ data: result, message: 'Detecciones de alumnos procesadas.' });
+  });
+
   app.put('/internal/v1/attendance/device-bindings/:matricula', { preHandler: internal }, async (request, reply) => {
     const parsed = coordinatorBindingSchema.parse(request.body);
     const matricula = (request.params as { matricula: string }).matricula;
@@ -196,7 +217,10 @@ export async function buildAttendanceApp(options: {
   app.setErrorHandler((error, request, reply) => {
     request.log.error({ err: error }, 'Attendance request failed.');
     if (error instanceof AttendanceDomainError) {
-      const conflict = ['IDEMPOTENCY_KEY_REUSED', 'ATTENDANCE_UPLOAD_IN_PROGRESS', 'DEVICE_BINDING_CHANGE_REQUIRES_COORDINATOR', 'DEVICE_IDENTIFIER_ALREADY_BOUND'];
+      const conflict = [
+        'IDEMPOTENCY_KEY_REUSED', 'ATTENDANCE_UPLOAD_IN_PROGRESS', 'DEVICE_BINDING_CHANGE_REQUIRES_COORDINATOR',
+        'DEVICE_IDENTIFIER_ALREADY_BOUND', 'CLASSROOM_BEACON_NOT_CONFIGURED', 'ROOM_BEACON_MISMATCH',
+      ];
       const forbidden = ['PROFESSOR_GROUP_FORBIDDEN', 'DEVICE_BINDING_TOKEN_MISMATCH'].includes(error.code);
       const notFound = error.code === 'ATTENDANCE_GROUP_NOT_FOUND';
       const unauthorized = error.code === 'DEVICE_BINDING_TOKEN_REVOKED';

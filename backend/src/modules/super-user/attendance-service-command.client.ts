@@ -88,6 +88,35 @@ export class AttendanceServiceCommandClient {
         });
     }
 
+    observeProfessorEntry(input: {
+        professorExternalId: string; externalGroupId: string; beaconUuid: string; clientDetectedAt?: string | null;
+        rssi?: number | null; distance?: number | null; bluetoothAddress?: string | null; correlationId: string;
+    }) {
+        return this.request('/internal/v1/attendance/presence/professor-entry', {
+            method: 'POST', correlationId: input.correlationId,
+            body: { ...presenceBody(input), beaconUuid: input.beaconUuid, clientDetectedAt: input.clientDetectedAt ?? null,
+                rssi: input.rssi ?? null, distance: input.distance ?? null, bluetoothAddress: input.bluetoothAddress ?? null },
+        });
+    }
+
+    observeProfessorExit(input: {
+        professorExternalId: string; externalGroupId: string; clientDetectedAt?: string | null; correlationId: string;
+    }) {
+        return this.request('/internal/v1/attendance/presence/professor-exit', {
+            method: 'POST', correlationId: input.correlationId,
+            body: { ...presenceBody(input), clientDetectedAt: input.clientDetectedAt ?? null },
+        });
+    }
+
+    observeStudentPresence(input: {
+        professorExternalId: string; externalGroupId: string; detections: unknown[]; correlationId: string;
+    }) {
+        return this.request('/internal/v1/attendance/presence/student-detections', {
+            method: 'POST', correlationId: input.correlationId,
+            body: { ...presenceBody(input), detections: input.detections },
+        });
+    }
+
     private async request<T = unknown>(
         path: string,
         options: { method: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; correlationId?: string },
@@ -115,4 +144,12 @@ export class AttendanceServiceCommandClient {
 
 function actorBody(input: BeaconCommandActor | AttendanceUnbindCommand) {
     return { actorIdentityId: input.actorIdentityId, actorRole: input.actorRole, reason: input.reason };
+}
+
+function presenceBody(input: { professorExternalId: string; externalGroupId: string }) {
+    return {
+        professorExternalId: input.professorExternalId,
+        externalGroupId: input.externalGroupId,
+        trustedGroupAuthorization: true,
+    };
 }

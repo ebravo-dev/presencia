@@ -76,6 +76,7 @@ x-attendance-service-environment: &attendance-service-environment
   NODE_ENV: production
   HOST: 0.0.0.0
   PORT: 3400
+  APP_TIME_ZONE: ${APP_TIME_ZONE:-America/Monterrey}
   DATABASE_URL: ${ATTENDANCE_SERVICE_DATABASE_URL:?ATTENDANCE_SERVICE_DATABASE_URL is required}
   RABBITMQ_URL: ${RABBITMQ_URL:?RABBITMQ_URL is required}
   INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}

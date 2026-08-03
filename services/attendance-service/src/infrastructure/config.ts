@@ -4,6 +4,7 @@ export const attendanceEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().positive().default(3400),
+  APP_TIME_ZONE: z.string().min(1).refine(isValidTimeZone, 'APP_TIME_ZONE must be a valid IANA timezone').default('America/Monterrey'),
   DATABASE_URL: z.string().min(1).default('postgresql://postgres:postgres@localhost:5432/presencia_attendance_v2?schema=public'),
   RABBITMQ_URL: z.string().min(1).default('amqp://guest:guest@localhost:5672'),
   OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1_000),
@@ -26,3 +27,12 @@ export const attendanceEnvSchema = z.object({
 
 export type AttendanceEnv = z.infer<typeof attendanceEnvSchema>;
 export const loadAttendanceEnv = (source: NodeJS.ProcessEnv = process.env): AttendanceEnv => attendanceEnvSchema.parse(source);
+
+function isValidTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}

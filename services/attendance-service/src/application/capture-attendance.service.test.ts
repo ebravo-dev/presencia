@@ -78,5 +78,8 @@ function repositoryStub(): AttendanceRepository {
     async importClassroomBeacons() { return { imported: 0, unchanged: 0 }; },
     async resolveClassroomBeaconsForProfessor() { return { data: [], missing: [] }; },
     async resolveAuthorizedClassroomBeacons() { return { data: [], missing: [] }; },
+    async observeProfessorEntry() { throw new Error('unexpected'); },
+    async observeProfessorExit() { throw new Error('unexpected'); },
+    async observeStudentPresence() { throw new Error('unexpected'); },
   };
 }

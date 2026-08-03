@@ -22,6 +22,31 @@ export const professorBeaconResolveSchema = z.object({
   classrooms: z.array(z.string().trim().min(1).max(160)).min(1).max(1_000),
 });
 
+const professorPresenceBaseSchema = z.object({
+  externalGroupId: z.string().trim().min(1).max(160),
+});
+const optionalObservationDate = z.string().datetime({ offset: true }).nullable().optional();
+export const professorPresenceEntrySchema = professorPresenceBaseSchema.extend({
+  beaconUuid: z.string().uuid(), clientDetectedAt: optionalObservationDate,
+  rssi: z.number().int().min(-160).max(20).nullable().optional(),
+  distance: z.number().nonnegative().max(10_000).nullable().optional(),
+  bluetoothAddress: z.string().trim().max(80).nullable().optional(),
+});
+export const professorPresenceExitSchema = professorPresenceBaseSchema.extend({
+  clientDetectedAt: optionalObservationDate,
+});
+export const studentPresenceDetectionsSchema = professorPresenceBaseSchema.extend({
+  detections: z.array(z.object({
+    beaconUuid: z.string().uuid(), detectedAt: optionalObservationDate,
+    rssi: z.number().int().min(-160).max(20).nullable().optional(),
+    distance: z.number().nonnegative().max(10_000).nullable().optional(),
+    txPower: z.number().int().min(-160).max(20).nullable().optional(),
+    bluetoothAddress: z.string().trim().max(80).nullable().optional(),
+    major: z.number().int().min(0).max(65_535).nullable().optional(),
+    minor: z.number().int().min(0).max(65_535).nullable().optional(),
+  })).min(1).max(1_000),
+});
+
 export const consultaQuerySchema = z.object({
   Id_Ciclo_Escolar: z.coerce.number().int().positive(),
   Id_DES: z.coerce.number().int().positive(),

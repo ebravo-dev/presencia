@@ -79,4 +79,28 @@ describe('AttendanceServiceCommandClient', () => {
             'http://attendance-service:3400/internal/v1/attendance/classroom-beacons/resolve-authorized',
         );
     });
+
+    it('marks legacy presence commands as pre-authorized by the compatibility facade', async () => {
+        let receivedUrl: string | URL | Request | undefined;
+        let receivedInit: RequestInit | undefined;
+        const fetcher = async (input: string | URL | Request, init?: RequestInit) => {
+            receivedUrl = input;
+            receivedInit = init;
+            return new Response(JSON.stringify({ data: { attendanceSessionId: 'session-1' } }), {
+                status: 201, headers: { 'Content-Type': 'application/json' },
+            });
+        };
+        const client = new AttendanceServiceCommandClient('http://attendance-service:3400', 'internal-token', fetcher);
+        await client.observeStudentPresence({
+            professorExternalId: 'legacy:professor-1', externalGroupId: '947699',
+            detections: [{ beaconUuid: '12345678-1234-4234-9234-123456789abc' }], correlationId: 'presence-1',
+        });
+
+        expect(receivedUrl).toBe('http://attendance-service:3400/internal/v1/attendance/presence/student-detections');
+        expect(receivedInit?.headers).toMatchObject({ 'X-Correlation-Id': 'presence-1' });
+        expect(JSON.parse(String(receivedInit?.body))).toMatchObject({
+            professorExternalId: 'legacy:professor-1', externalGroupId: '947699',
+            trustedGroupAuthorization: true,
+        });
+    });
 });

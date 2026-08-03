@@ -1366,9 +1366,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
     final result = await _apiService.recordProfessorExit(
       token: token,
-      code: widget.grupo.code ?? '',
-      groupLetter: widget.grupo.groupLetter ?? widget.grupo.grupoLetra,
-      period: widget.grupo.period ?? '',
+      externalGroupId: widget.grupo.id,
       detectedAt: salida,
     );
 

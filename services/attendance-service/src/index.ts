@@ -1,6 +1,7 @@
 import { CaptureAttendanceService } from './application/capture-attendance.service.js';
 import { ClassroomBeaconService } from './application/classroom-beacon.service.js';
 import { DeviceBindingService } from './application/device-binding.service.js';
+import { PresenceObservationService } from './application/presence-observation.service.js';
 import { PrismaClient } from './generated/prisma/index.js';
 import { loadAttendanceEnv } from './infrastructure/config.js';
 import { PrismaAttendanceRepository } from './infrastructure/prisma-attendance.repository.js';
@@ -19,6 +20,7 @@ const app = await buildAttendanceApp({
   captures: new CaptureAttendanceService(repository),
   bindings: new DeviceBindingService(repository),
   beacons: new ClassroomBeaconService(repository),
+  presence: new PresenceObservationService(repository, env.APP_TIME_ZONE),
   ready: async () => {
     const database = await prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false);
     return { database, rabbitmq: eventBus.isReady() };

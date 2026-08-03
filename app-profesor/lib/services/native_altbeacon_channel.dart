@@ -39,7 +39,7 @@ class AltBeaconDetection {
   Map<String, dynamic> toApiJson() {
     return {
       'beaconUuid': uuid,
-      'detectedAt': detectedAt.toIso8601String(),
+      'detectedAt': detectedAt.toUtc().toIso8601String(),
       if (rssi != null) 'rssi': rssi,
       if (distance != null) 'distance': distance,
       if (txPower != null) 'txPower': txPower,

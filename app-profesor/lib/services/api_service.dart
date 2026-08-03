@@ -1194,32 +1194,6 @@ class ApiService {
         : message;
   }
 
-  Future<String?> _resolveMainBackendToken(
-    String fallbackToken, {
-    bool refresh = false,
-  }) async {
-    if (!_usesBackendApiRest) return fallbackToken;
-
-    final authStorage = AuthStorageService();
-    if (!refresh) {
-      final storedToken = authStorage.getMainBackendToken();
-      if (storedToken != null && storedToken.isNotEmpty) return storedToken;
-    }
-
-    final profesor = authStorage.getProfesor();
-    final password = authStorage.getCachedUatPassword();
-    if (profesor == null || password == null || password.isEmpty) return null;
-
-    final syncResult = await syncPortalHistory(
-      email: profesor.institutionalEmail,
-      password: password,
-    );
-    return syncResult.fold(
-      (_) => null,
-      (_) => authStorage.getMainBackendToken(),
-    );
-  }
-
   Map<String, dynamic> _asMap(Object? value) {
     if (value is Map<String, dynamic>) return value;
     if (value is Map) return Map<String, dynamic>.from(value);
@@ -1258,9 +1232,7 @@ class ApiService {
       final response = await _presenceDio.post(
         ApiConstants.uatBeaconsResolve,
         data: {'classrooms': normalizedClassrooms},
-        options: Options(
-          headers: {'X-UAT-Session-Id': uatSessionId},
-        ),
+        options: Options(headers: {'X-UAT-Session-Id': uatSessionId}),
       );
 
       if (response.statusCode == 200) {
@@ -1348,6 +1320,7 @@ class ApiService {
 
   Future<Either<String, Map<String, dynamic>>> recordProfessorBeaconEntry({
     required String token,
+    required String externalGroupId,
     required String code,
     required String groupLetter,
     required String period,
@@ -1360,7 +1333,6 @@ class ApiService {
     int? rssi,
     double? distance,
     String? bluetoothAddress,
-    bool retrySession = true,
   }) async {
     try {
       if (_skipApiRestAttendanceUpload) {
@@ -1387,30 +1359,17 @@ class ApiService {
         );
       }
 
-      final mainBackendToken = await _resolveMainBackendToken(token);
-      if (mainBackendToken == null) {
-        return const Left(
-          'No pudimos validar la sesión con el backend principal. Inicia sesión de nuevo.',
-        );
-      }
-
-      final response = await _attendanceBackendDio.post(
-        '/attendance/professor-entry',
+      final response = await _presenceDio.post(
+        ApiConstants.uatPresenceEntry,
         data: {
-          'code': code,
-          'groupLetter': groupLetter,
-          'period': period,
-          'date':
-              '${detectedAt.year.toString().padLeft(4, '0')}-${detectedAt.month.toString().padLeft(2, '0')}-${detectedAt.day.toString().padLeft(2, '0')}',
-          'detectedAt': detectedAt.toIso8601String(),
+          'externalGroupId': externalGroupId,
+          'clientDetectedAt': detectedAt.toUtc().toIso8601String(),
           'beaconUuid': beaconUuid,
           if (rssi != null) 'rssi': rssi,
           if (distance != null) 'distance': distance,
           if (bluetoothAddress != null) 'bluetoothAddress': bluetoothAddress,
         },
-        options: Options(
-          headers: {'Authorization': 'Bearer $mainBackendToken'},
-        ),
+        options: Options(headers: {'X-UAT-Session-Id': token}),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -1419,36 +1378,6 @@ class ApiService {
 
       return Left(response.data['message'] ?? 'Error registrando entrada');
     } on DioException catch (e) {
-      if (e.response?.statusCode == 401 &&
-          retrySession &&
-          _usesBackendApiRest) {
-        final refreshedToken = await _resolveMainBackendToken(
-          token,
-          refresh: true,
-        );
-        if (refreshedToken != null && refreshedToken.isNotEmpty) {
-          Logger.info(
-            'Reintentando registro de entrada con sesion principal renovada.',
-          );
-          return recordProfessorBeaconEntry(
-            token: token,
-            code: code,
-            groupLetter: groupLetter,
-            period: period,
-            groupName: groupName,
-            classroom: classroom,
-            level: level,
-            schedule: schedule,
-            detectedAt: detectedAt,
-            beaconUuid: beaconUuid,
-            rssi: rssi,
-            distance: distance,
-            bluetoothAddress: bluetoothAddress,
-            retrySession: false,
-          );
-        }
-      }
-
       final errorMessage = _handleDioError(e);
       Logger.error('Error registrando entrada por beacon: $errorMessage', e);
       return Left(errorMessage);
@@ -1464,33 +1393,17 @@ class ApiService {
 
   Future<Either<String, Map<String, dynamic>>> recordProfessorExit({
     required String token,
-    required String code,
-    required String groupLetter,
-    required String period,
+    required String externalGroupId,
     required DateTime detectedAt,
-    bool retrySession = true,
   }) async {
     try {
-      final mainBackendToken = await _resolveMainBackendToken(token);
-      if (mainBackendToken == null) {
-        return const Left(
-          'No pudimos validar la sesión con el backend principal. Inicia sesión de nuevo.',
-        );
-      }
-
-      final response = await _attendanceBackendDio.post(
-        '/attendance/professor-exit',
+      final response = await _presenceDio.post(
+        ApiConstants.uatPresenceExit,
         data: {
-          'code': code,
-          'groupLetter': groupLetter,
-          'period': period,
-          'date':
-              '${detectedAt.year.toString().padLeft(4, '0')}-${detectedAt.month.toString().padLeft(2, '0')}-${detectedAt.day.toString().padLeft(2, '0')}',
-          'detectedAt': detectedAt.toIso8601String(),
+          'externalGroupId': externalGroupId,
+          'clientDetectedAt': detectedAt.toUtc().toIso8601String(),
         },
-        options: Options(
-          headers: {'Authorization': 'Bearer $mainBackendToken'},
-        ),
+        options: Options(headers: {'X-UAT-Session-Id': token}),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -1499,28 +1412,6 @@ class ApiService {
 
       return Left(response.data['message'] ?? 'Error registrando salida');
     } on DioException catch (e) {
-      if (e.response?.statusCode == 401 &&
-          retrySession &&
-          _usesBackendApiRest) {
-        final refreshedToken = await _resolveMainBackendToken(
-          token,
-          refresh: true,
-        );
-        if (refreshedToken != null && refreshedToken.isNotEmpty) {
-          Logger.info(
-            'Reintentando registro de salida con sesion principal renovada.',
-          );
-          return recordProfessorExit(
-            token: token,
-            code: code,
-            groupLetter: groupLetter,
-            period: period,
-            detectedAt: detectedAt,
-            retrySession: false,
-          );
-        }
-      }
-
       final errorMessage = _handleDioError(e);
       Logger.error('Error registrando salida del profesor: $errorMessage', e);
       return Left(errorMessage);
@@ -1536,36 +1427,14 @@ class ApiService {
 
   Future<Either<String, Map<String, dynamic>>> recordStudentBeaconDetections({
     required String token,
-    required String code,
-    required String groupLetter,
-    required String period,
-    required DateTime date,
+    required String externalGroupId,
     required List<Map<String, dynamic>> detections,
-    bool retrySession = true,
   }) async {
     try {
-      final formattedDate =
-          '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-
-      final mainBackendToken = await _resolveMainBackendToken(token);
-      if (mainBackendToken == null) {
-        return const Left(
-          'No pudimos validar la sesión con el backend principal. Inicia sesión de nuevo.',
-        );
-      }
-
-      final response = await _attendanceBackendDio.post(
-        '/attendance/student-beacon-detections',
-        data: {
-          'code': code,
-          'groupLetter': groupLetter,
-          'period': period,
-          'date': formattedDate,
-          'detections': detections,
-        },
-        options: Options(
-          headers: {'Authorization': 'Bearer $mainBackendToken'},
-        ),
+      final response = await _presenceDio.post(
+        ApiConstants.uatStudentPresence,
+        data: {'externalGroupId': externalGroupId, 'detections': detections},
+        options: Options(headers: {'X-UAT-Session-Id': token}),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -1576,29 +1445,6 @@ class ApiService {
         response.data['message'] ?? 'Error registrando beacons de alumnos',
       );
     } on DioException catch (e) {
-      if (e.response?.statusCode == 401 &&
-          retrySession &&
-          _usesBackendApiRest) {
-        final refreshedToken = await _resolveMainBackendToken(
-          token,
-          refresh: true,
-        );
-        if (refreshedToken != null && refreshedToken.isNotEmpty) {
-          Logger.info(
-            'Reintentando registro de alumnos con sesion principal renovada.',
-          );
-          return recordStudentBeaconDetections(
-            token: token,
-            code: code,
-            groupLetter: groupLetter,
-            period: period,
-            date: date,
-            detections: detections,
-            retrySession: false,
-          );
-        }
-      }
-
       final errorMessage = _handleDioError(e);
       Logger.error('Error registrando beacons de alumnos: $errorMessage', e);
       return Left(errorMessage);

@@ -7,6 +7,13 @@ import type {
   SaveClassroomBeaconCommand,
   UpdateClassroomBeaconCommand,
 } from './classroom-beacon.js';
+import type {
+  ProfessorEntryObservationCommand,
+  ProfessorExitObservationCommand,
+  ProfessorPresenceObservationResult,
+  StudentPresenceObservationCommand,
+  StudentPresenceObservationResult,
+} from './presence-observation.js';
 
 export interface AttendanceCoordinationProjectionSnapshot {
   attendanceSessionId: string;
@@ -16,7 +23,7 @@ export interface AttendanceCoordinationProjectionSnapshot {
   professorEntryAt: Date | null;
   professorExitAt: Date | null;
   entriesCount: number;
-  uploadStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  uploadStatus: 'DRAFT' | 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
   uploadError: string | null;
   version: number;
   observedAt: Date;
@@ -56,4 +63,7 @@ export interface AttendanceRepository {
   resolveAuthorizedClassroomBeacons(
     classrooms: Array<{ classroom: string; classroomKey: string }>,
   ): Promise<{ data: ClassroomBeaconValue[]; missing: string[] }>;
+  observeProfessorEntry(command: ProfessorEntryObservationCommand): Promise<ProfessorPresenceObservationResult>;
+  observeProfessorExit(command: ProfessorExitObservationCommand): Promise<ProfessorPresenceObservationResult>;
+  observeStudentPresence(command: StudentPresenceObservationCommand): Promise<StudentPresenceObservationResult>;
 }

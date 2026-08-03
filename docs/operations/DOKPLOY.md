@@ -65,8 +65,9 @@ secretos efímeros, construye todas las imágenes, levanta PostgreSQL, Redis,
 RabbitMQ, migraciones, servicios y web, y ejecuta este mismo smoke test mediante
 `docker-compose.ci.yml`. Después inserta snapshots de profesor y alumno,
 comprueba importación y resolución de beacons por roster, la vinculación del
-celular, la captura idempotente y la proyección del reporte a través de
-RabbitMQ. El gate también analiza y prueba ambas apps
+celular, la telemetría BLE con tiempo del servidor y estado `DRAFT`, la captura
+idempotente `PENDING` y la proyección del reporte a través de RabbitMQ. El gate
+también analiza y prueba ambas apps
 Flutter. Las cuentas y portales UAT reales permanecen fuera de CI.
 
 El dashboard divide el shell en chunks cacheables y carga los exportadores de
@@ -78,7 +79,7 @@ Después ejecutar con cuentas UAT de prueba autorizadas:
 1. login de profesor, descarga de grupos y roster;
 2. login de alumno, horario y vinculación del celular;
 3. captura de asistencia con UAT temporalmente inaccesible;
-4. confirmación de estado local `PENDING`;
+4. confirmación de telemetría `DRAFT` antes de finalizar y estado `PENDING` después;
 5. restauración de UAT y confirmación de `COMPLETED` en el dashboard;
 6. desvinculación desde coordinación y revinculación en el siguiente login UAT.
 
@@ -87,10 +88,12 @@ logs. La prueba contra los portales sólo se ejecuta con autorización UAT.
 
 ## Rollback
 
-Los contratos públicos no cambian. `ROUTE_TARGET_OVERRIDES` permite revertir
+Los contratos públicos existentes no cambian; las rutas UAT de presencia son
+aditivas. `ROUTE_TARGET_OVERRIDES` permite revertir
 una ruta al destino transitorio sin reinstalar las apps móviles. Antes de un
-rollback de esquema, restaura la imagen anterior y conserva las columnas
-nuevas; las migraciones Prisma de esta entrega son aditivas. La ruta instalada
+rollback de aplicación, restaura la imagen anterior y conserva las columnas y
+el valor `DRAFT`; las migraciones de base son forward-only y no eliminan datos.
+La ruta instalada
 `/api/beacons/resolve` permanece como fachada durante la actualización gradual
 de móviles, pero su configuración se lee de Attendance Service.
 

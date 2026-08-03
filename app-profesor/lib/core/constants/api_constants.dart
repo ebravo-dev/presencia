@@ -139,6 +139,10 @@ class ApiConstants {
   static const String uatDeviceBindingsResolve =
       '/api/uat/profesor/device-bindings/resolve';
   static const String uatBeaconsResolve = '/api/uat/profesor/beacons/resolve';
+  static const String uatPresenceEntry = '/api/uat/profesor/presencia/entrada';
+  static const String uatPresenceExit = '/api/uat/profesor/presencia/salida';
+  static const String uatStudentPresence =
+      '/api/uat/profesor/presencia/alumnos';
   static const String uatControlSemanas =
       '/api/uat/profesor/control-asistencia/semanas';
   static const String uatControlAsistenciaGrupo =

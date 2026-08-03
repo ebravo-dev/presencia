@@ -16,6 +16,7 @@ import { SessionController } from '../controllers/session.controller.js';
 import { StudentSessionController } from '../controllers/student-session.controller.js';
 import { SharedClassController } from '../controllers/shared-class.controller.js';
 import { ProfessorDeviceBindingController } from '../controllers/professor-device-binding.controller.js';
+import { ProfessorPresenceController } from '../controllers/professor-presence.controller.js';
 import { buildAuthUatHook } from '../hooks/auth-uat.hook.js';
 import { buildAuthUatStudentHook } from '../hooks/auth-uat-student.hook.js';
 import { env } from '../../../config/env.js';
@@ -61,6 +62,7 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   const attendanceUploadController = new AttendanceUploadController(attendanceUploadService, attendanceUploadWorker);
   const sharedClassController = new SharedClassController(sharedClassService);
   const professorDeviceBindingController = new ProfessorDeviceBindingController(attendanceServiceCommands, attendanceBackendClient);
+  const professorPresenceController = new ProfessorPresenceController(attendanceServiceCommands);
 
   fastify.post('/api/uat/sessions', {
     config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
@@ -90,6 +92,9 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   fastify.get('/api/uat/profesor/clases-compartidas', { preHandler: authUat }, sharedClassController.forAuthenticatedTeacher);
   fastify.post('/api/uat/profesor/device-bindings/resolve', { preHandler: authUat }, professorDeviceBindingController.resolve);
   fastify.post('/api/uat/profesor/beacons/resolve', { preHandler: authUat }, professorDeviceBindingController.resolveBeacons);
+  fastify.post('/api/uat/profesor/presencia/entrada', { preHandler: authUat }, professorPresenceController.entry);
+  fastify.post('/api/uat/profesor/presencia/salida', { preHandler: authUat }, professorPresenceController.exit);
+  fastify.post('/api/uat/profesor/presencia/alumnos', { preHandler: authUat }, professorPresenceController.studentDetections);
   fastify.get('/api/uat/profesor/control-asistencia/semanas', { preHandler: authUat }, asistenciaController.semanasGrupo);
   fastify.get(
     '/api/uat/profesor/control-asistencia/asistencia-grupo',

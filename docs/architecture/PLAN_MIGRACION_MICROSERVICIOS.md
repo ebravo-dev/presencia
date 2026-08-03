@@ -601,12 +601,13 @@ Criterio de salida:
 
 ### Fase 5 — Attendance Service
 
-Avance al 2 de agosto de 2026: servicio aislado con base propia, roster local,
+Avance al 3 de agosto de 2026: servicio aislado con base propia, roster local,
 captura serializable e idempotente, outbox, carga UAT durable, resultado
 versionado, vinculación UUID autoritativa y auditoría de cambios implementados.
 La escritura, renovación del token móvil, lectura del dashboard y resolución
-autorizada para el profesor ya usan este propietario sin dual-write. Beacons y
-telemetría BLE conservan una fachada de compatibilidad durante el corte.
+autorizada para el profesor ya usan este propietario sin dual-write. Beacons,
+entrada/salida del profesor y detecciones BLE pertenecen a Attendance; las
+rutas instaladas sólo actúan como fachadas de compatibilidad durante el corte.
 
 Entregables:
 
@@ -648,12 +649,13 @@ Criterio de salida:
 
 ### Fase 7 — Corte y retiro del legado
 
-Avance al 2 de agosto de 2026: contratos públicos conservados, Gateway único,
+Avance al 3 de agosto de 2026: contratos públicos conservados, Gateway único,
 rutas internas bloqueadas, cortes configurables y documentación de Dokploy,
 smoke test y rollback implementados. Attendance ya posee la configuración de
-beacons, con importación idempotente y fachadas para móviles instalados. El
-proceso legado aún es necesario para telemetría BLE y sustituciones; la
-compatibilidad de tokens móviles ya se retiró. El resto se retirará sólo después del periodo de observación en
+beacons y la telemetría BLE, con importación idempotente y fachadas para móviles
+instalados. El proceso legado aún es necesario para sustituciones y otras rutas
+de compatibilidad; la compatibilidad de tokens móviles ya se retiró. El resto
+se retirará sólo después del periodo de observación en
 producción.
 
 Entregables:

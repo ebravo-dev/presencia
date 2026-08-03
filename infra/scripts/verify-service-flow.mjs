@@ -7,6 +7,7 @@ const attendanceUrl = process.env.ATTENDANCE_SERVICE_URL ?? 'http://attendance-s
 const queryUrl = process.env.COORDINATION_QUERY_SERVICE_URL ?? 'http://coordination-query-service:3500';
 const gatewayUrl = process.env.API_GATEWAY_URL ?? 'http://api-gateway:8080';
 const headers = { 'x-internal-service-token': internalToken, 'x-correlation-id': 'ci-service-flow' };
+const verificationObservedAt = new Date().toISOString();
 
 const identity = await request(identityUrl, '/internal/v1/authenticated-sessions', {
   method: 'POST', expected: 201, body: {
@@ -104,6 +105,45 @@ if (professorBindings.data[0]?.attendanceUuid !== '33333333-3333-4333-8333-33333
   throw new Error('Attendance returned an unexpected student binding.');
 }
 pass('Gateway reconciles the scoped student token and Attendance authorizes professor binding reads');
+
+const professorEntry = await request(attendanceUrl, '/internal/v1/attendance/presence/professor-entry', {
+  method: 'POST', expected: [200, 201], body: {
+    professorExternalId: 'teacher-ci', externalGroupId: '947699', trustedGroupAuthorization: false,
+    beaconUuid: '55555555-5555-4555-8555-555555555555', clientDetectedAt: verificationObservedAt,
+    rssi: -58, distance: 1.4, bluetoothAddress: 'CI:BE:AC:ON:01',
+  },
+});
+if (!professorEntry.data?.attendanceSessionId || !professorEntry.data?.professorEntryAt) {
+  throw new Error('Attendance did not create the professor presence draft.');
+}
+const studentPresence = await request(attendanceUrl, '/internal/v1/attendance/presence/student-detections', {
+  method: 'POST', expected: [200, 201], body: {
+    professorExternalId: 'teacher-ci', externalGroupId: '947699', trustedGroupAuthorization: false,
+    detections: [{
+      beaconUuid: '33333333-3333-4333-8333-333333333333', detectedAt: verificationObservedAt,
+      rssi: -62, distance: 1.8, txPower: -59, bluetoothAddress: 'CI:ST:UD:EN:01', major: 1, minor: 7,
+    }],
+  },
+});
+if (studentPresence.data?.matchedCount !== 1 || studentPresence.data?.matched?.[0]?.matricula !== '2251330007') {
+  throw new Error('Attendance did not match the BLE detection to the roster and active binding.');
+}
+await request(attendanceUrl, '/internal/v1/attendance/presence/professor-exit', {
+  method: 'POST', expected: [200, 201], body: {
+    professorExternalId: 'teacher-ci', externalGroupId: '947699', trustedGroupAuthorization: false,
+    clientDetectedAt: verificationObservedAt,
+  },
+});
+const draftProjection = await request(attendanceUrl, '/internal/v1/attendance/coordination-projection', {
+  method: 'GET', expected: 200,
+});
+const presenceDraft = draftProjection.data?.find(
+  (item) => item.attendanceSessionId === professorEntry.data.attendanceSessionId,
+);
+if (presenceDraft?.uploadStatus !== 'DRAFT' || presenceDraft.entriesCount !== 1) {
+  throw new Error('BLE presence was not projected as a non-uploadable draft.');
+}
+pass('Attendance persists server-timed BLE telemetry as a DRAFT without requesting a UAT upload');
 
 const captureBody = {
   externalGroupId: '947699', professorExternalId: 'teacher-ci', date: '2026-08-03',

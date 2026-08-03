@@ -60,7 +60,12 @@ model AttendanceSession {
   professorExternalId String               @map("professor_external_id")
   professorEntryAt    DateTime?             @map("professor_entry_at")
   professorExitAt     DateTime?             @map("professor_exit_at")
-  uploadStatus        AttendanceUploadStatus @default(PENDING) @map("upload_status")
+  finalizedAt         DateTime?             @map("finalized_at")
+  roomBeaconUuid      String?               @map("room_beacon_uuid")
+  roomBeaconRssi      Int?                  @map("room_beacon_rssi")
+  roomBeaconDistance  Float?                @map("room_beacon_distance")
+  roomBeaconAddress   String?               @map("room_beacon_address")
+  uploadStatus        AttendanceUploadStatus @default(DRAFT) @map("upload_status")
   uploadError         String?               @map("upload_error")
   uploadedAt          DateTime?             @map("uploaded_at")
   version             Int                  @default(1)
@@ -69,11 +74,36 @@ model AttendanceSession {
 
   group   AttendanceRosterGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
   entries AttendanceEntry[]
+  studentDetections StudentPresenceDetection[]
 
   @@unique([groupId, date])
   @@index([professorExternalId, date])
   @@index([uploadStatus, updatedAt])
   @@map("attendance_sessions")
+}
+
+model StudentPresenceDetection {
+  id               String   @id @default(cuid())
+  sessionId        String   @map("session_id")
+  matricula        String
+  beaconUuid       String   @map("beacon_uuid")
+  firstDetectedAt  DateTime @map("first_detected_at")
+  lastDetectedAt   DateTime @map("last_detected_at")
+  clientDetectedAt DateTime? @map("client_detected_at")
+  rssi             Int?
+  distance         Float?
+  txPower          Int?     @map("tx_power")
+  bluetoothAddress String?  @map("bluetooth_address")
+  major            Int?
+  minor            Int?
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  session AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+
+  @@unique([sessionId, matricula])
+  @@index([beaconUuid, lastDetectedAt])
+  @@map("student_presence_detections")
 }
 
 model AttendanceEntry {
@@ -207,6 +237,7 @@ enum AttendanceStatus {
 }
 
 enum AttendanceUploadStatus {
+  DRAFT
   PENDING
   PROCESSING
   COMPLETED

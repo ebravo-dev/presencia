@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Presencia Backend API REST UAT
-  version: 1.0.0
+  version: 1.1.0
   description: >
     API REST interna para autenticar contra el portal escolar UAT con cookies
     ASP.NET y consultar horarios/examenes de profesor.
@@ -707,6 +707,66 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /api/uat/profesor/presencia/entrada:
+    post:
+      summary: Registra la entrada del profesor detectada por beacon
+      description: >
+        Attendance Service valida que el grupo pertenezca al profesor autenticado
+        y que el UUID sea el configurado para el salón. La fecha y hora efectivas
+        siempre provienen del servidor; clientDetectedAt sólo es telemetría diagnóstica.
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProfessorPresenceEntryRequest" }
+      responses:
+        "200": { description: Reintento idempotente, content: { application/json: { schema: { $ref: "#/components/schemas/ProfessorPresenceResponse" } } } }
+        "201": { description: Entrada registrada, content: { application/json: { schema: { $ref: "#/components/schemas/ProfessorPresenceResponse" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /api/uat/profesor/presencia/salida:
+    post:
+      summary: Registra la salida del profesor
+      description: La hora efectiva se deriva del reloj del servidor y el grupo se valida contra el roster del profesor autenticado.
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProfessorPresenceExitRequest" }
+      responses:
+        "200": { description: Reintento idempotente, content: { application/json: { schema: { $ref: "#/components/schemas/ProfessorPresenceResponse" } } } }
+        "201": { description: Salida registrada, content: { application/json: { schema: { $ref: "#/components/schemas/ProfessorPresenceResponse" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /api/uat/profesor/presencia/alumnos:
+    post:
+      summary: Procesa detecciones BLE de alumnos vinculados
+      description: >
+        Cruza UUIDs contra vinculaciones activas y el roster autorizado. Cada alumno
+        se deduplica por sesión y matrícula. El resultado permanece DRAFT y no genera
+        una solicitud de subida a UAT hasta que el profesor finaliza la captura.
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StudentPresenceRequest" }
+      responses:
+        "200": { description: Reintento idempotente, content: { application/json: { schema: { $ref: "#/components/schemas/StudentPresenceResponse" } } } }
+        "201": { description: Detecciones procesadas, content: { application/json: { schema: { $ref: "#/components/schemas/StudentPresenceResponse" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /api/coordinacion/clases-compartidas/opciones:
     get:
       tags: [Coordinacion]
@@ -1019,6 +1079,85 @@ components:
         classroomKey: { type: string }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    ProfessorPresenceEntryRequest:
+      type: object
+      required: [externalGroupId, beaconUuid]
+      properties:
+        externalGroupId: { type: string, minLength: 1, maxLength: 160 }
+        beaconUuid: { type: string, format: uuid }
+        clientDetectedAt: { type: string, format: date-time, nullable: true }
+        rssi: { type: integer, minimum: -160, maximum: 20, nullable: true }
+        distance: { type: number, minimum: 0, maximum: 10000, nullable: true }
+        bluetoothAddress: { type: string, maxLength: 80, nullable: true }
+    ProfessorPresenceExitRequest:
+      type: object
+      required: [externalGroupId]
+      properties:
+        externalGroupId: { type: string, minLength: 1, maxLength: 160 }
+        clientDetectedAt: { type: string, format: date-time, nullable: true }
+    StudentPresenceDetection:
+      type: object
+      required: [beaconUuid]
+      properties:
+        beaconUuid: { type: string, format: uuid }
+        detectedAt: { type: string, format: date-time, nullable: true }
+        rssi: { type: integer, minimum: -160, maximum: 20, nullable: true }
+        distance: { type: number, minimum: 0, maximum: 10000, nullable: true }
+        txPower: { type: integer, minimum: -160, maximum: 20, nullable: true }
+        bluetoothAddress: { type: string, maxLength: 80, nullable: true }
+        major: { type: integer, minimum: 0, maximum: 65535, nullable: true }
+        minor: { type: integer, minimum: 0, maximum: 65535, nullable: true }
+    StudentPresenceRequest:
+      type: object
+      required: [externalGroupId, detections]
+      properties:
+        externalGroupId: { type: string, minLength: 1, maxLength: 160 }
+        detections:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { $ref: "#/components/schemas/StudentPresenceDetection" }
+    ProfessorPresenceResponse:
+      type: object
+      required: [data, message]
+      properties:
+        data:
+          type: object
+          required: [attendanceSessionId, externalGroupId, date, professorEntryAt, professorExitAt, duplicate, version]
+          properties:
+            attendanceSessionId: { type: string }
+            externalGroupId: { type: string }
+            date: { type: string, format: date }
+            professorEntryAt: { type: string, format: date-time, nullable: true }
+            professorExitAt: { type: string, format: date-time, nullable: true }
+            duplicate: { type: boolean }
+            version: { type: integer, minimum: 1 }
+        message: { type: string }
+    StudentPresenceResponse:
+      type: object
+      required: [data, message]
+      properties:
+        data:
+          type: object
+          required: [attendanceSessionId, externalGroupId, date, matchedCount, matched, duplicate, version]
+          properties:
+            attendanceSessionId: { type: string, nullable: true }
+            externalGroupId: { type: string }
+            date: { type: string, format: date }
+            matchedCount: { type: integer, minimum: 0 }
+            matched:
+              type: array
+              items:
+                type: object
+                required: [studentId, matricula, beaconUuid, detectedAt]
+                properties:
+                  studentId: { type: string }
+                  matricula: { type: string }
+                  beaconUuid: { type: string, format: uuid }
+                  detectedAt: { type: string, format: date-time }
+            duplicate: { type: boolean }
+            version: { type: integer, minimum: 1, nullable: true }
+        message: { type: string }
     StudentDeviceBinding:
       type: object
       required: [id, matricula, attendanceUuid, bindingVersion, active, updatedAt]

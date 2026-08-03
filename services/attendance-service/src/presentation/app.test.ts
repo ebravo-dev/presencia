@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { DeviceBindingService } from '../application/device-binding.service.js';
 import { ClassroomBeaconService } from '../application/classroom-beacon.service.js';
+import { PresenceObservationService } from '../application/presence-observation.service.js';
 import { attendanceEnvSchema } from '../infrastructure/config.js';
 import { buildAttendanceApp } from './app.js';
 
 const token = 'test-internal-service-token-with-at-least-32-characters';
 
 describe('Attendance HTTP API', () => {
+  it('rejects an invalid campus timezone during startup', () => {
+    expect(() => attendanceEnvSchema.parse({ APP_TIME_ZONE: 'Campus/Unknown' })).toThrow();
+  });
+
   it('hides device binding creation from unauthenticated callers', async () => {
     const app = await testApp();
     const response = await app.inject({ method: 'POST', url: '/internal/v1/attendance/device-bindings/initial', payload: {} });
@@ -154,6 +159,25 @@ describe('Attendance HTTP API', () => {
     expect(response.json()).toEqual({ data: [], missing: ['AULA SUSTITUCIÓN'] });
     await app.close();
   });
+
+  it('keeps professor presence private and derives its date from the server clock', async () => {
+    const app = await testApp();
+    expect((await app.inject({
+      method: 'POST', url: '/internal/v1/attendance/presence/professor-entry', payload: {},
+    })).statusCode).toBe(404);
+    const response = await app.inject({
+      method: 'POST', url: '/internal/v1/attendance/presence/professor-entry',
+      headers: { 'x-internal-service-token': token },
+      payload: {
+        professorExternalId: 'teacher-1', externalGroupId: '947699',
+        beaconUuid: '12345678-1234-4234-9234-123456789abc',
+        clientDetectedAt: '2020-01-01T00:00:00.000Z',
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json().data).toMatchObject({ date: '2026-08-02', professorEntryAt: '2026-08-02T12:00:00.000Z' });
+    await app.close();
+  });
 });
 
 async function testApp() {
@@ -184,6 +208,18 @@ async function testApp() {
     resolveAuthorizedClassroomBeacons: async (input: Array<{ classroom: string }>) => ({
       data: [], missing: input.map(({ classroom }) => classroom),
     }),
+    observeProfessorEntry: async (input: { externalGroupId: string; attendanceDate: string }) => ({
+      attendanceSessionId: 'session-1', externalGroupId: input.externalGroupId, date: input.attendanceDate,
+      professorEntryAt: now.toISOString(), professorExitAt: null, duplicate: false, version: 1,
+    }),
+    observeProfessorExit: async (input: { externalGroupId: string; attendanceDate: string }) => ({
+      attendanceSessionId: 'session-1', externalGroupId: input.externalGroupId, date: input.attendanceDate,
+      professorEntryAt: null, professorExitAt: now.toISOString(), duplicate: false, version: 1,
+    }),
+    observeStudentPresence: async (input: { externalGroupId: string; attendanceDate: string }) => ({
+      attendanceSessionId: 'session-1', externalGroupId: input.externalGroupId, date: input.attendanceDate,
+      matchedCount: 0, matched: [], duplicate: false, version: 1,
+    }),
   } as never;
   return buildAttendanceApp({
     env: attendanceEnvSchema.parse({
@@ -194,6 +230,7 @@ async function testApp() {
     captures: { capture: async () => { throw new Error('unexpected'); } } as never,
     bindings: new DeviceBindingService(repository),
     beacons: new ClassroomBeaconService(repository),
+    presence: new PresenceObservationService(repository, 'America/Monterrey', () => now),
     ready: async () => ({ database: true, rabbitmq: true }),
   });
 }

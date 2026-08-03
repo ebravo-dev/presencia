@@ -13,9 +13,9 @@ prueba de funcionamiento integral.
 | Login estudiantil como única alta | El vínculo inicial sólo se ejecuta después de que el portal devuelve login, carrera y matrícula válidos. No existe alta manual pública. | Implementado y probado en servicios. |
 | Vincular matrícula, teléfono y UUID | Attendance posee `StudentDeviceBinding`, rechaza identificadores duplicados y entrega un token acotado. El Gateway renueva únicamente el vínculo exacto; el profesor lo resuelve mediante sesión UAT y pertenencia al roster, sin dual-write legado. | Implementado y probado. |
 | Cambio de UUID sólo por coordinación | Attendance permite reemplazo/desvinculación sólo por comando interno con rol y motivo auditables; el endpoint público únicamente repite el vínculo exacto. | Implementado y probado. |
-| Captura local y subida posterior a UAT | Attendance usa transacción serializable, idempotencia y outbox; UAT Integration consume, cifra credenciales, reintenta y usa DLQ. | Implementado; CI prueba captura `PENDING`, falta caos contra UAT real. |
+| Captura local y subida posterior a UAT | Attendance conserva entrada/salida y detecciones BLE como `DRAFT`; al finalizar usa transacción serializable, idempotencia y outbox. UAT Integration consume, cifra credenciales, reintenta y usa DLQ. | Implementado; CI distingue borrador de captura `PENDING`, falta caos contra UAT real. |
 | Asistencia del profesor en dashboard | Coordination Query consume roster/asistencia, reconcilia snapshots y genera reportes semanal/rango. | Implementado; CI prueba la proyección cruzando PostgreSQL y RabbitMQ. |
-| Microservicios y datos separados | Gateway, Identity, Academic, Attendance, UAT Integration y Coordination Query usan límites y bases lógicas propios. Attendance ya posee beacons y dispositivos con migraciones auditables. | Núcleo implementado; telemetría BLE, sustituciones y otras fachadas móviles conservan compatibilidad heredada hasta un corte observado. |
+| Microservicios y datos separados | Gateway, Identity, Academic, Attendance, UAT Integration y Coordination Query usan límites y bases lógicas propios. Attendance posee beacons, dispositivos y telemetría BLE con migraciones auditables. | Núcleo implementado; sustituciones y otras fachadas móviles conservan compatibilidad heredada hasta un corte observado. |
 | Docker y Dokploy | Compose crea bases/usuarios, migraciones one-shot, Redis AOF, RabbitMQ, redes privadas, egreso UAT, readiness y apagado controlado. | Implementado; workflow CI ejecuta el stack, pendiente primera corrida remota y despliegue Dokploy. |
 | Credenciales móviles | El alumno usa almacenamiento seguro nativo. El profesor migra los tokens de Hive a Keychain/Keystore, elimina la contraseña heredada y sólo la conserva efímeramente en memoria para reintentos del proceso actual. | Implementado y probado; falta auditoría en dispositivos físicos. |
 | Tests | Unitarios, contratos HTTP/eventos, clientes UAT simulados, apps Flutter, dashboard web, smoke público y flujo integral del Compose. | Implementado; E2E UAT/dispositivos requiere infraestructura externa. |
@@ -29,10 +29,10 @@ imágenes. La prueba `verify-service-flow.mjs` comprueba:
 2. Academic persiste snapshots de profesor, roster, alumno y horario;
 3. RabbitMQ entrega el roster a Attendance;
 4. Attendance importa beacons idempotentemente y limita su resolución al roster;
-5. Attendance vincula el celular y captura asistencia idempotente;
-6. Gateway valida la renovación acotada y Attendance autoriza la lectura del profesor por roster;
-7. RabbitMQ entrega la asistencia a Coordination Query;
-8. el reporte muestra dos horas tomadas y publicación UAT `PENDING`;
+5. Attendance vincula el celular y Gateway valida la renovación acotada;
+6. Attendance valida beacon, roster y UUID, deduplica alumno y proyecta la telemetría como `DRAFT` sin solicitar subida UAT;
+7. Attendance finaliza la captura idempotente y la cambia a `PENDING`;
+8. RabbitMQ entrega la asistencia a Coordination Query y el reporte refleja la publicación pendiente;
 9. Nginx/Gateway publican health y rutas de clientes, pero no `/internal/*`.
 
 El mismo workflow ejecuta `flutter analyze` y `flutter test` en las apps de

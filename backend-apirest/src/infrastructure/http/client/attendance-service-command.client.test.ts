@@ -86,4 +86,24 @@ describe('AttendanceServiceCommandClient', () => {
       'http://attendance-service:3400/internal/v1/attendance/classroom-beacons/resolve',
     );
   });
+
+  it('forwards professor presence without elevating group authorization', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: { attendanceSessionId: 'session-1' },
+    }), { status: 201, headers: { 'content-type': 'application/json' } }));
+    const client = new AttendanceServiceCommandClient('http://attendance-service:3400', 'x'.repeat(32));
+
+    await client.observeProfessorEntry({
+      professorExternalId: '308127', externalGroupId: '947699', trustedGroupAuthorization: false,
+      beaconUuid: '12345678-1234-4234-9234-123456789abc', correlationId: 'presence-request-1',
+    });
+
+    const [url, request] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe('http://attendance-service:3400/internal/v1/attendance/presence/professor-entry');
+    expect(request?.headers).toMatchObject({ 'x-correlation-id': 'presence-request-1' });
+    expect(JSON.parse(String(request?.body))).toMatchObject({
+      professorExternalId: '308127', externalGroupId: '947699', trustedGroupAuthorization: false,
+    });
+    expect(JSON.parse(String(request?.body))).not.toHaveProperty('correlationId');
+  });
 });

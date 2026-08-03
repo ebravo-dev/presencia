@@ -230,6 +230,7 @@ class TeacherBeaconAttendanceService {
         grupo.period != null) {
       await _apiService.recordProfessorBeaconEntry(
         token: token,
+        externalGroupId: grupo.id,
         code: grupo.code!,
         groupLetter: grupo.groupLetter!,
         period: grupo.period!,
@@ -308,17 +309,10 @@ class TeacherBeaconAttendanceService {
     }
 
     final token = _authStorage.getToken();
-    if (matched.isNotEmpty &&
-        token != null &&
-        grupo.code != null &&
-        grupo.groupLetter != null &&
-        grupo.period != null) {
+    if (matched.isNotEmpty && token != null) {
       await _apiService.recordStudentBeaconDetections(
         token: token,
-        code: grupo.code!,
-        groupLetter: grupo.groupLetter!,
-        period: grupo.period!,
-        date: now,
+        externalGroupId: grupo.id,
         detections: matched.map((detection) => detection.toApiJson()).toList(),
       );
     }
