@@ -1,0 +1,239 @@
+name: Backend platform
+
+on:
+  pull_request:
+  push:
+    branches: [main, jared-dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-platform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mobile-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Verify student app contracts
+        working-directory: app-alumno
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+
+      - name: Verify professor app contracts
+        working-directory: app-profesor
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+
+  mobile-platform-builds:
+    name: Build mobile apps (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            os: ubuntu-latest
+            command: flutter build apk --debug
+          - platform: ios
+            os: macos-latest
+            command: flutter build ios --debug --no-codesign
+    steps:
+      - uses: actions/checkout@v4
+      - if: matrix.platform == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build student app
+        working-directory: app-alumno
+        run: |
+          flutter pub get
+          ${{ matrix.command }}
+
+      - name: Build professor app
+        working-directory: app-profesor
+        run: |
+          flutter pub get
+          ${{ matrix.command }}
+
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            backend-apirest/package-lock.json
+            frontend-coord/package-lock.json
+
+      - name: Install platform dependencies
+        run: npm ci
+      - name: Verify services and contracts
+        run: npm run verify
+
+      - name: Verify historical migration and import image
+        working-directory: backend
+        run: |
+          npm ci
+          npm run typecheck
+          npm test -- --run
+          npm run build
+
+      - name: Install and verify UAT integration
+        working-directory: backend-apirest
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Install and verify coordination web
+        working-directory: frontend-coord
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Validate infrastructure files
+        run: |
+          sh -n infra/postgres/init-databases.sh
+          sh -n infra/scripts/verify-postgres-backup-restore.sh
+          sh -n infra/scripts/verify-redis-backup-restore.sh
+          docker compose --env-file infra/compose/.env.dokploy.example --file infra/compose/docker-compose.microservices.yml config --quiet
+
+      - name: Audit backend production dependencies
+        run: |
+          npm audit --omit=dev --audit-level=high
+          npm audit --omit=dev --audit-level=high --prefix backend
+          npm audit --omit=dev --audit-level=high --prefix backend-apirest
+
+  compose-integration:
+    needs: [mobile-contracts, mobile-platform-builds, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Generate isolated integration environment
+        run: |
+          node infra/scripts/create-ci-env.mjs /tmp/presencia-ci.env
+          node infra/scripts/validate-dokploy-env.mjs /tmp/presencia-ci.env
+
+      - name: Create Dokploy-compatible ingress network
+        run: docker network create dokploy-network
+
+      - name: Build and start the complete platform
+        run: >-
+          docker compose --project-name presencia-ci
+          --env-file /tmp/presencia-ci.env
+          --file infra/compose/docker-compose.microservices.yml
+          --file infra/compose/docker-compose.ci.yml
+          up --build --detach
+          --scale api-gateway=2
+          --scale uat-integration=2
+          --scale identity-service=2
+          --scale academic-service=2
+          --scale attendance-service=2
+          --scale coordination-query-service=2
+
+      - name: Run public deployment smoke checks
+        env:
+          PRESENCIA_BASE_URL: http://127.0.0.1:18080
+        run: node infra/scripts/smoke-deployment.mjs
+
+      - name: Verify the cross-service academic and attendance flow
+        run: >-
+          docker run --rm
+          --network presencia-ci_private
+          --user node
+          --read-only
+          --tmpfs /tmp:size=16m,mode=1777
+          --cap-drop ALL
+          --security-opt no-new-privileges
+          --env-file /tmp/presencia-ci.env
+          --volume "$PWD/infra/scripts:/scripts:ro"
+          node:24-alpine
+          node /scripts/verify-service-flow.mjs
+
+      - name: Verify scaled UAT read load SLO
+        run: >-
+          docker run --rm
+          --network presencia-ci_private
+          --user node
+          --read-only
+          --tmpfs /tmp:size=16m,mode=1777
+          --cap-drop ALL
+          --security-opt no-new-privileges
+          --env-file /tmp/presencia-ci.env
+          --env PRESENCIA_LOAD_TEST_ALLOW=ci
+          --volume "$PWD/infra/scripts:/scripts:ro"
+          node:24-alpine
+          node /scripts/verify-load.mjs
+
+      - name: Verify PostgreSQL backup restoration
+        run: >-
+          docker compose --project-name presencia-ci
+          --env-file /tmp/presencia-ci.env
+          --file infra/compose/docker-compose.microservices.yml
+          --file infra/compose/docker-compose.ci.yml
+          exec --no-TTY
+          --env PRESENCIA_BACKUP_VERIFY_ALLOW=ci
+          postgres /bin/sh -s
+          < infra/scripts/verify-postgres-backup-restore.sh
+
+      - name: Verify Redis backup restoration
+        env:
+          PRESENCIA_BACKUP_VERIFY_ALLOW: ci
+        run: sh infra/scripts/verify-redis-backup-restore.sh presencia-ci
+
+      - name: Verify API Gateway replica failover
+        env:
+          PRESENCIA_BASE_URL: http://127.0.0.1:18080
+        run: |
+          gateway_container=presencia-ci-api-gateway-1
+          trap 'docker start "$gateway_container" >/dev/null 2>&1 || true' EXIT
+          docker stop "$gateway_container"
+          node infra/scripts/smoke-deployment.mjs
+
+      - name: Show container diagnostics on failure
+        if: failure()
+        run: >-
+          docker compose --project-name presencia-ci
+          --env-file /tmp/presencia-ci.env
+          --file infra/compose/docker-compose.microservices.yml
+          --file infra/compose/docker-compose.ci.yml
+          logs --no-color --tail 250
+
+      - name: Remove integration stack
+        if: always()
+        run: |
+          docker compose --project-name presencia-ci --env-file /tmp/presencia-ci.env --file infra/compose/docker-compose.microservices.yml --file infra/compose/docker-compose.ci.yml down --volumes --remove-orphans
+          docker network rm dokploy-network || true

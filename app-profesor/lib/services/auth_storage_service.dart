@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../core/utils/utils.dart';
@@ -12,15 +13,21 @@ class AuthStorageService {
   AuthStorageService._internal();
 
   static const String _authBox = 'auth';
-  static const String _tokenKey = 'jwt_token';
-  static const String _mainBackendTokenKey = 'main_backend_jwt_token';
+  static const String _legacyTokenKey = 'jwt_token';
+  static const String _legacyMainBackendTokenKey = 'main_backend_jwt_token';
+  static const String _secureTokenKey = 'professor_session_token';
+  static const String _secureMainBackendTokenKey =
+      'professor_main_backend_token';
   static const String _profesorKey = 'profesor_data';
   static const String _gruposKey = 'grupos_data';
   static const String _syncInProgressKey = 'sync_in_progress';
-  static const String _encryptedPasswordKey = 'encrypted_password';
+  static const String _legacyPasswordKey = 'encrypted_password';
   static const String _beaconsKey = 'beacons_data';
 
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   Box? _box;
+  String? _cachedToken;
+  String? _cachedUatPassword;
 
   Future<void> init() async {
     try {
@@ -29,6 +36,15 @@ class AuthStorageService {
       } else {
         _box = Hive.box(_authBox);
       }
+      // Versiones anteriores escribían la contraseña UAT en Hive. Nunca se
+      // conserva una credencial institucional en almacenamiento persistente.
+      // Se elimina antes de acceder al almacén seguro para que una falla del
+      // Keychain/Keystore no deje la contraseña heredada en disco.
+      if (_box?.containsKey(_legacyPasswordKey) == true) {
+        await _box?.delete(_legacyPasswordKey);
+        Logger.info('Credencial UAT heredada eliminada del almacenamiento');
+      }
+      await _loadAndMigrateSecureSession();
       Logger.info('AuthStorageService inicializado correctamente');
     } catch (e, stackTrace) {
       Logger.error('Error al inicializar AuthStorageService', e, stackTrace);
@@ -37,7 +53,9 @@ class AuthStorageService {
 
   Future<void> saveToken(String token) async {
     try {
-      await _box?.put(_tokenKey, token);
+      _cachedToken = token;
+      await _secureStorage.write(key: _secureTokenKey, value: token);
+      await _box?.delete(_legacyTokenKey);
       Logger.info('Identificador de sesion guardado correctamente');
     } catch (e, stackTrace) {
       Logger.error('Error al guardar token', e, stackTrace);
@@ -45,42 +63,10 @@ class AuthStorageService {
   }
 
   String? getToken() {
-    try {
-      final token = _box?.get(_tokenKey) as String?;
-      if (token != null) {
-        Logger.debug('Identificador de sesion recuperado');
-      }
-      return token;
-    } catch (e, stackTrace) {
-      Logger.error('Error al obtener token', e, stackTrace);
-      return null;
+    if (_cachedToken != null) {
+      Logger.debug('Identificador de sesion recuperado');
     }
-  }
-
-  Future<void> saveMainBackendToken(String token) async {
-    try {
-      await _box?.put(_mainBackendTokenKey, token);
-      Logger.info('Sesion del backend principal guardada correctamente');
-    } catch (e, stackTrace) {
-      Logger.error(
-        'Error al guardar sesion del backend principal',
-        e,
-        stackTrace,
-      );
-    }
-  }
-
-  String? getMainBackendToken() {
-    try {
-      return _box?.get(_mainBackendTokenKey) as String?;
-    } catch (e, stackTrace) {
-      Logger.error(
-        'Error al obtener sesion del backend principal',
-        e,
-        stackTrace,
-      );
-      return null;
-    }
+    return _cachedToken;
   }
 
   Future<void> saveProfesor(Profesor profesor) async {
@@ -166,17 +152,39 @@ class AuthStorageService {
 
   Future<void> clearSession() async {
     try {
-      await _box?.delete(_tokenKey);
-      await _box?.delete(_mainBackendTokenKey);
+      await _secureStorage.delete(key: _secureTokenKey);
+      await _secureStorage.delete(key: _secureMainBackendTokenKey);
+      await _box?.delete(_legacyTokenKey);
+      await _box?.delete(_legacyMainBackendTokenKey);
       await _box?.delete(_profesorKey);
       await _box?.delete(_gruposKey);
       await _box?.delete(_syncInProgressKey);
-      await _box?.delete(_encryptedPasswordKey);
+      await _box?.delete(_legacyPasswordKey);
       await _box?.delete(_beaconsKey);
       Logger.info('Sesion eliminada correctamente');
     } catch (e, stackTrace) {
       Logger.error('Error al limpiar sesion', e, stackTrace);
+    } finally {
+      _cachedToken = null;
+      _cachedUatPassword = null;
     }
+  }
+
+  Future<void> _loadAndMigrateSecureSession() async {
+    _cachedToken = await _secureStorage.read(key: _secureTokenKey);
+
+    final legacyToken = _box?.get(_legacyTokenKey) as String?;
+    if ((_cachedToken == null || _cachedToken!.isEmpty) &&
+        legacyToken != null &&
+        legacyToken.isNotEmpty) {
+      await saveToken(legacyToken);
+    }
+
+    // El token paralelo del backend monolitico dejo de ser valido con el
+    // corte a Identity/UAT Integration. Se elimina en vez de migrarlo.
+    await _secureStorage.delete(key: _secureMainBackendTokenKey);
+    await _box?.delete(_legacyTokenKey);
+    await _box?.delete(_legacyMainBackendTokenKey);
   }
 
   bool isTokenValid() {
@@ -232,31 +240,36 @@ class AuthStorageService {
     }
   }
 
-  Future<void> saveEncryptedPassword(String encryptedPassword) async {
+  Future<void> cacheUatPasswordForProcess(String password) async {
+    _cachedUatPassword = password;
+    // Defensa adicional para instalaciones actualizadas desde una versión
+    // que persistía esta credencial.
     try {
-      await _box?.put(_encryptedPasswordKey, encryptedPassword);
-      Logger.info('Contrasena guardada para reintento de sesion');
-    } catch (e, stackTrace) {
-      Logger.error('Error al guardar contrasena', e, stackTrace);
+      await _box?.delete(_legacyPasswordKey);
+    } catch (error, stackTrace) {
+      Logger.error(
+        'No se pudo limpiar la credencial UAT heredada',
+        error,
+        stackTrace,
+      );
     }
+    Logger.info('Credencial UAT disponible solo durante este proceso');
   }
 
-  String? getEncryptedPassword() {
-    try {
-      return _box?.get(_encryptedPasswordKey) as String?;
-    } catch (e) {
-      Logger.error('Error al obtener contrasena guardada', e);
-      return null;
-    }
-  }
+  String? getCachedUatPassword() => _cachedUatPassword;
 
-  Future<void> clearEncryptedPassword() async {
+  Future<void> clearCachedUatPassword() async {
+    _cachedUatPassword = null;
     try {
-      await _box?.delete(_encryptedPasswordKey);
-      Logger.info('Contrasena guardada eliminada');
-    } catch (e, stackTrace) {
-      Logger.error('Error al eliminar contrasena guardada', e, stackTrace);
+      await _box?.delete(_legacyPasswordKey);
+    } catch (error, stackTrace) {
+      Logger.error(
+        'No se pudo limpiar la credencial UAT heredada',
+        error,
+        stackTrace,
+      );
     }
+    Logger.info('Credencial UAT eliminada de memoria');
   }
 
   Future<void> saveLastEmail(String email) async {

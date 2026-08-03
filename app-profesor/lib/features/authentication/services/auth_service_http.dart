@@ -34,6 +34,13 @@ class AuthServiceHttp implements AuthService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = Map<String, dynamic>.from(response.data as Map);
+        final capabilities = Map<String, dynamic>.from(
+          (data['demoCapabilities'] as Map?) ?? const {},
+        );
+        ApiConstants.configureRuntimeMode(
+          demoMode: data['demoMode'] == true,
+          simulateRoomBeacon: capabilities['simulateRoomBeacon'] == true,
+        );
         final login = Map<String, dynamic>.from(
           (data['login'] as Map?) ?? const {},
         );

@@ -1,94 +1,85 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mocktail/mocktail.dart';
 
-import 'package:appprofesoresuniversidad/features/authentication/presentation/widgets/login_form.dart';
-import 'package:appprofesoresuniversidad/features/authentication/providers/auth_provider.dart';
-import 'package:appprofesoresuniversidad/features/authentication/models/auth_models.dart';
-import 'package:appprofesoresuniversidad/features/authentication/services/auth_service.dart';
+import 'package:appprofesoresuniversidad/features/authentication/presentation/widgets/profesor_login_form.dart';
+import 'package:appprofesoresuniversidad/features/authentication/providers/profesor_auth_provider.dart';
+import 'package:appprofesoresuniversidad/services/api_service.dart';
+import 'package:appprofesoresuniversidad/services/auth_storage_service.dart';
 
-// Mock classes
-class MockAuthService extends Mock implements AuthService {}
+class TestProfesorAuthNotifier extends ProfesorAuthNotifier {
+  TestProfesorAuthNotifier([
+    ProfesorAuthState initialState = const ProfesorAuthState(),
+  ]) : super(ApiService(), AuthStorageService()) {
+    state = initialState;
+  }
+
+  String? submittedEmail;
+  String? submittedPassword;
+
+  @override
+  Future<void> login(String email, String password) async {
+    submittedEmail = email;
+    submittedPassword = password;
+    state = state.copyWith(status: ProfesorAuthStatus.loading);
+  }
+
+  void emit(ProfesorAuthState nextState) {
+    state = nextState;
+  }
+}
 
 void main() {
-  group('LoginForm Widget Tests', () {
-    late MockAuthService mockAuthService;
+  group('ProfesorLoginForm Widget Tests', () {
+    late TestProfesorAuthNotifier notifier;
 
-    setUp(() {
-      mockAuthService = MockAuthService();
+    Widget createTestWidget({ProfesorAuthState? state}) {
+      notifier = TestProfesorAuthNotifier(state ?? const ProfesorAuthState());
 
-      // Setup default auth service behavior
-      when(() => mockAuthService.login(any(), any())).thenAnswer(
-        (_) async =>
-            const AuthResult(isSuccess: true, message: 'Login successful'),
-      );
-    });
-
-    Widget createTestWidget({AuthState? overrideState}) {
       return ProviderScope(
-        overrides: [
-          authServiceProvider.overrideWithValue(mockAuthService),
-          if (overrideState != null)
-            authStateProvider.overrideWith(
-              (ref) => AuthNotifier(mockAuthService)..state = overrideState,
-            ),
-        ],
-        child: MaterialApp(home: Scaffold(body: const LoginForm())),
+        overrides: [profesorAuthProvider.overrideWith((ref) => notifier)],
+        child: const MaterialApp(home: Scaffold(body: ProfesorLoginForm())),
       );
     }
 
-    testWidgets('renders all required fields and elements', (tester) async {
+    testWidgets('renders institutional credential fields', (tester) async {
       await tester.pumpWidget(createTestWidget());
 
-      // Check if username field exists
-      expect(find.byKey(const Key('username_field')), findsOneWidget);
-      // Find elements
-      expect(find.text('Usuario institucional'), findsOneWidget);
-
-      // Check if password field exists
+      expect(find.byKey(const Key('email_field')), findsOneWidget);
+      expect(find.text('Email institucional'), findsOneWidget);
       expect(find.byKey(const Key('password_field')), findsOneWidget);
       expect(find.text('Contraseña'), findsOneWidget);
-
-      // Check if login button exists
       expect(find.byKey(const Key('login_button')), findsOneWidget);
       expect(find.text('Iniciar Sesión'), findsOneWidget);
-
-      // Check if demo credentials hint exists
-      expect(find.text('Credenciales de prueba:'), findsOneWidget);
-      expect(find.text('• juan.perez + @docentes.uat.edu.mx'), findsOneWidget);
-    });
-
-    testWidgets('shows validation errors for empty fields', (tester) async {
-      await tester.pumpWidget(createTestWidget());
-
-      // Tap login button without entering data
-      await tester.tap(find.byKey(const Key('login_button')));
-      await tester.pump();
-
-      // Check validation messages
-      expect(find.text('Por favor ingrese su usuario'), findsOneWidget);
-      expect(find.text('Por favor ingrese su contraseña'), findsOneWidget);
-    });
-
-    testWidgets('shows validation errors for short inputs', (tester) async {
-      await tester.pumpWidget(createTestWidget());
-
-      // Enter short username and password
-      await tester.enterText(find.byKey(const Key('username_field')), 'ab');
-      await tester.enterText(find.byKey(const Key('password_field')), '123');
-
-      // Tap login button
-      await tester.tap(find.byKey(const Key('login_button')));
-      await tester.pump();
-
-      // Check validation messages
       expect(
-        find.text('El usuario debe tener al menos 3 caracteres'),
+        find.text('Usa tu email y contraseña institucional'),
         findsOneWidget,
       );
+    });
+
+    testWidgets('validates required institutional credentials', (tester) async {
+      await tester.pumpWidget(createTestWidget());
+
+      final form = tester.state<FormState>(find.byType(Form));
+      expect(form.validate(), isFalse);
+      await tester.pump();
+
+      expect(find.text('Por favor ingresa tu email'), findsOneWidget);
+      expect(find.text('Por favor ingresa tu contraseña'), findsOneWidget);
+    });
+
+    testWidgets('validates malformed email and short password', (tester) async {
+      await tester.pumpWidget(createTestWidget());
+
+      await tester.enterText(find.byKey(const Key('email_field')), 'docente');
+      await tester.enterText(find.byKey(const Key('password_field')), '123');
+      final form = tester.state<FormState>(find.byType(Form));
+      expect(form.validate(), isFalse);
+      await tester.pump();
+
+      expect(find.text('Por favor ingresa un email válido'), findsOneWidget);
       expect(
-        find.text('La contraseña debe tener al menos 6 caracteres'),
+        find.text('La contraseña debe tener al menos 4 caracteres'),
         findsOneWidget,
       );
     });
@@ -96,66 +87,42 @@ void main() {
     testWidgets('toggles password visibility', (tester) async {
       await tester.pumpWidget(createTestWidget());
 
-      // Find password field
-      final passwordField = find.byKey(const Key('password_field'));
-      expect(passwordField, findsOneWidget);
-
-      // Initially password should be obscured (check for visibility icon)
       expect(find.byIcon(Icons.visibility), findsOneWidget);
-
-      // Find and tap the visibility toggle button
-      final visibilityButton = find.descendant(
-        of: passwordField,
-        matching: find.byType(IconButton),
-      );
-      await tester.tap(visibilityButton);
+      await tester.tap(find.byIcon(Icons.visibility));
       await tester.pump();
-
-      // Password should now be visible (check for visibility_off icon)
       expect(find.byIcon(Icons.visibility_off), findsOneWidget);
     });
 
-    testWidgets('calls auth service when form is valid', (tester) async {
+    testWidgets('submits the exact UAT credentials', (tester) async {
       await tester.pumpWidget(createTestWidget());
 
-      // Enter valid credentials
       await tester.enterText(
-        find.byKey(const Key('username_field')),
-        'juan.perez',
+        find.byKey(const Key('email_field')),
+        'juan.perez@docentes.uat.edu.mx',
       );
       await tester.enterText(
         find.byKey(const Key('password_field')),
         'uat2024',
       );
-
-      // Tap login button
+      await tester.pump();
       await tester.tap(find.byKey(const Key('login_button')));
       await tester.pump();
 
-      // Wait for async operations
-      await tester.pumpAndSettle();
-
-      // Verify auth service was called
-      verify(
-        () =>
-            mockAuthService.login('juan.perez@docentes.uat.edu.mx', 'uat2024'),
-      ).called(1);
+      expect(notifier.submittedEmail, 'juan.perez@docentes.uat.edu.mx');
+      expect(notifier.submittedPassword, 'uat2024');
     });
 
-    testWidgets('shows loading state during authentication', (tester) async {
-      // Create a widget with loading state
+    testWidgets('disables fields and button while authenticating', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         createTestWidget(
-          overrideState: const AuthState(status: AuthStatus.loading),
+          state: const ProfesorAuthState(status: ProfesorAuthStatus.loading),
         ),
       );
 
-      // Wait for the widget to rebuild
-      await tester.pump();
-
-      // Fields should be disabled
-      final usernameField = tester.widget<TextFormField>(
-        find.byKey(const Key('username_field')),
+      final emailField = tester.widget<TextFormField>(
+        find.byKey(const Key('email_field')),
       );
       final passwordField = tester.widget<TextFormField>(
         find.byKey(const Key('password_field')),
@@ -164,61 +131,41 @@ void main() {
         find.byKey(const Key('login_button')),
       );
 
-      expect(usernameField.enabled, isFalse);
+      expect(emailField.enabled, isFalse);
       expect(passwordField.enabled, isFalse);
       expect(loginButton.onPressed, isNull);
-
-      // Should show loading indicator in button
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
     });
 
-    testWidgets('shows error message when authentication fails', (
-      tester,
-    ) async {
-      // Create a widget with error state
-      await tester.pumpWidget(
-        createTestWidget(
-          overrideState: const AuthState(
-            status: AuthStatus.error,
-            errorMessage: 'Credenciales inválidas',
-          ),
-        ),
-      );
-
-      // Wait for the widget to rebuild
-      await tester.pump();
-
-      // Should show error message
-      expect(find.text('Credenciales inválidas'), findsOneWidget);
-      expect(find.byIcon(Icons.error_outline), findsOneWidget);
-    });
-
-    testWidgets('submits form when pressing done on password field', (
-      tester,
-    ) async {
+    testWidgets('shows backend authentication errors', (tester) async {
       await tester.pumpWidget(createTestWidget());
 
-      // Enter valid credentials
-      await tester.enterText(
-        find.byKey(const Key('username_field')),
-        'juan.perez',
+      notifier.emit(
+        const ProfesorAuthState(
+          status: ProfesorAuthStatus.error,
+          errorMessage: 'Credenciales inválidas',
+        ),
       );
-      await tester.enterText(
-        find.byKey(const Key('password_field')),
-        'uat2024',
-      );
+      await tester.pump();
 
-      // Find the password field and simulate pressing done
-      final passwordField = find.byKey(const Key('password_field'));
-      await tester.tap(passwordField);
+      expect(find.text('Credenciales inválidas'), findsOneWidget);
+      expect(find.text('Cerrar'), findsOneWidget);
+    });
+
+    testWidgets('submits when pressing done on password', (tester) async {
+      await tester.pumpWidget(createTestWidget());
+
+      await tester.enterText(
+        find.byKey(const Key('email_field')),
+        'docente@uat.edu.mx',
+      );
+      await tester.enterText(find.byKey(const Key('password_field')), 'secret');
+      await tester.tap(find.byKey(const Key('password_field')));
       await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pumpAndSettle();
+      await tester.pump();
 
-      // Verify auth service was called
-      verify(
-        () =>
-            mockAuthService.login('juan.perez@docentes.uat.edu.mx', 'uat2024'),
-      ).called(1);
+      expect(notifier.submittedEmail, 'docente@uat.edu.mx');
+      expect(notifier.submittedPassword, 'secret');
     });
   });
 }

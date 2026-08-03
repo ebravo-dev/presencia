@@ -10,6 +10,7 @@ import { DashboardPage } from '@/features/dashboard/dashboard-page';
 import { AllocationPage } from '@/features/allocation/allocation-page';
 import { ReportsPage } from '@/features/reports/reports-page';
 import { SuperUserPage } from '@/features/super-user/super-user-page';
+import { DeviceBindingsPage } from '@/features/device-bindings/device-bindings-page';
 
 function ProtectedApp() {
   const setUser = useAuthStore((state) => state.setUser);
@@ -27,6 +28,7 @@ export const router = createBrowserRouter([
     { path: '/', element: <DashboardPage /> },
     { path: '/carga-academica', element: <AllocationPage /> },
     { path: '/reportes/asistencia', element: <ReportsPage /> },
+    { path: '/dispositivos', element: <DeviceBindingsPage /> },
   ] },
   { path: '*', element: <Navigate to="/" replace /> },
 ], { basename: '/coordinacion' });

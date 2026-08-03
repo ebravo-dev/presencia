@@ -7,41 +7,16 @@ part of 'profesor.dart';
 // **************************************************************************
 
 Profesor _$ProfesorFromJson(Map<String, dynamic> json) => Profesor(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      institutionalEmail: json['institutionalEmail'] as String,
-    );
+  id: json['id'] as String,
+  name: json['name'] as String,
+  institutionalEmail: json['institutionalEmail'] as String,
+);
 
 Map<String, dynamic> _$ProfesorToJson(Profesor instance) => <String, dynamic>{
-      'id': instance.id,
-      'name': instance.name,
-      'institutionalEmail': instance.institutionalEmail,
-    };
-
-LoginRequest _$LoginRequestFromJson(Map<String, dynamic> json) => LoginRequest(
-      institutionalEmail: json['institutionalEmail'] as String,
-      encryptedPassword: json['encryptedPassword'] as String,
-    );
-
-Map<String, dynamic> _$LoginRequestToJson(LoginRequest instance) =>
-    <String, dynamic>{
-      'institutionalEmail': instance.institutionalEmail,
-      'encryptedPassword': instance.encryptedPassword,
-    };
-
-RegisterRequest _$RegisterRequestFromJson(Map<String, dynamic> json) =>
-    RegisterRequest(
-      name: json['name'] as String,
-      institutionalEmail: json['institutionalEmail'] as String,
-      encryptedPassword: json['encryptedPassword'] as String,
-    );
-
-Map<String, dynamic> _$RegisterRequestToJson(RegisterRequest instance) =>
-    <String, dynamic>{
-      'name': instance.name,
-      'institutionalEmail': instance.institutionalEmail,
-      'encryptedPassword': instance.encryptedPassword,
-    };
+  'id': instance.id,
+  'name': instance.name,
+  'institutionalEmail': instance.institutionalEmail,
+};
 
 LoginResponse _$LoginResponseFromJson(Map<String, dynamic> json) =>
     LoginResponse(

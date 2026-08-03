@@ -9,7 +9,6 @@ import '../../../core/theme/uat_colors.dart';
 import '../../../core/utils/utils.dart';
 import '../../../services/api_service.dart';
 import '../../../services/auth_storage_service.dart';
-import '../../../services/sync_service.dart';
 import '../../../services/attendance_batch_service.dart';
 import '../../../shared/models/grupo.dart';
 import 'grupo_detail_page.dart';
@@ -25,7 +24,6 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   final AsistenciaLocalService _asistenciaService = AsistenciaLocalService();
   final ApiService _apiService = ApiService();
   final AuthStorageService _authStorage = AuthStorageService();
-  final SyncService _syncService = SyncService();
   final AttendanceBatchService _attendanceBatchService =
       AttendanceBatchService();
   List<AsistenciaRegistro> _pendientes = [];
@@ -156,7 +154,9 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
             'Reconciliación: $key tiene cambios locales posteriores al envío, mantener como pendiente',
           );
         }
-      } else if (status == 'IN_PROGRESS' || status == 'PENDING') {
+      } else if (status == 'IN_PROGRESS' ||
+          status == 'PROCESSING' ||
+          status == 'PENDING') {
         // The server is still processing this record (professor left mid-upload).
         Logger.info('Reconciliación: $key está sincronizando en el servidor');
         newSyncingOnServer.add(key);
@@ -247,22 +247,6 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   Future<void> _subirAsistencias() async {
     if (_pendientes.isEmpty || _isUploading) return;
 
-    final hasInternet = await _syncService.hasInternetConnection();
-    if (!hasInternet) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              'Sin conexión. Las listas permanecen guardadas y se enviarán cuando vuelva internet.',
-            ),
-            backgroundColor: Colors.orange.shade800,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-      return;
-    }
-
     final token = _authStorage.getToken();
     final grupos = _authStorage.getGrupos() ?? [];
     if (token == null) return;
@@ -282,7 +266,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         label: 'Procesando en servidor',
         status: _StepStatus.pending,
       ),
-      _SyncStepData(label: '¡Terminado!', status: _StepStatus.pending),
+      _SyncStepData(label: 'Confirmación de UAT', status: _StepStatus.pending),
     ];
 
     _updateStep(0, _StepStatus.completed);
@@ -291,32 +275,34 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       1,
       _StepStatus.inProgress,
       subtitle:
-          '${_pendientes.length} lista${_pendientes.length == 1 ? '' : 's'} al backend principal',
+          '${_pendientes.length} lista${_pendientes.length == 1 ? '' : 's'} al servicio de asistencia',
     );
     final directResult = await _attendanceBatchService.submitDirectToBackend(
       token: token,
       records: List<AsistenciaRegistro>.from(_pendientes),
       groups: grupos,
-      encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
     );
     _updateStep(
       1,
       directResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
       subtitle:
-          '${directResult.uploaded} subida${directResult.uploaded == 1 ? '' : 's'}, '
+          '${directResult.accepted} aceptada${directResult.accepted == 1 ? '' : 's'}, '
           '${directResult.skipped} omitida${directResult.skipped == 1 ? '' : 's'}, '
           '${directResult.failed} fallida${directResult.failed == 1 ? '' : 's'}',
     );
     _updateStep(
       2,
-      directResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
+      directResult.failed > 0 ? _StepStatus.failed : _StepStatus.pending,
+      subtitle: directResult.failed > 0
+          ? null
+          : 'El worker publicará las listas en segundo plano.',
     );
     _updateStep(
       3,
-      directResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
+      directResult.failed > 0 ? _StepStatus.failed : _StepStatus.pending,
       subtitle: directResult.failed > 0
           ? 'Las listas fallidas permanecen pendientes.'
-          : null,
+          : 'La app las marcará sincronizadas sólo después de recibir COMPLETED.',
     );
     HapticFeedback.heavyImpact();
 
@@ -725,7 +711,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
           width: 120,
           height: 120,
           decoration: BoxDecoration(
-            color: Colors.green.withOpacity(0.15),
+            color: Colors.green.withValues(alpha: 0.15),
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -766,9 +752,9 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             margin: const EdgeInsets.only(bottom: 14),
             decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
+              color: Colors.blue.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.blue.withOpacity(0.2)),
+              border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
             ),
             child: Row(
               children: [
@@ -813,7 +799,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.12),
+                        color: Colors.orange.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(
@@ -1095,7 +1081,7 @@ class _CalendarModalState extends State<_CalendarModal> {
                       fontSize: 16,
                     ),
                     todayDecoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.3),
+                      color: Colors.blue.withValues(alpha: 0.3),
                       shape: BoxShape.circle,
                     ),
                     todayTextStyle: const TextStyle(
@@ -1164,7 +1150,7 @@ class _CalendarModalState extends State<_CalendarModal> {
                               width: 40,
                               height: 40,
                               decoration: BoxDecoration(
-                                color: Colors.blue.withOpacity(0.3),
+                                color: Colors.blue.withValues(alpha: 0.3),
                                 shape: BoxShape.circle,
                               ),
                               child: Center(
@@ -1290,7 +1276,7 @@ class _CalendarModalState extends State<_CalendarModal> {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Container(
+          SizedBox(
             width: 40,
             height: 40,
             child: Center(

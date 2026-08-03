@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, Bluetooth, Bug, Copy, Database, KeyRound, Link2, Lock, LogOut, Pencil, PlusCircle, ShieldCheck, Trash2, UserCog } from 'lucide-react';
+import { Activity, Bluetooth, Bug, Copy, Database, KeyRound, Link2, Lock, LogOut, Pencil, Play, PlusCircle, RefreshCw, ShieldCheck, Trash2, UserCog, Users } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
 import { superUserApi } from '@/core/api/coordination.api';
 import type { Beacon, CoordinatorAccount, DebugClassResponse, DebugScheduleInput, ScheduleDay } from '@/core/api/types';
@@ -280,8 +280,8 @@ function DebugAdmin() {
   const queryClient = useQueryClient();
   const [editingDebugClass, setEditingDebugClass] = useState<DebugClass | null>(null);
   const [classForm, setClassForm] = useState({
-    professorEmail: 'debug.profesor@uat.edu.mx',
-    professorName: 'Profesor Debug',
+    professorEmail: 'profesor.demo@uat.edu.mx',
+    professorName: 'Profesor Demo',
     code: '990001',
     groupLetter: 'DBG',
     period: '',
@@ -292,11 +292,63 @@ function DebugAdmin() {
   });
   const [schedule, setSchedule] = useState<Record<DebugDay, DebugScheduleSlot[]>>(defaultDebugSchedule);
   const [toleranceMinutes, setToleranceMinutes] = useState('10');
+  const [teacherForm, setTeacherForm] = useState({ email: 'nuevo.profesor.demo@uat.edu.mx', name: 'Nuevo Profesor Demo', password: '' });
+  const [studentForm, setStudentForm] = useState({ matricula: 'DEMO0002', email: 'nuevo.alumno.demo@alumnos.uat.edu.mx', name: 'Nuevo Alumno Demo', password: '', careerName: 'Ingeniería Demo' });
+  const [selectedStudents, setSelectedStudents] = useState<Record<string, string>>({});
+  const [simulationDate, setSimulationDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [simulationStatus, setSimulationStatus] = useState<'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED'>('PRESENT');
+  const [showResetConfirmation, setShowResetConfirmation] = useState(false);
+  const [resetConfirmation, setResetConfirmation] = useState('');
   const status = useQuery({ queryKey: ['super-user', 'debug', 'status'], queryFn: superUserApi.debugStatus, refetchInterval: REFRESH_INTERVAL_MS });
-  const settings = useQuery({ queryKey: ['super-user', 'debug', 'settings'], queryFn: superUserApi.debugSettings, refetchInterval: REFRESH_INTERVAL_MS });
-  const classes = useQuery({ queryKey: ['super-user', 'debug', 'classes'], queryFn: superUserApi.debugClasses, refetchInterval: REFRESH_INTERVAL_MS });
-  const attendance = useQuery({ queryKey: ['super-user', 'debug', 'attendance'], queryFn: superUserApi.debugStudentAttendance, refetchInterval: REFRESH_INTERVAL_MS });
-  const logs = useQuery({ queryKey: ['super-user', 'debug', 'logs'], queryFn: superUserApi.debugFlowLogs, refetchInterval: REFRESH_INTERVAL_MS });
+  const debugEnabled = status.data?.data.enabled === true;
+  const catalog = useQuery({ queryKey: ['super-user', 'debug', 'catalog'], queryFn: superUserApi.debugCatalog, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
+  const settings = useQuery({ queryKey: ['super-user', 'debug', 'settings'], queryFn: superUserApi.debugSettings, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
+  const classes = useQuery({ queryKey: ['super-user', 'debug', 'classes'], queryFn: superUserApi.debugClasses, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
+  const attendance = useQuery({ queryKey: ['super-user', 'debug', 'attendance'], queryFn: superUserApi.debugStudentAttendance, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
+  const logs = useQuery({ queryKey: ['super-user', 'debug', 'logs'], queryFn: superUserApi.debugFlowLogs, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
+
+  const refreshDebug = () => queryClient.invalidateQueries({ queryKey: ['super-user', 'debug'] });
+  const createTeacher = useMutation({
+    mutationFn: () => superUserApi.createDebugTeacher(teacherForm),
+    onSuccess: async () => { setTeacherForm((current) => ({ ...current, password: '' })); await refreshDebug(); },
+  });
+  const deleteTeacher = useMutation({ mutationFn: superUserApi.deleteDebugTeacher, onSuccess: refreshDebug });
+  const createStudent = useMutation({
+    mutationFn: () => superUserApi.createDebugStudent(studentForm),
+    onSuccess: async () => { setStudentForm((current) => ({ ...current, password: '' })); await refreshDebug(); },
+  });
+  const deleteStudent = useMutation({ mutationFn: superUserApi.deleteDebugStudent, onSuccess: refreshDebug });
+  const addStudent = useMutation({
+    mutationFn: ({ classId, studentId }: { classId: string; studentId: string }) => superUserApi.addDebugStudentToClass(classId, studentId),
+    onSuccess: refreshDebug,
+  });
+  const removeStudent = useMutation({
+    mutationFn: ({ classId, studentId }: { classId: string; studentId: string }) => superUserApi.removeDebugStudentFromClass(classId, studentId),
+    onSuccess: refreshDebug,
+  });
+  const deleteClass = useMutation({ mutationFn: superUserApi.deleteDebugClass, onSuccess: refreshDebug });
+  const synchronize = useMutation({ mutationFn: superUserApi.synchronizeDebugCatalog, onSuccess: refreshDebug });
+  const resetDemoData = useMutation({
+    mutationFn: superUserApi.resetDebugData,
+    onSuccess: async () => {
+      setShowResetConfirmation(false);
+      setResetConfirmation('');
+      setSelectedStudents({});
+      resetClassEditor();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['super-user'] }),
+        queryClient.invalidateQueries({ queryKey: ['coordination'] }),
+        queryClient.invalidateQueries({ queryKey: ['shared-classes'] }),
+      ]);
+    },
+  });
+  const simulateAttendance = useMutation({
+    mutationFn: (item: DebugClass) => superUserApi.simulateDebugAttendance(item.id, {
+      date: simulationDate,
+      entries: item.students.map((student) => ({ studentId: student.id, status: simulationStatus })),
+    }),
+    onSuccess: refreshDebug,
+  });
 
   useEffect(() => {
     const current = settings.data?.data.teacherAttendanceToleranceMinutes ?? status.data?.data.settings.teacherAttendanceToleranceMinutes;
@@ -368,7 +420,7 @@ function DebugAdmin() {
     }));
   };
 
-  const enabled = status.data?.data.enabled ?? false;
+  const enabled = debugEnabled;
   const startClassEdit = (item: DebugClass) => {
     setEditingDebugClass(item);
     setClassForm({
@@ -380,7 +432,7 @@ function DebugAdmin() {
       name: item.name,
       level: item.level,
       classroom: item.classroom,
-      beaconUuid: '',
+      beaconUuid: item.beaconUuid,
     });
     setSchedule(debugScheduleFromApi(item.schedule));
   };
@@ -395,15 +447,15 @@ function DebugAdmin() {
       name: `${item.name} copia`,
       level: item.level,
       classroom: item.classroom,
-      beaconUuid: '11111111-2222-4333-8444-555555555555',
+      beaconUuid: item.beaconUuid,
     });
     setSchedule(debugScheduleFromApi(item.schedule));
   };
   const resetClassEditor = () => {
     setEditingDebugClass(null);
     setClassForm({
-      professorEmail: 'debug.profesor@uat.edu.mx',
-      professorName: 'Profesor Debug',
+      professorEmail: 'profesor.demo@uat.edu.mx',
+      professorName: 'Profesor Demo',
       code: '990001',
       groupLetter: 'DBG',
       period: '',
@@ -414,6 +466,38 @@ function DebugAdmin() {
     });
     setSchedule(defaultDebugSchedule);
   };
+
+  if (status.isError) {
+    return (
+      <Card className="p-5">
+        <div className="flex items-start gap-3">
+          <div className="rounded-xl bg-red-50 p-2.5 text-[#C8102E]"><Bug size={21} /></div>
+          <div>
+            <h2 className="font-bold">No se pudo consultar el estado de Debug</h2>
+            <p className="mt-1 text-sm text-slate-500">Reintenta en unos segundos. Las funciones de prueba permanecen inaccesibles mientras no se confirme su estado.</p>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  if (!status.isPending && !enabled) {
+    return (
+      <Card className="p-5">
+        <div className="flex items-start gap-3">
+          <div className="rounded-xl bg-emerald-50 p-2.5 text-emerald-700"><Bug size={21} /></div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-bold">Modo demo desactivado</h2>
+              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase text-emerald-800">Producción real</span>
+            </div>
+            <p className="mt-2 text-sm text-slate-500">{status.data?.data.apiRestPolicy}</p>
+            <p className="mt-2 text-sm text-slate-500">Activa PRESENCIA_DEBUG_MODE únicamente en un proyecto Dokploy aislado y marcado como entorno demo.</p>
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -426,16 +510,110 @@ function DebugAdmin() {
               <p className="text-sm text-slate-500">{status.data?.data.apiRestPolicy ?? 'Cargando estado...'}</p>
             </div>
           </div>
-          <span className={cn('rounded-full px-3 py-1 text-xs font-black uppercase', enabled ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800')}>
-            {enabled ? 'Activo' : 'Release real'}
-          </span>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={() => synchronize.mutate()} disabled={synchronize.isPending}>
+              <RefreshCw size={16} />{synchronize.isPending ? 'Sincronizando...' : 'Sincronizar datos'}
+            </Button>
+            {enabled && (
+              <Button variant="danger" onClick={() => { setShowResetConfirmation(true); resetDemoData.reset(); }} disabled={resetDemoData.isPending}>
+                <Trash2 size={16} />Borrar datos demo
+              </Button>
+            )}
+            <span className={cn('rounded-full px-3 py-1 text-xs font-black uppercase', enabled ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800')}>
+              {enabled ? 'Demo activo' : 'Release real'}
+            </span>
+          </div>
         </div>
         <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
           <InfoBox label="Periodo" value={status.data?.data.period ?? '-'} />
           <InfoBox label="Tolerancia profesor" value={`${status.data?.data.settings.teacherAttendanceToleranceMinutes ?? settings.data?.data.teacherAttendanceToleranceMinutes ?? '-'} min`} />
           <InfoBox label="Actualizado" value={status.data?.meta.generatedAt ? new Date(status.data.meta.generatedAt).toLocaleTimeString('es-MX') : '-'} />
         </div>
+        {resetDemoData.isSuccess && (
+          <p role="status" className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
+            Los datos demo fueron eliminados correctamente. La cuenta de superusuario y las migraciones se conservaron.
+          </p>
+        )}
       </Card>
+
+      {showResetConfirmation && (
+        <Card role="alertdialog" aria-labelledby="demo-reset-title" aria-describedby="demo-reset-description" className="border-red-300 bg-red-50 p-5 dark:border-red-900 dark:bg-red-950/20">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-red-100 p-2.5 text-red-700 dark:bg-red-950 dark:text-red-300"><Trash2 size={21} /></div>
+            <div className="min-w-0 flex-1">
+              <h2 id="demo-reset-title" className="font-black text-red-900 dark:text-red-200">Borrar todos los datos de la demo</h2>
+              <p id="demo-reset-description" className="mt-1 text-sm text-red-800/80 dark:text-red-300/80">
+                Se eliminarán profesores, alumnos, materias, asistencias, vínculos de teléfonos, beacons y sesiones demo. Esta acción no se puede deshacer.
+              </p>
+              <label className="mt-4 block max-w-md text-sm font-bold text-red-900 dark:text-red-200">
+                Escribe <span className="font-mono">BORRAR DEMO</span> para confirmar
+                <input
+                  className="field mt-1 border-red-300 bg-white font-mono dark:border-red-900 dark:bg-[#15181d]"
+                  value={resetConfirmation}
+                  onChange={(event) => setResetConfirmation(event.target.value)}
+                  autoComplete="off"
+                  autoFocus
+                />
+              </label>
+              {resetDemoData.isError && <p role="alert" className="mt-3 text-sm font-semibold text-red-700 dark:text-red-300">No se pudo completar el borrado. Los servicios conservaron sus protecciones; vuelve a intentarlo.</p>}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button variant="danger" disabled={resetConfirmation !== 'BORRAR DEMO' || resetDemoData.isPending} onClick={() => resetDemoData.mutate()}>
+                  <Trash2 size={16} />{resetDemoData.isPending ? 'Borrando...' : 'Borrar definitivamente'}
+                </Button>
+                <Button variant="secondary" disabled={resetDemoData.isPending} onClick={() => { setShowResetConfirmation(false); setResetConfirmation(''); resetDemoData.reset(); }}>Cancelar</Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card className="p-5">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="rounded-xl bg-violet-50 p-2.5 text-violet-700"><UserCog size={21} /></div>
+            <div><h2 className="font-bold">Profesores demo</h2><p className="text-sm text-slate-500">Cuentas ficticias para iniciar sesión en la app del profesor.</p></div>
+          </div>
+          <form className="grid gap-3 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); createTeacher.mutate(); }}>
+            <label className="text-sm font-semibold">Nombre<input className="field mt-1" value={teacherForm.name} onChange={(event) => setTeacherForm((current) => ({ ...current, name: event.target.value }))} required /></label>
+            <label className="text-sm font-semibold">Correo<input type="email" className="field mt-1" value={teacherForm.email} onChange={(event) => setTeacherForm((current) => ({ ...current, email: event.target.value }))} required /></label>
+            <label className="text-sm font-semibold sm:col-span-2">Contraseña demo<input type="password" minLength={8} className="field mt-1" value={teacherForm.password} onChange={(event) => setTeacherForm((current) => ({ ...current, password: event.target.value }))} autoComplete="new-password" required /></label>
+            <Button type="submit" disabled={createTeacher.isPending}><PlusCircle size={16} />Agregar profesor</Button>
+          </form>
+          {createTeacher.isError && <p className="mt-3 text-sm font-semibold text-red-600">No se pudo crear el profesor; revisa que el correo no exista.</p>}
+          <div className="mt-4 space-y-2">
+            {catalog.data?.data.teachers.map((teacher) => (
+              <div key={teacher.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-[#2e3138]">
+                <div className="min-w-0"><b>{teacher.name}</b><p className="truncate text-xs text-slate-500">{teacher.email} · ID {teacher.externalId}</p></div>
+                <Button type="button" variant="ghost" aria-label={`Eliminar ${teacher.name}`} onClick={() => deleteTeacher.mutate(teacher.id)}><Trash2 size={15} /></Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="p-5">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="rounded-xl bg-cyan-50 p-2.5 text-cyan-700"><Users size={21} /></div>
+            <div><h2 className="font-bold">Alumnos demo</h2><p className="text-sm text-slate-500">Cuentas, matrícula y UUID ficticios para horarios y asistencia.</p></div>
+          </div>
+          <form className="grid gap-3 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); createStudent.mutate(); }}>
+            <label className="text-sm font-semibold">Nombre<input className="field mt-1" value={studentForm.name} onChange={(event) => setStudentForm((current) => ({ ...current, name: event.target.value }))} required /></label>
+            <label className="text-sm font-semibold">Matrícula<input className="field mt-1" value={studentForm.matricula} onChange={(event) => setStudentForm((current) => ({ ...current, matricula: event.target.value }))} required /></label>
+            <label className="text-sm font-semibold">Correo<input type="email" className="field mt-1" value={studentForm.email} onChange={(event) => setStudentForm((current) => ({ ...current, email: event.target.value }))} required /></label>
+            <label className="text-sm font-semibold">Carrera<input className="field mt-1" value={studentForm.careerName} onChange={(event) => setStudentForm((current) => ({ ...current, careerName: event.target.value }))} required /></label>
+            <label className="text-sm font-semibold sm:col-span-2">Contraseña demo<input type="password" minLength={8} className="field mt-1" value={studentForm.password} onChange={(event) => setStudentForm((current) => ({ ...current, password: event.target.value }))} autoComplete="new-password" required /></label>
+            <Button type="submit" disabled={createStudent.isPending}><PlusCircle size={16} />Agregar alumno</Button>
+          </form>
+          {createStudent.isError && <p className="mt-3 text-sm font-semibold text-red-600">No se pudo crear el alumno; revisa correo y matrícula.</p>}
+          <div className="mt-4 space-y-2">
+            {catalog.data?.data.students.map((student) => (
+              <div key={student.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-[#2e3138]">
+                <div className="min-w-0"><b>{student.name}</b><p className="truncate text-xs text-slate-500">{student.matricula} · {student.email}</p></div>
+                <Button type="button" variant="ghost" aria-label={`Eliminar ${student.name}`} onClick={() => deleteStudent.mutate(student.id)}><Trash2 size={15} /></Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
 
       <div className="grid gap-4 xl:grid-cols-[380px_1fr]">
         <Card className="p-5">
@@ -446,7 +624,10 @@ function DebugAdmin() {
           </div>
           {editingDebugClass && <p className="mb-3 rounded-lg bg-amber-50 p-3 text-xs font-semibold text-amber-800">Editando la clase de {editingDebugClass.professor.name}. El profesor no se cambia desde aquí; solo la configuración de la materia.</p>}
           <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); saveClass.mutate(); }}>
-            <label className="block text-sm font-semibold">Profesor<input className="field mt-1" value={classForm.professorEmail} disabled={Boolean(editingDebugClass)} onChange={(event) => setClassForm((current) => ({ ...current, professorEmail: event.target.value }))} /></label>
+            <label className="block text-sm font-semibold">Profesor<select className="field mt-1" value={classForm.professorEmail} disabled={Boolean(editingDebugClass)} onChange={(event) => {
+              const teacher = catalog.data?.data.teachers.find((item) => item.email === event.target.value);
+              setClassForm((current) => ({ ...current, professorEmail: event.target.value, professorName: teacher?.name ?? current.professorName }));
+            }} required><option value="">Selecciona un profesor</option>{catalog.data?.data.teachers.map((teacher) => <option key={teacher.id} value={teacher.email}>{teacher.name} · {teacher.email}</option>)}</select></label>
             <label className="block text-sm font-semibold">Nombre profesor<input className="field mt-1" value={classForm.professorName} disabled={Boolean(editingDebugClass)} onChange={(event) => setClassForm((current) => ({ ...current, professorName: event.target.value }))} /></label>
             <label className="block text-sm font-semibold">Materia<input className="field mt-1" value={classForm.name} onChange={(event) => setClassForm((current) => ({ ...current, name: event.target.value }))} /></label>
             <div className="grid grid-cols-2 gap-3">
@@ -458,7 +639,7 @@ function DebugAdmin() {
               <label className="block text-sm font-semibold">Salón<input className="field mt-1" value={classForm.classroom} onChange={(event) => setClassForm((current) => ({ ...current, classroom: event.target.value }))} /></label>
               <label className="block text-sm font-semibold">Periodo<input className="field mt-1" value={classForm.period} onChange={(event) => setClassForm((current) => ({ ...current, period: event.target.value }))} placeholder={status.data?.data.period ?? '2026-2'} /></label>
             </div>
-            <label className="block text-sm font-semibold">Beacon UUID<input className="field mt-1 font-mono text-xs" value={classForm.beaconUuid} onChange={(event) => setClassForm((current) => ({ ...current, beaconUuid: event.target.value }))} placeholder={editingDebugClass ? 'Opcional: nuevo UUID para este salón' : undefined} /></label>
+            <label className="block text-sm font-semibold">Beacon UUID<input className="field mt-1 font-mono text-xs" value={classForm.beaconUuid} onChange={(event) => setClassForm((current) => ({ ...current, beaconUuid: event.target.value }))} required /></label>
             <div className="space-y-2">
               <p className="text-sm font-bold">Horarios</p>
               {DEBUG_DAYS.map((day) => (
@@ -500,12 +681,42 @@ function DebugAdmin() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-[#15181d]"><tr><th className="px-5 py-3">Materia</th><th className="px-5 py-3">Profesor</th><th className="px-5 py-3">Salón</th><th className="px-5 py-3">Horario desplegado</th><th className="px-5 py-3">Alumnos</th><th className="px-5 py-3">Registros</th><th className="px-5 py-3 text-right">Acciones</th></tr></thead>
-                <tbody>{classes.data.data.map((item) => <tr key={item.id} className={cn('border-t border-slate-100 align-top dark:border-[#1f2229]', editingDebugClass?.id === item.id && 'bg-amber-50/60 dark:bg-amber-950/10')}><td className="px-5 py-4"><b>{item.name}</b><p className="text-xs text-slate-500">{item.code} {item.groupLetter} · {item.period}</p></td><td className="px-5 py-4">{item.professor.name}<p className="text-xs text-slate-500">{item.professor.institutionalEmail}</p></td><td className="px-5 py-4">{item.classroom}</td><td className="px-5 py-4">{renderDebugSchedule(item.schedule)}</td><td className="px-5 py-4">{item.students.length}</td><td className="px-5 py-4">{item.attendanceRecords.length}</td><td className="px-5 py-4"><div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => startClassEdit(item)}><Pencil size={14} />Editar</Button><Button variant="ghost" onClick={() => duplicateClass(item)}><Copy size={14} />Duplicar</Button></div></td></tr>)}</tbody>
+                <tbody>{classes.data.data.map((item) => <tr key={item.id} className={cn('border-t border-slate-100 align-top dark:border-[#1f2229]', editingDebugClass?.id === item.id && 'bg-amber-50/60 dark:bg-amber-950/10')}><td className="px-5 py-4"><b>{item.name}</b><p className="text-xs text-slate-500">{item.code} {item.groupLetter} · {item.period}</p></td><td className="px-5 py-4">{item.professor.name}<p className="text-xs text-slate-500">{item.professor.institutionalEmail}</p></td><td className="px-5 py-4">{item.classroom}</td><td className="px-5 py-4">{renderDebugSchedule(item.schedule)}</td><td className="px-5 py-4">{item.students.length}</td><td className="px-5 py-4">{item.attendanceRecords.length}</td><td className="px-5 py-4"><div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => startClassEdit(item)}><Pencil size={14} />Editar</Button><Button variant="ghost" onClick={() => duplicateClass(item)}><Copy size={14} />Duplicar</Button><Button variant="ghost" aria-label={`Eliminar ${item.name}`} onClick={() => deleteClass.mutate(item.id)}><Trash2 size={14} /></Button></div></td></tr>)}</tbody>
               </table>
             </div>
           )}
         </Card>
       </div>
+
+      <Card className="p-5">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div><h2 className="font-bold">Padrón y simulación de asistencia</h2><p className="text-sm text-slate-500">Asigna alumnos a cada materia y genera una captura interna sin escribir en UAT.</p></div>
+          <div className="flex flex-wrap gap-3">
+            <label className="text-xs font-bold uppercase text-slate-500">Fecha<input type="date" className="field mt-1" value={simulationDate} onChange={(event) => setSimulationDate(event.target.value)} /></label>
+            <label className="text-xs font-bold uppercase text-slate-500">Estado<select className="field mt-1" value={simulationStatus} onChange={(event) => setSimulationStatus(event.target.value as typeof simulationStatus)}><option value="PRESENT">Presente</option><option value="ABSENT">Ausente</option><option value="LATE">Retardo</option><option value="EXCUSED">Justificado</option></select></label>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {classes.data?.data.map((item) => {
+            const available = (catalog.data?.data.students ?? []).filter((student) => !item.students.some((assigned) => assigned.id === student.id));
+            return (
+              <div key={item.id} className="rounded-xl border border-slate-200 p-4 dark:border-[#2e3138]">
+                <div className="flex flex-wrap items-start justify-between gap-3"><div><b>{item.name}</b><p className="text-xs text-slate-500">{item.code} · {item.professor.name}</p></div><Button type="button" onClick={() => simulateAttendance.mutate(item)} disabled={!item.students.length || simulateAttendance.isPending}><Play size={15} />Simular {item.students.length}</Button></div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {item.students.map((student) => <span key={student.id} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs dark:bg-[#15181d]">{student.name}<button type="button" className="text-slate-500 hover:text-red-600" aria-label={`Quitar ${student.name}`} onClick={() => removeStudent.mutate({ classId: item.id, studentId: student.id })}>×</button></span>)}
+                  {!item.students.length && <span className="text-xs text-slate-400">Sin alumnos asignados.</span>}
+                </div>
+                <div className="mt-3 flex gap-2"><select className="field" value={selectedStudents[item.id] ?? ''} onChange={(event) => setSelectedStudents((current) => ({ ...current, [item.id]: event.target.value }))}><option value="">Selecciona alumno</option>{available.map((student) => <option key={student.id} value={student.id}>{student.name} · {student.matricula}</option>)}</select><Button type="button" variant="secondary" disabled={!selectedStudents[item.id] || addStudent.isPending} onClick={() => {
+                  const studentId = selectedStudents[item.id];
+                  if (studentId) addStudent.mutate({ classId: item.id, studentId });
+                }}><PlusCircle size={15} />Asignar</Button></div>
+              </div>
+            );
+          })}
+          {!classes.data?.data.length && <EmptyState icon={<Users />} title="Sin materias" description="Crea una materia antes de configurar su padrón." />}
+        </div>
+        {simulateAttendance.isError && <p className="mt-3 text-sm font-semibold text-red-600">No se pudo simular la asistencia. Revisa el padrón y vuelve a sincronizar.</p>}
+      </Card>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Card className="overflow-hidden">

@@ -151,6 +151,8 @@ model AttendanceUploadJob {
   batchId        String                    @map("batch_id")
   ownerUsername  String                    @map("owner_username")
   clientRecordId String                    @map("client_record_id")
+  attendanceSessionId String?              @map("attendance_session_id")
+  attendanceVersion   Int?                 @map("attendance_version")
   idGrupo        Int                       @map("id_grupo")
   fechaInicio    String                    @map("fecha_inicio")
   attendances    Json
@@ -168,8 +170,38 @@ model AttendanceUploadJob {
 
   @@unique([batchId, clientRecordId])
   @@index([ownerUsername, clientRecordId, createdAt])
+  @@index([attendanceSessionId, attendanceVersion])
   @@index([status, nextAttemptAt, createdAt])
   @@map("attendance_upload_jobs")
+}
+
+model DomainOutboxEvent {
+  id            String    @id
+  eventName     String    @map("event_name")
+  aggregateId   String    @map("aggregate_id")
+  payload       Json
+  occurredAt    DateTime  @map("occurred_at")
+  publishedAt   DateTime? @map("published_at")
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now()) @map("next_attempt_at")
+  lockedAt      DateTime? @map("locked_at")
+  lastError     String?   @map("last_error")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([publishedAt, nextAttemptAt, createdAt])
+  @@index([lockedAt])
+  @@map("domain_outbox_events")
+}
+
+model ProcessedDomainEvent {
+  id          String   @id @default(cuid())
+  eventId     String   @map("event_id")
+  consumer    String
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@unique([eventId, consumer])
+  @@index([processedAt])
+  @@map("processed_domain_events")
 }
 
 enum AttendanceUploadBatchStatus {

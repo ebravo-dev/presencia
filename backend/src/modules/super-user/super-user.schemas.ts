@@ -5,21 +5,6 @@ export const superUserLoginSchema = z.object({
     password: z.string().min(1),
 });
 
-export const coordinatorCreateSchema = z.object({
-    email: z.string().email(),
-    name: z.string().min(1),
-    password: z.string().min(8),
-    role: z.enum(['COORDINATOR', 'READ_ONLY']),
-});
-
-export const coordinatorUpdateSchema = z.object({
-    email: z.string().email().optional(),
-    name: z.string().min(1).optional(),
-    password: z.string().min(8).optional(),
-    role: z.enum(['COORDINATOR', 'READ_ONLY']).optional(),
-    disabled: z.boolean().optional(),
-});
-
 export const superUserBeaconSchema = beaconSchema;
 export const superUserBeaconUpdateSchema = beaconUpdateSchema;
 
@@ -78,8 +63,6 @@ export const debugSettingsUpdateSchema = z.object({
     teacherAttendanceToleranceMinutes: z.number().int().min(0).max(120),
 });
 
-export type CoordinatorCreateInput = z.infer<typeof coordinatorCreateSchema>;
-export type CoordinatorUpdateInput = z.infer<typeof coordinatorUpdateSchema>;
 export type DebugClassCreateInput = z.infer<typeof debugClassCreateSchema>;
 export type DebugClassUpdateInput = z.infer<typeof debugClassUpdateSchema>;
 export type DebugSettingsUpdateInput = z.infer<typeof debugSettingsUpdateSchema>;

@@ -11,7 +11,7 @@ void main() {
         "data": {
           "id": "68f13ff5eb895057d6880da8",
           "name": "Dr. Eder Jahir Gonzalez Bravo",
-          "institutionalEmail": "ejgonzalez@uat.edu.mx",
+          "institutionalEmail": "profesor.prueba@uat.edu.mx",
         },
         "token":
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4ZjEzZmY1ZWI4OTUwNTdkNjg4MGRhOCIsIm5hbWUiOiJEci4gRWRlciBKYWhpciBHb256YWxleiBCcmF2byIsImFwcCI6IlBST0ZFU1NPUl9TRVJWSUNFIiwiaWF0IjoxNzYwNjQxNTM1LCJleHAiOjE3NjEyNDYzMzV9.KuvHNqH2wQ8IROeQf6Cbx8HdBD9zKBkcHadOhQ4L0iA",
@@ -27,9 +27,9 @@ void main() {
       expect(loginResponse.profesor.name, "Dr. Eder Jahir Gonzalez Bravo");
       expect(
         loginResponse.profesor.institutionalEmail,
-        "ejgonzalez@uat.edu.mx",
+        "profesor.prueba@uat.edu.mx",
       );
-      expect(loginResponse.profesor.email, "ejgonzalez@uat.edu.mx");
+      expect(loginResponse.profesor.email, "profesor.prueba@uat.edu.mx");
       expect(loginResponse.token, isNotEmpty);
     });
 
@@ -43,33 +43,6 @@ void main() {
       expect(profesor.email, "test@uat.edu.mx");
       expect(profesor.institutionalEmail, "test@uat.edu.mx");
       expect(profesor.nombreCompleto, "Test Profesor");
-    });
-
-    test('LoginRequest debe generar JSON correcto con institutionalEmail', () {
-      final loginRequest = LoginRequest(
-        institutionalEmail: "test@uat.edu.mx",
-        encryptedPassword: "encrypted-password-base64",
-      );
-
-      final json = loginRequest.toJson();
-
-      expect(json['institutionalEmail'], "test@uat.edu.mx");
-      expect(json['encryptedPassword'], "encrypted-password-base64");
-      expect(json.containsKey('email'), false); // NO debe tener 'email'
-    });
-
-    test('RegisterRequest debe generar JSON correcto', () {
-      final registerRequest = RegisterRequest(
-        name: "Dr. Test",
-        institutionalEmail: "test@uat.edu.mx",
-        encryptedPassword: "encrypted-password-base64",
-      );
-
-      final json = registerRequest.toJson();
-
-      expect(json['name'], "Dr. Test");
-      expect(json['institutionalEmail'], "test@uat.edu.mx");
-      expect(json['encryptedPassword'], "encrypted-password-base64");
     });
   });
 }

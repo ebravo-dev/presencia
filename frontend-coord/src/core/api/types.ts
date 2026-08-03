@@ -144,18 +144,53 @@ export interface DebugSettingsResponse {
   meta: { generatedAt: string };
 }
 
+export interface DebugTeacher {
+  id: string;
+  externalId: string;
+  email: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DebugStudent {
+  id: string;
+  uatStudentId: number;
+  matricula: string;
+  email: string;
+  name: string;
+  attendanceUuid: string;
+  careerName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DebugCatalogResponse {
+  data: {
+    enabled: boolean;
+    settings: DebugSettings;
+    teachers: DebugTeacher[];
+    students: DebugStudent[];
+    classes: unknown[];
+    attendanceWrites: unknown[];
+    updatedAt: string;
+  };
+}
+
 export type DebugScheduleSlotInput = { startTime: string; endTime: string };
 export type DebugScheduleInput = Partial<Record<ScheduleDay, DebugScheduleSlotInput[]>>;
 
 export interface DebugClassResponse {
   data: Array<{
     id: string;
+    externalGroupId: string;
     code: string;
     groupLetter: string;
     period: string;
     name: string;
     level: string;
     classroom: string;
+    beaconUuid: string;
     schedule: Record<string, unknown>;
     professor: { id: string; name: string; institutionalEmail: string };
     students: Array<{ id: string; matricula: string; name: string; beaconUuid: string | null }>;

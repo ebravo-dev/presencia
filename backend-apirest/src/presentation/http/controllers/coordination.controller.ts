@@ -1,8 +1,8 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import type { CoordinationService } from '../../../application/services/coordination.service.js';
-import type { WeeklyAttendanceReportService } from '../../../application/services/weekly-attendance-report.service.js';
-import type { SharedClassService, SharedClassInput } from '../../../application/services/shared-class.service.js';
-import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
+import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
+import type { AcademicServiceClient } from '../../../infrastructure/http/client/academic-service.client.js';
+import type { CoordinationQueryClient } from '../../../infrastructure/http/client/coordination-query.client.js';
+import { ApiError } from '../../../errors/api-error.js';
 import {
   parseCoordinationPayload,
   rangeReportQuerySchema,
@@ -16,127 +16,165 @@ import {
 
 export class CoordinationController {
   constructor(
-    private readonly coordinationService: CoordinationService,
-    private readonly weeklyAttendanceReport: WeeklyAttendanceReportService,
-    private readonly attendanceBackendClient: AttendanceBackendClient,
-    private readonly sharedClassService: SharedClassService,
+    private readonly academicService: AcademicServiceClient,
+    private readonly attendanceServiceCommands: AttendanceServiceCommandClient,
+    private readonly coordinationQuery: CoordinationQueryClient,
   ) {}
 
   overview = async (_request: FastifyRequest, reply: FastifyReply) => {
-    return reply.code(200).send(await this.coordinationService.getOverview());
+    return reply.code(200).send(await this.coordinationQuery.overview());
   };
 
   coordinations = async (_request: FastifyRequest, reply: FastifyReply) => {
-    return reply.code(200).send(await this.coordinationService.listCoordinations());
+    return reply.code(200).send(await this.coordinationQuery.coordinations());
   };
 
   teachers = async (request: FastifyRequest, reply: FastifyReply) => {
     const query = parseCoordinationPayload(teacherListQuerySchema, request.query);
-    return reply.code(200).send(await this.coordinationService.listTeachers(query));
+    return reply.code(200).send(await this.coordinationQuery.teachers(query));
   };
 
   teacherAssignments = async (request: FastifyRequest, reply: FastifyReply) => {
     const { teacherId } = parseCoordinationPayload(teacherParamsSchema, request.params);
-    return reply.code(200).send(await this.coordinationService.getTeacherAssignments(teacherId));
+    return reply.code(200).send(await this.coordinationQuery.teacherAssignments(teacherId));
   };
 
   weeklyReport = async (request: FastifyRequest, reply: FastifyReply) => {
     const query = parseCoordinationPayload(weeklyReportQuerySchema, request.query);
-    return reply.send(await this.weeklyAttendanceReport.getReport(query.teacherId, query.weekStart));
+    return reply.send(await this.coordinationQuery.weeklyReport(query));
   };
 
   rangeReport = async (request: FastifyRequest, reply: FastifyReply) => {
     const query = parseCoordinationPayload(rangeReportQuerySchema, request.query);
-    return reply.send(await this.weeklyAttendanceReport.getRangeReport(query.teacherId, query.startDate, query.endDate));
+    return reply.send(await this.coordinationQuery.rangeReport(query));
   };
 
   beacons = async (_request: FastifyRequest, reply: FastifyReply) => {
-    return reply.send(await this.attendanceBackendClient.listBeacons());
+    return reply.send(await this.attendanceServiceCommands.listClassroomBeacons());
   };
 
   infrastructureSummary = async (_request: FastifyRequest, reply: FastifyReply) => {
-    return reply.send(await this.attendanceBackendClient.getInfrastructureSummary());
+    const [attendance, sharedClasses] = await Promise.all([
+      this.attendanceServiceCommands.infrastructureSummary(),
+      this.academicService.listSharedClasses(),
+    ]);
+    const activeSharedClasses = sharedClasses.data.filter(({ active }) => active);
+    return reply.send({
+      data: {
+        counts: {
+          ...attendance.data.counts,
+          activeSubstitutions: activeSharedClasses.length,
+        },
+        recentBindings: attendance.data.recentBindings,
+        recentBeacons: attendance.data.recentBeacons,
+        recentSubstitutions: activeSharedClasses
+          .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+          .slice(0, 6)
+          .map((assignment) => ({
+            id: assignment.id,
+            group: {
+              name: assignment.sourceAssignment.subject.name,
+              groupLetter: assignment.sourceAssignment.groupCode,
+              classroom: assignment.sourceAssignment.classroom,
+            },
+            primaryProfessor: { name: assignment.sourceAssignment.teacher.name },
+            substituteProfessor: { name: assignment.assignedTeacher.name },
+          })),
+      },
+      meta: { generatedAt: attendance.meta.generatedAt },
+    });
   };
 
   createBeacon = async (request: FastifyRequest, reply: FastifyReply) => {
-    return reply.code(201).send(await this.attendanceBackendClient.createBeacon(request.body as { classroom: string; uuid: string }));
+    const coordinator = requireCoordinator(request);
+    return reply.code(201).send(await this.attendanceServiceCommands.createClassroomBeacon({
+      ...(request.body as { classroom: string; uuid: string }), actorIdentityId: coordinator.id,
+      actorRole: 'COORDINATOR', reason: 'Alta de beacon desde coordinación.', correlationId: request.id,
+    }));
   };
 
   updateBeacon = async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    return reply.send(await this.attendanceBackendClient.updateBeacon(request.params.id, request.body as Partial<{ classroom: string; uuid: string }>));
+    const coordinator = requireCoordinator(request);
+    return reply.send(await this.attendanceServiceCommands.updateClassroomBeacon(request.params.id, {
+      ...(request.body as Partial<{ classroom: string; uuid: string }>), actorIdentityId: coordinator.id,
+      actorRole: 'COORDINATOR', reason: 'Actualización de beacon desde coordinación.', correlationId: request.id,
+    }));
   };
 
   deleteBeacon = async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    await this.attendanceBackendClient.deleteBeacon(request.params.id);
+    const coordinator = requireCoordinator(request);
+    await this.attendanceServiceCommands.deleteClassroomBeacon(request.params.id, {
+      actorIdentityId: coordinator.id, actorRole: 'COORDINATOR',
+      reason: 'Baja de beacon desde coordinación.', correlationId: request.id,
+    });
     return reply.code(204).send();
   };
 
   studentDeviceBindings = async (request: FastifyRequest<{ Querystring: { q?: string } }>, reply: FastifyReply) => {
-    return reply.send(await this.attendanceBackendClient.listStudentDeviceBindings({ q: request.query.q }));
+    return reply.send(await this.attendanceServiceCommands.listStudentDeviceBindings({ q: request.query.q }));
   };
 
   deleteStudentDeviceBinding = async (request: FastifyRequest<{ Params: { matricula: string } }>, reply: FastifyReply) => {
-    await this.attendanceBackendClient.deleteStudentDeviceBinding(request.params.matricula);
+    const coordinator = request.coordinator;
+    if (!coordinator) return reply.code(401).send({ error: 'COORDINATOR_UNAUTHORIZED' });
+    await this.attendanceServiceCommands.unbindStudentDevice({
+      matricula: request.params.matricula,
+      actorIdentityId: coordinator.id,
+      actorRole: 'COORDINATOR',
+      reason: 'Desvinculación solicitada desde el dashboard de coordinación.',
+      correlationId: request.id,
+    });
     return reply.code(204).send();
   };
 
   sharedClassOptions = async (_request: FastifyRequest, reply: FastifyReply) => {
-    return reply.send(await this.sharedClassService.listOptions());
+    return reply.send(await this.academicService.listSharedClassOptions());
   };
 
   sharedClasses = async (_request: FastifyRequest, reply: FastifyReply) => {
-    return reply.send(await this.sharedClassService.list());
+    return reply.send(await this.academicService.listSharedClasses());
   };
 
   createSharedClass = async (request: FastifyRequest, reply: FastifyReply) => {
-    const input = parseCoordinationPayload(sharedClassBodySchema, request.body) as SharedClassInput;
-    return reply.code(201).send(await this.sharedClassService.create(input));
+    const input = parseCoordinationPayload(sharedClassBodySchema, request.body);
+    const coordinator = requireCoordinator(request);
+    return reply.code(201).send(await this.academicService.createSharedClass({
+      ...input,
+      actorIdentityId: coordinator.id,
+      actorRole: 'COORDINATOR',
+      reason: 'Alta de clase compartida desde coordinación.',
+      correlationId: request.id,
+    }));
   };
 
   updateSharedClass = async (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = parseCoordinationPayload(sharedClassParamsSchema, request.params);
-    const input = parseCoordinationPayload(sharedClassUpdateBodySchema, request.body) as Partial<SharedClassInput>;
-    return reply.send(await this.sharedClassService.update(id, input));
+    const input = parseCoordinationPayload(sharedClassUpdateBodySchema, request.body);
+    const coordinator = requireCoordinator(request);
+    return reply.send(await this.academicService.updateSharedClass(id, {
+      ...input,
+      actorIdentityId: coordinator.id,
+      actorRole: 'COORDINATOR',
+      reason: 'Actualización de clase compartida desde coordinación.',
+      correlationId: request.id,
+    }));
   };
 
   deleteSharedClass = async (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = parseCoordinationPayload(sharedClassParamsSchema, request.params);
-    await this.sharedClassService.delete(id);
+    const coordinator = requireCoordinator(request);
+    await this.academicService.deleteSharedClass(id, {
+      actorIdentityId: coordinator.id,
+      actorRole: 'COORDINATOR',
+      reason: 'Baja de clase compartida desde coordinación.',
+      correlationId: request.id,
+    });
     return reply.code(204).send();
   };
 
-  substitutionOptions = async (_request: FastifyRequest, reply: FastifyReply) => {
-    return reply.send(await this.attendanceBackendClient.getSubstitutionOptions());
-  };
+}
 
-  substituteAssignments = async (_request: FastifyRequest, reply: FastifyReply) => {
-    return reply.send(await this.attendanceBackendClient.listSubstituteAssignments());
-  };
-
-  createSubstituteAssignment = async (request: FastifyRequest, reply: FastifyReply) => {
-    return reply.code(201).send(await this.attendanceBackendClient.createSubstituteAssignment(request.body as {
-      groupId: string;
-      substituteProfessorId: string;
-      startsAt?: string | null;
-      endsAt?: string | null;
-      active?: boolean;
-      notes?: string | null;
-    }));
-  };
-
-  updateSubstituteAssignment = async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    return reply.send(await this.attendanceBackendClient.updateSubstituteAssignment(request.params.id, request.body as Partial<{
-      groupId: string;
-      substituteProfessorId: string;
-      startsAt: string | null;
-      endsAt: string | null;
-      active: boolean;
-      notes: string | null;
-    }>));
-  };
-
-  deleteSubstituteAssignment = async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    await this.attendanceBackendClient.deleteSubstituteAssignment(request.params.id);
-    return reply.code(204).send();
-  };
+function requireCoordinator(request: FastifyRequest) {
+  if (!request.coordinator) throw new ApiError(401, 'COORDINATOR_UNAUTHORIZED', 'Sesión de coordinación requerida.');
+  return request.coordinator;
 }

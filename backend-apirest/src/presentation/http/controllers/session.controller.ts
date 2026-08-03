@@ -13,30 +13,51 @@ export class SessionController {
 
   create = async (request: FastifyRequest, reply: FastifyReply) => {
     const credentials = parsePayload(credentialsSchema, request.body);
-    const session = await this.uatService.createSession(credentials);
+    const session = await this.uatService.createSession(credentials, { correlationId: request.id });
     const response = await this.uatService.toSessionResponse(session);
 
     try {
-      if (env.PRESENCIA_DEBUG_MODE) {
-        request.log.info(
-          { sessionId: session.id, username: credentials.username },
-          'Modo debug activo: login validado; cosecha UAT deshabilitada.',
-        );
-        return reply.code(201).send(response);
-      }
-
-      this.eventBus.publish(
+      await this.eventBus.publish(
         createTeacherAuthenticatedEvent({
           sessionId: session.id,
           username: credentials.username,
+          correlationId: request.id,
+          causationId: request.id,
           loginParameters: session.login.parametros,
         }),
       );
+      if (env.PRESENCIA_DEBUG_MODE) {
+        request.log.info({ sessionId: session.id }, 'Modo demo activo: cosecha encolada desde el portal simulado.');
+      }
     } catch (error) {
       request.log.error({ err: error, sessionId: session.id }, 'No fue posible despachar la cosecha post-autenticacion.');
     }
 
-    return reply.code(201).send(response);
+    return reply.code(201).send({
+      ...response,
+      demoMode: env.PRESENCIA_DEBUG_MODE,
+      demoCapabilities: { simulateRoomBeacon: env.PRESENCIA_DEBUG_MODE },
+    });
+  };
+
+  sync = async (request: FastifyRequest, reply: FastifyReply) => {
+    const session = request.uatSession;
+
+    await this.eventBus.publish(
+      createTeacherAuthenticatedEvent({
+        sessionId: session.id,
+        username: session.username,
+        correlationId: request.id,
+        causationId: request.id,
+        loginParameters: session.login.parametros,
+      }),
+    );
+
+    return reply.code(202).send({
+      accepted: true,
+      sessionId: session.id,
+      message: 'Sincronizacion academica encolada.',
+    });
   };
 
   delete = async (request: FastifyRequest, reply: FastifyReply) => {

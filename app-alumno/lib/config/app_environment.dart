@@ -6,10 +6,9 @@ class AppEnvironment {
     defaultValue: 'https://debugasistencia.duckdns.org',
   );
 
-  static const String studentBindingApiBaseUrl = String.fromEnvironment(
-    'STUDENT_BINDING_API_BASE_URL',
-    defaultValue: 'https://debugasistencia.duckdns.org',
-  );
+  // Toda llamada pública entra por el Gateway; Attendance no se expone
+  // directamente a los clientes móviles.
+  static const String studentBindingApiBaseUrl = presenceApiBaseUrl;
 
   static const int apiTimeoutMs = int.fromEnvironment(
     'PRESENCIA_API_TIMEOUT',

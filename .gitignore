@@ -6,6 +6,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+!.env.*.example
 
 # IDEs
 .idea/
@@ -25,3 +26,16 @@ yarn-error.log*
 build/
 .flutter-plugins
 .flutter-plugins-dependencies
+backend-apirest.zip
+backend.zip
+frontend-coord.zip
+frontend-coord-dokploy.zip
+frontend-coord/frontend-coord-dist.zip
+backend-apirest-dokploy.zip
+frontend-coord-dist.zip
+backend-dokploy.zip
+
+# Generated TypeScript workspace artifacts
+packages/*/dist/
+services/*/dist/
+services/*/src/generated/

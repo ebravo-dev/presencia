@@ -28,7 +28,7 @@ export const registerAttendanceSchema = z.object({
             studentId: z.string().min(1, 'Student ID requerido'),
             status: z.nativeEnum(AttendanceStatus),
         })
-    ),
+    ).min(1, 'Se requiere al menos un alumno'),
 });
 
 export type RegisterAttendanceRequest = z.infer<typeof registerAttendanceSchema>;

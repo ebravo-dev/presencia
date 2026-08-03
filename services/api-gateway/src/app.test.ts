@@ -1,0 +1,137 @@
+import Fastify, { type FastifyInstance } from 'fastify';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { type GatewayEnv, gatewayEnvSchema } from './config.js';
+import { buildGateway } from './app.js';
+
+const metricsToken = 'a-different-metrics-token-with-at-least-32-characters';
+
+describe('API Gateway', () => {
+  let uat: FastifyInstance;
+  let attendance: FastifyInstance;
+  let gateway: FastifyInstance;
+  let env: GatewayEnv;
+
+  beforeEach(async () => {
+    uat = Fastify();
+    uat.all('/*', async (request) => ({
+      upstream: 'uat',
+      correlationId: request.headers['x-correlation-id'],
+      internalToken: request.headers['x-internal-service-token'],
+      traceparent: request.headers.traceparent,
+    }));
+    await uat.listen({ host: '127.0.0.1', port: 0 });
+
+    attendance = Fastify();
+    attendance.all('/*', async (request) => ({
+      upstream: 'attendance',
+      authorization: request.headers.authorization,
+      internalToken: request.headers['x-internal-service-token'],
+    }));
+    await attendance.listen({ host: '127.0.0.1', port: 0 });
+
+    env = gatewayEnvSchema.parse({
+      NODE_ENV: 'test',
+      LOG_LEVEL: 'silent',
+      UAT_INTEGRATION_URL: uat.listeningOrigin,
+      ATTENDANCE_SERVICE_URL: attendance.listeningOrigin,
+      METRICS_TOKEN: metricsToken,
+    });
+    gateway = await buildGateway({
+      env,
+      redis: { ping: async () => 'PONG', quit: async () => 'OK' },
+    });
+  });
+
+  afterEach(async () => {
+    await Promise.all([gateway?.close(), uat?.close(), attendance?.close()]);
+  });
+
+  it('routes UAT requests and strips untrusted internal headers', async () => {
+    const response = await gateway.inject({
+      method: 'GET',
+      url: '/api/uat/alumnos/horario',
+      headers: {
+        'x-correlation-id': 'mobile-request-123',
+        'x-internal-service-token': 'attacker-value',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      upstream: 'uat',
+      correlationId: 'mobile-request-123',
+    });
+    expect(response.json().internalToken).toBeUndefined();
+    expect(response.headers['x-correlation-id']).toBe('mobile-request-123');
+    expect(response.headers.traceparent).toMatch(/^00-[\da-f]{32}-[\da-f]{16}-01$/);
+    expect(response.json().traceparent).toBe(response.headers.traceparent);
+  });
+
+  it('fails closed when a cutover target has no configured upstream', async () => {
+    const cutoverGateway = await buildGateway({
+      env: gatewayEnvSchema.parse({
+        ...env,
+        ROUTE_TARGET_OVERRIDES: '{"/api/uat/profesor/sync":"identity"}',
+      }),
+      redis: { ping: async () => 'PONG', quit: async () => 'OK' },
+    });
+    const response = await cutoverGateway.inject({ method: 'POST', url: '/api/uat/profesor/sync', payload: {} });
+    expect(response.statusCode).toBe(503);
+    await cutoverGateway.close();
+  });
+
+  it('rejects retired attendance facade routes', async () => {
+    const response = await gateway.inject({ method: 'POST', url: '/attendance/record', payload: {} });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ error: 'NOT_FOUND' });
+  });
+
+  it('cuts student binding reconciliation over to Attendance without exposing service identity', async () => {
+    const response = await gateway.inject({
+      method: 'POST', url: '/api/student-device-bindings', payload: {},
+      headers: { authorization: 'Bearer scoped-binding-token', 'x-internal-service-token': 'attacker-value' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ upstream: 'attendance', authorization: 'Bearer scoped-binding-token' });
+    expect(response.json().internalToken).toBeUndefined();
+  });
+
+  it('never exposes internal service routes', async () => {
+    const response = await gateway.inject({ method: 'GET', url: '/internal/coordination/beacons' });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('rejects the retired beacon facade', async () => {
+    const response = await gateway.inject({
+      method: 'POST', url: '/api/beacons/resolve', payload: { classrooms: ['AULA 101'] },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ error: 'NOT_FOUND' });
+  });
+
+  it('protects Prometheus metrics with a distinct token', async () => {
+    expect((await gateway.inject({ method: 'GET', url: '/metrics' })).statusCode).toBe(401);
+    const response = await gateway.inject({
+      method: 'GET',
+      url: '/metrics',
+      headers: { authorization: `Bearer ${metricsToken}` },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain('presencia_gateway_http_requests_total');
+  });
+
+  it('uses dependency readiness and reports a degraded upstream', async () => {
+    const identity = Fastify();
+    identity.get('/health/ready', async (_request, reply) => reply.code(503).send({ status: 'degraded' }));
+    await identity.listen({ host: '127.0.0.1', port: 0 });
+    const readinessGateway = await buildGateway({
+      env: gatewayEnvSchema.parse({ ...env, IDENTITY_SERVICE_URL: identity.listeningOrigin }),
+      redis: { ping: async () => 'PONG', quit: async () => 'OK' },
+    });
+    const response = await readinessGateway.inject({ method: 'GET', url: '/health/ready' });
+    expect(response.statusCode).toBe(503);
+    expect(response.json().dependencies.identity).toMatchObject({ ok: false, status: 503 });
+    await readinessGateway.close();
+    await identity.close();
+  });
+});

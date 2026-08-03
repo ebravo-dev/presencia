@@ -24,6 +24,8 @@ describe('AttendanceUploadService', () => {
 function record(clientRecordId: string, idGrupo: number, idAlumno: number) {
   return {
     clientRecordId,
+    attendanceSessionId: `attendance-${clientRecordId}`,
+    attendanceVersion: 1,
     idGrupo,
     fechaInicio: '06/07/2026',
     attendances: [{ id_alumno: idAlumno, num_pase_lista: 1, num_dia: 1, sn_asistencia: true }],
@@ -40,7 +42,6 @@ function fakeRepository(captured: CreateAttendanceUploadBatchInput[]): Attendanc
         jobs: input.records.map((item) => ({ clientRecordId: item.clientRecordId, status: 'PENDING', attempts: 0, error: null })),
       };
     },
-    findBatch: async () => null,
     findLatestJobStatuses: async () => [],
     recoverStaleJobs: async () => 0,
     claimNextJob: async () => null,

@@ -126,9 +126,11 @@ class _LoginFormState extends ConsumerState<LoginForm> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: UATColors.error.withOpacity(0.1),
+                color: UATColors.error.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: UATColors.error.withOpacity(0.3)),
+                border: Border.all(
+                  color: UATColors.error.withValues(alpha: 0.3),
+                ),
               ),
               child: Row(
                 children: [
@@ -190,9 +192,11 @@ class _LoginFormState extends ConsumerState<LoginForm> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: UATColors.accent.withOpacity(0.05),
+              color: UATColors.accent.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: UATColors.accent.withOpacity(0.2)),
+              border: Border.all(
+                color: UATColors.accent.withValues(alpha: 0.2),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

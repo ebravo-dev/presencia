@@ -27,16 +27,21 @@ async function authMiddleware(
         const token = authHeader.substring(7);
         const payload = jwtService.verify(token);
 
-        // Validate single session
-        if (payload.sessionId) {
-            const isValid = await sessionService.validateSession(payload.professorId, payload.sessionId);
-            if (!isValid) {
-                return reply.code(401).send({
-                    statusCode: 401,
-                    error: 'Unauthorized',
-                    message: 'Sesión invalidada. Se inició sesión en otro dispositivo.',
-                });
-            }
+        if (!payload.professorId || !payload.sessionId) {
+            return reply.code(401).send({
+                statusCode: 401,
+                error: 'Unauthorized',
+                message: 'Token de sesión inválido.',
+            });
+        }
+
+        const isValid = await sessionService.validateSession(payload.professorId, payload.sessionId);
+        if (!isValid) {
+            return reply.code(401).send({
+                statusCode: 401,
+                error: 'Unauthorized',
+                message: 'Sesión invalidada. Se inició sesión en otro dispositivo.',
+            });
         }
 
         (request as AuthenticatedRequest).professorId = payload.professorId;

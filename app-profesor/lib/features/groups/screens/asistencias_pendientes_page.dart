@@ -287,19 +287,17 @@ class _AsistenciasPendientesPageState
 
     final result = await _apiService.uploadAttendance(
       token: token,
+      clientRecordId: registroActualizado.id,
       groupId: grupo.id,
       code: grupo.code ?? '',
       groupLetter: grupo.groupLetter ?? '',
       period: grupo.period ?? '',
       date: registroActualizado.fecha,
       attendances: attendances,
-      encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
       groupName: grupo.name,
       classroom: grupo.classroom,
       level: grupo.level,
       schedule: grupo.schedule,
-      professorEntryAt: registroActualizado.horaEntrada,
-      professorExitAt: registroActualizado.horaSalida,
     );
 
     final uploadSuccess = await result.fold(
@@ -316,7 +314,7 @@ class _AsistenciasPendientesPageState
         return false;
       },
       (response) async {
-        await _asistenciaService.marcarComoSincronizada(registroActualizado.id);
+        await _asistenciaService.guardarSnapshotEnviado(registroActualizado.id);
         if (showSnackbars && mounted) {
           final isDebugUpload = response['skippedApiRestUpload'] == true;
           final message = isDebugUpload
@@ -612,7 +610,7 @@ class _AsistenciasPendientesPageState
             width: 120,
             height: 120,
             decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.1),
+              color: Colors.green.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: const Icon(Icons.cloud_done, size: 60, color: Colors.green),
@@ -661,7 +659,10 @@ class _AsistenciasPendientesPageState
         color: palette.surface,
         borderRadius: BorderRadius.circular(16),
         border: esClaseActual
-            ? Border.all(color: colorPrincipal.withOpacity(0.5), width: 1.5)
+            ? Border.all(
+                color: colorPrincipal.withValues(alpha: 0.5),
+                width: 1.5,
+              )
             : null,
         boxShadow: [
           BoxShadow(
@@ -678,7 +679,7 @@ class _AsistenciasPendientesPageState
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: esClaseActual
-                  ? colorPrincipal.withOpacity(0.15)
+                  ? colorPrincipal.withValues(alpha: 0.15)
                   : palette.surfaceMuted,
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(16),
@@ -692,7 +693,7 @@ class _AsistenciasPendientesPageState
                   height: 40,
                   decoration: BoxDecoration(
                     color: esClaseActual
-                        ? colorPrincipal.withOpacity(0.2)
+                        ? colorPrincipal.withValues(alpha: 0.2)
                         : palette.surfaceMuted,
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -917,9 +918,9 @@ class _AsistenciasPendientesPageState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

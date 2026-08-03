@@ -28,46 +28,6 @@ class Profesor extends Equatable {
 }
 
 @JsonSerializable()
-class LoginRequest extends Equatable {
-  final String institutionalEmail;
-  final String encryptedPassword;
-
-  const LoginRequest({
-    required this.institutionalEmail,
-    required this.encryptedPassword,
-  });
-
-  factory LoginRequest.fromJson(Map<String, dynamic> json) =>
-      _$LoginRequestFromJson(json);
-
-  Map<String, dynamic> toJson() => _$LoginRequestToJson(this);
-
-  @override
-  List<Object> get props => [institutionalEmail, encryptedPassword];
-}
-
-@JsonSerializable()
-class RegisterRequest extends Equatable {
-  final String name;
-  final String institutionalEmail;
-  final String encryptedPassword;
-
-  const RegisterRequest({
-    required this.name,
-    required this.institutionalEmail,
-    required this.encryptedPassword,
-  });
-
-  factory RegisterRequest.fromJson(Map<String, dynamic> json) =>
-      _$RegisterRequestFromJson(json);
-
-  Map<String, dynamic> toJson() => _$RegisterRequestToJson(this);
-
-  @override
-  List<Object> get props => [name, institutionalEmail, encryptedPassword];
-}
-
-@JsonSerializable()
 class LoginResponse extends Equatable {
   final String message;
   @JsonKey(name: 'data')

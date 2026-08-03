@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Presencia Backend API REST UAT
-  version: 0.1.0
+  version: 1.3.0
   description: >
     API REST interna para autenticar contra el portal escolar UAT con cookies
     ASP.NET y consultar horarios/examenes de profesor.
@@ -24,7 +24,7 @@ paths:
       summary: Crea una sesion autenticada contra UAT
       description: >
         Ejecuta GET /Login, POST /Login/Accesar_Dominio y GET /Login/Validar
-        manteniendo un CookieJar persistente en memoria.
+        manteniendo un CookieJar cifrado y compartido en Redis.
       requestBody:
         required: true
         content:
@@ -44,7 +44,7 @@ paths:
           $ref: "#/components/responses/Error"
   /api/uat/sessions/{sessionId}:
     delete:
-      summary: Elimina una sesion UAT en memoria
+      summary: Revoca una sesion UAT almacenada en Redis
       parameters:
         - $ref: "#/components/parameters/SessionIdPath"
       responses:
@@ -61,6 +61,30 @@ paths:
                   sessionId:
                     type: string
                     format: uuid
+  /api/uat/profesor/sync:
+    post:
+      summary: Encola una nueva cosecha academica con la sesion vigente
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      responses:
+        "202":
+          description: Evento durable aceptado
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted, sessionId, message]
+                properties:
+                  accepted:
+                    type: boolean
+                    enum: [true]
+                  sessionId:
+                    type: string
+                    format: uuid
+                  message:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Error"
   /api/uat/profesor/consultas/horarios:
     get:
       summary: Consulta horarios del profesor autenticado
@@ -102,7 +126,7 @@ paths:
       summary: Login transitorio y consulta de horarios/examenes
       description: >
         Ejecuta todo el flujo en una sola peticion usando un CookieJar temporal.
-        No guarda la sesion en memoria.
+        No conserva la sesion después de responder.
       requestBody:
         required: true
         content:
@@ -255,11 +279,11 @@ paths:
           $ref: "#/components/responses/Error"
   /api/uat/profesor/control-asistencia/asistencias:
     post:
-      summary: Guarda asistencias en el portal UAT
+      summary: Acepta una captura durable para publicar en UAT
       description: >
-        Recibe un arreglo tipado de asistencias, lo serializa como JSON
-        comprimido y lo envia al endpoint UAT GuardaAsistencias como
-        application/x-www-form-urlencoded.
+        Attendance Service valida y versiona la lista. Antes de responder, UAT
+        Integration persiste un job idempotente con la credencial cifrada; la
+        publicación al portal ocurre de forma asíncrona.
       parameters:
         - $ref: "#/components/parameters/UatSessionHeader"
       requestBody:
@@ -269,12 +293,12 @@ paths:
             schema:
               $ref: "#/components/schemas/RegistrarAsistenciasRequest"
       responses:
-        "200":
-          description: Respuesta cruda del portal UAT
+        "202":
+          description: Captura aceptada y entrega UAT persistida
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GuardaAsistenciasResponse"
+                $ref: "#/components/schemas/AttendanceCaptureResponse"
         "400":
           $ref: "#/components/responses/Error"
         "401":
@@ -283,7 +307,7 @@ paths:
           $ref: "#/components/responses/Error"
   /api/uat/asistencia/guardar:
     post:
-      summary: Alias corto para guardar asistencias
+      summary: Alias corto para aceptar una captura durable
       parameters:
         - $ref: "#/components/parameters/UatSessionHeader"
       requestBody:
@@ -293,19 +317,20 @@ paths:
             schema:
               $ref: "#/components/schemas/RegistrarAsistenciasRequest"
       responses:
-        "200":
-          description: Respuesta cruda del portal UAT
+        "202":
+          description: Captura aceptada y entrega UAT persistida
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GuardaAsistenciasResponse"
+                $ref: "#/components/schemas/AttendanceCaptureResponse"
   /api/uat/alumnos/sessions:
     post:
       summary: Crea una sesion autenticada contra el portal de alumnos SUR
       description: >
         Obtiene __RequestVerificationToken, ejecuta Login/Accesar_Dominio,
         valida la sesion, consulta carreras y selecciona el plan solicitado o
-        el primero disponible.
+        el primero disponible. Registra o valida obligatoriamente el UUID y el
+        dispositivo del alumno en Attendance Service.
       requestBody:
         required: true
         content:
@@ -327,7 +352,7 @@ paths:
           $ref: "#/components/responses/Error"
   /api/uat/alumnos/sessions/{sessionId}:
     delete:
-      summary: Elimina una sesion de alumno en memoria
+      summary: Revoca una sesion de alumno almacenada en Redis
       parameters:
         - $ref: "#/components/parameters/SessionIdPath"
       responses:
@@ -405,50 +430,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UatDataResponse"
-  /api/uat/asistencia/lotes:
-    post:
-      summary: Entrega un lote idempotente a la cola durable de asistencia
-      description: Persiste todas las listas antes de responder. El procesamiento continúa aunque el cliente se desconecte.
-      parameters:
-        - $ref: "#/components/parameters/UatSessionHeader"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [records]
-              properties:
-                records:
-                  type: array
-                  minItems: 1
-                  maxItems: 100
-                  items:
-                    type: object
-                    required: [clientRecordId, Id_Grupo, Fec_Ini, Asistencia]
-                    properties:
-                      clientRecordId: { type: string, maxLength: 160 }
-                      Id_Grupo: { type: integer, minimum: 1 }
-                      Fec_Ini: { type: string, example: "06/07/2026" }
-                      Asistencia:
-                        type: array
-                        items: { $ref: "#/components/schemas/AsistenciaAlumnoInput" }
-      responses:
-        "202": { description: Lote persistido y aceptado por el worker }
-        "400": { $ref: "#/components/responses/Error" }
-        "401": { $ref: "#/components/responses/Error" }
-  /api/uat/asistencia/lotes/{batchId}:
-    get:
-      summary: Consulta el progreso de un lote de asistencia
-      parameters:
-        - $ref: "#/components/parameters/UatSessionHeader"
-        - name: batchId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200": { description: Estado del lote y cada lista }
-        "404": { $ref: "#/components/responses/Error" }
   /api/uat/asistencia/registros/estado:
     post:
       summary: Reconcilia registros locales después de cerrar o reiniciar la app
@@ -660,6 +641,114 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ProfessorSharedClassesResponse" }
         "401": { $ref: "#/components/responses/Error" }
+  /api/uat/profesor/device-bindings/resolve:
+    post:
+      summary: Resuelve UUID de alumnos pertenecientes al roster del profesor
+      description: >
+        Valida la sesion UAT del profesor y delega la consulta al propietario
+        Attendance Service. Incluye grupos propios o clases compartidas activas;
+        las matriculas fuera de ese alcance nunca se incluyen en la respuesta.
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProfessorDeviceBindingResolveRequest" }
+      responses:
+        "200":
+          description: Vinculaciones activas autorizadas por el roster
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProfessorDeviceBindingResolveResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /api/uat/profesor/beacons/resolve:
+    post:
+      summary: Resuelve beacons de salones pertenecientes al profesor
+      description: >
+        Valida la sesion UAT y delega la configuración a Attendance Service.
+        Attendance consume de Academic los permisos de clases compartidas y los
+        revoca por evento. Una solicitud no puede ampliar permisos enviando salones
+        arbitrarios.
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProfessorBeaconResolveRequest" }
+      responses:
+        "200":
+          description: Beacons autorizados y salones autorizados sin configuracion
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProfessorBeaconResolveResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /api/uat/profesor/presencia/entrada:
+    post:
+      summary: Registra la entrada del profesor detectada por beacon
+      description: >
+        Attendance Service valida que el profesor autenticado sea titular o tenga
+        una clase compartida activa y que el UUID sea el configurado para el salón.
+        La fecha y hora efectivas siempre provienen del servidor; clientDetectedAt
+        sólo es telemetría diagnóstica.
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProfessorPresenceEntryRequest" }
+      responses:
+        "200": { description: Reintento idempotente, content: { application/json: { schema: { $ref: "#/components/schemas/ProfessorPresenceResponse" } } } }
+        "201": { description: Entrada registrada, content: { application/json: { schema: { $ref: "#/components/schemas/ProfessorPresenceResponse" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /api/uat/profesor/presencia/salida:
+    post:
+      summary: Registra la salida del profesor
+      description: La hora efectiva se deriva del reloj del servidor y el grupo se valida contra el roster propio o una clase compartida activa.
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProfessorPresenceExitRequest" }
+      responses:
+        "200": { description: Reintento idempotente, content: { application/json: { schema: { $ref: "#/components/schemas/ProfessorPresenceResponse" } } } }
+        "201": { description: Salida registrada, content: { application/json: { schema: { $ref: "#/components/schemas/ProfessorPresenceResponse" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /api/uat/profesor/presencia/alumnos:
+    post:
+      summary: Procesa detecciones BLE de alumnos vinculados
+      description: >
+        Cruza UUIDs contra vinculaciones activas y el roster autorizado. Cada alumno
+        se deduplica por sesión y matrícula. El resultado permanece DRAFT y no genera
+        una solicitud de subida a UAT hasta que el profesor finaliza la captura.
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StudentPresenceRequest" }
+      responses:
+        "200": { description: Reintento idempotente, content: { application/json: { schema: { $ref: "#/components/schemas/StudentPresenceResponse" } } } }
+        "201": { description: Detecciones procesadas, content: { application/json: { schema: { $ref: "#/components/schemas/StudentPresenceResponse" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /api/coordinacion/clases-compartidas/opciones:
     get:
       tags: [Coordinacion]
@@ -687,6 +776,7 @@ paths:
       tags: [Coordinacion]
       security: [{ CoordinatorCookie: [] }]
       summary: Comparte una clase oficial con otro profesor
+      description: Academic Service conserva la asignación, auditoría y evento de autorización; Attendance aplica el permiso de forma idempotente.
       requestBody:
         required: true
         content:
@@ -825,6 +915,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/Credentials"
         - type: object
+          required: [attendanceUuid, deviceBindingId, platform]
           properties:
             idPlanEstudio:
               type: integer
@@ -840,6 +931,7 @@ components:
               description: Identificador estable de la instalacion/dispositivo.
             platform:
               type: string
+              enum: [android, ios]
               example: android
             deviceInfo:
               type: string
@@ -862,13 +954,21 @@ components:
           format: date-time
     SessionResponse:
       type: object
-      required: [sessionId, authenticated, login, createdAt, lastUsedAt, expiresAt]
+      required: [sessionId, authenticated, login, createdAt, lastUsedAt, expiresAt, demoMode]
       properties:
         sessionId:
           type: string
           format: uuid
         authenticated:
           type: boolean
+        demoMode:
+          type: boolean
+          description: Indica que la sesión usa exclusivamente el portal ficticio aislado.
+        demoCapabilities:
+          type: object
+          properties:
+            simulateRoomBeacon:
+              type: boolean
         login:
           $ref: "#/components/schemas/SafeLogin"
         createdAt:
@@ -893,11 +993,13 @@ components:
               type: boolean
             hasAuthCookie:
               type: boolean
+        identitySession:
+          $ref: "#/components/schemas/IdentitySessionGrant"
     StudentSessionResponse:
       allOf:
         - $ref: "#/components/schemas/SessionResponse"
         - type: object
-          required: [careers, selectedCareer]
+          required: [careers, selectedCareer, deviceBindingToken, identitySession]
           properties:
             careers:
               type: array
@@ -907,6 +1009,161 @@ components:
             selectedCareer:
               type: object
               additionalProperties: true
+            deviceBindingToken:
+              type: string
+              description: Token acotado para renovar exclusivamente el vínculo exacto del celular.
+            identitySession:
+              $ref: "#/components/schemas/IdentitySessionGrant"
+    IdentitySessionGrant:
+      type: object
+      required: [identityId, sessionId, accessToken, expiresAt]
+      properties:
+        identityId: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        accessToken: { type: string }
+        expiresAt: { type: string, format: date-time }
+    ProfessorDeviceBindingResolveRequest:
+      type: object
+      required: [matriculas]
+      properties:
+        matriculas:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 40 }
+    ProfessorDeviceBindingResolveResponse:
+      type: object
+      required: [data, missing]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/StudentDeviceBinding" }
+        missing:
+          type: array
+          items: { type: string }
+    ProfessorBeaconResolveRequest:
+      type: object
+      required: [classrooms]
+      properties:
+        classrooms:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 160 }
+    ProfessorBeaconResolveResponse:
+      type: object
+      required: [data, missing]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/ClassroomBeacon" }
+        missing:
+          type: array
+          items: { type: string }
+    ClassroomBeacon:
+      type: object
+      required: [id, uuid, classroom, classroomKey, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        uuid: { type: string, format: uuid }
+        classroom: { type: string }
+        classroomKey: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ProfessorPresenceEntryRequest:
+      type: object
+      required: [externalGroupId, beaconUuid]
+      properties:
+        externalGroupId: { type: string, minLength: 1, maxLength: 160 }
+        beaconUuid: { type: string, format: uuid }
+        clientDetectedAt: { type: string, format: date-time, nullable: true }
+        rssi: { type: integer, minimum: -160, maximum: 20, nullable: true }
+        distance: { type: number, minimum: 0, maximum: 10000, nullable: true }
+        bluetoothAddress: { type: string, maxLength: 80, nullable: true }
+    ProfessorPresenceExitRequest:
+      type: object
+      required: [externalGroupId]
+      properties:
+        externalGroupId: { type: string, minLength: 1, maxLength: 160 }
+        clientDetectedAt: { type: string, format: date-time, nullable: true }
+    StudentPresenceDetection:
+      type: object
+      required: [beaconUuid]
+      properties:
+        beaconUuid: { type: string, format: uuid }
+        detectedAt: { type: string, format: date-time, nullable: true }
+        rssi: { type: integer, minimum: -160, maximum: 20, nullable: true }
+        distance: { type: number, minimum: 0, maximum: 10000, nullable: true }
+        txPower: { type: integer, minimum: -160, maximum: 20, nullable: true }
+        bluetoothAddress: { type: string, maxLength: 80, nullable: true }
+        major: { type: integer, minimum: 0, maximum: 65535, nullable: true }
+        minor: { type: integer, minimum: 0, maximum: 65535, nullable: true }
+    StudentPresenceRequest:
+      type: object
+      required: [externalGroupId, detections]
+      properties:
+        externalGroupId: { type: string, minLength: 1, maxLength: 160 }
+        detections:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { $ref: "#/components/schemas/StudentPresenceDetection" }
+    ProfessorPresenceResponse:
+      type: object
+      required: [data, message]
+      properties:
+        data:
+          type: object
+          required: [attendanceSessionId, externalGroupId, date, professorEntryAt, professorExitAt, duplicate, version]
+          properties:
+            attendanceSessionId: { type: string }
+            externalGroupId: { type: string }
+            date: { type: string, format: date }
+            professorEntryAt: { type: string, format: date-time, nullable: true }
+            professorExitAt: { type: string, format: date-time, nullable: true }
+            duplicate: { type: boolean }
+            version: { type: integer, minimum: 1 }
+        message: { type: string }
+    StudentPresenceResponse:
+      type: object
+      required: [data, message]
+      properties:
+        data:
+          type: object
+          required: [attendanceSessionId, externalGroupId, date, matchedCount, matched, duplicate, version]
+          properties:
+            attendanceSessionId: { type: string, nullable: true }
+            externalGroupId: { type: string }
+            date: { type: string, format: date }
+            matchedCount: { type: integer, minimum: 0 }
+            matched:
+              type: array
+              items:
+                type: object
+                required: [studentId, matricula, beaconUuid, detectedAt]
+                properties:
+                  studentId: { type: string }
+                  matricula: { type: string }
+                  beaconUuid: { type: string, format: uuid }
+                  detectedAt: { type: string, format: date-time }
+            duplicate: { type: boolean }
+            version: { type: integer, minimum: 1, nullable: true }
+        message: { type: string }
+    StudentDeviceBinding:
+      type: object
+      required: [id, matricula, attendanceUuid, bindingVersion, active, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        matricula: { type: string }
+        attendanceUuid: { type: string, format: uuid }
+        deviceBindingId: { type: string, format: uuid, nullable: true }
+        platform: { type: string, nullable: true }
+        deviceInfo: { type: string, nullable: true }
+        bindingVersion: { type: integer, minimum: 1 }
+        active: { type: boolean }
+        updatedAt: { type: string, format: date-time }
     SafeLogin:
       type: object
       properties:
@@ -978,8 +1235,13 @@ components:
           example: true
     RegistrarAsistenciasRequest:
       type: object
-      required: [Id_Grupo, Fec_Ini, Asistencia]
+      required: [ClientRecordId, Id_Grupo, Fec_Ini, Asistencia]
       properties:
+        ClientRecordId:
+          type: string
+          minLength: 1
+          maxLength: 160
+          description: Identificador estable del registro local usado para reconciliar el resultado asíncrono.
         Id_Grupo:
           type: integer
           minimum: 1
@@ -1003,6 +1265,23 @@ components:
           example: true
         mensaje:
           type: string
+    AttendanceCaptureResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [attendanceSessionId, externalGroupId, date, entriesCount, uploadStatus, duplicate, version]
+          properties:
+            attendanceSessionId: { type: string }
+            externalGroupId: { type: string }
+            date: { type: string, format: date }
+            entriesCount: { type: integer, minimum: 1 }
+            uploadStatus:
+              type: string
+              enum: [PENDING, SKIPPED]
+            duplicate: { type: boolean }
+            version: { type: integer, minimum: 1 }
     SnapshotRequest:
       allOf:
         - $ref: "#/components/schemas/Credentials"

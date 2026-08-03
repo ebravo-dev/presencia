@@ -2,8 +2,6 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { env } from '../../core/config/env.js';
 import { SuperUserService } from './super-user.service.js';
 import {
-    coordinatorCreateSchema,
-    coordinatorUpdateSchema,
     debugClassCreateSchema,
     debugClassUpdateSchema,
     debugSettingsUpdateSchema,
@@ -16,7 +14,9 @@ const SUPER_USER_COOKIE = 'super_user_session';
 const superUserService = new SuperUserService();
 
 export async function superUserRoutes(fastify: FastifyInstance) {
-    fastify.post('/api/superUsuario/auth/login', async (request, reply) => {
+    fastify.post('/api/superUsuario/auth/login', {
+        config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+    }, async (request, reply) => {
         const parsed = superUserLoginSchema.safeParse(request.body);
         if (!parsed.success) {
             return reply.code(400).send({
@@ -52,37 +52,6 @@ export async function superUserRoutes(fastify: FastifyInstance) {
         clearSuperUserCookie(reply);
         return reply.code(204).send();
     });
-
-    fastify.get('/api/superUsuario/coordinadores', { preHandler: requireSuperUser }, async (_request, reply) => {
-        return reply.send(await superUserService.listCoordinators());
-    });
-
-    fastify.post('/api/superUsuario/coordinadores', { preHandler: requireSuperUser }, async (request, reply) => {
-        const parsed = coordinatorCreateSchema.safeParse(request.body);
-        if (!parsed.success) return sendValidationError(reply, parsed.error.errors.map((issue) => issue.message));
-
-        return reply.code(201).send(await superUserService.createCoordinator(parsed.data));
-    });
-
-    fastify.put<{ Params: { id: string } }>(
-        '/api/superUsuario/coordinadores/:id',
-        { preHandler: requireSuperUser },
-        async (request, reply) => {
-            const parsed = coordinatorUpdateSchema.safeParse(request.body);
-            if (!parsed.success) return sendValidationError(reply, parsed.error.errors.map((issue) => issue.message));
-
-            return reply.send(await superUserService.updateCoordinator(request.params.id, parsed.data));
-        }
-    );
-
-    fastify.delete<{ Params: { id: string } }>(
-        '/api/superUsuario/coordinadores/:id',
-        { preHandler: requireSuperUser },
-        async (request, reply) => {
-            await superUserService.deleteCoordinator(request.params.id);
-            return reply.code(204).send();
-        }
-    );
 
     fastify.get('/api/superUsuario/beacons', { preHandler: requireSuperUser }, async (_request, reply) => {
         return reply.send({ data: await superUserService.listBeacons() });
@@ -122,7 +91,7 @@ export async function superUserRoutes(fastify: FastifyInstance) {
                 await superUserService.deleteBeacon(request.params.id);
                 return reply.code(204).send();
             } catch (error: any) {
-                if (error.code === 'P2025') {
+                if (error.code === 'P2025' || error.code === 'BEACON_NOT_FOUND') {
                     return reply.code(404).send({
                         statusCode: 404,
                         error: 'Not Found',
@@ -143,7 +112,10 @@ export async function superUserRoutes(fastify: FastifyInstance) {
         '/api/superUsuario/alumnos-vinculados/:matricula',
         { preHandler: requireSuperUser },
         async (request, reply) => {
-            const deleted = await superUserService.deleteStudentDeviceBinding(decodeURIComponent(request.params.matricula));
+            const deleted = await superUserService.deleteStudentDeviceBinding(
+                decodeURIComponent(request.params.matricula),
+                request.id,
+            );
             if (!deleted) {
                 return reply.code(404).send({
                     statusCode: 404,
@@ -252,21 +224,21 @@ function sendValidationError(reply: FastifyReply, messages: string[]) {
 }
 
 function sendBeaconError(error: any, reply: FastifyReply) {
-    if (error.message === 'BEACON_CLASSROOM_EXISTS') {
+    if (error.message === 'BEACON_CLASSROOM_EXISTS' || error.code === 'CLASSROOM_BEACON_EXISTS') {
         return reply.code(409).send({
             statusCode: 409,
             error: 'Conflict',
             message: 'Ya existe un beacon asignado a ese salón',
         });
     }
-    if (error.code === 'P2002') {
+    if (error.code === 'P2002' || error.code === 'BEACON_UUID_EXISTS') {
         return reply.code(409).send({
             statusCode: 409,
             error: 'Conflict',
             message: 'Ya existe un beacon con ese UUID',
         });
     }
-    if (error.code === 'P2025') {
+    if (error.code === 'P2025' || error.code === 'BEACON_NOT_FOUND') {
         return reply.code(404).send({
             statusCode: 404,
             error: 'Not Found',

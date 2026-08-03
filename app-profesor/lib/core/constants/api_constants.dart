@@ -1,36 +1,16 @@
 import '../utils/utils.dart';
 
-/// API endpoints constants for the Fastify ACL backend.
+/// Endpoints publicos expuestos por el API Gateway de Presencia.
 class ApiConstants {
-  // Base configuration for the main Presencia backend.
+  // Punto de entrada unico. El cliente movil no conoce URLs internas.
   // For Android emulator use:
   // --dart-define=API_BASE_URL=http://10.0.2.2:3000
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'https://backendapirest.149828.xyz/',
   );
-  static const String presenceApiBaseUrl = String.fromEnvironment(
-    'PRESENCIA_API_BASE_URL',
-    defaultValue: baseUrl,
-  );
-  static const String attendanceBackendBaseUrl = String.fromEnvironment(
-    'ATTENDANCE_BACKEND_URL',
-    defaultValue: 'https://debugasistencia.duckdns.org/',
-  );
-  static const String mainBackendBaseUrl = String.fromEnvironment(
-    'MAIN_BACKEND_API_URL',
-    defaultValue: 'https://debugasistencia.duckdns.org/',
-  );
-  static const bool useBackendApiRest = bool.fromEnvironment(
-    'USE_BACKEND_API_REST',
-    defaultValue: true,
-  );
   static const bool presenciaDebugMode = bool.fromEnvironment(
     'PRESENCIA_DEBUG_MODE',
-    defaultValue: false,
-  );
-  static const bool skipApiRestAttendanceUpload = bool.fromEnvironment(
-    'SKIP_API_REST_ATTENDANCE_UPLOAD',
     defaultValue: false,
   );
   static const bool debugExtraCurrentClass = bool.fromEnvironment(
@@ -41,6 +21,26 @@ class ApiConstants {
     'PRESENCIA_DEBUG_SIMULATE_ROOM_BEACON',
     defaultValue: false,
   );
+  static bool runtimeDemoMode = false;
+  static bool runtimeSimulateRoomBeacon = false;
+
+  static bool get isDemoMode => presenciaDebugMode || runtimeDemoMode;
+  static bool get shouldSimulateRoomBeacon =>
+      runtimeSimulateRoomBeacon ||
+      (presenciaDebugMode && debugSimulateRoomBeacon);
+
+  static void configureRuntimeMode({
+    required bool demoMode,
+    bool simulateRoomBeacon = false,
+  }) {
+    runtimeDemoMode = demoMode;
+    runtimeSimulateRoomBeacon = demoMode && simulateRoomBeacon;
+    Logger.info(
+      'Runtime mode: ${isDemoMode ? 'demo' : 'uat'}; '
+      'simulated beacon: $shouldSimulateRoomBeacon',
+    );
+  }
+
   static const String debugExtraClassCode = String.fromEnvironment(
     'PRESENCIA_DEBUG_EXTRA_CLASS_CODE',
     defaultValue: '990001',
@@ -96,15 +96,8 @@ class ApiConstants {
 
   static void printConfig() {
     Logger.info('API Configuration:');
-    Logger.info('   Backend baseUrl: $baseUrl');
-    Logger.info('   Presencia baseUrl: $presenceApiBaseUrl');
-    Logger.info('   Attendance backend baseUrl: $attendanceBackendBaseUrl');
-    Logger.info('   Main backend baseUrl: $mainBackendBaseUrl');
-    Logger.info('   Use backend API REST: $useBackendApiRest');
-    Logger.info('   Debug mode: $presenciaDebugMode');
-    Logger.info(
-      '   Skip API REST attendance upload: $skipApiRestAttendanceUpload',
-    );
+    Logger.info('   API Gateway baseUrl: $baseUrl');
+    Logger.info('   Debug mode: $isDemoMode');
     Logger.info('   Debug extra current class: $debugExtraCurrentClass');
     Logger.info('   Debug simulate room beacon: $debugSimulateRoomBeacon');
     Logger.info('   Debug extra class hours: $debugExtraClassHours');
@@ -114,18 +107,9 @@ class ApiConstants {
     Logger.info('   UAT academic cycle: $uatAcademicYear-$uatAcademicTerm');
   }
 
-  // Main backend professor endpoints.
-  static const String auth = '/auth';
-  static const String login = '/professors/login';
-  static const String classes = '/professors/classes';
-  static const String sync = '/professors/sync';
-  static const String logout = '/auth/logout';
-  static const String refresh = '/auth/refresh';
-  static const String validateToken = '/auth/validate';
-  static const String me = '/auth/me';
-
-  // UAT endpoints exposed through the main backend proxy.
+  // UAT Integration/BFF, siempre atravesando el API Gateway.
   static const String uatSessions = '/api/uat/sessions';
+  static const String uatProfessorSync = '/api/uat/profesor/sync';
   static const String uatHorarios = '/api/uat/profesor/consultas/horarios';
   static const String uatExamenes = '/api/uat/profesor/consultas/examenes';
   static const String uatCatalogoNiveles =
@@ -136,6 +120,13 @@ class ApiConstants {
   static const String uatControlGrupos =
       '/api/uat/profesor/control-asistencia/grupos';
   static const String uatSharedClasses = '/api/uat/profesor/clases-compartidas';
+  static const String uatDeviceBindingsResolve =
+      '/api/uat/profesor/device-bindings/resolve';
+  static const String uatBeaconsResolve = '/api/uat/profesor/beacons/resolve';
+  static const String uatPresenceEntry = '/api/uat/profesor/presencia/entrada';
+  static const String uatPresenceExit = '/api/uat/profesor/presencia/salida';
+  static const String uatStudentPresence =
+      '/api/uat/profesor/presencia/alumnos';
   static const String uatControlSemanas =
       '/api/uat/profesor/control-asistencia/semanas';
   static const String uatControlAsistenciaGrupo =
@@ -143,14 +134,6 @@ class ApiConstants {
   static const String uatControlGuardarAsistencias =
       '/api/uat/profesor/control-asistencia/asistencias';
   static const String uatAsistenciaGuardar = '/api/uat/asistencia/guardar';
-  static const String uatAttendanceBatches = '/api/uat/asistencia/lotes';
   static const String uatAttendanceRecordStatuses =
       '/api/uat/asistencia/registros/estado';
-
-  // Legacy feature aliases retained only for compatibility.
-  static const String professors = '/professors';
-  static const String students = '/students';
-  static const String groups = classes;
-  static const String attendance = '/attendance';
-  static const String reports = '/reports';
 }

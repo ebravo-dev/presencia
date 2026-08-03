@@ -1,0 +1,63 @@
+groups:
+  - name: presencia-http-slos
+    rules:
+      - alert: PresenciaGatewayHighErrorRate
+        expr: |
+          sum(rate(presencia_gateway_http_requests_total{status_code=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(presencia_gateway_http_requests_total[5m])), 0.001)
+          > 0.01
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: API Gateway supera 1% de errores 5xx
+          runbook: docs/operations/RUNBOOK_INCIDENTES.md#errores-o-latencia-del-gateway
+
+      - alert: PresenciaGatewayP95Latency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(presencia_gateway_http_request_duration_seconds_bucket[5m]))
+          ) > 0.75
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: API Gateway supera 750 ms de latencia p95
+          runbook: docs/operations/RUNBOOK_INCIDENTES.md#errores-o-latencia-del-gateway
+
+      - alert: PresenciaUatIntegrationHighErrorRate
+        expr: |
+          sum(rate(presencia_uat_integration_http_requests_total{status_code=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(presencia_uat_integration_http_requests_total[5m])), 0.001)
+          > 0.01
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: UAT Integration supera 1% de errores 5xx
+          runbook: docs/operations/RUNBOOK_INCIDENTES.md#indisponibilidad-del-portal-uat
+
+      - alert: PresenciaUatIntegrationP95Latency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(presencia_uat_integration_http_request_duration_seconds_bucket[5m]))
+          ) > 2.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: UAT Integration supera 2.5 s de latencia p95
+          runbook: docs/operations/RUNBOOK_INCIDENTES.md#indisponibilidad-del-portal-uat
+
+      - alert: PresenciaServiceTargetDown
+        expr: up{job=~"presencia-.+"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Prometheus no puede consultar un servicio de Presencia
+          runbook: docs/operations/RUNBOOK_INCIDENTES.md#servicio-no-disponible

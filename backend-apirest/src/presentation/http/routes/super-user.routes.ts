@@ -1,289 +1,631 @@
-import { timingSafeEqual } from 'node:crypto';
-import jwt from 'jsonwebtoken';
-import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
+import { randomUUID } from 'node:crypto';
+import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import type { CoordinatorAccountService } from '../../../application/services/coordinator-account.service.js';
-import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
+import type { SuperUserAuthService } from '../../../application/services/super-user-auth.service.js';
+import type { AcademicServiceClient } from '../../../infrastructure/http/client/academic-service.client.js';
+import type { AttendanceCaptureClient } from '../../../infrastructure/http/client/attendance-capture.client.js';
+import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
+import type { IdentityServiceClient } from '../../../infrastructure/http/client/identity-service.client.js';
+import type { CoordinationQueryClient } from '../../../infrastructure/http/client/coordination-query.client.js';
+import type {
+  DemoPortalAttendanceWrite,
+  DemoPortalClass,
+  DemoPortalClient,
+  DemoPortalStatus,
+} from '../../../infrastructure/http/client/demo-portal.client.js';
 import { env } from '../../../config/env.js';
+import { ApiError } from '../../../errors/api-error.js';
+import { buildSuperUserAuthHook, SUPER_USER_COOKIE } from '../hooks/super-user-auth.hook.js';
 
-export interface SuperUserRoutesOptions {
-  coordinatorAccountService: CoordinatorAccountService;
-  attendanceBackendClient: AttendanceBackendClient;
+interface SuperUserRoutesOptions {
+  authService: SuperUserAuthService;
+  identityService: IdentityServiceClient;
+  attendanceService: AttendanceServiceCommandClient;
+  attendanceCapture: AttendanceCaptureClient;
+  academicService: AcademicServiceClient;
+  coordinationQuery: CoordinationQueryClient;
+  demoPortal: DemoPortalClient;
+  resetLocalDemoData: () => Promise<{ teacherSessions: number; studentSessions: number }>;
 }
 
-interface SuperUserJwtPayload extends jwt.JwtPayload {
-  role: 'SUPER_USER';
-}
-
-const SUPER_USER_COOKIE = 'super_user_session';
-const sessionDurationSeconds = 4 * 60 * 60;
-const defaultDebugSettings = { teacherAttendanceToleranceMinutes: 10 };
-
-const superUserLoginSchema = z.object({
-  password: z.string().min(1),
-});
-
+const loginSchema = z.object({ password: z.string().min(1).max(256) });
 const coordinatorCreateSchema = z.object({
-  email: z.string().email(),
-  name: z.string().min(1),
-  password: z.string().min(8),
-  role: z.enum(['COORDINATOR', 'READ_ONLY']),
+  email: z.string().email(), name: z.string().trim().min(1), password: z.string().min(8),
+  role: z.enum(['COORDINATOR', 'READ_ONLY']).default('COORDINATOR'),
 });
-
-const coordinatorUpdateSchema = z.object({
-  email: z.string().email().optional(),
-  name: z.string().min(1).optional(),
-  password: z.string().min(8).optional(),
-  role: z.enum(['COORDINATOR', 'READ_ONLY']).optional(),
-  disabled: z.boolean().optional(),
-});
-
-const idParamsSchema = z.object({ id: z.string().min(1) });
-const matriculaParamsSchema = z.object({ matricula: z.string().min(1) });
-const bindingQuerySchema = z.object({ q: z.string().trim().optional() });
-const beaconSchema = z.object({
-  classroom: z.string().trim().min(1),
-  uuid: z.string().trim().min(8),
-});
+const coordinatorUpdateSchema = coordinatorCreateSchema.partial().extend({ disabled: z.boolean().optional() });
+const beaconSchema = z.object({ classroom: z.string().trim().min(1), uuid: z.string().trim().min(8) });
 const beaconUpdateSchema = beaconSchema.partial();
-const debugSettingsUpdateSchema = z.object({
-  teacherAttendanceToleranceMinutes: z.number().int().min(0).max(120),
+const scheduleSlotSchema = z.object({
+  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+}).refine(({ startTime, endTime }) => endTime > startTime, { message: 'La hora final debe ser posterior a la inicial.' });
+const debugScheduleSchema = z.object({
+  monday: z.array(scheduleSlotSchema).max(8).optional(), tuesday: z.array(scheduleSlotSchema).max(8).optional(),
+  wednesday: z.array(scheduleSlotSchema).max(8).optional(), thursday: z.array(scheduleSlotSchema).max(8).optional(),
+  friday: z.array(scheduleSlotSchema).max(8).optional(), saturday: z.array(scheduleSlotSchema).max(8).optional(),
+  sunday: z.array(scheduleSlotSchema).max(8).optional(),
 });
+const debugTeacherCreateSchema = z.object({ email: z.string().email(), name: z.string().trim().min(1).max(240), password: z.string().min(8).max(128) });
+const debugTeacherUpdateSchema = debugTeacherCreateSchema.partial().refine((value) => Object.keys(value).length > 0);
+const debugStudentCreateSchema = z.object({
+  matricula: z.string().trim().min(1).max(40), email: z.string().email(), name: z.string().trim().min(1).max(240),
+  password: z.string().min(8).max(128), attendanceUuid: z.string().uuid().optional(), careerName: z.string().trim().min(1).max(240).optional(),
+});
+const debugStudentUpdateSchema = debugStudentCreateSchema.partial().refine((value) => Object.keys(value).length > 0);
+const debugClassCreateSchema = z.object({
+  professorId: z.string().uuid().optional(), professorEmail: z.string().email().optional(), professorName: z.string().trim().min(1).max(240).optional(),
+  code: z.string().trim().min(1).max(80).default('DEMO-101'), groupLetter: z.string().trim().max(40).default('DBG'),
+  period: z.string().trim().max(80).optional(), name: z.string().trim().min(1).max(240).default('Materia de demostración'),
+  level: z.string().trim().min(1).max(160).default('DEBUG'), classroom: z.string().trim().min(1).max(160).default('DEMO-101'),
+  beaconUuid: z.string().uuid(), schedule: debugScheduleSchema.default({}), studentIds: z.array(z.string().uuid()).max(1_000).optional(),
+}).refine((value) => Boolean(value.professorId || value.professorEmail), { message: 'Selecciona o indica un profesor demo.' });
+const debugClassUpdateSchema = z.object({
+  code: z.string().trim().min(1).max(80).optional(), groupLetter: z.string().trim().max(40).optional(),
+  period: z.string().trim().min(1).max(80).optional(), name: z.string().trim().min(1).max(240).optional(),
+  level: z.string().trim().min(1).max(160).optional(), classroom: z.string().trim().min(1).max(160).optional(),
+  beaconUuid: z.string().uuid().optional(), schedule: debugScheduleSchema.optional(), studentIds: z.array(z.string().uuid()).max(1_000).optional(),
+}).refine((value) => Object.keys(value).length > 0);
+const debugSettingsSchema = z.object({ teacherAttendanceToleranceMinutes: z.number().int().min(0).max(120) });
+const debugMembershipSchema = z.object({ studentId: z.string().uuid() });
+const debugAttendanceSimulationSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  entries: z.array(z.object({
+    studentId: z.string().uuid(),
+    status: z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED']),
+  })).min(1).max(1_000),
+});
+const debugResetSchema = z.object({ confirmation: z.literal('BORRAR DEMO') }).strict();
 
 export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async (
   fastify,
-  { coordinatorAccountService, attendanceBackendClient },
+  { authService, identityService, attendanceService, attendanceCapture, academicService, coordinationQuery, demoPortal, resetLocalDemoData },
 ) => {
-  const requireSuperUser = async (request: FastifyRequest, reply: FastifyReply) => {
-    const user = authenticateSuperUser(request.cookies[SUPER_USER_COOKIE]);
-    if (!user) {
-      return reply.code(401).send({
-        statusCode: 401,
-        error: 'Unauthorized',
-        message: 'Sesion de super usuario requerida.',
-      });
-    }
-  };
-
-  fastify.post(
-    '/api/superUsuario/auth/login',
-    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
-    async (request, reply) => {
-      const parsed = superUserLoginSchema.safeParse(request.body);
-      if (!parsed.success) return sendValidationError(reply, parsed.error.errors.map((issue) => issue.message));
-
-      if (!passwordMatches(parsed.data.password)) {
-        return reply.code(401).send({
-          statusCode: 401,
-          error: 'Unauthorized',
-          message: 'Contrasena de super usuario invalida.',
-        });
-      }
-
-      const expiresAt = new Date(Date.now() + sessionDurationSeconds * 1000);
-      const token = jwt.sign({ role: 'SUPER_USER' }, env.COORDINATION_JWT_SECRET, {
-        subject: 'superUsuario',
-        expiresIn: sessionDurationSeconds,
-        issuer: 'presencia-backend-apirest',
-      });
-      reply.setCookie(SUPER_USER_COOKIE, token, cookieOptions(expiresAt));
-      return reply.send({
-        data: {
-          user: { role: 'SUPER_USER' },
-          expiresAt: expiresAt.toISOString(),
-        },
-      });
-    },
-  );
-
-  fastify.get('/api/superUsuario/auth/me', { preHandler: requireSuperUser }, async (_request, reply) => {
-    return reply.send({ data: { user: { role: 'SUPER_USER' } } });
-  });
-
-  fastify.post('/api/superUsuario/auth/logout', { preHandler: requireSuperUser }, async (_request, reply) => {
-    reply.clearCookie(SUPER_USER_COOKIE, { path: '/api/superUsuario', sameSite: 'lax' });
-    return reply.code(204).send();
-  });
-
-  fastify.get('/api/superUsuario/coordinadores', { preHandler: requireSuperUser }, async (_request, reply) => {
-    return reply.send(await coordinatorAccountService.listCoordinators());
-  });
-
-  fastify.post('/api/superUsuario/coordinadores', { preHandler: requireSuperUser }, async (request, reply) => {
-    const parsed = coordinatorCreateSchema.safeParse(request.body);
-    if (!parsed.success) return sendValidationError(reply, parsed.error.errors.map((issue) => issue.message));
-
+  fastify.post('/api/superUsuario/auth/login', {
+    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const input = loginSchema.parse(request.body);
     try {
-      return reply.code(201).send(await coordinatorAccountService.createCoordinator(parsed.data));
-    } catch (error: any) {
-      if (error.code === 'P2002') {
-        return reply.code(409).send({ error: 'COORDINATOR_EXISTS', message: 'Ya existe una cuenta con ese correo.' });
+      const session = await authService.login(input.password);
+      reply.setCookie(SUPER_USER_COOKIE, session.token, cookieOptions(session.expiresAt));
+      return reply.send({ data: { user: { role: session.user.role }, expiresAt: session.expiresAt.toISOString() } });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'INVALID_SUPER_USER_PASSWORD') {
+        return reply.code(401).send({ error: 'INVALID_SUPER_USER_PASSWORD', message: 'Contraseña de super usuario inválida.' });
       }
       throw error;
     }
   });
 
-  fastify.put<{ Params: { id: string } }>('/api/superUsuario/coordinadores/:id', { preHandler: requireSuperUser }, async (request, reply) => {
-    const params = idParamsSchema.safeParse(request.params);
-    if (!params.success) return sendValidationError(reply, params.error.errors.map((issue) => issue.message));
-    const parsed = coordinatorUpdateSchema.safeParse(request.body);
-    if (!parsed.success) return sendValidationError(reply, parsed.error.errors.map((issue) => issue.message));
-
-    try {
-      return reply.send(await coordinatorAccountService.updateCoordinator(params.data.id, parsed.data));
-    } catch (error: any) {
-      if (error.code === 'P2025') {
-        return reply.code(404).send({ error: 'COORDINATOR_NOT_FOUND', message: 'Cuenta de coordinador no encontrada.' });
-      }
-      if (error.code === 'P2002') {
-        return reply.code(409).send({ error: 'COORDINATOR_EXISTS', message: 'Ya existe una cuenta con ese correo.' });
-      }
-      throw error;
-    }
-  });
-
-  fastify.delete<{ Params: { id: string } }>('/api/superUsuario/coordinadores/:id', { preHandler: requireSuperUser }, async (request, reply) => {
-    const params = idParamsSchema.safeParse(request.params);
-    if (!params.success) return sendValidationError(reply, params.error.errors.map((issue) => issue.message));
-
-    try {
-      await coordinatorAccountService.deleteCoordinator(params.data.id);
-      return reply.code(204).send();
-    } catch (error: any) {
-      if (error.code === 'P2025') {
-        return reply.code(404).send({ error: 'COORDINATOR_NOT_FOUND', message: 'Cuenta de coordinador no encontrada.' });
-      }
-      throw error;
-    }
-  });
-
-  fastify.get('/api/superUsuario/beacons', { preHandler: requireSuperUser }, async (_request, reply) => {
-    return reply.send(await attendanceBackendClient.listBeacons());
-  });
-
-  fastify.post('/api/superUsuario/beacons', { preHandler: requireSuperUser }, async (request, reply) => {
-    const parsed = beaconSchema.safeParse(request.body);
-    if (!parsed.success) return sendValidationError(reply, parsed.error.errors.map((issue) => issue.message));
-    return reply.code(201).send(await attendanceBackendClient.createBeacon(parsed.data));
-  });
-
-  fastify.put<{ Params: { id: string } }>('/api/superUsuario/beacons/:id', { preHandler: requireSuperUser }, async (request, reply) => {
-    const params = idParamsSchema.safeParse(request.params);
-    if (!params.success) return sendValidationError(reply, params.error.errors.map((issue) => issue.message));
-    const parsed = beaconUpdateSchema.safeParse(request.body);
-    if (!parsed.success) return sendValidationError(reply, parsed.error.errors.map((issue) => issue.message));
-    return reply.send(await attendanceBackendClient.updateBeacon(params.data.id, parsed.data));
-  });
-
-  fastify.delete<{ Params: { id: string } }>('/api/superUsuario/beacons/:id', { preHandler: requireSuperUser }, async (request, reply) => {
-    const params = idParamsSchema.safeParse(request.params);
-    if (!params.success) return sendValidationError(reply, params.error.errors.map((issue) => issue.message));
-    await attendanceBackendClient.deleteBeacon(params.data.id);
+  fastify.post('/api/superUsuario/auth/logout', async (request, reply) => {
+    await authService.logout(request.cookies[SUPER_USER_COOKIE]);
+    reply.clearCookie(SUPER_USER_COOKIE, cookieClearOptions());
     return reply.code(204).send();
   });
 
-  fastify.get('/api/superUsuario/alumnos-vinculados', { preHandler: requireSuperUser }, async (request, reply) => {
-    const parsed = bindingQuerySchema.safeParse(request.query);
-    if (!parsed.success) return sendValidationError(reply, parsed.error.errors.map((issue) => issue.message));
-    return reply.send(await attendanceBackendClient.listStudentDeviceBindings({ q: parsed.data.q }));
+  const requireSuperUser = buildSuperUserAuthHook(authService);
+  fastify.addHook('preHandler', async (request, reply) => {
+    if (request.routeOptions.url === '/api/superUsuario/auth/login'
+      || request.routeOptions.url === '/api/superUsuario/auth/logout') return;
+    return requireSuperUser(request, reply);
   });
 
-  fastify.delete<{ Params: { matricula: string } }>('/api/superUsuario/alumnos-vinculados/:matricula', { preHandler: requireSuperUser }, async (request, reply) => {
-    const params = matriculaParamsSchema.safeParse(request.params);
-    if (!params.success) return sendValidationError(reply, params.error.errors.map((issue) => issue.message));
-    await attendanceBackendClient.deleteStudentDeviceBinding(decodeURIComponent(params.data.matricula));
+  fastify.get('/api/superUsuario/auth/me', async (request) => ({ data: { user: { role: request.superUser?.role } } }));
+  fastify.get('/api/superUsuario/coordinadores', async () => identityService.listStaffAccounts());
+  fastify.post('/api/superUsuario/coordinadores', async (request, reply) => {
+    const input = coordinatorCreateSchema.parse(request.body);
+    return reply.code(201).send(await identityService.createStaffAccount({
+      ...input, ...staffAudit(request.superUser?.id, request.id, 'Alta de cuenta coordinadora.'),
+    }));
+  });
+  fastify.put<{ Params: { id: string } }>('/api/superUsuario/coordinadores/:id', async (request) => {
+    const input = coordinatorUpdateSchema.parse(request.body);
+    return identityService.updateStaffAccount(request.params.id, {
+      ...input, ...staffAudit(request.superUser?.id, request.id, 'Actualización de cuenta coordinadora.'),
+    });
+  });
+  fastify.delete<{ Params: { id: string } }>('/api/superUsuario/coordinadores/:id', async (request, reply) => {
+    await identityService.deleteStaffAccount(
+      request.params.id,
+      staffAudit(request.superUser?.id, request.id, 'Baja de cuenta coordinadora.'),
+    );
     return reply.code(204).send();
   });
 
-  fastify.get('/api/superUsuario/debug/status', { preHandler: requireSuperUser }, async (_request, reply) => {
-    return reply.send({
+  fastify.get('/api/superUsuario/beacons', async () => attendanceService.listClassroomBeacons());
+  fastify.post('/api/superUsuario/beacons', async (request, reply) => {
+    const input = beaconSchema.parse(request.body);
+    return reply.code(201).send(await attendanceService.createClassroomBeacon({
+      ...input, ...actor(request.superUser?.id, request.id, 'Alta de beacon desde super usuario.'),
+    }));
+  });
+  fastify.put<{ Params: { id: string } }>('/api/superUsuario/beacons/:id', async (request) => {
+    const input = beaconUpdateSchema.parse(request.body);
+    return attendanceService.updateClassroomBeacon(request.params.id, {
+      ...input, ...actor(request.superUser?.id, request.id, 'Actualización de beacon desde super usuario.'),
+    });
+  });
+  fastify.delete<{ Params: { id: string } }>('/api/superUsuario/beacons/:id', async (request, reply) => {
+    await attendanceService.deleteClassroomBeacon(request.params.id, actor(
+      request.superUser?.id, request.id, 'Baja de beacon desde super usuario.',
+    ));
+    return reply.code(204).send();
+  });
+
+  fastify.get('/api/superUsuario/alumnos-vinculados', async (request) => {
+    const { q } = request.query as { q?: string };
+    return attendanceService.listStudentDeviceBindings({ q });
+  });
+  fastify.delete<{ Params: { matricula: string } }>('/api/superUsuario/alumnos-vinculados/:matricula', async (request, reply) => {
+    await attendanceService.unbindStudentDevice({
+      matricula: request.params.matricula,
+      ...actor(request.superUser?.id, request.id, 'Desvinculación solicitada desde super usuario.'),
+    });
+    return reply.code(204).send();
+  });
+
+  fastify.get('/api/superUsuario/debug/status', async () => {
+    if (!env.PRESENCIA_DEBUG_MODE) return disabledDebugStatus();
+    const { data } = await demoPortal.status();
+    return {
       data: {
-        enabled: env.PRESENCIA_DEBUG_MODE,
-        period: env.PRESENCIA_DEBUG_CYCLE_NAME,
-        settings: defaultDebugSettings,
-        apiRestPolicy: env.PRESENCIA_DEBUG_MODE
-          ? 'Modo debug activo en backend-apirest.'
-          : 'Flujo real habilitado desde backend-apirest.',
+        enabled: true, period: data.cycleName, settings: data.settings,
+        apiRestPolicy: 'Portal UAT simulado y privado. No se realizan solicitudes a las plataformas reales.',
       },
       meta: { generatedAt: new Date().toISOString() },
+    };
+  });
+  fastify.get('/api/superUsuario/debug/catalog', async (_request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    return demoPortal.catalog();
+  });
+  fastify.get('/api/superUsuario/debug/settings', async (_request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    const { data } = await demoPortal.status();
+    return { data: data.settings, meta: { generatedAt: new Date().toISOString() } };
+  });
+  fastify.put('/api/superUsuario/debug/settings', async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    const result = await demoPortal.updateSettings(debugSettingsSchema.parse(request.body));
+    return { ...result, meta: { generatedAt: new Date().toISOString() } };
+  });
+  fastify.get('/api/superUsuario/debug/teachers', async (_request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    return { data: (await demoPortal.catalog()).data.teachers };
+  });
+  fastify.post('/api/superUsuario/debug/teachers', async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    const result = await demoPortal.createTeacher(debugTeacherCreateSchema.parse(request.body));
+    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
+    return reply.code(201).send(result);
+  });
+  fastify.put<{ Params: { id: string } }>('/api/superUsuario/debug/teachers/:id', async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    const result = await demoPortal.updateTeacher(request.params.id, debugTeacherUpdateSchema.parse(request.body));
+    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
+    return result;
+  });
+  fastify.delete<{ Params: { id: string } }>('/api/superUsuario/debug/teachers/:id', async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    await demoPortal.deleteTeacher(request.params.id);
+    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
+    return reply.code(204).send();
+  });
+  fastify.get('/api/superUsuario/debug/students', async (_request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    return { data: (await demoPortal.catalog()).data.students };
+  });
+  fastify.post('/api/superUsuario/debug/students', async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    const result = await demoPortal.createStudent(debugStudentCreateSchema.parse(request.body));
+    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
+    return reply.code(201).send(result);
+  });
+  fastify.put<{ Params: { id: string } }>('/api/superUsuario/debug/students/:id', async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    const result = await demoPortal.updateStudent(request.params.id, debugStudentUpdateSchema.parse(request.body));
+    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
+    return result;
+  });
+  fastify.delete<{ Params: { id: string } }>('/api/superUsuario/debug/students/:id', async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    await demoPortal.deleteStudent(request.params.id);
+    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
+    return reply.code(204).send();
+  });
+  fastify.get('/api/superUsuario/debug/classes', async (_request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return { data: [], meta: { generatedAt: new Date().toISOString() } };
+    const status = (await demoPortal.status()).data;
+    return { data: status.classes.map((item) => mapDebugClass(item, status)), meta: { generatedAt: new Date().toISOString() } };
+  });
+  fastify.post('/api/superUsuario/debug/classes', async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    const parsed = debugClassCreateSchema.parse(request.body);
+    const period = parsed.period || (await demoPortal.status()).data.cycleName;
+    const result = await demoPortal.createClass({ ...parsed, period });
+    const status = await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
+    return reply.code(201).send({ data: mapDebugClass(result.data, status) });
+  });
+  fastify.put<{ Params: { id: string } }>('/api/superUsuario/debug/classes/:id', async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    const parsed = debugClassUpdateSchema.parse(request.body);
+    const result = await demoPortal.updateClass(request.params.id, parsed);
+    const status = await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
+    return { data: mapDebugClass(result.data, status) };
+  });
+  fastify.delete<{ Params: { id: string } }>('/api/superUsuario/debug/classes/:id', async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    await demoPortal.deleteClass(request.params.id);
+    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
+    return reply.code(204).send();
+  });
+  fastify.post<{ Params: { id: string } }>('/api/superUsuario/debug/classes/:id/students', async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    const { studentId } = debugMembershipSchema.parse(request.body);
+    const result = await demoPortal.addStudentToClass(request.params.id, studentId);
+    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
+    return reply.code(201).send(result);
+  });
+  fastify.delete<{ Params: { id: string; studentId: string } }>('/api/superUsuario/debug/classes/:id/students/:studentId', async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    await demoPortal.removeStudentFromClass(request.params.id, request.params.studentId);
+    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
+    return reply.code(204).send();
+  });
+  fastify.post('/api/superUsuario/debug/synchronize', async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    const status = await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
+    return {
+      data: { teachers: status.teachers.length, students: status.students.length, classes: status.classes.length },
+      meta: { synchronizedAt: new Date().toISOString() },
+    };
+  });
+  fastify.delete('/api/superUsuario/debug/data', {
+    config: { rateLimit: { max: 2, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    debugResetSchema.parse(request.body);
+
+    const deleted = await resetDemoEnvironment({
+      demoPortal, identityService, academicService, attendanceService, coordinationQuery, resetLocalDemoData,
+    });
+
+    return {
+      data: {
+        reset: true,
+        deleted,
+        resetAt: new Date().toISOString(),
+      },
+    };
+  });
+  fastify.post<{ Params: { id: string } }>('/api/superUsuario/debug/classes/:id/simulate-attendance', async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    const input = debugAttendanceSimulationSchema.parse(request.body);
+    const status = await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
+    const item = status.classes.find(({ id }) => id === request.params.id);
+    if (!item || !item.professor) return reply.code(404).send({ error: 'DEMO_CLASS_NOT_FOUND', message: 'Materia demo no encontrada.' });
+    const students = new Map(item.students.map((student) => [student.id, student]));
+    const entries = input.entries.map((entry) => {
+      const student = students.get(entry.studentId);
+      if (!student) throw new ApiError(400, 'DEMO_STUDENT_NOT_IN_CLASS', 'El alumno demo no pertenece a la materia.');
+      return { uatStudentId: student.uatStudentId, status: entry.status };
+    });
+    const capture = await attendanceCapture.capture({
+      correlationId: request.id,
+      externalGroupId: String(item.groupId),
+      professorExternalId: item.professor.externalId,
+      date: input.date,
+      entries,
+    });
+    const write = await demoPortal.simulateAttendance(request.params.id, input);
+    return reply.code(capture.data.duplicate ? 200 : 201).send({
+      data: {
+        capture: capture.data,
+        attendanceRecord: mapDebugAttendance(write.data, (await demoPortal.status()).data)[0] ?? null,
+      },
     });
   });
-
-  fastify.get('/api/superUsuario/debug/settings', { preHandler: requireSuperUser }, async (_request, reply) => {
-    return reply.send({ data: defaultDebugSettings, meta: { generatedAt: new Date().toISOString() } });
+  fastify.get('/api/superUsuario/debug/student-attendance', async () => {
+    if (!env.PRESENCIA_DEBUG_MODE) return { data: [], meta: { generatedAt: new Date().toISOString() } };
+    const status = (await demoPortal.status()).data;
+    return { data: status.attendanceWrites.flatMap((write) => mapDebugAttendance(write, status)), meta: { generatedAt: new Date().toISOString() } };
   });
-
-  fastify.put('/api/superUsuario/debug/settings', { preHandler: requireSuperUser }, async (request, reply) => {
-    const parsed = debugSettingsUpdateSchema.safeParse(request.body);
-    if (!parsed.success) return sendValidationError(reply, parsed.error.errors.map((issue) => issue.message));
-    return reply.send({ data: parsed.data, meta: { generatedAt: new Date().toISOString() } });
-  });
-
-  fastify.get('/api/superUsuario/debug/classes', { preHandler: requireSuperUser }, async (_request, reply) => {
-    return reply.send({ data: [], meta: { generatedAt: new Date().toISOString() } });
-  });
-
-  fastify.post('/api/superUsuario/debug/classes', { preHandler: requireSuperUser }, async (_request, reply) => {
-    return reply.code(501).send({
-      error: 'DEBUG_CLASSES_NOT_AVAILABLE',
-      message: 'Las clases debug no estan disponibles en backend-apirest.',
-    });
-  });
-
-  fastify.put('/api/superUsuario/debug/classes/:id', { preHandler: requireSuperUser }, async (_request, reply) => {
-    return reply.code(501).send({
-      error: 'DEBUG_CLASSES_NOT_AVAILABLE',
-      message: 'Las clases debug no estan disponibles en backend-apirest.',
-    });
-  });
-
-  fastify.get('/api/superUsuario/debug/student-attendance', { preHandler: requireSuperUser }, async (_request, reply) => {
-    return reply.send({ data: [], meta: { generatedAt: new Date().toISOString() } });
-  });
-
-  fastify.get('/api/superUsuario/debug/flow-logs', { preHandler: requireSuperUser }, async (_request, reply) => {
-    return reply.send({
+  fastify.get('/api/superUsuario/debug/flow-logs', async () => {
+    if (!env.PRESENCIA_DEBUG_MODE) return { data: { syncJobs: [], attendanceRecords: [], recentBindings: [] } };
+    const status = (await demoPortal.status()).data;
+    return {
       data: {
         syncJobs: [],
-        attendanceRecords: [],
+        attendanceRecords: status.attendanceWrites.flatMap((write) => mapDebugAttendance(write, status)).map((item) => ({
+          ...item, _count: { attendances: item.attendances.length, studentBeaconDetections: 0 },
+        })),
         recentBindings: [],
       },
-      meta: { generatedAt: new Date().toISOString() },
-    });
+    };
   });
 };
 
-function passwordMatches(candidate: string): boolean {
-  const expected = Buffer.from(env.SUPER_USER_PASSWORD);
-  const actual = Buffer.from(candidate);
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
+export async function resetDemoEnvironment(services: {
+  demoPortal: DemoPortalClient;
+  identityService: IdentityServiceClient;
+  academicService: AcademicServiceClient;
+  attendanceService: AttendanceServiceCommandClient;
+  coordinationQuery: CoordinationQueryClient;
+  resetLocalDemoData: () => Promise<{ teacherSessions: number; studentSessions: number }>;
+}) {
+  const portal = await services.demoPortal.resetData();
+  const [identity, local] = await Promise.all([
+    services.identityService.resetDemoData(),
+    services.resetLocalDemoData(),
+  ]);
+  await Promise.all([
+    services.academicService.resetDemoData(),
+    services.attendanceService.resetDemoData(),
+  ]);
+  await services.coordinationQuery.resetDemoData();
+  return {
+    ...portal.data.deleted,
+    identities: identity.data.identities,
+    teacherSessions: local.teacherSessions,
+    studentSessions: local.studentSessions,
+  };
 }
 
-function authenticateSuperUser(token?: string): { role: 'SUPER_USER' } | null {
-  if (!token) return null;
-  try {
-    const payload = jwt.verify(token, env.COORDINATION_JWT_SECRET, { issuer: 'presencia-backend-apirest' }) as SuperUserJwtPayload;
-    if (payload.sub !== 'superUsuario' || payload.role !== 'SUPER_USER') return null;
-    return { role: 'SUPER_USER' };
-  } catch {
-    return null;
-  }
+function debugDisabled(reply: FastifyReply) {
+  return reply.code(404).send({
+    error: 'DEBUG_MODE_DISABLED',
+    message: 'El modo demo no está habilitado en este despliegue.',
+  });
+}
+
+function disabledDebugStatus() {
+  return {
+    data: {
+      enabled: false, period: 'N/A', settings: { teacherAttendanceToleranceMinutes: 10 },
+      apiRestPolicy: 'Modo demo desactivado. La integración utiliza las plataformas UAT configuradas.',
+    },
+    meta: { generatedAt: new Date().toISOString() },
+  };
+}
+
+function actor(identityId: string | undefined, correlationId: string, reason: string) {
+  if (!identityId) throw new Error('SUPER_USER_IDENTITY_REQUIRED');
+  return { actorIdentityId: identityId, actorRole: 'SUPER_USER' as const, reason, correlationId };
+}
+
+function staffAudit(identityId: string | undefined, correlationId: string, reason: string) {
+  if (!identityId) throw new Error('SUPER_USER_IDENTITY_REQUIRED');
+  return { actorIdentityId: identityId, correlationId, reason };
 }
 
 function cookieOptions(expires: Date) {
   return {
-    path: '/api/superUsuario',
-    httpOnly: true,
-    sameSite: 'lax' as const,
-    secure: env.COORDINATION_COOKIE_SECURE ?? env.NODE_ENV === 'production',
-    expires,
+    path: '/api/superUsuario', httpOnly: true, sameSite: 'strict' as const,
+    secure: env.COORDINATION_COOKIE_SECURE ?? env.NODE_ENV === 'production', expires,
   };
 }
 
-function sendValidationError(reply: FastifyReply, messages: string[]) {
-  return reply.code(400).send({
-    statusCode: 400,
-    error: 'Validation Error',
-    message: messages.join(', '),
-  });
+function cookieClearOptions() {
+  return {
+    path: '/api/superUsuario', httpOnly: true, sameSite: 'strict' as const,
+    secure: env.COORDINATION_COOKIE_SECURE ?? env.NODE_ENV === 'production',
+  };
+}
+
+function mapDebugClass(item: DemoPortalClass, status: DemoPortalStatus) {
+  const professor = item.professor ?? status.teachers.find(({ id }) => id === item.professorId);
+  return {
+    id: item.id,
+    externalGroupId: String(item.groupId),
+    code: item.code,
+    groupLetter: item.groupLetter,
+    period: item.period,
+    name: item.name,
+    level: item.level,
+    classroom: item.classroom,
+    beaconUuid: item.beaconUuid,
+    schedule: item.schedule,
+    professor: {
+      id: professor?.id ?? item.professorId,
+      name: professor?.name ?? 'Profesor demo',
+      institutionalEmail: professor?.email ?? '',
+    },
+    students: item.students.map((student) => ({
+      id: student.id, matricula: student.matricula, name: student.name, beaconUuid: student.attendanceUuid,
+    })),
+    attendanceRecords: status.attendanceWrites.flatMap((write) => write.groupId === item.groupId ? mapDebugAttendance(write, status) : []),
+  };
+}
+
+function mapDebugAttendance(write: DemoPortalAttendanceWrite, status: DemoPortalStatus) {
+  const item = status.classes.find(({ groupId }) => groupId === write.groupId);
+  if (!item) return [];
+  const professor = item.professor ?? status.teachers.find(({ id }) => id === item.professorId);
+  const studentsByUatId = new Map(status.students.map((student) => [student.uatStudentId, student]));
+  return [{
+    id: write.id,
+    date: attendanceWriteDate(write),
+    professorEntryAt: null,
+    professorExitAt: null,
+    portalSyncStatus: 'SKIPPED',
+    portalSyncError: null,
+    createdAt: write.createdAt,
+    professor: {
+      id: professor?.id ?? item.professorId,
+      name: professor?.name ?? 'Profesor demo',
+      institutionalEmail: professor?.email ?? '',
+    },
+    group: {
+      id: item.id, code: item.code, groupLetter: item.groupLetter, period: item.period,
+      name: item.name, classroom: item.classroom,
+    },
+    attendances: write.attendances.flatMap((attendance, index) => {
+      const student = studentsByUatId.get(attendance.id_alumno);
+      return student ? [{
+        id: `${write.id}:${student.id}:${index}`,
+        status: attendance.status ?? (attendance.sn_asistencia ? 'PRESENT' : 'ABSENT'),
+        createdAt: write.createdAt,
+        student: { id: student.id, matricula: student.matricula, name: student.name, beaconUuid: student.attendanceUuid },
+      }] : [];
+    }),
+    studentBeaconDetections: [],
+  }];
+}
+
+async function ensureDemoBeacon(
+  attendanceService: AttendanceServiceCommandClient,
+  classroom: string,
+  uuid: string,
+  identityId: string | undefined,
+  correlationId: string,
+) {
+  if (!identityId) throw new Error('SUPER_USER_IDENTITY_REQUIRED');
+  const { data } = await attendanceService.listClassroomBeacons();
+  const normalizedClassroom = classroom.trim().toUpperCase();
+  const existing = data.find((item) => item.classroom.trim().toUpperCase() === normalizedClassroom)
+    ?? data.find((item) => item.uuid.toLowerCase() === uuid.toLowerCase());
+  const actor = {
+    actorIdentityId: identityId,
+    actorRole: 'SUPER_USER' as const,
+    reason: 'Configuración de beacon para materia demo.',
+    correlationId,
+  };
+  if (!existing) return attendanceService.createClassroomBeacon({ classroom, uuid, ...actor });
+  if (existing.classroom === classroom && existing.uuid.toLowerCase() === uuid.toLowerCase()) return existing;
+  return attendanceService.updateClassroomBeacon(existing.id, { classroom, uuid, ...actor });
+}
+
+function isoDate(value: string): string {
+  const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return match ? `${match[3]}-${match[2]!.padStart(2, '0')}-${match[1]!.padStart(2, '0')}T00:00:00.000Z` : value;
+}
+
+function attendanceWriteDate(write: DemoPortalAttendanceWrite): string {
+  const value = isoDate(write.weekStart);
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  const dayNumber = write.attendances[0]?.num_dia ?? 1;
+  parsed.setUTCDate(parsed.getUTCDate() + Math.max(0, dayNumber - 1));
+  return parsed.toISOString();
+}
+
+async function synchronizeDemoCatalog(
+  services: {
+    demoPortal: DemoPortalClient;
+    academicService: AcademicServiceClient;
+    attendanceService: AttendanceServiceCommandClient;
+  },
+  identityId: string | undefined,
+  correlationId: string,
+): Promise<DemoPortalStatus> {
+  if (!identityId) throw new Error('SUPER_USER_IDENTITY_REQUIRED');
+  const status = (await services.demoPortal.status()).data;
+  const synchronizedAt = new Date().toISOString();
+  const cycle = { externalId: String(status.cycleId), name: status.cycleName };
+  const coordination = {
+    externalId: String(status.coordinationId),
+    name: status.coordinationName,
+    shortName: 'DEMO',
+  };
+
+  const beaconsByClassroom = new Map<string, { classroom: string; uuid: string }>();
+  const classroomsByUuid = new Map<string, string>();
+  for (const item of status.classes) {
+    const classroomKey = item.classroom.trim().toUpperCase();
+    const uuidKey = item.beaconUuid.toLowerCase();
+    const existing = beaconsByClassroom.get(classroomKey);
+    if (existing && existing.uuid.toLowerCase() !== uuidKey) {
+      throw new ApiError(409, 'DEMO_CLASSROOM_BEACON_CONFLICT', 'Las materias demo del mismo salón deben usar el mismo beacon UUID.');
+    }
+    const existingClassroom = classroomsByUuid.get(uuidKey);
+    if (existingClassroom && existingClassroom !== classroomKey) {
+      throw new ApiError(409, 'DEMO_BEACON_CLASSROOM_CONFLICT', 'Un beacon UUID demo no puede pertenecer a dos salones.');
+    }
+    beaconsByClassroom.set(classroomKey, { classroom: item.classroom, uuid: item.beaconUuid });
+    classroomsByUuid.set(uuidKey, classroomKey);
+  }
+  for (const beacon of beaconsByClassroom.values()) {
+    await ensureDemoBeacon(services.attendanceService, beacon.classroom, beacon.uuid, identityId, correlationId);
+  }
+
+  await Promise.all([
+    ...status.teachers.map((teacher) => services.academicService.publishProfessorSnapshot({
+      snapshotId: randomUUID(),
+      correlationId,
+      causationId: correlationId,
+      teacher: {
+        externalId: teacher.externalId,
+        institutionalCode: teacher.externalId,
+        name: teacher.name,
+        email: teacher.email,
+        authenticatedAt: synchronizedAt,
+      },
+      cycle,
+      groups: status.classes.filter(({ professorId }) => professorId === teacher.id).map((item) => ({
+        externalGroupId: String(item.groupId),
+        code: item.code,
+        groupLetter: item.groupLetter,
+        name: item.name,
+        level: item.level,
+        classroom: item.classroom,
+        period: item.period,
+        schedule: item.schedule,
+        subject: { externalId: item.code, code: item.code, name: item.name },
+        coordination,
+        rosterAuthoritative: true,
+        students: item.students.map((student, index) => ({
+          matricula: student.matricula,
+          name: student.name,
+          uatStudentId: student.uatStudentId,
+          listNumber: index + 1,
+        })),
+      })),
+    })),
+    ...status.students.map((student) => services.academicService.publishStudentSnapshot({
+      snapshotId: randomUUID(),
+      correlationId,
+      causationId: correlationId,
+      synchronizedAt,
+      student: { matricula: student.matricula, displayName: student.name, email: student.email },
+      career: {
+        planExternalId: `demo-plan-${student.matricula}`,
+        name: student.careerName,
+        coordinationExternalId: String(status.coordinationId),
+      },
+      cycle,
+      schedule: status.classes.filter(({ studentIds }) => studentIds.includes(student.id)).map((item) => ({
+        externalGroupId: String(item.groupId),
+        groupLetter: item.groupLetter,
+        subjectName: item.name,
+        professorName: item.professor?.name ?? null,
+        classroom: item.classroom,
+        period: item.period,
+        credits: 5,
+        schedule: item.schedule,
+      })),
+    })),
+    ...status.classes.map((item) => services.attendanceService.applyRoster({
+      externalGroupId: String(item.groupId),
+      uatGroupId: item.groupId,
+      name: item.name,
+      groupLetter: item.groupLetter,
+      professorExternalId: item.professor?.externalId ?? item.professorId,
+      professorName: item.professor?.name,
+      professorEmail: item.professor?.email ?? null,
+      classroom: item.classroom,
+      period: item.period,
+      schedule: item.schedule,
+      rosterVersion: item.updatedAt,
+      rosterObservedAt: synchronizedAt,
+      rosterAuthoritative: true,
+      students: item.students.map((student, index) => ({
+        matricula: student.matricula,
+        name: student.name,
+        uatStudentId: student.uatStudentId,
+        listNumber: index + 1,
+      })),
+    })),
+  ]);
+
+  return status;
 }

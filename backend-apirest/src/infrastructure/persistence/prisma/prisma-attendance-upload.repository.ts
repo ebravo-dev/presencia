@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { AttendanceUploadRepository } from '../../../domain/attendance-upload/attendance-upload.repository.js';
 import type {
@@ -61,6 +62,8 @@ export class PrismaAttendanceUploadRepository implements AttendanceUploadReposit
             create: input.records.map((record) => ({
               ownerUsername: input.ownerUsername,
               clientRecordId: record.clientRecordId,
+              attendanceSessionId: record.attendanceSessionId,
+              attendanceVersion: record.attendanceVersion,
               idGrupo: record.idGrupo,
               fechaInicio: record.fechaInicio,
               attendances: record.attendances as Prisma.InputJsonValue,
@@ -86,21 +89,13 @@ export class PrismaAttendanceUploadRepository implements AttendanceUploadReposit
     }
   }
 
-  async findBatch(ownerUsername: string, batchId: string): Promise<AttendanceUploadBatchView | null> {
-    const batch = await this.db.attendanceUploadBatch.findFirst({
-      where: { id: batchId, ownerUsername },
-      include: batchInclude,
-    });
-    return batch ? toBatchView(batch) : null;
-  }
-
   async findLatestJobStatuses(ownerUsername: string, clientRecordIds: string[]): Promise<AttendanceUploadBatchView['jobs']> {
     const jobs = await this.db.attendanceUploadJob.findMany({
       where: { ownerUsername, clientRecordId: { in: clientRecordIds } },
       orderBy: { createdAt: 'desc' },
       select: { clientRecordId: true, status: true, attempts: true, error: true },
     });
-    return [...new Map(jobs.map((job) => [job.clientRecordId, job])).values()];
+    return latestJobsByClientRecordId(jobs);
   }
 
   async recoverStaleJobs(staleBefore: Date): Promise<number> {
@@ -132,6 +127,8 @@ export class PrismaAttendanceUploadRepository implements AttendanceUploadReposit
           batchId: candidate.batchId,
           ownerUsername: candidate.ownerUsername,
           clientRecordId: candidate.clientRecordId,
+          attendanceSessionId: candidate.attendanceSessionId,
+          attendanceVersion: candidate.attendanceVersion,
           idGrupo: candidate.idGrupo,
           fechaInicio: candidate.fechaInicio,
           attendances: candidate.attendances as unknown as UatAsistenciaAlumnoInput[],
@@ -147,10 +144,13 @@ export class PrismaAttendanceUploadRepository implements AttendanceUploadReposit
     return null;
   }
 
-  async completeJob(jobId: string): Promise<void> {
-    await this.db.attendanceUploadJob.update({
-      where: { id: jobId },
-      data: { status: 'COMPLETED', completedAt: new Date(), lockedAt: null, error: null },
+  async completeJob(job: AttendanceUploadJobClaim): Promise<void> {
+    await this.db.$transaction(async (transaction) => {
+      await transaction.attendanceUploadJob.update({
+        where: { id: job.id },
+        data: { status: 'COMPLETED', completedAt: new Date(), lockedAt: null, error: null },
+      });
+      await createUploadResultEvent(transaction, job, 'uat.attendance_uploaded.v1', null);
     });
   }
 
@@ -161,10 +161,13 @@ export class PrismaAttendanceUploadRepository implements AttendanceUploadReposit
     });
   }
 
-  async failJob(jobId: string, error: string): Promise<void> {
-    await this.db.attendanceUploadJob.update({
-      where: { id: jobId },
-      data: { status: 'FAILED', completedAt: new Date(), lockedAt: null, error },
+  async failJob(job: AttendanceUploadJobClaim, error: string): Promise<void> {
+    await this.db.$transaction(async (transaction) => {
+      await transaction.attendanceUploadJob.update({
+        where: { id: job.id },
+        data: { status: 'FAILED', completedAt: new Date(), lockedAt: null, error },
+      });
+      await createUploadResultEvent(transaction, job, 'uat.attendance_upload_failed.v1', error);
     });
   }
 
@@ -198,6 +201,63 @@ export class PrismaAttendanceUploadRepository implements AttendanceUploadReposit
       },
     });
   }
+}
+
+async function createUploadResultEvent(
+  transaction: Prisma.TransactionClient,
+  job: AttendanceUploadJobClaim,
+  eventType: 'uat.attendance_uploaded.v1' | 'uat.attendance_upload_failed.v1',
+  error: string | null,
+): Promise<void> {
+  const { attendanceSessionId, version } = attendanceUploadIdentity(job);
+  const eventId = randomUUID();
+  const occurredAt = new Date();
+  const correlationId = job.clientRecordId;
+  const payload = {
+    eventId,
+    eventType,
+    occurredAt: occurredAt.toISOString(),
+    correlationId,
+    causationId: job.id,
+    producer: 'uat-integration',
+    aggregateId: attendanceSessionId,
+    schemaVersion: 1,
+    payload: {
+      attendanceSessionId,
+      version,
+      clientRecordId: job.clientRecordId,
+      batchId: job.batchId,
+      jobId: job.id,
+      error,
+    },
+  };
+  await transaction.domainOutboxEvent.create({
+    data: {
+      id: eventId,
+      eventName: eventType,
+      aggregateId: attendanceSessionId,
+      payload: JSON.parse(JSON.stringify(payload)) as Prisma.InputJsonValue,
+      occurredAt,
+    },
+  });
+}
+
+export function attendanceUploadIdentity(
+  job: Pick<AttendanceUploadJobClaim, 'clientRecordId' | 'attendanceSessionId' | 'attendanceVersion'>,
+): { attendanceSessionId: string; version: number } {
+  const legacyMatch = job.clientRecordId.match(/^(.*):v(\d+)$/);
+  return {
+    attendanceSessionId: job.attendanceSessionId ?? legacyMatch?.[1] ?? job.clientRecordId,
+    version: job.attendanceVersion ?? (legacyMatch?.[2] ? Number(legacyMatch[2]) : 1),
+  };
+}
+
+export function latestJobsByClientRecordId<TJob extends { clientRecordId: string }>(jobsNewestFirst: TJob[]): TJob[] {
+  const latest = new Map<string, TJob>();
+  for (const job of jobsNewestFirst) {
+    if (!latest.has(job.clientRecordId)) latest.set(job.clientRecordId, job);
+  }
+  return [...latest.values()];
 }
 
 type BatchWithJobs = Prisma.AttendanceUploadBatchGetPayload<{ include: typeof batchInclude }>;

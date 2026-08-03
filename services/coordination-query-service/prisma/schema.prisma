@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model CoordinationProjection {
+  id         String   @id @default(cuid())
+  externalId String   @unique @map("external_id")
+  name       String
+  shortName  String?  @map("short_name")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  subjects SubjectProjection[]
+  groups   GroupProjection[]
+
+  @@map("coordination_projections")
+}
+
+model TeacherProjection {
+  id                  String   @id @default(cuid())
+  externalId          String   @unique @map("external_id")
+  institutionalCode   String?  @map("institutional_code")
+  name                String
+  email               String?
+  lastAuthenticatedAt DateTime @map("last_authenticated_at")
+  lastHarvestedAt     DateTime @map("last_harvested_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  groups GroupProjection[]
+
+  @@index([name])
+  @@index([email])
+  @@map("teacher_projections")
+}
+
+model SubjectProjection {
+  id             String   @id @default(cuid())
+  externalId     String   @unique @map("external_id")
+  code           String?
+  name           String
+  coordinationId String   @map("coordination_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  coordination CoordinationProjection @relation(fields: [coordinationId], references: [id], onDelete: Restrict)
+  groups       GroupProjection[]
+
+  @@index([coordinationId])
+  @@map("subject_projections")
+}
+
+model GroupProjection {
+  id                 String   @id @default(cuid())
+  externalGroupId    String   @unique @map("external_group_id")
+  code               String
+  groupLetter        String   @default("") @map("group_letter")
+  name               String
+  level              String?
+  classroom          String?
+  period             String?
+  schedule           Json
+  cycleExternalId    String   @map("cycle_external_id")
+  cycleName          String   @map("cycle_name")
+  active             Boolean  @default(true)
+  teacherId          String   @map("teacher_id")
+  subjectId          String   @map("subject_id")
+  coordinationId     String   @map("coordination_id")
+  sourceObservedAt   DateTime @map("source_observed_at")
+  firstSeenAt        DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt         DateTime @map("last_seen_at")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  teacher      TeacherProjection      @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  subject      SubjectProjection      @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  coordination CoordinationProjection @relation(fields: [coordinationId], references: [id], onDelete: Restrict)
+
+  @@index([teacherId, active])
+  @@index([coordinationId, active])
+  @@index([cycleExternalId, active])
+  @@map("group_projections")
+}
+
+model AttendanceProjection {
+  attendanceSessionId String   @id @map("attendance_session_id")
+  externalGroupId     String   @map("external_group_id")
+  professorExternalId String   @map("professor_external_id")
+  date                DateTime @db.Date
+  professorEntryAt    DateTime? @map("professor_entry_at")
+  professorExitAt     DateTime? @map("professor_exit_at")
+  uploadStatus        String   @default("PENDING") @map("upload_status")
+  uploadError         String?  @map("upload_error")
+  version             Int
+  entriesCount        Int      @default(0) @map("entries_count")
+  sourceObservedAt    DateTime @map("source_observed_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@index([professorExternalId, date])
+  @@index([externalGroupId, date])
+  @@map("attendance_projections")
+}
+
+model AttendanceUploadResultProjection {
+  attendanceSessionId String   @map("attendance_session_id")
+  version             Int
+  status              String
+  error               String?
+  sourceObservedAt    DateTime @map("source_observed_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@id([attendanceSessionId, version])
+  @@map("attendance_upload_result_projections")
+}
+
+model ProcessedQueryEvent {
+  eventId     String   @map("event_id")
+  consumer    String
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@id([eventId, consumer])
+  @@index([processedAt])
+  @@map("processed_query_events")
+}

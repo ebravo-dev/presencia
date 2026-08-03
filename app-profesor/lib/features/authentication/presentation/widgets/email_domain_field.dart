@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../../../core/theme/uat_colors.dart';
 
 class EmailDomainField extends StatefulWidget {
@@ -173,7 +172,7 @@ class _EmailDomainFieldState extends State<EmailDomainField> {
       enabled: widget.enabled,
       decoration: InputDecoration(
         labelText: 'Email institucional',
-        hintText: 'ejgonzalez@d  o  ejgonzalez@u',
+        hintText: 'profesor.apellido@d  o  profesor.apellido@u',
         prefixIcon: Icon(
           Icons.alternate_email,
           color: UATColors.neutral80,

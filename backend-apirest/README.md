@@ -1,10 +1,10 @@
 # backend-apirest
 
 API REST aislada para consumir endpoints internos del Sistema Administrativo
-Escolar UAT usando autenticacion ASP.NET por cookies. No usa Bearer token:
-cada login crea un `CookieJar` persistente en memoria y conserva `.ASPXAUTH`,
-`ASP.NET_SessionId` cuando el portal la emite, y las cookies adicionales que
-entregue el sitio.
+Escolar UAT usando autenticacion ASP.NET por cookies. Cada login crea un
+`CookieJar` serializado y cifrado en Redis con TTL; cualquier réplica puede
+continuar la sesión sin afinidad y conserva `.ASPXAUTH`, `ASP.NET_SessionId` y
+las cookies adicionales que entregue el portal.
 
 ## Instalacion
 
@@ -19,23 +19,22 @@ Por defecto escucha en `http://localhost:3100`.
 
 ## Despliegue en Dokploy
 
-El despliegue recomendado crea la API y el frontend en contenedores separados.
-En Dokploy configura:
+El despliegue recomendado usa el Compose integral de microservicios. En
+Dokploy configura:
 
 ```txt
 Root Directory / Base Directory: raiz del repositorio
 Build Type: Docker Compose
-Compose Path: compose.coordination.yaml
+Compose Path: infra/compose/docker-compose.microservices.yml
 ```
 
-El dominio del panel se asigna a `frontend-coord:8080`. Este reenvia `/api` a
-`backend-apirest:3100` por la red privada, conservando las cookies `HttpOnly`
-en el mismo origen. La API puede tener ademas un dominio propio para los otros
-clientes.
+El dominio se asigna a `frontend-coord:8080`. Nginx reenvía el API al Gateway,
+que conserva las rutas públicas y selecciona el servicio propietario. No se
+debe asignar un dominio directo a `backend-apirest` ni a otro servicio interno.
 
-Los dos servicios tambien se conectan a la red externa `dokploy-network` para
-que Traefik y los servicios administrados de Dokploy, incluido PostgreSQL,
-puedan alcanzarlos por sus hostnames internos.
+Los servicios de dominio, PostgreSQL, Redis y RabbitMQ sólo se conectan a la
+red privada. Consulta `../docs/operations/DOKPLOY.md` para variables, orden de
+arranque, smoke test, rollback y backups.
 
 Variables recomendadas:
 
@@ -51,10 +50,12 @@ ATTENDANCE_JOB_ENCRYPTION_SECRET=un-secreto-estable-de-al-menos-32-caracteres
 DATABASE_URL=postgresql://usuario:password@postgres:5432/presencia_coordination?schema=public
 DATABASE_MIGRATION_MAX_ATTEMPTS=10
 DATABASE_MIGRATION_RETRY_MS=3000
-COORDINATION_JWT_SECRET=cambia-este-secreto-de-al-menos-32-caracteres
 COORDINATION_WEB_ORIGIN=https://tu-dominio.example
 COORDINATION_COOKIE_SECURE=true
-ATTENDANCE_BACKEND_URL=http://backend:3000
+IDENTITY_SERVICE_URL=http://identity-service:3200
+ACADEMIC_SERVICE_URL=http://academic-service:3300
+ATTENDANCE_SERVICE_URL=http://attendance-service:3400
+COORDINATION_QUERY_SERVICE_URL=http://coordination-query-service:3500
 ATTENDANCE_BACKEND_SERVICE_TOKEN=token-interno-compartido-de-al-menos-32-caracteres
 COORDINATOR_EMAIL=coordinacion@uat.edu.mx
 COORDINATOR_NAME=Coordinacion Academica
@@ -67,12 +68,14 @@ En `DATABASE_URL` usa el hostname interno del servicio PostgreSQL de Dokploy;
 `localhost` apuntaria al propio contenedor de la API. Si PostgreSQL es externo,
 agrega los parametros SSL exigidos por el proveedor.
 
-Al iniciar cada revision, el contenedor realiza en orden:
+Al desplegar una revisión, el Compose realiza en orden:
 
 1. `prisma migrate deploy`, con reintentos mientras PostgreSQL arranca.
-2. UPSERT idempotente de las cuentas definidas en `COORDINATORS_JSON` o en las
-   tres variables `COORDINATOR_*`.
-3. Inicio de `backend-apirest` en el puerto configurado.
+2. Aprovisionamiento legado de las cuentas definidas en `COORDINATORS_JSON` o
+   en las tres variables `COORDINATOR_*`, seguido por adopción única en Identity.
+   Las ejecuciones posteriores no pisan cambios administrados en Identity.
+3. Inicio de `backend-apirest` en el puerto configurado, después de Identity,
+   Academic, Attendance y Coordination Query.
 
 Si una migracion falla o las credenciales de coordinacion estan incompletas, el
 contenedor termina con error y Dokploy conserva los logs del motivo; no inicia
@@ -144,9 +147,9 @@ curl -X POST http://localhost:3100/api/uat/alumnos/sessions \
 
 `idPlanEstudio` es opcional. Si no se envia, la API selecciona la primera
 carrera devuelta por `/Home/CarrerasAlumno`.
-`attendanceUuid` y `deviceBindingId` son opcionales para clientes de consulta,
-pero la app de alumnos los envia para que el backend vincule la matricula UAT
-con el UUID BLE estable del celular.
+`attendanceUuid`, `deviceBindingId` y `platform` son obligatorios en cada login.
+Attendance Service acepta nuevamente el mismo vínculo, pero rechaza cualquier
+cambio de UUID o dispositivo; ese cambio sólo puede realizarlo Coordinación.
 
 Consultar datos de alumno:
 
@@ -185,6 +188,7 @@ Endpoints incluidos:
 GET    /health
 POST   /api/uat/sessions
 DELETE /api/uat/sessions/{sessionId}
+POST   /api/uat/profesor/sync
 GET    /api/uat/profesor/consultas/horarios
 GET    /api/uat/profesor/consultas/examenes
 POST   /api/uat/profesor/consultas/snapshot
@@ -220,18 +224,19 @@ El servicio quedo organizado por capas:
 
 ```txt
 src/domain          Tipos UAT y contrato IUatSessionRepository
-src/infrastructure  Axios + CookieJar, factory y store en memoria
+src/infrastructure  Axios + CookieJar, Redis cifrado, RabbitMQ y clientes internos
 src/application     UatService con casos de uso y snapshot
 src/presentation    Controladores, hooks Fastify, schemas Zod y rutas
 ```
 
 ## Cosecha incremental para coordinacion
 
-Cada `POST /api/uat/sessions` exitoso publica una sola vez el evento interno
-`teacher.authenticated`. El listener se ejecuta fuera del camino de respuesta,
-reutiliza el cliente UAT y sus cookies, descubre ciclos/DES y acumula profesores,
-materias y grupos mediante `upsert` en Prisma. Un fallo de portal o persistencia
-solo produce un log estructurado y no invalida la sesion del profesor.
+Cada `POST /api/uat/sessions` exitoso publica un evento durable de profesor
+autenticado. `POST /api/uat/profesor/sync` permite volver a publicarlo con la
+sesión vigente, sin recibir de nuevo la contraseña. El consumidor idempotente
+reutiliza la sesión UAT, descubre ciclos/DES y envía snapshots diferenciales a
+Academic Service. Academic hace `upsert`, desactiva lo ausente sin borrar
+historial y publica los cambios por outbox para Attendance y Coordination Query.
 
 Configura `DATABASE_URL` con la conexion PostgreSQL. Para desarrollo, crea o
 actualiza el esquema y genera el cliente con:
@@ -248,26 +253,22 @@ npm run prisma:generate
 npm run prisma:deploy
 ```
 
-La imagen de `backend-apirest` ejecuta las migraciones y el aprovisionamiento
-opcional de coordinadores automaticamente antes de iniciar la API.
+Los jobs `uat-migrate` y `staff-account-import` ejecutan migraciones y adoptan
+cuentas históricas/configuradas en Identity antes de iniciar réplicas HTTP.
 
-Provisiona o rota una cuenta de coordinación sin guardar su contraseña en el
-frontend:
+Configura la primera cuenta sin guardar su contraseña en el frontend:
 
 ```powershell
 $env:COORDINATOR_EMAIL="coordinacion@uat.edu.mx"
 $env:COORDINATOR_NAME="Coordinación Académica"
-$env:COORDINATOR_PASSWORD="contra123"
-npm run coordinator:create
+$env:COORDINATOR_PASSWORD="una-clave-segura-de-12-caracteres"
 ```
 
 Para varias cuentas define `COORDINATORS_JSON` como un arreglo de objetos con
-`email`, `name` y `password`, y ejecuta el mismo comando. Omitir una cuenta del
-arreglo no la elimina ni la deshabilita automaticamente.
-
-Desde la terminal del contenedor en Dokploy se puede repetir el aprovisionamiento
-con `npm run coordinator:create:production`; toma las variables actuales del
-servicio y nunca imprime las contraseñas.
+`email`, `name`, `password` y opcionalmente `role`. El job de importación las
+crea en Identity sólo si todavía no fueron adoptadas. Después, toda rotación,
+baja o cambio de rol se realiza desde el panel de superusuario y no es
+sobrescrito por despliegues posteriores.
 
 La SPA vive en `frontend-coord`. En desarrollo usa Vite y proxy a `:3100`; en
 producción se sirve desde el contenedor independiente `frontend-coord` bajo
@@ -308,42 +309,34 @@ Guardar asistencias:
 curl -X POST http://localhost:3100/api/uat/profesor/control-asistencia/asistencias \
   -H "Content-Type: application/json" \
   -H "X-UAT-Session-Id: SESSION_ID" \
-  -d "{\"Id_Grupo\":947699,\"Fec_Ini\":\"19/01/2026\",\"Asistencia\":[{\"id_alumno\":371591,\"num_pase_lista\":1,\"num_dia\":1,\"sn_asistencia\":true}]}"
+  -d "{\"ClientRecordId\":\"947699_2026-01-19\",\"Id_Grupo\":947699,\"Fec_Ini\":\"19/01/2026\",\"Asistencia\":[{\"id_alumno\":371591,\"num_pase_lista\":1,\"num_dia\":1,\"sn_asistencia\":true}]}"
 ```
 
-El backend serializa `Asistencia` como JSON comprimido y lo envia al portal UAT
-en `application/x-www-form-urlencoded` contra
+El BFF registra primero la captura idempotente en Attendance Service y, antes
+de responder, persiste en PostgreSQL el job de publicación con la credencial
+cifrada. El worker serializa `Asistencia` y la envía después al portal UAT como
+`application/x-www-form-urlencoded` contra
 `/Profesor/ControlAsistencia/GuardaAsistencias`.
 
-## Seeder de clases compartidas
+## Clases compartidas
 
-Aplica primero las migraciones y luego crea dos profesores y una clase de prueba:
-
-```powershell
-npm run prisma:deploy
-npm run seed:shared-class
-```
+Academic Service es la autoridad de las clases compartidas. UAT Integration
+ya no escribe su proyección académica anterior: publica un único snapshot a
+Academic después de consultar grupos, horarios y roster UAT. La tabla histórica
+sólo se lee desde `npm run import:shared-classes`, un job idempotente previo al
+tráfico. Las altas, cambios y bajas desde Coordinación se envían a Academic y
+se proyectan por eventos en Attendance.
 
 ## Cola durable de asistencias
 
-`POST /api/uat/asistencia/lotes` persiste el lote completo en PostgreSQL y responde `202 Accepted`.
-Un worker procesa una lista a la vez por profesor, reintenta errores transitorios con backoff y recupera jobs
-interrumpidos. La clave `ATTENDANCE_JOB_ENCRYPTION_SECRET` cifra las credenciales necesarias para reautenticar
-contra UAT; debe conservarse estable entre despliegues. El cliente puede consultar el lote y reconciliar sus
-registros locales después de cerrar o reiniciar la aplicación.
-
-Para probar el acceso con cuentas UAT reales:
-
-```powershell
-$env:SEED_PRIMARY_EMAIL="titular@uat.edu.mx"
-$env:SEED_SECONDARY_EMAIL="profesor2@uat.edu.mx"
-npm run seed:shared-class
-```
-
-El seeder es idempotente y deja la clase sin compartir. La asignacion se realiza
-desde Coordinacion, en la seccion de clases compartidas. Por defecto usa el ciclo
-`2026 - 1 PRIMAVERA` (`Id_Ciclo_Escolar=150`); puede sobrescribirse con
-`SEED_CYCLE_NAME` y `SEED_CYCLE_EXTERNAL_ID`.
+Los endpoints de captura existentes persisten el job durable antes de responder
+`202 Accepted`. Un worker procesa una lista a la vez por profesor, reintenta
+errores transitorios con backoff y recupera jobs interrumpidos. La clave
+`ATTENDANCE_JOB_ENCRYPTION_SECRET` cifra las credenciales necesarias para
+reautenticar contra UAT; debe conservarse estable entre despliegues. El cliente
+reconcilia cada `clientRecordId` mediante
+`POST /api/uat/asistencia/registros/estado`, incluso después de reiniciar la app.
+La entrega ya no depende de que la sesión temporal continúe en Redis.
 
 ## Script CLI opcional
 
@@ -356,6 +349,13 @@ UAT_ID_CICLO_ESCOLAR=150 \
 UAT_ID_DES=12 \
 npm run fetch:horarios
 ```
+
+Para validar ambos portales sin imprimir datos académicos ni ejecutar
+`GuardaAsistencias`, usa `npm run smoke:uat:readonly`. Requiere
+`UAT_STUDENT_USER`, `UAT_STUDENT_PASS`, `UAT_TEACHER_USER` y
+`UAT_TEACHER_PASS` sólo en el entorno del proceso. El resultado se limita a
+conteos y diagnóstico de cookies; no guardes credenciales reales en `.env` ni
+en archivos versionados.
 
 En PowerShell:
 
@@ -381,6 +381,8 @@ npm run fetch:horarios
 
 ## Notas de seguridad
 
-No guardes credenciales reales en `.env`, scripts versionados ni logs. Las cookies
-se mantienen solo en memoria y se descartan al reiniciar el proceso. El TTL local
-se controla con `UAT_SESSION_TTL_MINUTES`.
+No guardes credenciales reales en `.env`, scripts versionados ni logs. Las
+cookies se cifran antes de persistirse en Redis, expiran según
+`UAT_SESSION_TTL_MINUTES` y se revocan al cerrar sesión. Las credenciales
+temporales necesarias para una carga UAT pendiente se cifran con una clave
+separada y nunca se incluyen en eventos.

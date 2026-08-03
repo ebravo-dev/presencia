@@ -23,6 +23,8 @@ class LocalStorageService {
   static const int _maxAttendanceHistoryEntries = 200;
   static const String _secureUsernameKey = 'uat_student_username';
   static const String _securePasswordKey = 'uat_student_password';
+  static const String _secureDeviceBindingTokenKey =
+      'student_device_binding_token';
   static const String _legacyClassroomBeaconClearedKey =
       'legacy_classroom_beacon_cleared';
   static const _secureStorage = FlutterSecureStorage(
@@ -37,6 +39,7 @@ class LocalStorageService {
   Future<void> init() async {
     await Hive.initFlutter();
     _profile = await Hive.openBox(_profileBox);
+    await _profile.delete('uat_student_session_id');
   }
 
   // ── Profile ──────────────────────────────────────────────────
@@ -53,9 +56,6 @@ class LocalStorageService {
 
   String get institutionalEmail =>
       _profile.get('institutional_email', defaultValue: '');
-
-  String get uatStudentSessionId =>
-      _profile.get('uat_student_session_id', defaultValue: '');
 
   String get classroomBeaconUuid =>
       _profile.get('classroom_beacon_uuid', defaultValue: '');
@@ -117,7 +117,6 @@ class LocalStorageService {
   Future<void> saveProfile(
     String matricula, {
     String? institutionalEmail,
-    String? uatStudentSessionId,
   }) async {
     await ensureDeviceIdentity();
 
@@ -125,10 +124,6 @@ class LocalStorageService {
     if (institutionalEmail != null) {
       await _profile.put('institutional_email', institutionalEmail);
     }
-    if (uatStudentSessionId != null) {
-      await _profile.put('uat_student_session_id', uatStudentSessionId);
-    }
-
     await _syncNativeIdentity(
       matricula: matricula,
       attendanceUuid: attendanceUuid,
@@ -167,6 +162,14 @@ class LocalStorageService {
   Future<void> clearInstitutionalCredentials() async {
     await _secureStorage.delete(key: _secureUsernameKey);
     await _secureStorage.delete(key: _securePasswordKey);
+  }
+
+  Future<void> saveDeviceBindingToken(String token) async {
+    await _secureStorage.write(key: _secureDeviceBindingTokenKey, value: token);
+  }
+
+  Future<String?> readDeviceBindingToken() async {
+    return _secureStorage.read(key: _secureDeviceBindingTokenKey);
   }
 
   Future<void> saveClassroomBeaconUuid(String uuid) async {

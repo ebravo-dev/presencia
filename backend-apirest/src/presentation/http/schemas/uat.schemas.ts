@@ -8,10 +8,43 @@ export const credentialsSchema = z.object({
 
 export const studentCredentialsSchema = credentialsSchema.extend({
   idPlanEstudio: z.coerce.number().int().positive().optional(),
-  attendanceUuid: z.string().uuid().optional(),
-  deviceBindingId: z.string().uuid().optional(),
-  platform: z.string().max(40).optional(),
+  attendanceUuid: z.string().uuid(),
+  deviceBindingId: z.string().uuid(),
+  platform: z.enum(['android', 'ios']),
   deviceInfo: z.string().max(500).optional(),
+}).strict();
+
+export const professorDeviceBindingResolveSchema = z.object({
+  matriculas: z.array(z.string().trim().min(1).max(40)).min(1).max(1_000),
+});
+
+export const professorBeaconResolveSchema = z.object({
+  classrooms: z.array(z.string().trim().min(1).max(160)).min(1).max(1_000),
+});
+
+const professorPresenceBaseSchema = z.object({
+  externalGroupId: z.string().trim().min(1).max(160),
+});
+const optionalObservationDate = z.string().datetime({ offset: true }).nullable().optional();
+export const professorPresenceEntrySchema = professorPresenceBaseSchema.extend({
+  beaconUuid: z.string().uuid(), clientDetectedAt: optionalObservationDate,
+  rssi: z.number().int().min(-160).max(20).nullable().optional(),
+  distance: z.number().nonnegative().max(10_000).nullable().optional(),
+  bluetoothAddress: z.string().trim().max(80).nullable().optional(),
+});
+export const professorPresenceExitSchema = professorPresenceBaseSchema.extend({
+  clientDetectedAt: optionalObservationDate,
+});
+export const studentPresenceDetectionsSchema = professorPresenceBaseSchema.extend({
+  detections: z.array(z.object({
+    beaconUuid: z.string().uuid(), detectedAt: optionalObservationDate,
+    rssi: z.number().int().min(-160).max(20).nullable().optional(),
+    distance: z.number().nonnegative().max(10_000).nullable().optional(),
+    txPower: z.number().int().min(-160).max(20).nullable().optional(),
+    bluetoothAddress: z.string().trim().max(80).nullable().optional(),
+    major: z.number().int().min(0).max(65_535).nullable().optional(),
+    minor: z.number().int().min(0).max(65_535).nullable().optional(),
+  })).min(1).max(1_000),
 });
 
 export const consultaQuerySchema = z.object({
@@ -36,16 +69,6 @@ export const desQuerySchema = campusQuerySchema.extend({
 const fechaUatSchema = z.string().regex(/^\d{2}\/\d{2}\/\d{4}$/, {
   message: 'El formato de fecha debe ser estrictamente DD/MM/YYYY',
 });
-
-const isoLikeDateTimeSchema = z
-  .string()
-  .trim()
-  .optional()
-  .nullable()
-  .transform((value) => value || null)
-  .refine((value) => value == null || !Number.isNaN(Date.parse(value)), {
-    message: 'Debe ser un datetime ISO valido.',
-  });
 
 export const gruposProfesorQuerySchema = z.object({
   Id_Des: z.coerce.number().int().positive(),
@@ -77,45 +100,11 @@ export const asistenciaAlumnoInputSchema = z.object({
 });
 
 export const registrarAsistenciasBodySchema = z.object({
+  ClientRecordId: z.string().trim().min(1).max(160),
   Id_Grupo: z.number().int().positive(),
   Fec_Ini: fechaUatSchema,
-  Asistencia: z.array(asistenciaAlumnoInputSchema),
-  DebugReportOnly: z.boolean().optional().default(false),
-  Code: z.string().trim().optional(),
-  GroupLetter: z.string().trim().optional().default(''),
-  Period: z.string().trim().optional(),
-  GroupName: z.string().trim().optional(),
-  Classroom: z.string().trim().optional(),
-  Level: z.string().trim().optional(),
-  Schedule: z.record(z.unknown()).optional(),
-  CreateMissingGroup: z.boolean().optional().default(false),
-  Date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  ProfessorEntryAt: isoLikeDateTimeSchema,
-  ProfessorExitAt: isoLikeDateTimeSchema,
-}).superRefine((value, ctx) => {
-  if (!value.DebugReportOnly && value.Asistencia.length < 1) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.too_small,
-      minimum: 1,
-      type: 'array',
-      inclusive: true,
-      path: ['Asistencia'],
-      message: 'Debe enviar al menos una asistencia.',
-    });
-  }
-
-  if (value.DebugReportOnly) {
-    if (!value.Code) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['Code'], message: 'Code es requerido en modo debug.' });
-    }
-    if (!value.Period) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['Period'], message: 'Period es requerido en modo debug.' });
-    }
-    if (!value.Date) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['Date'], message: 'Date es requerido en modo debug.' });
-    }
-  }
-});
+  Asistencia: z.array(asistenciaAlumnoInputSchema).min(1),
+}).strict();
 
 export const sessionParamsSchema = z.object({
   sessionId: z.string().uuid(),

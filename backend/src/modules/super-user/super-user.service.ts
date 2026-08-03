@@ -2,20 +2,13 @@ import { timingSafeEqual } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { env } from '../../core/config/env.js';
 import { prisma } from '../../core/database/prisma.js';
-import {
-    createBeacon,
-    deleteBeacon,
-    findBeaconByClassroom,
-    listBeacons,
-    updateBeacon,
-    BeaconInput,
-    BeaconUpdateInput,
-} from '../beacons/beacons.service.js';
+import type { BeaconInput, BeaconUpdateInput } from '../beacons/beacons.service.js';
 import {
     getAttendanceSettings,
     updateAttendanceSettings,
 } from '../settings/attendance-settings.service.js';
-import type { CoordinatorCreateInput, CoordinatorUpdateInput, DebugClassCreateInput, DebugClassUpdateInput, DebugSettingsUpdateInput } from './super-user.schemas.js';
+import type { DebugClassCreateInput, DebugClassUpdateInput, DebugSettingsUpdateInput } from './super-user.schemas.js';
+import { AttendanceServiceCommandClient } from './attendance-service-command.client.js';
 
 const studentDeviceBinding = (prisma as any).studentDeviceBinding;
 const DEBUG_DAY_ALIASES = {
@@ -38,6 +31,9 @@ interface SuperUserJwtPayload extends jwt.JwtPayload {
 
 export class SuperUserService {
     readonly sessionDurationSeconds = 4 * 60 * 60;
+    private readonly attendanceCommands = env.ATTENDANCE_SERVICE_URL
+        ? new AttendanceServiceCommandClient(env.ATTENDANCE_SERVICE_URL, env.INTERNAL_API_TOKEN)
+        : undefined;
 
     login(password: string): { token: string; user: SuperUserIdentity; expiresAt: Date } {
         if (!this.passwordMatches(password)) {
@@ -66,54 +62,35 @@ export class SuperUserService {
         }
     }
 
-    listCoordinators() {
-        return this.requestCoordinationApi('/api/internal/coordinacion/coordinadores');
-    }
-
-    createCoordinator(input: CoordinatorCreateInput) {
-        return this.requestCoordinationApi('/api/internal/coordinacion/coordinadores', {
-            method: 'POST',
-            body: input,
-        });
-    }
-
-    updateCoordinator(id: string, input: CoordinatorUpdateInput) {
-        return this.requestCoordinationApi(`/api/internal/coordinacion/coordinadores/${encodeURIComponent(id)}`, {
-            method: 'PUT',
-            body: input,
-        });
-    }
-
-    async deleteCoordinator(id: string): Promise<void> {
-        await this.requestCoordinationApi(`/api/internal/coordinacion/coordinadores/${encodeURIComponent(id)}`, {
-            method: 'DELETE',
-        });
-    }
-
     listBeacons() {
-        return listBeacons();
+        if (!this.attendanceCommands) throw Object.assign(new Error('ATTENDANCE_SERVICE_REQUIRED'), { statusCode: 503 });
+        return this.attendanceCommands.listClassroomBeacons().then(({ data }) => data);
     }
 
     async createBeacon(input: BeaconInput) {
-        const existingClassroom = await findBeaconByClassroom(input.classroom);
-        if (existingClassroom) {
-            throw Object.assign(new Error('BEACON_CLASSROOM_EXISTS'), { statusCode: 409 });
-        }
-        return createBeacon(input);
+        if (!this.attendanceCommands) throw Object.assign(new Error('ATTENDANCE_SERVICE_REQUIRED'), { statusCode: 503 });
+        const response = await this.attendanceCommands.createClassroomBeacon({
+            ...input, actorIdentityId: 'super-user:dashboard', actorRole: 'SUPER_USER',
+            reason: 'Alta de beacon desde super usuario.', correlationId: 'super-user-dashboard',
+        });
+        return response.data;
     }
 
     async updateBeacon(id: string, input: BeaconUpdateInput) {
-        if (input.classroom) {
-            const existingClassroom = await findBeaconByClassroom(input.classroom, id);
-            if (existingClassroom) {
-                throw Object.assign(new Error('BEACON_CLASSROOM_EXISTS'), { statusCode: 409 });
-            }
-        }
-        return updateBeacon(id, input);
+        if (!this.attendanceCommands) throw Object.assign(new Error('ATTENDANCE_SERVICE_REQUIRED'), { statusCode: 503 });
+        const response = await this.attendanceCommands.updateClassroomBeacon(id, {
+            ...input, actorIdentityId: 'super-user:dashboard', actorRole: 'SUPER_USER',
+            reason: 'Actualización de beacon desde super usuario.', correlationId: 'super-user-dashboard',
+        });
+        return response.data;
     }
 
-    deleteBeacon(id: string) {
-        return deleteBeacon(id);
+    async deleteBeacon(id: string) {
+        if (!this.attendanceCommands) throw Object.assign(new Error('ATTENDANCE_SERVICE_REQUIRED'), { statusCode: 503 });
+        await this.attendanceCommands.deleteClassroomBeacon(id, {
+            actorIdentityId: 'super-user:dashboard', actorRole: 'SUPER_USER',
+            reason: 'Baja de beacon desde super usuario.', correlationId: 'super-user-dashboard',
+        });
     }
 
     async listStudentDeviceBindings(q?: string) {
@@ -178,13 +155,24 @@ export class SuperUserService {
         }));
     }
 
-    async deleteStudentDeviceBinding(matriculaInput: string): Promise<boolean> {
+    async deleteStudentDeviceBinding(matriculaInput: string, correlationId = 'super-user-dashboard'): Promise<boolean> {
         const matricula = matriculaInput.trim().toUpperCase();
+        let authoritativeCommandSent = false;
+        if (this.attendanceCommands) {
+            await this.attendanceCommands.unbindStudentDevice({
+                matricula,
+                actorIdentityId: 'super-user:dashboard',
+                actorRole: 'SUPER_USER',
+                reason: 'Desvinculación solicitada desde el dashboard de coordinación.',
+                correlationId,
+            });
+            authoritativeCommandSent = true;
+        }
         const deleted = await studentDeviceBinding.deleteMany({
             where: { matricula },
         });
 
-        if (deleted.count === 0) return false;
+        if (deleted.count === 0) return authoritativeCommandSent;
 
         await prisma.student.updateMany({
             where: { matricula },
@@ -445,29 +433,6 @@ export class SuperUserService {
         const expected = Buffer.from(env.SUPER_USER_PASSWORD);
         const actual = Buffer.from(candidate);
         return expected.length === actual.length && timingSafeEqual(expected, actual);
-    }
-
-    private async requestCoordinationApi(path: string, options: { method?: string; body?: unknown } = {}) {
-        const response = await fetch(`${env.BACKEND_API_REST_URL.replace(/\/+$/, '')}${path}`, {
-            method: options.method ?? 'GET',
-            headers: {
-                Authorization: `Bearer ${env.INTERNAL_API_TOKEN}`,
-                ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
-            },
-            body: options.body === undefined ? undefined : JSON.stringify(options.body),
-        });
-
-        if (response.status === 204) return undefined;
-
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-            throw Object.assign(new Error(payload.message ?? 'Error del servicio interno de coordinacion'), {
-                statusCode: response.status,
-                payload,
-            });
-        }
-
-        return payload;
     }
 
     private defaultDebugSchedule() {

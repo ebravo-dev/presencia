@@ -86,8 +86,8 @@ void main() {
 
     expect(find.byType(GrupoDetailPage), findsOneWidget);
 
-    // Buscar y tap el botón de back
-    final backButton = find.byIcon(Icons.arrow_back_ios_new);
+    // Buscar y tap el control de cierre vigente.
+    final backButton = find.byIcon(Icons.close);
     expect(backButton, findsOneWidget);
 
     await tester.tap(backButton);

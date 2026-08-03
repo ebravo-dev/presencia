@@ -59,8 +59,7 @@ class TeacherBeaconAttendanceService {
       );
       _professorEntryRecorded = existing?.horaEntrada != null;
 
-      if (ApiConstants.presenciaDebugMode &&
-          ApiConstants.debugSimulateRoomBeacon) {
+      if (ApiConstants.shouldSimulateRoomBeacon) {
         final simulatedUuid =
             _roomBeaconUuid ?? ApiConstants.debugExtraBeaconUuid;
         final detection = AltBeaconDetection(
@@ -224,19 +223,10 @@ class TeacherBeaconAttendanceService {
     AltBeaconDetection detection,
   ) async {
     final token = _authStorage.getToken();
-    if (token != null &&
-        grupo.code != null &&
-        grupo.groupLetter != null &&
-        grupo.period != null) {
+    if (token != null) {
       await _apiService.recordProfessorBeaconEntry(
         token: token,
-        code: grupo.code!,
-        groupLetter: grupo.groupLetter!,
-        period: grupo.period!,
-        groupName: grupo.name,
-        classroom: grupo.classroom,
-        level: grupo.level,
-        schedule: grupo.schedule,
+        externalGroupId: grupo.id,
         detectedAt: detectedAt,
         beaconUuid: detection.uuid,
         rssi: detection.rssi,
@@ -308,17 +298,10 @@ class TeacherBeaconAttendanceService {
     }
 
     final token = _authStorage.getToken();
-    if (matched.isNotEmpty &&
-        token != null &&
-        grupo.code != null &&
-        grupo.groupLetter != null &&
-        grupo.period != null) {
+    if (matched.isNotEmpty && token != null) {
       await _apiService.recordStudentBeaconDetections(
         token: token,
-        code: grupo.code!,
-        groupLetter: grupo.groupLetter!,
-        period: grupo.period!,
-        date: now,
+        externalGroupId: grupo.id,
         detections: matched.map((detection) => detection.toApiJson()).toList(),
       );
     }

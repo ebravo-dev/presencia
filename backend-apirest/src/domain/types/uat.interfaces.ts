@@ -282,6 +282,7 @@ export interface UatPortalClientPort {
   getAsistenciaGrupo(params: UatAsistenciaGrupoParams): Promise<UatAsistenciaGrupoResponse>;
   guardaAsistencias(payload: UatGuardaAsistenciasPayload): Promise<UatGuardaAsistenciasResponse>;
   getCookieDiagnostics(): UatCookieDiagnostics;
+  exportSessionState?(): unknown;
 }
 
 export interface UatStudentPortalClientPort {
@@ -292,6 +293,7 @@ export interface UatStudentPortalClientPort {
   getPartialGrades(): Promise<UatStudentPartialGradeItem[]>;
   getFinalGrades(): Promise<UatStudentFinalGradeItem[]>;
   getCookieDiagnostics(): UatCookieDiagnostics;
+  exportSessionState?(): unknown;
 }
 
 export interface StoredUatSessionBase {
@@ -302,12 +304,20 @@ export interface StoredUatSessionBase {
   expiresAt: Date;
 }
 
+export interface IdentitySessionGrant {
+  identityId: string;
+  sessionId: string;
+  accessToken: string;
+  expiresAt: string;
+}
+
 export interface StoredUatSession extends StoredUatSessionBase {
   id: string;
   username: string;
   credentialCipher: string;
   client: UatPortalClientPort;
   login: UatLoginResponse;
+  identitySession?: IdentitySessionGrant;
 }
 
 export interface StoredUatStudentSession extends StoredUatSessionBase {
@@ -315,6 +325,8 @@ export interface StoredUatStudentSession extends StoredUatSessionBase {
   login: UatLoginResponse;
   careers: UatStudentCareerItem[];
   selectedCareer: UatStudentCareerSelection;
+  deviceBindingToken?: string;
+  identitySession?: IdentitySessionGrant;
 }
 
 export interface UatSessionResponse {
@@ -326,6 +338,7 @@ export interface UatSessionResponse {
   expiresAt: string;
   activeSessions: number;
   cookieDiagnostics: UatCookieDiagnostics;
+  identitySession?: IdentitySessionGrant;
 }
 
 export interface UatDataResponse<TItem extends JsonRecord> {
@@ -360,6 +373,8 @@ export interface UatStudentSessionResponse {
   login: UatSafeLogin;
   careers: UatStudentCareerItem[];
   selectedCareer: UatStudentCareerSelection;
+  deviceBindingToken: string;
+  identitySession: IdentitySessionGrant;
   createdAt: string;
   lastUsedAt: string;
   expiresAt: string;

@@ -1,16 +1,17 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { UatStudentService } from '../../../application/services/uat-student.service.js';
 import { parsePayload, selectStudentCareerSchema, sessionParamsSchema, studentCredentialsSchema } from '../schemas/uat.schemas.js';
+import { env } from '../../../config/env.js';
 
 export class StudentSessionController {
   constructor(private readonly uatStudentService: UatStudentService) {}
 
   create = async (request: FastifyRequest, reply: FastifyReply) => {
     const credentials = parsePayload(studentCredentialsSchema, request.body);
-    const session = await this.uatStudentService.createSession(credentials);
+    const session = await this.uatStudentService.createSession(credentials, { correlationId: request.id });
     const response = await this.uatStudentService.toSessionResponse(session);
 
-    return reply.code(201).send(response);
+    return reply.code(201).send({ ...response, demoMode: env.PRESENCIA_DEBUG_MODE });
   };
 
   delete = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -33,7 +34,7 @@ export class StudentSessionController {
   };
 
   schedule = async (request: FastifyRequest) => {
-    return this.uatStudentService.getScheduleBySession(request.uatStudentSession.id);
+    return this.uatStudentService.getScheduleBySession(request.uatStudentSession.id, { correlationId: request.id });
   };
 
   partialGrades = async (request: FastifyRequest) => {

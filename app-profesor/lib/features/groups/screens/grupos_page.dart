@@ -562,7 +562,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                               vertical: 14,
                             ),
                             decoration: BoxDecoration(
-                              color: palette.surface.withOpacity(0.86),
+                              color: palette.surface.withValues(alpha: 0.86),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
                                 color: palette.border,
@@ -588,8 +588,9 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                         boxShadow: [
                                           BoxShadow(
                                             color: const Color(0xFFFF9500)
-                                                .withOpacity(
-                                                  0.4 +
+                                                .withValues(
+                                                  alpha:
+                                                      0.4 +
                                                       (_pulseController.value *
                                                           0.3),
                                                 ),
@@ -605,7 +606,9 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                 // Cloud icon
                                 Icon(
                                   Icons.cloud_upload_outlined,
-                                  color: palette.textPrimary.withOpacity(0.9),
+                                  color: palette.textPrimary.withValues(
+                                    alpha: 0.9,
+                                  ),
                                   size: 20,
                                 ),
                                 const SizedBox(width: 10),
@@ -614,8 +617,8 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                   child: Text(
                                     'Asistencias pendientes por subir',
                                     style: TextStyle(
-                                      color: palette.textPrimary.withOpacity(
-                                        0.92,
+                                      color: palette.textPrimary.withValues(
+                                        alpha: 0.92,
                                       ),
                                       fontSize: 14,
                                       fontWeight: FontWeight.w500,
@@ -626,7 +629,9 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                 // Chevron
                                 Icon(
                                   Icons.chevron_right_rounded,
-                                  color: palette.textSecondary.withOpacity(0.7),
+                                  color: palette.textSecondary.withValues(
+                                    alpha: 0.7,
+                                  ),
                                   size: 22,
                                 ),
                               ],
@@ -738,7 +743,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
         border: Border.all(color: palette.border, width: 0.7),
         boxShadow: [
           BoxShadow(
-            color: gradient.last.withOpacity(glowOpacity),
+            color: gradient.last.withValues(alpha: glowOpacity),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -862,9 +867,9 @@ class _GruposPageState extends ConsumerState<GruposPage>
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      palette.skeletonHighlight.withOpacity(0),
-                      palette.skeletonHighlight.withOpacity(0.12),
-                      palette.skeletonHighlight.withOpacity(0),
+                      palette.skeletonHighlight.withValues(alpha: 0),
+                      palette.skeletonHighlight.withValues(alpha: 0.12),
+                      palette.skeletonHighlight.withValues(alpha: 0),
                     ],
                   ),
                 ),
@@ -888,7 +893,9 @@ class _GruposPageState extends ConsumerState<GruposPage>
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: palette.skeletonHighlight.withOpacity(opacity + (pulse * 0.08)),
+        color: palette.skeletonHighlight.withValues(
+          alpha: opacity + (pulse * 0.08),
+        ),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: palette.border, width: 0.5),
       ),
@@ -1129,6 +1136,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
 
                       // Esperar a que se complete la animación de desplazamiento
                       await Future.delayed(const Duration(milliseconds: 300));
+                      if (!mounted) return;
 
                       // Navegar a la página de detalles
                       await Navigator.of(context).push(
@@ -1187,8 +1195,8 @@ class _GruposPageState extends ConsumerState<GruposPage>
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color: gradientColors[0].withOpacity(
-                              isCurrentClass ? 0.3 : 0.2,
+                            color: gradientColors[0].withValues(
+                              alpha: isCurrentClass ? 0.3 : 0.2,
                             ),
                             blurRadius: isCurrentClass ? 20 : 15,
                             offset: const Offset(0, 6),
@@ -1218,14 +1226,14 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                               vertical: 6,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: accentColor.withOpacity(
-                                                0.2,
+                                              color: accentColor.withValues(
+                                                alpha: 0.2,
                                               ),
                                               borderRadius:
                                                   BorderRadius.circular(8),
                                               border: Border.all(
-                                                color: accentColor.withOpacity(
-                                                  0.3,
+                                                color: accentColor.withValues(
+                                                  alpha: 0.3,
                                                 ),
                                               ),
                                             ),
@@ -1250,8 +1258,8 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                               vertical: 5,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: accentColor.withOpacity(
-                                                0.12,
+                                              color: accentColor.withValues(
+                                                alpha: 0.12,
                                               ),
                                               borderRadius:
                                                   BorderRadius.circular(8),
@@ -1291,7 +1299,9 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
-                                        color: accentColor.withOpacity(0.88),
+                                        color: accentColor.withValues(
+                                          alpha: 0.88,
+                                        ),
                                         fontSize: 12,
                                         fontWeight: FontWeight.w700,
                                         height: 1.15,
@@ -1341,7 +1351,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                   Text(
                                     'GRUPO',
                                     style: TextStyle(
-                                      color: accentColor.withOpacity(0.7),
+                                      color: accentColor.withValues(alpha: 0.7),
                                       fontSize: 10,
                                       fontWeight: FontWeight.w600,
                                       letterSpacing: 1,
@@ -1364,7 +1374,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                   Text(
                                     'ESTUDIANTES',
                                     style: TextStyle(
-                                      color: accentColor.withOpacity(0.7),
+                                      color: accentColor.withValues(alpha: 0.7),
                                       fontSize: 10,
                                       fontWeight: FontWeight.w600,
                                       letterSpacing: 1,
@@ -1425,12 +1435,12 @@ class _GruposPageState extends ConsumerState<GruposPage>
 
     bool isLoading = false;
 
-    // Check if we have a stored password
+    // Reusar la credencial solo si sigue en memoria en esta ejecución.
     final authStorage = AuthStorageService();
-    final storedPassword = authStorage.getEncryptedPassword();
+    final storedPassword = authStorage.getCachedUatPassword();
 
     if (storedPassword == null) {
-      // No stored password - show password dialog as fallback
+      // Tras reiniciar la app se solicita la contraseña otra vez.
       _showSyncDialogWithPassword(context);
       return;
     }
@@ -1472,9 +1482,11 @@ class _GruposPageState extends ConsumerState<GruposPage>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.15),
+                      color: Colors.orange.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                      border: Border.all(
+                        color: Colors.orange.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: const Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1562,7 +1574,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
     );
   }
 
-  /// Fallback dialog when no stored password is available
+  /// Solicita la contraseña cuando ya no está disponible en memoria.
   void _showSyncDialogWithPassword(BuildContext context) {
     final passwordController = TextEditingController();
     final formKey = GlobalKey<FormState>();
@@ -1606,9 +1618,11 @@ class _GruposPageState extends ConsumerState<GruposPage>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.15),
+                      color: Colors.orange.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                      border: Border.all(
+                        color: Colors.orange.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: const Row(
                       crossAxisAlignment: CrossAxisAlignment.start,

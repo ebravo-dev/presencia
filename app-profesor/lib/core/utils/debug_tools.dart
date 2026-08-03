@@ -31,12 +31,11 @@ class DebugTools {
         Logger.info('📊 Tiene sesión activa: $hasSession');
 
         if (hasSession) {
-          final token = authStorage.getToken();
           final profesor = authStorage.getProfesor();
 
-          Logger.info('🎫 Token: ${token?.substring(0, 20)}...');
-          Logger.info('👤 Profesor: ${profesor?.nombreCompleto}');
-          Logger.info('📧 Email: ${profesor?.email}');
+          // Nunca escribir identificadores de sesión, ni siquiera parcialmente.
+          Logger.info('🎫 Sesión almacenada en el almacén seguro nativo');
+          Logger.info('👤 Perfil local disponible: ${profesor != null}');
 
           final isValid = authStorage.isTokenValid();
           Logger.info('✅ Token válido: $isValid');

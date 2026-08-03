@@ -360,7 +360,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     }
   }
 
-  /// Retry sync using locally stored password
+  /// Reintenta con la credencial efímera de esta ejecución.
   Future<void> _retrySync() async {
     if (_isRetrying) return;
 
@@ -370,11 +370,8 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     });
 
     final token = _authStorage.getToken();
-    final password = _authStorage.getEncryptedPassword();
-    final authState = ref.read(profesorAuthProvider);
-    final email = authState.profesor?.institutionalEmail;
 
-    if (token == null || password == null || email == null) {
+    if (token == null || token.isEmpty) {
       setState(() {
         _error = 'Sesión expirada. Vuelve a iniciar sesión.';
         _isRetrying = false;
@@ -401,12 +398,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
       );
     });
 
-    // Call the same sync endpoint with stored password
-    final result = await _apiService.forceSync(
-      email: email,
-      encryptedPassword: password,
-      token: token,
-    );
+    final result = await _apiService.forceSync(token: token);
 
     result.fold(
       (error) {
@@ -504,7 +496,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -574,23 +566,19 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   }) {
     // Determine colors
     Color circleColor;
-    Color circleInnerColor;
     Color textColor;
     FontWeight fontWeight;
 
     if (isPast) {
       circleColor = UATColors.primary;
-      circleInnerColor = Colors.white;
       textColor = UATColors.neutral;
       fontWeight = FontWeight.w500;
     } else if (isActive) {
       circleColor = UATColors.primary;
-      circleInnerColor = UATColors.primary;
       textColor = UATColors.primary;
       fontWeight = FontWeight.bold;
     } else {
       circleColor = Colors.grey.shade300;
-      circleInnerColor = Colors.grey.shade300;
       textColor = Colors.grey.shade400;
       fontWeight = FontWeight.normal;
     }
@@ -610,8 +598,8 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
                   height: 32,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: circleColor.withOpacity(
-                      isPast || isActive ? 1 : 0.3,
+                    color: circleColor.withValues(
+                      alpha: isPast || isActive ? 1 : 0.3,
                     ),
                     border: Border.all(color: circleColor, width: 2),
                   ),
@@ -651,7 +639,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
               padding: EdgeInsets.only(bottom: isLast ? 0 : 24),
               decoration: isActive
                   ? BoxDecoration(
-                      color: UATColors.primary.withOpacity(0.05),
+                      color: UATColors.primary.withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(12),
                     )
                   : null,
@@ -824,7 +812,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),

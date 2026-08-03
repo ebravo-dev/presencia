@@ -154,8 +154,10 @@ class LoginPage extends ConsumerWidget {
             // Debug tools (solo en modo debug)
             if (kDebugMode) ...[
               const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 8,
+                runSpacing: 4,
                 children: [
                   TextButton.icon(
                     onPressed: () async {
@@ -176,7 +178,6 @@ class LoginPage extends ConsumerWidget {
                       textStyle: const TextStyle(fontSize: 12),
                     ),
                   ),
-                  const SizedBox(width: 8),
                   TextButton.icon(
                     onPressed: () => DebugTools.checkStoredSession(),
                     icon: const Icon(Icons.info_outline, size: 16),
@@ -225,7 +226,7 @@ class LoginPage extends ConsumerWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: UATColors.neutral40.withOpacity(0.15),
+            color: UATColors.neutral40.withValues(alpha: 0.15),
             blurRadius: 30,
             offset: const Offset(0, 10),
           ),

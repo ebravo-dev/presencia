@@ -5,6 +5,7 @@ import '../../../core/utils/utils.dart';
 /// Implementación mock del servicio de autenticación
 /// Simula comportamiento real de la API UAT con datos de profesores, grupos y alumnos
 class AuthServiceMock implements AuthService {
+  static int _tokenSequence = 0;
   // Datos mock de profesores UAT
   static final Map<String, Map<String, dynamic>> _mockProfessors = {
     'juan.perez@docentes.uat.edu.mx': {
@@ -144,12 +145,6 @@ class AuthServiceMock implements AuthService {
         return AuthResult.failure('Contraseña incorrecta. Intente nuevamente.');
       }
 
-      // Simular ocasional error de servidor (5% de probabilidad)
-      if (DateTime.now().millisecond % 20 == 0) {
-        Logger.error('Simulando error de servidor');
-        return AuthResult.failure('Error del servidor. Intente más tarde.');
-      }
-
       final user = professorData['user'] as User;
       final groups = professorData['groups'] as List<Group>;
 
@@ -280,7 +275,8 @@ class AuthServiceMock implements AuthService {
   String _generateMockJWT(User? user) {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final userId = user?.id ?? 'unknown';
-    return 'mock_jwt_${userId}_$timestamp';
+    _tokenSequence += 1;
+    return 'mock_jwt_${userId}_${timestamp}_$_tokenSequence';
   }
 
   /// Obtener credenciales de prueba para desarrollo

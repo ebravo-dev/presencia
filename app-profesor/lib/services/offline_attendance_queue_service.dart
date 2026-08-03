@@ -9,13 +9,13 @@ import 'attendance_batch_service.dart';
 
 class OfflineAttendanceQueueResult {
   final int pending;
-  final int uploaded;
+  final int accepted;
   final int skipped;
   final int failed;
 
   const OfflineAttendanceQueueResult({
     required this.pending,
-    required this.uploaded,
+    required this.accepted,
     required this.skipped,
     required this.failed,
   });
@@ -59,7 +59,7 @@ class OfflineAttendanceQueueService {
     if (_syncing) {
       return const OfflineAttendanceQueueResult(
         pending: 0,
-        uploaded: 0,
+        accepted: 0,
         skipped: 0,
         failed: 0,
       );
@@ -71,7 +71,7 @@ class OfflineAttendanceQueueService {
       if (pending.isEmpty) {
         return const OfflineAttendanceQueueResult(
           pending: 0,
-          uploaded: 0,
+          accepted: 0,
           skipped: 0,
           failed: 0,
         );
@@ -82,7 +82,7 @@ class OfflineAttendanceQueueService {
       if (token == null || token.isEmpty) {
         return OfflineAttendanceQueueResult(
           pending: pending.length,
-          uploaded: 0,
+          accepted: 0,
           skipped: pending.length,
           failed: 0,
         );
@@ -92,11 +92,10 @@ class OfflineAttendanceQueueService {
         token: token,
         records: pending,
         groups: groups,
-        encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
       );
       return OfflineAttendanceQueueResult(
         pending: pending.length,
-        uploaded: result.uploaded,
+        accepted: result.accepted,
         skipped: result.skipped,
         failed: result.failed,
       );
@@ -108,7 +107,7 @@ class OfflineAttendanceQueueService {
       );
       return const OfflineAttendanceQueueResult(
         pending: 0,
-        uploaded: 0,
+        accepted: 0,
         skipped: 0,
         failed: 1,
       );

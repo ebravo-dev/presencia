@@ -1,49 +1,37 @@
-import { randomUUID } from 'node:crypto';
-import argon2 from 'argon2';
-import jwt from 'jsonwebtoken';
-import type { PrismaClient } from '@prisma/client';
+import { ApiError } from '../../errors/api-error.js';
+import type { IdentityServiceClient } from '../../infrastructure/http/client/identity-service.client.js';
 
 export interface CoordinatorIdentity { id: string; email: string; name: string; role: string }
-interface CoordinatorJwtPayload extends jwt.JwtPayload { sub: string; jti: string; email: string; role: string }
-
 export class CoordinatorAuthService {
-  private readonly sessionDurationSeconds = 8 * 60 * 60;
-
-  constructor(private readonly prisma: PrismaClient, private readonly jwtSecret: string) {}
+  constructor(private readonly identity: IdentityServiceClient) {}
 
   async login(email: string, password: string): Promise<{ token: string; user: CoordinatorIdentity; expiresAt: Date }> {
-    const user = await this.prisma.coordinatorUser.findUnique({ where: { email: email.trim().toLowerCase() } });
-    if (!user || user.disabledAt || !(await argon2.verify(user.passwordHash, password))) {
-      throw new Error('INVALID_COORDINATOR_CREDENTIALS');
+    try {
+      const session = await this.identity.createStaffSession(email, password);
+      return { token: session.accessToken, expiresAt: new Date(session.expiresAt), user: toIdentity(session.user) };
+    } catch (error) {
+      if (error instanceof ApiError && ['INVALID_STAFF_CREDENTIALS', 'IDENTITY_DISABLED'].includes(error.code)) {
+        throw new Error('INVALID_COORDINATOR_CREDENTIALS');
+      }
+      throw error;
     }
-    await this.prisma.coordinatorSession.deleteMany({ where: { expiresAt: { lte: new Date() } } });
-    const sessionId = randomUUID();
-    const expiresAt = new Date(Date.now() + this.sessionDurationSeconds * 1000);
-    await this.prisma.coordinatorSession.create({ data: { id: sessionId, userId: user.id, expiresAt } });
-    const token = jwt.sign({ email: user.email, role: user.role }, this.jwtSecret, {
-      subject: user.id, jwtid: sessionId, expiresIn: this.sessionDurationSeconds, issuer: 'presencia-backend-apirest',
-    });
-    return { token, expiresAt, user: toIdentity(user) };
   }
 
   async authenticate(token?: string): Promise<CoordinatorIdentity | null> {
     if (!token) return null;
     try {
-      const payload = jwt.verify(token, this.jwtSecret, { issuer: 'presencia-backend-apirest' }) as CoordinatorJwtPayload;
-      if (!payload.sub || !payload.jti || !['COORDINATOR', 'READ_ONLY'].includes(payload.role)) return null;
-      const session = await this.prisma.coordinatorSession.findUnique({ where: { id: payload.jti }, include: { user: true } });
-      if (!session || session.expiresAt <= new Date() || session.user.disabledAt) return null;
-      return toIdentity(session.user);
+      const result = await this.identity.verify(token);
+      const user = result.identity;
+      if (!user.email || !['COORDINATOR', 'READ_ONLY'].includes(user.role)) return null;
+      return { id: user.id, email: user.email, name: user.displayName, role: user.role };
     } catch { return null; }
   }
 
   async logout(token?: string): Promise<void> {
-    if (!token) return;
-    const decoded = jwt.decode(token) as CoordinatorJwtPayload | null;
-    if (decoded?.jti) await this.prisma.coordinatorSession.deleteMany({ where: { id: decoded.jti } });
+    if (token) await this.identity.revoke(token);
   }
 }
 
-function toIdentity(user: { id: string; email: string; name: string; role: string }): CoordinatorIdentity {
-  return { id: user.id, email: user.email, name: user.name, role: user.role };
+function toIdentity(user: { identityId: string; email: string; name: string; role: string }): CoordinatorIdentity {
+  return { id: user.identityId, email: user.email, name: user.name, role: user.role };
 }

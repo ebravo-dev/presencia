@@ -157,6 +157,7 @@ class _ProfesorLoginFormState extends ConsumerState<ProfesorLoginForm> {
           children: [
             // Email field
             TextFormField(
+              key: const Key('email_field'),
               controller: _emailController,
               focusNode: _emailFocusNode,
               cursorColor: UATColors.primary,
@@ -216,6 +217,7 @@ class _ProfesorLoginFormState extends ConsumerState<ProfesorLoginForm> {
 
             // Password field
             TextFormField(
+              key: const Key('password_field'),
               controller: _passwordController,
               cursorColor: UATColors.primary,
               style: const TextStyle(color: UATColors.neutral, fontSize: 14),
@@ -285,6 +287,7 @@ class _ProfesorLoginFormState extends ConsumerState<ProfesorLoginForm> {
               width: double.infinity,
               height: 48,
               child: ElevatedButton(
+                key: const Key('login_button'),
                 onPressed: authState.isLoading || !_isFormValid
                     ? null
                     : _handleSubmit,

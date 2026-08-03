@@ -110,9 +110,8 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
             profesor: loginResponse.profesor,
           );
 
-          // Save password for sync/retry and set sync flag
-          final encryptedPassword = _apiService.encryptPassword(password);
-          await _authStorage.saveEncryptedPassword(encryptedPassword);
+          // La credencial UAT se conserva solo en memoria durante este proceso.
+          await _authStorage.cacheUatPasswordForProcess(password);
 
           if (loginResponse.needsSync == true) {
             await _authStorage.setSyncInProgress(true);
@@ -246,7 +245,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     await _authStorage.clearGrupos();
   }
 
-  /// Sincronizar ciclo contra el backend principal.
+  /// Solicitar una nueva cosecha academica al backend.
   Future<Either<String, String>> syncGroups(String password) async {
     if (!state.isAuthenticated ||
         state.profesor == null ||
@@ -257,19 +256,13 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     // Set sync in progress flag for app redirect on reopen
     await _authStorage.setSyncInProgress(true);
 
-    // Save encrypted password locally for retry
-    final encryptedPassword = _apiService.ensureEncryptedPassword(password);
-    await _authStorage.saveEncryptedPassword(encryptedPassword);
+    // Permite reintentos dentro del proceso sin escribir la credencial a disco.
+    await _authStorage.cacheUatPasswordForProcess(password);
 
     // Clear local groups before syncing to avoid showing stale data
     await clearGrupos();
 
-    // Usar ApiService para sincronizar contra el backend principal.
-    final result = await _apiService.forceSync(
-      email: state.profesor!.institutionalEmail,
-      encryptedPassword: encryptedPassword,
-      token: state.token!,
-    );
+    final result = await _apiService.forceSync(token: state.token!);
 
     await result.fold(
       (error) async {
@@ -311,7 +304,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
               errorMessage:
                   'Tu sesión expiró. Ingresa tu contraseña para continuar.',
             );
-            // Intentar relogin automático con contraseña guardada
+            // Reintentar solo si la credencial sigue en memoria del proceso.
             await relogin();
             return;
           }
@@ -324,21 +317,6 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
             profesor: profesor,
             token: token,
           );
-          if (_apiService.usesBackendApiRest) {
-            final password = _authStorage.getEncryptedPassword();
-            if (password != null && password.isNotEmpty) {
-              final portalSync = await _apiService.syncPortalHistory(
-                email: profesor.institutionalEmail,
-                password: password,
-              );
-              portalSync.fold(
-                (error) => Logger.error(
-                  'No se pudo sincronizar historial con el portal: $error',
-                ),
-                (_) {},
-              );
-            }
-          }
           // Cargar grupos del profesor
           await _loadGrupos();
         } else {
@@ -366,6 +344,16 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
   /// Cerrar sesión
   Future<void> logout() async {
     Logger.info('Cerrando sesión del profesor');
+    final token = state.token ?? _authStorage.getToken();
+    if (token != null && token.isNotEmpty) {
+      final result = await _apiService.logoutProfesor(token);
+      result.fold(
+        (error) => Logger.error(
+          'La sesión local se cerrará aunque no se pudo revocar la remota: $error',
+        ),
+        (_) {},
+      );
+    }
     await _authStorage.clearSession();
     state = const ProfesorAuthState(status: ProfesorAuthStatus.unauthenticated);
   }
@@ -385,8 +373,8 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     );
   }
 
-  /// Re-autenticación ligera: usa email guardado + contraseña encriptada almacenada,
-  /// o acepta una contraseña en texto plano nueva.
+  /// Re-autenticación ligera con la credencial efímera del proceso o con
+  /// una contraseña nueva ingresada por la persona usuaria.
   Future<void> relogin({String? plainPassword}) async {
     final profesor = state.profesor ?? _authStorage.getProfesor();
     if (profesor == null) {
@@ -410,19 +398,18 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
         password: plainPassword,
       );
     } else {
-      // Intentar con la contraseña encriptada guardada
-      final encryptedPwd = _authStorage.getEncryptedPassword();
-      if (encryptedPwd == null || encryptedPwd.isEmpty) {
-        // No hay contraseña guardada — pedir al usuario
+      // Reusar solo la credencial efímera del proceso actual.
+      final cachedPassword = _authStorage.getCachedUatPassword();
+      if (cachedPassword == null || cachedPassword.isEmpty) {
         state = state.copyWith(
           status: ProfesorAuthStatus.sessionExpired,
           errorMessage: 'Ingresa tu contraseña para continuar.',
         );
         return;
       }
-      result = await _apiService.loginProfesorWithEncryptedPassword(
+      result = await _apiService.loginProfesor(
         email: profesor.institutionalEmail,
-        encryptedPassword: encryptedPwd,
+        password: cachedPassword,
       );
     }
 
@@ -442,10 +429,9 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
           token: loginResponse.token,
           profesor: loginResponse.profesor,
         );
-        // Actualizar contraseña encriptada si se usó plainPassword
+        // Mantener la credencial solo para reintentos de esta ejecución.
         if (plainPassword != null && plainPassword.isNotEmpty) {
-          final enc = _apiService.encryptPassword(plainPassword);
-          await _authStorage.saveEncryptedPassword(enc);
+          await _authStorage.cacheUatPasswordForProcess(plainPassword);
         }
         state = state.copyWith(
           status: ProfesorAuthStatus.authenticated,

@@ -14,28 +14,38 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "coordinator:create": "tsx src/scripts/create-coordinator.ts",
-    "coordinator:create:production": "node dist/scripts/create-coordinator.js",
-    "seed:superadmin": "node dist/scripts/create-coordinator.js --superadmin-only",
-    "seed:shared-class": "node dist/scripts/seed-shared-class.js",
-    "seed:shared-class:dev": "tsx prisma/seed.ts",
-    "test": "vitest run",
-    "fetch:horarios": "tsx src/scripts/fetch-horarios.ts"
+    "import:shared-classes": "node dist/scripts/import-shared-classes-to-academic.js",
+    "import:staff-accounts": "node dist/scripts/import-coordinators-to-identity.js",
+    "test": "NODE_ENV=test vitest run",
+    "fetch:horarios": "tsx src/scripts/fetch-horarios.ts",
+    "smoke:uat:readonly": "tsx src/scripts/smoke-uat-readonly.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.2.0",
     "@fastify/helmet": "^13.0.2",
     "@fastify/rate-limit": "^10.3.0",
-    "@fastify/static": "^9.1.3",
+    "@fastify/static": "^10.1.2",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.221.0",
+    "@opentelemetry/instrumentation": "^0.221.0",
+    "@opentelemetry/instrumentation-amqplib": "^0.68.0",
+    "@opentelemetry/instrumentation-http": "^0.221.0",
+    "@opentelemetry/instrumentation-ioredis": "^0.69.0",
+    "@opentelemetry/instrumentation-undici": "^0.31.0",
+    "@opentelemetry/resources": "^2.10.0",
+    "@opentelemetry/sdk-trace-node": "^2.10.0",
     "@prisma/client": "^6.19.0",
+    "amqplib": "^2.0.1",
     "argon2": "^0.44.0",
     "axios": "^1.7.9",
     "axios-cookiejar-support": "^5.0.5",
     "dotenv": "^16.4.7",
-    "fastify": "^5.9.0",
+    "fastify": "^5.11.0",
+    "ioredis": "^5.7.0",
     "jsonwebtoken": "^9.0.3",
     "prisma": "^6.19.0",
+    "prom-client": "^15.1.3",
     "tough-cookie": "^4.1.4",
     "zod": "^3.24.1"
   },
@@ -49,6 +59,6 @@
     "vitest": "^3.2.6"
   },
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": ">=24.0.0 <25"
   }
 }

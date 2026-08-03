@@ -112,7 +112,7 @@ class UATTheme {
 
       textSelectionTheme: TextSelectionThemeData(
         cursorColor: UATColors.primary,
-        selectionColor: UATColors.primary.withOpacity(0.24),
+        selectionColor: UATColors.primary.withValues(alpha: 0.24),
         selectionHandleColor: UATColors.primary,
       ),
 
@@ -261,7 +261,7 @@ class UATTheme {
       ),
       textSelectionTheme: TextSelectionThemeData(
         cursorColor: UATColors.primary,
-        selectionColor: UATColors.primary.withOpacity(0.28),
+        selectionColor: UATColors.primary.withValues(alpha: 0.28),
         selectionHandleColor: UATColors.primary,
       ),
       iconTheme: IconThemeData(color: palette.textSecondary, size: 24),

@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Identity {
+  id                      String         @id @default(cuid())
+  kind                    IdentityKind
+  role                    IdentityRole
+  institutionalIdentifier String         @map("institutional_identifier")
+  email                   String?
+  displayName             String         @map("display_name")
+  disabledAt              DateTime?      @map("disabled_at")
+  lastAuthenticatedAt     DateTime        @map("last_authenticated_at")
+  createdAt               DateTime        @default(now()) @map("created_at")
+  updatedAt               DateTime        @updatedAt @map("updated_at")
+
+  auditEvents SecurityAuditEvent[]
+  staffCredential StaffCredential?
+
+  @@unique([kind, institutionalIdentifier])
+  @@index([email])
+  @@index([role, disabledAt])
+  @@map("identities")
+}
+
+model StaffCredential {
+  id           String   @id @default(cuid())
+  identityId   String   @unique @map("identity_id")
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  legacySourceId String? @unique @map("legacy_source_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  identity Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  @@map("staff_credentials")
+}
+
+model SecurityAuditEvent {
+  id            String   @id @default(cuid())
+  identityId    String?  @map("identity_id")
+  action        String
+  source        String
+  correlationId String   @map("correlation_id")
+  metadata      Json?
+  occurredAt    DateTime @default(now()) @map("occurred_at")
+
+  identity Identity? @relation(fields: [identityId], references: [id], onDelete: SetNull)
+
+  @@index([identityId, occurredAt])
+  @@index([action, occurredAt])
+  @@map("security_audit_events")
+}
+
+enum IdentityKind {
+  PROFESSOR
+  STUDENT
+  STAFF
+}
+
+enum IdentityRole {
+  PROFESSOR
+  STUDENT
+  COORDINATOR
+  READ_ONLY
+  SUPER_USER
+}

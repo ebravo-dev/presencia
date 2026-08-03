@@ -12,14 +12,14 @@ export class InMemoryDomainEventBus implements IDomainEventBus {
 
   constructor(private readonly logger: EventBusLogger) {}
 
-  publish<TName extends keyof DomainEventMap>(event: DomainEventMap[TName]): void {
-    if (event.eventName === 'teacher.authenticated') {
+  async publish<TName extends keyof DomainEventMap>(event: DomainEventMap[TName]): Promise<void> {
+    if (event.eventType === 'uat.teacher_authenticated.v1') {
       this.prunePublishedSessions();
       if (this.publishedSessionIds.has(event.sessionId)) return;
       this.publishedSessionIds.set(event.sessionId, Date.now());
     }
 
-    setImmediate(() => this.emitter.emit(event.eventName, event));
+    setImmediate(() => this.emitter.emit(event.eventType, event));
   }
 
   subscribe<TName extends keyof DomainEventMap>(
