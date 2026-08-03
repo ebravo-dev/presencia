@@ -34,6 +34,9 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
           name: snapshot.name,
           groupLetter: snapshot.groupLetter,
           professorExternalId: snapshot.professorExternalId,
+          professorName: snapshot.professorName ?? snapshot.professorExternalId,
+          classroom: snapshot.classroom ?? null,
+          period: snapshot.period ?? null,
           schedule: json(snapshot.schedule),
           rosterVersion: snapshot.rosterVersion,
           rosterObservedAt: snapshot.rosterObservedAt,
@@ -44,6 +47,9 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
           name: snapshot.name,
           groupLetter: snapshot.groupLetter,
           professorExternalId: snapshot.professorExternalId,
+          professorName: snapshot.professorName ?? snapshot.professorExternalId,
+          classroom: snapshot.classroom ?? null,
+          period: snapshot.period ?? null,
           schedule: json(snapshot.schedule),
           rosterVersion: snapshot.rosterVersion,
           rosterObservedAt: snapshot.rosterObservedAt,
@@ -327,6 +333,54 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
   async bindingByMatricula(matricula: string): Promise<DeviceBindingValue | null> {
     const binding = await this.prisma.studentDeviceBinding.findUnique({ where: { matricula: matricula.trim().toUpperCase() } });
     return binding ? bindingValue(binding) : null;
+  }
+
+  async listDeviceBindings(query?: string, limit = 500): Promise<unknown[]> {
+    const normalizedQuery = query?.trim().toUpperCase();
+    const bindings = await this.prisma.studentDeviceBinding.findMany({
+      where: {
+        active: true,
+        ...(normalizedQuery ? { matricula: { contains: normalizedQuery } } : {}),
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: limit,
+    });
+    const students = bindings.length === 0 ? [] : await this.prisma.attendanceRosterStudent.findMany({
+      where: { active: true, matricula: { in: bindings.map(({ matricula }) => matricula) }, group: { active: true } },
+      include: { group: true },
+      orderBy: { name: 'asc' },
+    });
+    const studentsByMatricula = new Map<string, typeof students>();
+    for (const student of students) {
+      const existing = studentsByMatricula.get(student.matricula) ?? [];
+      existing.push(student);
+      studentsByMatricula.set(student.matricula, existing);
+    }
+    return bindings.map((binding) => ({
+      ...bindingValue(binding),
+      createdAt: binding.createdAt,
+      students: (studentsByMatricula.get(binding.matricula) ?? []).map((student) => ({
+        id: student.id, matricula: student.matricula, name: student.name,
+        group: {
+          id: student.group.id, externalGroupId: student.group.externalGroupId,
+          name: student.group.name, groupLetter: student.group.groupLetter,
+          classroom: student.group.classroom,
+          professor: {
+            id: student.group.professorExternalId,
+            externalId: student.group.professorExternalId,
+            name: student.group.professorName || student.group.professorExternalId,
+          },
+        },
+      })),
+    }));
+  }
+
+  async bindingInfrastructureSummary(): Promise<{ count: number; recentBindings: unknown[] }> {
+    const [count, recentBindings] = await Promise.all([
+      this.prisma.studentDeviceBinding.count({ where: { active: true } }),
+      this.listDeviceBindings(undefined, 6),
+    ]);
+    return { count, recentBindings };
   }
 
   private async assertDeviceIdentifiersAvailable(

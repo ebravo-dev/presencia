@@ -18,5 +18,5 @@ COPY --from=builder /workspace/services/attendance-service/prisma services/atten
 USER node
 EXPOSE 3400
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:3400/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:3400/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "services/attendance-service/dist/index.js"]

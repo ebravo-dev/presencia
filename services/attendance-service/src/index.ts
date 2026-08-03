@@ -19,7 +19,7 @@ const app = await buildAttendanceApp({
   bindings: new DeviceBindingService(repository),
   ready: async () => {
     const database = await prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false);
-    return database && eventBus.isReady();
+    return { database, rabbitmq: eventBus.isReady() };
   },
 });
 app.addHook('onClose', async () => {
@@ -29,7 +29,20 @@ app.addHook('onClose', async () => {
 
 try {
   await app.listen({ host: env.HOST, port: env.PORT });
+  installShutdownHandlers();
 } catch (error) {
   app.log.fatal(error, 'No se pudo iniciar Attendance Service.');
   process.exitCode = 1;
+}
+
+function installShutdownHandlers(): void {
+  let closing = false;
+  const shutdown = async (signal: string) => {
+    if (closing) return;
+    closing = true;
+    app.log.info({ signal }, 'Cerrando Attendance Service.');
+    await app.close();
+  };
+  process.once('SIGINT', () => void shutdown('SIGINT'));
+  process.once('SIGTERM', () => void shutdown('SIGTERM'));
 }

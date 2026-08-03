@@ -1,10 +1,10 @@
 # backend-apirest
 
 API REST aislada para consumir endpoints internos del Sistema Administrativo
-Escolar UAT usando autenticacion ASP.NET por cookies. No usa Bearer token:
-cada login crea un `CookieJar` persistente en memoria y conserva `.ASPXAUTH`,
-`ASP.NET_SessionId` cuando el portal la emite, y las cookies adicionales que
-entregue el sitio.
+Escolar UAT usando autenticacion ASP.NET por cookies. Cada login crea un
+`CookieJar` serializado y cifrado en Redis con TTL; cualquier réplica puede
+continuar la sesión sin afinidad y conserva `.ASPXAUTH`, `ASP.NET_SessionId` y
+las cookies adicionales que entregue el portal.
 
 ## Instalacion
 
@@ -19,23 +19,22 @@ Por defecto escucha en `http://localhost:3100`.
 
 ## Despliegue en Dokploy
 
-El despliegue recomendado crea la API y el frontend en contenedores separados.
-En Dokploy configura:
+El despliegue recomendado usa el Compose integral de microservicios. En
+Dokploy configura:
 
 ```txt
 Root Directory / Base Directory: raiz del repositorio
 Build Type: Docker Compose
-Compose Path: compose.coordination.yaml
+Compose Path: infra/compose/docker-compose.microservices.yml
 ```
 
-El dominio del panel se asigna a `frontend-coord:8080`. Este reenvia `/api` a
-`backend-apirest:3100` por la red privada, conservando las cookies `HttpOnly`
-en el mismo origen. La API puede tener ademas un dominio propio para los otros
-clientes.
+El dominio se asigna a `frontend-coord:8080`. Nginx reenvía el API al Gateway,
+que conserva las rutas públicas y selecciona el servicio propietario. No se
+debe asignar un dominio directo a `backend-apirest` ni a otro servicio interno.
 
-Los dos servicios tambien se conectan a la red externa `dokploy-network` para
-que Traefik y los servicios administrados de Dokploy, incluido PostgreSQL,
-puedan alcanzarlos por sus hostnames internos.
+Los servicios de dominio, PostgreSQL, Redis y RabbitMQ sólo se conectan a la
+red privada. Consulta `../docs/operations/DOKPLOY.md` para variables, orden de
+arranque, smoke test, rollback y backups.
 
 Variables recomendadas:
 
@@ -67,12 +66,13 @@ En `DATABASE_URL` usa el hostname interno del servicio PostgreSQL de Dokploy;
 `localhost` apuntaria al propio contenedor de la API. Si PostgreSQL es externo,
 agrega los parametros SSL exigidos por el proveedor.
 
-Al iniciar cada revision, el contenedor realiza en orden:
+Al desplegar una revisión, el Compose realiza en orden:
 
 1. `prisma migrate deploy`, con reintentos mientras PostgreSQL arranca.
 2. UPSERT idempotente de las cuentas definidas en `COORDINATORS_JSON` o en las
    tres variables `COORDINATOR_*`.
-3. Inicio de `backend-apirest` en el puerto configurado.
+3. Inicio de `backend-apirest` en el puerto configurado, después de Identity,
+   Academic, Attendance y Coordination Query.
 
 Si una migracion falla o las credenciales de coordinacion estan incompletas, el
 contenedor termina con error y Dokploy conserva los logs del motivo; no inicia
@@ -220,18 +220,18 @@ El servicio quedo organizado por capas:
 
 ```txt
 src/domain          Tipos UAT y contrato IUatSessionRepository
-src/infrastructure  Axios + CookieJar, factory y store en memoria
+src/infrastructure  Axios + CookieJar, Redis cifrado, RabbitMQ y clientes internos
 src/application     UatService con casos de uso y snapshot
 src/presentation    Controladores, hooks Fastify, schemas Zod y rutas
 ```
 
 ## Cosecha incremental para coordinacion
 
-Cada `POST /api/uat/sessions` exitoso publica una sola vez el evento interno
-`teacher.authenticated`. El listener se ejecuta fuera del camino de respuesta,
-reutiliza el cliente UAT y sus cookies, descubre ciclos/DES y acumula profesores,
-materias y grupos mediante `upsert` en Prisma. Un fallo de portal o persistencia
-solo produce un log estructurado y no invalida la sesion del profesor.
+Cada `POST /api/uat/sessions` exitoso publica un evento durable de profesor
+autenticado. El consumidor idempotente reutiliza la sesión UAT, descubre
+ciclos/DES y envía snapshots diferenciales a Academic Service. Academic hace
+`upsert`, desactiva lo ausente sin borrar historial y publica los cambios por
+outbox para Attendance y Coordination Query.
 
 Configura `DATABASE_URL` con la conexion PostgreSQL. Para desarrollo, crea o
 actualiza el esquema y genera el cliente con:
@@ -248,8 +248,8 @@ npm run prisma:generate
 npm run prisma:deploy
 ```
 
-La imagen de `backend-apirest` ejecuta las migraciones y el aprovisionamiento
-opcional de coordinadores automaticamente antes de iniciar la API.
+Los jobs `uat-migrate` y `uat-provision` ejecutan migraciones y
+aprovisionamiento una sola vez antes de iniciar réplicas HTTP.
 
 Provisiona o rota una cuenta de coordinación sin guardar su contraseña en el
 frontend:
@@ -381,6 +381,8 @@ npm run fetch:horarios
 
 ## Notas de seguridad
 
-No guardes credenciales reales en `.env`, scripts versionados ni logs. Las cookies
-se mantienen solo en memoria y se descartan al reiniciar el proceso. El TTL local
-se controla con `UAT_SESSION_TTL_MINUTES`.
+No guardes credenciales reales en `.env`, scripts versionados ni logs. Las
+cookies se cifran antes de persistirse en Redis, expiran según
+`UAT_SESSION_TTL_MINUTES` y se revocan al cerrar sesión. Las credenciales
+temporales necesarias para una carga UAT pendiente se cifran con una clave
+separada y nunca se incluyen en eventos.

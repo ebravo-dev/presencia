@@ -49,8 +49,8 @@ export const internalCoordinationRoutes: FastifyPluginAsync<InternalCoordination
 
       try {
         return reply.code(201).send(await coordinatorAccountService.createCoordinator(parsed.data));
-      } catch (error: any) {
-        if (error.code === 'P2002') {
+      } catch (error: unknown) {
+        if (errorCode(error) === 'P2002') {
           return reply.code(409).send({
             error: 'COORDINATOR_EXISTS',
             message: 'Ya existe una cuenta con ese correo.',
@@ -75,14 +75,14 @@ export const internalCoordinationRoutes: FastifyPluginAsync<InternalCoordination
 
       try {
         return reply.send(await coordinatorAccountService.updateCoordinator(request.params.id, parsed.data));
-      } catch (error: any) {
-        if (error.code === 'P2025') {
+      } catch (error: unknown) {
+        if (errorCode(error) === 'P2025') {
           return reply.code(404).send({
             error: 'COORDINATOR_NOT_FOUND',
             message: 'Cuenta de coordinador no encontrada.',
           });
         }
-        if (error.code === 'P2002') {
+        if (errorCode(error) === 'P2002') {
           return reply.code(409).send({
             error: 'COORDINATOR_EXISTS',
             message: 'Ya existe una cuenta con ese correo.',
@@ -100,8 +100,8 @@ export const internalCoordinationRoutes: FastifyPluginAsync<InternalCoordination
       try {
         await coordinatorAccountService.deleteCoordinator(request.params.id);
         return reply.code(204).send();
-      } catch (error: any) {
-        if (error.code === 'P2025') {
+      } catch (error: unknown) {
+        if (errorCode(error) === 'P2025') {
           return reply.code(404).send({
             error: 'COORDINATOR_NOT_FOUND',
             message: 'Cuenta de coordinador no encontrada.',
@@ -112,3 +112,8 @@ export const internalCoordinationRoutes: FastifyPluginAsync<InternalCoordination
     },
   );
 };
+
+function errorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return undefined;
+  return typeof error.code === 'string' ? error.code : undefined;
+}

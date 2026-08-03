@@ -8,7 +8,8 @@ import type { CoordinationQueryEnv } from '../infrastructure/config.js';
 import { rangeReportSchema, teacherListSchema, teacherParamsSchema, weeklyReportSchema } from './schemas.js';
 
 export async function buildCoordinationQueryApp(options: {
-  env: CoordinationQueryEnv; repository: CoordinationQueryRepository; reports: CoordinationReportService; ready: () => Promise<boolean>;
+  env: CoordinationQueryEnv; repository: CoordinationQueryRepository; reports: CoordinationReportService;
+  ready: () => Promise<{ database: boolean; rabbitmq: boolean; reconciliation: boolean }>;
 }) {
   const app = Fastify({ logger: { level: options.env.NODE_ENV === 'test' ? 'silent' : 'info' } });
   const registry = new Registry();
@@ -22,8 +23,9 @@ export async function buildCoordinationQueryApp(options: {
   app.get('/health', async () => ({ status: 'ok', service: 'coordination-query-service' }));
   app.get('/health/live', async () => ({ status: 'ok', service: 'coordination-query-service' }));
   app.get('/health/ready', async (_request, reply) => {
-    const ready = await options.ready();
-    return reply.code(ready ? 200 : 503).send({ status: ready ? 'ok' : 'degraded' });
+    const dependencies = await options.ready();
+    const ready = Object.values(dependencies).every(Boolean);
+    return reply.code(ready ? 200 : 503).send({ status: ready ? 'ok' : 'degraded', dependencies });
   });
   app.get('/metrics', async (request, reply) => {
     if (request.headers.authorization !== `Bearer ${options.env.METRICS_TOKEN}`) return reply.code(401).send({ error: 'UNAUTHORIZED' });

@@ -12,9 +12,9 @@ portales UAT de maestros y alumnos, consulta de horarios y calificaciones,
 captura local de asistencia, vinculación del alumno con un dispositivo y una
 cola persistente de cargas hacia UAT. Sin embargo, los dos backends aún son
 monolitos con responsabilidades superpuestas. Desde esta auditoría ya se
-implementaron Gateway, UAT Integration escalable, Identity y Academic; el
-tráfico continúa en migración reversible mientras Attendance y Coordination se
-extraen.
+implementaron Gateway, UAT Integration escalable, Identity, Academic,
+Attendance y Coordination Query. El tráfico conserva fachadas reversibles para
+no romper Flutter ni la web mientras se observa el nuevo flujo en producción.
 
 La migración se hará incrementalmente detrás de un API Gateway. El gateway
 mantendrá los contratos públicos actuales mientras cada capacidad se extrae a
@@ -27,12 +27,12 @@ un servicio propietario.
 | Resuelto | Las sesiones UAT vivían en un `Map` local de `backend-apirest`. | Una petición dirigida a otra réplica perdía la sesión ASP.NET. | Redis con TTL, CookieJar serializado y cifrado implementados. |
 | Resuelto | `frontend-coord` enrutaba directamente a dos backends. | Los servicios quedaban expuestos y la topología se filtraba al cliente. | API Gateway configurado como único upstream web. |
 | Resuelto | Los eventos de sincronización usaban `EventEmitter`. | Se perdían al reiniciar y no existía reintento o DLQ. | Outbox/inbox y RabbitMQ con reintentos y DLQ implementados. |
-| P1 | `backend` posee identidad, datos académicos, asistencia, beacons, dispositivos y administración en una base. | Acoplamiento de despliegue y contención al escalar. | Extraer Identity, Academic y Attendance por propiedad de datos. |
-| P1 | `backend-apirest` mezcla integración UAT, coordinación y reportes. | La carga externa de UAT afecta el dashboard. | Separar UAT Integration y Coordination Query. |
-| P1 | La sincronización y la carga UAT dependen de llamadas HTTP entre servicios legados. | Acoplamiento temporal y fallos en cascada. | Comandos internos autenticados y eventos durables. |
-| P1 | No hay contrato central de rutas y eventos. | Cambios incompatibles entre Flutter, web y backends. | Paquetes `contracts-http` y `contracts-events`, versionados y probados. |
-| P2 | La observabilidad se limita a logs y `/health`. | No se conocen latencias, saturación ni fallos por dependencia. | Correlation ID, readiness, métricas Prometheus y logs estructurados. |
-| P2 | El arranque de producción ejecuta migraciones y aprovisionamiento junto al servidor. | Varias réplicas pueden competir durante un despliegue. | Trabajo de migración único previo al despliegue. |
+| Mitigado | `backend` poseía identidad, datos académicos, asistencia, beacons, dispositivos y administración en una base. | Acoplamiento de despliegue y contención al escalar. | Identity, Academic y Attendance tienen bases propias; beacons/telemetría BLE permanecen en compatibilidad hasta el corte observado. |
+| Resuelto | `backend-apirest` mezclaba integración UAT, coordinación y reportes. | La carga externa de UAT afectaba el dashboard. | Coordination Query posee un read model reconstruible y el BFF delega las lecturas. |
+| Resuelto | La sincronización y la carga UAT dependían de llamadas HTTP entre servicios legados. | Acoplamiento temporal y fallos en cascada. | Comandos internos autenticados, outbox/inbox, RabbitMQ, reintentos y DLQ. |
+| Resuelto | No había contrato central de rutas y eventos. | Cambios incompatibles entre Flutter, web y backends. | Paquetes `contracts-http` y `contracts-events`, versionados y probados. |
+| Mitigado | La observabilidad se limitaba a logs y `/health`. | No se conocían latencias, saturación ni fallos por dependencia. | Correlation/trace ID, readiness por dependencia, métricas Prometheus y logs estructurados; falta conectar un colector/alertas en el host. |
+| Resuelto | El arranque de producción ejecutaba migraciones y aprovisionamiento junto al servidor. | Varias réplicas podían competir durante un despliegue. | Jobs de migración/aprovisionamiento únicos antes de las réplicas HTTP. |
 
 ## Cobertura de requisitos
 
@@ -41,23 +41,23 @@ un servicio propietario.
 | Inicio de alumno sólo con cuenta UAT | Implementado; sesión cifrada en Redis e identidad emitida sólo tras validar UAT. | E2E contra entorno UAT autorizado. |
 | Perfil, carrera, horario y calificaciones del alumno | Endpoints UAT existentes; perfil/carrera/horario se proyectan en Academic. | Caché de calificaciones y backfill/reconciliación. |
 | Información del maestro desde UAT | Sesión Redis, rate limit, circuit breaker y snapshot académico diferencial implementados. | E2E contra entorno UAT autorizado. |
-| Vincular matrícula, teléfono y UUID al iniciar sesión | Flujo implementado contra `backend`. | Consolidar propiedad en Attendance/Identity y auditoría de cambios. |
-| UUID modificable sólo por coordinación | Endpoints administrativos protegidos existentes. | Convertir el cambio en comando auditado del servicio propietario. |
-| Captura local aunque UAT esté fuera | Implementada en PostgreSQL. | Outbox en la misma transacción y pruebas de recuperación. |
-| Actualización de asistencia en UAT | Worker y trabajos PostgreSQL existentes. | Eventos durables, DLQ y pruebas end-to-end. |
-| Asistencia de profesores en dashboard | Reportes existentes. | Proyección de Coordination Query reconstruible. |
-| Docker y Dokploy | Compose integral con red privada, bases/usuarios separados, healthchecks y migraciones one-shot. | Validarlo en un host con Docker/Dokploy y probar restauración. |
-| Pruebas | Contratos, gateway, Identity, Academic, Redis, UAT y outbox tienen pruebas automatizadas. | Attendance, Coordination, migraciones reales y E2E de sistema. |
+| Vincular matrícula, teléfono y UUID al iniciar sesión | Attendance es propietario; el alta sólo ocurre después de autenticar UAT y entrega token acotado. | E2E en dispositivos Android/iOS reales. |
+| UUID modificable sólo por coordinación | Comando privado auditado; el alumno sólo puede repetir el vínculo exacto y requiere desvinculación previa para cambiarlo. | Verificar el flujo con una cuenta de coordinación desplegada. |
+| Captura local aunque UAT esté fuera | Transacción serializable con idempotencia y outbox en la misma base. | Prueba de caos en el host Docker. |
+| Actualización de asistencia en UAT | Consumidor durable, credenciales cifradas, reintentos, DLQ y resultado versionado. | E2E con cuenta UAT autorizada. |
+| Asistencia de profesores en dashboard | Proyección reconstruible por eventos y reconciliación de snapshots. | Medir lag y fijar alerta. |
+| Docker y Dokploy | Compose integral con red privada, bases/usuarios separados, healthchecks, migraciones one-shot, validador y smoke test. | Validarlo en un host con Docker/Dokploy y ensayar restauración. |
+| Pruebas | Contratos, Gateway, Identity, Academic, Attendance, Coordination Query, Redis, UAT, outbox y clientes BFF tienen pruebas automatizadas. | Migraciones sobre PostgreSQL/RabbitMQ reales y E2E UAT autorizado. |
 
 ## Límites de servicio durante la migración
 
 | Ruta pública | Propietario objetivo | Destino transitorio |
 |---|---|---|
 | `/api/uat/*` | UAT Integration | `backend-apirest` |
-| `/api/coordinacion/*` | Coordination Query / comandos a propietarios | `backend-apirest` |
+| `/api/coordinacion/*` | Coordination Query / comandos a propietarios | BFF `backend-apirest`, con lecturas delegadas |
 | `/auth/*`, `/professors/login` | Identity | `backend` |
 | `/professors/*`, `/groups/*` | Academic | `backend` |
-| `/attendance/*` | Attendance | `backend` |
+| `/attendance/*` | Attendance | `backend` como fachada móvil; captura UAT ya delegada |
 | `/api/beacons/*`, `/api/student-device-bindings/*` | Attendance | `backend` |
 | `/api/superUsuario/auth/*`, `/api/superUsuario/coordinadores/*` | Identity | `backend` |
 

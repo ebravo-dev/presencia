@@ -33,9 +33,9 @@ function validTraceparent(value: string | undefined): string | undefined {
   return value && /^00-[\da-f]{32}-[\da-f]{16}-[\da-f]{2}$/i.test(value) ? value.toLowerCase() : undefined;
 }
 
-async function checkHttpDependency(url: string, timeoutMs: number): Promise<DependencyStatus> {
+async function checkHttpDependency(url: string, timeoutMs: number, path = '/health/ready'): Promise<DependencyStatus> {
   try {
-    const response = await fetch(new URL('/health', url), {
+    const response = await fetch(new URL(path, url), {
       signal: AbortSignal.timeout(timeoutMs),
       headers: { accept: 'application/json' },
     });
@@ -119,15 +119,17 @@ export async function buildGateway(options: BuildGatewayOptions = {}): Promise<F
 
   app.get('/health/ready', { config: { rateLimit: false } }, async (_request, reply) => {
     const configured = {
-      legacyBackend: env.LEGACY_BACKEND_URL,
-      uatIntegration: env.UAT_INTEGRATION_URL,
-      ...(env.IDENTITY_SERVICE_URL ? { identity: env.IDENTITY_SERVICE_URL } : {}),
-      ...(env.ACADEMIC_SERVICE_URL ? { academic: env.ACADEMIC_SERVICE_URL } : {}),
-      ...(env.ATTENDANCE_SERVICE_URL ? { attendance: env.ATTENDANCE_SERVICE_URL } : {}),
-      ...(env.COORDINATION_QUERY_SERVICE_URL ? { coordinationQuery: env.COORDINATION_QUERY_SERVICE_URL } : {}),
+      legacyBackend: { url: env.LEGACY_BACKEND_URL, path: '/health' },
+      uatIntegration: { url: env.UAT_INTEGRATION_URL, path: '/health/ready' },
+      ...(env.IDENTITY_SERVICE_URL ? { identity: { url: env.IDENTITY_SERVICE_URL, path: '/health/ready' } } : {}),
+      ...(env.ACADEMIC_SERVICE_URL ? { academic: { url: env.ACADEMIC_SERVICE_URL, path: '/health/ready' } } : {}),
+      ...(env.ATTENDANCE_SERVICE_URL ? { attendance: { url: env.ATTENDANCE_SERVICE_URL, path: '/health/ready' } } : {}),
+      ...(env.COORDINATION_QUERY_SERVICE_URL ? {
+        coordinationQuery: { url: env.COORDINATION_QUERY_SERVICE_URL, path: '/health/ready' },
+      } : {}),
     };
-    const checks = await Promise.all(Object.entries(configured).map(async ([name, url]) => [
-      name, await checkHttpDependency(url, env.UPSTREAM_TIMEOUT_MS),
+    const checks = await Promise.all(Object.entries(configured).map(async ([name, dependency]) => [
+      name, await checkHttpDependency(dependency.url, env.UPSTREAM_TIMEOUT_MS, dependency.path),
     ] as const));
     const redisResult = await redis.ping().then((value) => ({ ok: value === 'PONG' })).catch((error: unknown) => ({
       ok: false,

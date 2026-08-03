@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Presencia Backend API REST UAT
-  version: 0.1.0
+  version: 1.0.0
   description: >
     API REST interna para autenticar contra el portal escolar UAT con cookies
     ASP.NET y consultar horarios/examenes de profesor.
@@ -24,7 +24,7 @@ paths:
       summary: Crea una sesion autenticada contra UAT
       description: >
         Ejecuta GET /Login, POST /Login/Accesar_Dominio y GET /Login/Validar
-        manteniendo un CookieJar persistente en memoria.
+        manteniendo un CookieJar cifrado y compartido en Redis.
       requestBody:
         required: true
         content:
@@ -44,7 +44,7 @@ paths:
           $ref: "#/components/responses/Error"
   /api/uat/sessions/{sessionId}:
     delete:
-      summary: Elimina una sesion UAT en memoria
+      summary: Revoca una sesion UAT almacenada en Redis
       parameters:
         - $ref: "#/components/parameters/SessionIdPath"
       responses:
@@ -102,7 +102,7 @@ paths:
       summary: Login transitorio y consulta de horarios/examenes
       description: >
         Ejecuta todo el flujo en una sola peticion usando un CookieJar temporal.
-        No guarda la sesion en memoria.
+        No conserva la sesion después de responder.
       requestBody:
         required: true
         content:
@@ -327,7 +327,7 @@ paths:
           $ref: "#/components/responses/Error"
   /api/uat/alumnos/sessions/{sessionId}:
     delete:
-      summary: Elimina una sesion de alumno en memoria
+      summary: Revoca una sesion de alumno almacenada en Redis
       parameters:
         - $ref: "#/components/parameters/SessionIdPath"
       responses:

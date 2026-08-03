@@ -46,7 +46,20 @@ app.addHook('onClose', async () => {
 
 try {
   await app.listen({ host: env.HOST, port: env.PORT });
+  installShutdownHandlers();
 } catch (error) {
   app.log.fatal(error, 'No se pudo iniciar Identity Service.');
   process.exitCode = 1;
+}
+
+function installShutdownHandlers(): void {
+  let closing = false;
+  const shutdown = async (signal: string) => {
+    if (closing) return;
+    closing = true;
+    app.log.info({ signal }, 'Cerrando Identity Service.');
+    await app.close();
+  };
+  process.once('SIGINT', () => void shutdown('SIGINT'));
+  process.once('SIGTERM', () => void shutdown('SIGTERM'));
 }

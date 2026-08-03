@@ -67,6 +67,8 @@ function repositoryStub(): AttendanceRepository {
     async replaceBinding() { throw new Error('unexpected'); },
     async unbind() { return false; },
     async bindingByMatricula() { return null; },
+    async listDeviceBindings() { return []; },
+    async bindingInfrastructureSummary() { return { count: 0, recentBindings: [] }; },
     async coordinationProjectionSnapshot() { return []; },
   };
 }

@@ -1,0 +1,69 @@
+name: Backend platform
+
+on:
+  pull_request:
+  push:
+    branches: [main, jared-dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-platform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.7.0
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            backend-apirest/package-lock.json
+            frontend-coord/package-lock.json
+
+      - name: Install platform dependencies
+        run: npm ci
+      - name: Verify services and contracts
+        run: npm run verify
+
+      - name: Install and verify compatibility backend
+        working-directory: backend
+        run: |
+          npm ci
+          npm run typecheck
+          npm test -- --run
+          npm run build
+
+      - name: Install and verify UAT integration
+        working-directory: backend-apirest
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Install and verify coordination web
+        working-directory: frontend-coord
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Validate infrastructure files
+        run: |
+          sh -n infra/postgres/init-databases.sh
+          docker compose --env-file infra/compose/.env.dokploy.example --file infra/compose/docker-compose.microservices.yml config --quiet
+
+      - name: Audit backend production dependencies
+        run: |
+          npm audit --omit=dev --audit-level=high
+          npm audit --omit=dev --audit-level=high --prefix backend
+          npm audit --omit=dev --audit-level=high --prefix backend-apirest

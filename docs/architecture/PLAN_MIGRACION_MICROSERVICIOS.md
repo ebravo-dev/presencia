@@ -1,6 +1,6 @@
 # Plan de migración a microservicios de Presencia
 
-**Estado:** En implementación — Fase 5 (Attendance Service)
+**Estado:** En implementación — Fase 7 (cierre, hardening y retiro gradual del legado)
 
 **Fecha de decisión:** 2026-07-31
 
@@ -535,8 +535,8 @@ Criterio de salida:
 
 Avance al 2 de agosto de 2026: sesiones de profesor/alumno cifradas en Redis,
 circuit breakers, rate limit, bus durable con outbox/inbox, reintentos y DLQ
-implementados. La extracción de coordinación y el E2E con portales UAT reales
-siguen pendientes.
+implementados. Coordination Query ya fue extraído; el E2E con portales UAT
+reales requiere cuentas de prueba autorizadas.
 
 Entregables:
 
@@ -559,7 +559,8 @@ Criterio de salida:
 Avance al 2 de agosto de 2026: servicio aislado con base propia, sesión única en
 Redis, JWT revocable/rotable, auditoría e integración posterior a autenticación
 UAT implementados. La migración de cuentas de coordinación/superusuario y el
-corte de rutas públicas siguen pendientes.
+corte de las rutas administrativas históricas siguen pendientes del periodo de
+compatibilidad.
 
 Entregables:
 
@@ -581,8 +582,8 @@ Criterio de salida:
 Avance al 2 de agosto de 2026: servicio aislado con base propia, snapshots
 diferenciales de profesores/grupos/rosters y alumnos/carreras/horarios,
 idempotencia, conservación no destructiva y outbox RabbitMQ implementados. El
-backfill histórico, clases compartidas/sustituciones y el corte de rutas públicas
-siguen pendientes.
+backfill/reconciliación de grupos para Coordination Query implementados. Clases
+compartidas/sustituciones conservan por ahora su fachada histórica.
 
 Entregables:
 
@@ -600,9 +601,11 @@ Criterio de salida:
 
 ### Fase 5 — Attendance Service
 
-Estado al 2 de agosto de 2026: iniciada. El backend legado ya tiene captura
-transaccional y vínculo firmado, pero la propiedad de datos, idempotencia móvil,
-outbox de captura y procesamiento asíncrono deben extraerse al servicio nuevo.
+Avance al 2 de agosto de 2026: servicio aislado con base propia, roster local,
+captura serializable e idempotente, outbox, carga UAT durable, resultado
+versionado, vinculación UUID autoritativa y auditoría de cambios implementados.
+La lectura de vinculaciones del dashboard ya usa este propietario; beacons y
+telemetría BLE conservan una fachada de compatibilidad durante el corte.
 
 Entregables:
 
@@ -623,6 +626,11 @@ Criterio de salida:
 
 ### Fase 6 — Coordination Query Service
 
+Avance al 2 de agosto de 2026: modelo de lectura aislado, consumidor RabbitMQ
+idempotente, reportes semanal/rango, adaptación del BFF y reconciliación desde
+snapshots de Academic/Attendance implementados. El despliegue real debe medir
+la demora de proyección para fijar alertas.
+
 Entregables:
 
 - read models por eventos;
@@ -638,6 +646,12 @@ Criterio de salida:
 - la demora de proyección se mide y alerta.
 
 ### Fase 7 — Corte y retiro del legado
+
+Avance al 2 de agosto de 2026: contratos públicos conservados, Gateway único,
+rutas internas bloqueadas, cortes configurables y documentación de Dokploy,
+smoke test y rollback implementados. El proceso legado aún es necesario para
+beacons, telemetría BLE, sustituciones y compatibilidad de tokens móviles; se
+retirará sólo después del periodo de observación en producción.
 
 Entregables:
 

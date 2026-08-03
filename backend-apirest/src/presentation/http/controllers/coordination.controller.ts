@@ -5,6 +5,7 @@ import type { SharedClassService, SharedClassInput } from '../../../application/
 import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
 import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
 import type { CoordinationQueryClient } from '../../../infrastructure/http/client/coordination-query.client.js';
+import { ApiError } from '../../../errors/api-error.js';
 import {
   parseCoordinationPayload,
   rangeReportQuerySchema,
@@ -65,7 +66,18 @@ export class CoordinationController {
   };
 
   infrastructureSummary = async (_request: FastifyRequest, reply: FastifyReply) => {
-    return reply.send(await this.attendanceBackendClient.getInfrastructureSummary());
+    const legacy = await this.attendanceBackendClient.getInfrastructureSummary() as InfrastructureSummaryResponse;
+    if (!this.attendanceServiceCommands) return reply.send(legacy);
+    const bindings = await this.attendanceServiceCommands.bindingInfrastructureSummary();
+    return reply.send({
+      ...legacy,
+      data: {
+        ...legacy.data,
+        counts: { ...legacy.data.counts, studentDeviceBindings: bindings.data.count },
+        recentBindings: bindings.data.recentBindings,
+      },
+      meta: { generatedAt: new Date().toISOString() },
+    });
   };
 
   createBeacon = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -82,6 +94,9 @@ export class CoordinationController {
   };
 
   studentDeviceBindings = async (request: FastifyRequest<{ Querystring: { q?: string } }>, reply: FastifyReply) => {
+    if (this.attendanceServiceCommands) {
+      return reply.send(await this.attendanceServiceCommands.listStudentDeviceBindings({ q: request.query.q }));
+    }
     return reply.send(await this.attendanceBackendClient.listStudentDeviceBindings({ q: request.query.q }));
   };
 
@@ -97,7 +112,11 @@ export class CoordinationController {
         correlationId: request.id,
       });
     }
-    await this.attendanceBackendClient.deleteStudentDeviceBinding(request.params.matricula);
+    try {
+      await this.attendanceBackendClient.deleteStudentDeviceBinding(request.params.matricula);
+    } catch (error) {
+      if (!(this.attendanceServiceCommands && error instanceof ApiError && error.statusCode === 404)) throw error;
+    }
     return reply.code(204).send();
   };
 
@@ -160,4 +179,12 @@ export class CoordinationController {
     await this.attendanceBackendClient.deleteSubstituteAssignment(request.params.id);
     return reply.code(204).send();
   };
+}
+
+interface InfrastructureSummaryResponse {
+  data: {
+    counts: { beacons: number; studentDeviceBindings: number; studentBleAttendances: number; activeSubstitutions: number };
+    recentBindings: unknown[]; recentBeacons: unknown[]; recentSubstitutions: unknown[];
+  };
+  meta: { generatedAt: string };
 }

@@ -13,7 +13,7 @@ export async function buildAcademicApp(options: {
   snapshots: ApplyAcademicSnapshotService;
   studentSnapshots: ApplyStudentAcademicSnapshotService;
   repository: AcademicRepository;
-  ready: () => Promise<boolean>;
+  ready: () => Promise<{ database: boolean; rabbitmq: boolean }>;
 }) {
   const app = Fastify({ logger: { level: options.env.NODE_ENV === 'test' ? 'silent' : 'info' } });
   const registry = new Registry();
@@ -27,8 +27,9 @@ export async function buildAcademicApp(options: {
   };
   app.get('/health/live', async () => ({ status: 'ok', service: 'academic-service' }));
   app.get('/health/ready', async (_request, reply) => {
-    const ready = await options.ready();
-    return reply.code(ready ? 200 : 503).send({ status: ready ? 'ok' : 'degraded', dependencies: { database: ready } });
+    const dependencies = await options.ready();
+    const ready = Object.values(dependencies).every(Boolean);
+    return reply.code(ready ? 200 : 503).send({ status: ready ? 'ok' : 'degraded', dependencies });
   });
   app.get('/health', async () => ({ status: 'ok', service: 'academic-service' }));
   app.get('/metrics', async (request, reply) => {

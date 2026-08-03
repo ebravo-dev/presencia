@@ -4,7 +4,9 @@ const status = z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED']);
 export const rosterSnapshotSchema = z.object({
   externalGroupId: z.string().trim().min(1).max(160), uatGroupId: z.number().int().positive().nullable().optional(),
   name: z.string().trim().min(1).max(240), groupLetter: z.string().trim().max(40).default(''),
-  professorExternalId: z.string().trim().min(1).max(160), schedule: z.record(z.string(), z.unknown()),
+  professorExternalId: z.string().trim().min(1).max(160),
+  professorName: z.string().trim().max(240).optional(), classroom: z.string().trim().max(160).nullable().optional(),
+  period: z.string().trim().max(80).nullable().optional(), schedule: z.record(z.string(), z.unknown()),
   rosterVersion: z.string().min(1).max(160), rosterObservedAt: z.iso.datetime(), rosterAuthoritative: z.boolean(),
   students: z.array(z.object({
     matricula: z.string().trim().min(1).max(40), name: z.string().trim().min(1).max(240),

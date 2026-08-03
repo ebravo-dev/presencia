@@ -30,6 +30,6 @@ async function testApp() {
       teacherAssignments: async () => null, teacherReportSource: async () => null, project: async () => true,
     },
     reports: { weekly: async () => null, range: async () => null } as never,
-    ready: async () => true,
+    ready: async () => ({ database: true, rabbitmq: true, reconciliation: true }),
   });
 }

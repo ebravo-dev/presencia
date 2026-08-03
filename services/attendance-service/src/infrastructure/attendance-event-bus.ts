@@ -45,6 +45,8 @@ const rosterPayloadSchema = z.object({
   externalGroupId: z.string().min(1), professorExternalId: z.string().min(1), groupName: z.string().min(1),
   groupLetter: z.string().default(''), schedule: z.record(z.string(), z.unknown()), rosterVersion: z.string().min(1),
   rosterAuthoritative: z.boolean(),
+  teacher: z.object({ name: z.string().min(1) }).optional(),
+  group: z.object({ classroom: z.string().nullable().optional(), period: z.string().nullable().optional() }).passthrough().optional(),
   students: z.array(z.object({
     matricula: z.string().min(1), name: z.string().min(1),
     uatStudentId: z.number().int().positive().nullable().optional(), listNumber: z.number().int().nonnegative().nullable().optional(),
@@ -188,6 +190,9 @@ export class AttendanceEventBus {
           name: payload.groupName,
           groupLetter: payload.groupLetter,
           professorExternalId: payload.professorExternalId,
+          professorName: payload.teacher?.name,
+          classroom: payload.group?.classroom ?? null,
+          period: payload.group?.period ?? null,
           schedule: payload.schedule,
           rosterVersion: payload.rosterVersion,
           rosterObservedAt: new Date(envelope.occurredAt),

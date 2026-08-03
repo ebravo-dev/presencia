@@ -26,14 +26,27 @@ const app = await buildCoordinationQueryApp({
   reports: new CoordinationReportService(repository),
   ready: async () => {
     const database = await prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false);
-    return database && consumer.isReady() && reconciler.isReady();
+    return { database, rabbitmq: consumer.isReady(), reconciliation: reconciler.isReady() };
   },
 });
 app.addHook('onClose', async () => { reconciler.stop(); await consumer.stop(); await prisma.$disconnect(); });
 
 try {
   await app.listen({ host: env.HOST, port: env.PORT });
+  installShutdownHandlers();
 } catch (error) {
   app.log.fatal(error, 'Could not start Coordination Query Service.');
   process.exitCode = 1;
+}
+
+function installShutdownHandlers(): void {
+  let closing = false;
+  const shutdown = async (signal: string) => {
+    if (closing) return;
+    closing = true;
+    app.log.info({ signal }, 'Closing Coordination Query Service.');
+    await app.close();
+  };
+  process.once('SIGINT', () => void shutdown('SIGINT'));
+  process.once('SIGTERM', () => void shutdown('SIGTERM'));
 }

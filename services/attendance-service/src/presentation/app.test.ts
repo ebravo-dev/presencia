@@ -49,6 +49,18 @@ describe('Attendance HTTP API', () => {
     expect(response.json()).toEqual({ data: [] });
     await app.close();
   });
+
+  it('keeps the authoritative binding list private', async () => {
+    const app = await testApp();
+    expect((await app.inject({ method: 'GET', url: '/internal/v1/attendance/device-bindings' })).statusCode).toBe(404);
+    const response = await app.inject({
+      method: 'GET', url: '/internal/v1/attendance/device-bindings?q=2251',
+      headers: { 'x-internal-service-token': token },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ data: [] });
+    await app.close();
+  });
 });
 
 async function testApp() {
@@ -58,7 +70,10 @@ async function testApp() {
       NODE_ENV: 'test', INTERNAL_API_TOKEN: token,
       BINDING_JWT_SECRET: 'test-binding-jwt-secret-with-at-least-32-characters',
     }),
-    repository: { applyRoster: async () => {}, coordinationProjectionSnapshot: async () => [] } as never,
+    repository: {
+      applyRoster: async () => {}, coordinationProjectionSnapshot: async () => [],
+      listDeviceBindings: async () => [], bindingInfrastructureSummary: async () => ({ count: 0, recentBindings: [] }),
+    } as never,
     captures: { capture: async () => { throw new Error('unexpected'); } } as never,
     bindings: {
       bindAfterUatAuthentication: async (command: { matricula: string; attendanceUuid: string; deviceBindingId?: string }) => ({
@@ -70,6 +85,6 @@ async function testApp() {
         created: true, duplicate: false,
       }),
     } as never,
-    ready: async () => true,
+    ready: async () => ({ database: true, rabbitmq: true }),
   });
 }

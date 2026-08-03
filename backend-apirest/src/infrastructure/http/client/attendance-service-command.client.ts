@@ -37,13 +37,28 @@ export class AttendanceServiceCommandClient implements AttendanceBindingClient {
     });
   }
 
+  listStudentDeviceBindings(input: { q?: string | undefined }): Promise<{ data: unknown[] }> {
+    return this.request('/internal/v1/attendance/device-bindings', { method: 'GET', query: input });
+  }
+
+  bindingInfrastructureSummary(): Promise<{
+    data: { count: number; recentBindings: unknown[] }; meta: { generatedAt: string };
+  }> {
+    return this.request('/internal/v1/attendance/infrastructure/bindings', { method: 'GET' });
+  }
+
   private async request<T = unknown>(
     path: string,
-    options: { method: 'POST' | 'DELETE'; body: unknown; correlationId?: string },
+    options: {
+      method: 'GET' | 'POST' | 'DELETE'; body?: unknown; correlationId?: string | undefined;
+      query?: Record<string, string | undefined> | undefined;
+    },
   ): Promise<T> {
     let response: Response;
     try {
-      response = await fetch(new URL(path, this.baseUrl), {
+      const url = new URL(path, this.baseUrl);
+      for (const [key, value] of Object.entries(options.query ?? {})) if (value !== undefined) url.searchParams.set(key, value);
+      response = await fetch(url, {
         method: options.method,
         signal: AbortSignal.timeout(this.timeoutMs),
         headers: {
@@ -52,7 +67,7 @@ export class AttendanceServiceCommandClient implements AttendanceBindingClient {
           'x-internal-service-token': this.internalToken,
           ...(options.correlationId ? { 'x-correlation-id': options.correlationId } : {}),
         },
-        body: JSON.stringify(options.body),
+        ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
       });
     } catch (error) {
       throw new ApiError(502, 'ATTENDANCE_SERVICE_UNAVAILABLE', 'Attendance Service no está disponible.', {

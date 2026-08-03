@@ -19,7 +19,7 @@ const app = await buildAcademicApp({
   studentSnapshots: new ApplyStudentAcademicSnapshotService(repository),
   ready: async () => {
     const database = await prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false);
-    return database && outbox.isReady();
+    return { database, rabbitmq: outbox.isReady() };
   },
 });
 app.addHook('onClose', async () => {
@@ -29,7 +29,20 @@ app.addHook('onClose', async () => {
 
 try {
   await app.listen({ host: env.HOST, port: env.PORT });
+  installShutdownHandlers();
 } catch (error) {
   app.log.fatal(error, 'No se pudo iniciar Academic Service.');
   process.exitCode = 1;
+}
+
+function installShutdownHandlers(): void {
+  let closing = false;
+  const shutdown = async (signal: string) => {
+    if (closing) return;
+    closing = true;
+    app.log.info({ signal }, 'Cerrando Academic Service.');
+    await app.close();
+  };
+  process.once('SIGINT', () => void shutdown('SIGINT'));
+  process.once('SIGTERM', () => void shutdown('SIGTERM'));
 }

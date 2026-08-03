@@ -102,4 +102,19 @@ describe('API Gateway', () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain('presencia_gateway_http_requests_total');
   });
+
+  it('uses dependency readiness and reports a degraded upstream', async () => {
+    const identity = Fastify();
+    identity.get('/health/ready', async (_request, reply) => reply.code(503).send({ status: 'degraded' }));
+    await identity.listen({ host: '127.0.0.1', port: 0 });
+    const readinessGateway = await buildGateway({
+      env: gatewayEnvSchema.parse({ ...env, IDENTITY_SERVICE_URL: identity.listeningOrigin }),
+      redis: { ping: async () => 'PONG', quit: async () => 'OK' },
+    });
+    const response = await readinessGateway.inject({ method: 'GET', url: '/health/ready' });
+    expect(response.statusCode).toBe(503);
+    expect(response.json().dependencies.identity).toMatchObject({ ok: false, status: 503 });
+    await readinessGateway.close();
+    await identity.close();
+  });
 });

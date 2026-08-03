@@ -75,6 +75,6 @@ async function testApp() {
       groupsForTeacher: async () => [], groupByExternalId: async () => null, studentByMatricula: async () => null,
       coordinationProjectionSnapshot: async () => [],
     } as never,
-    ready: async () => true,
+    ready: async () => ({ database: true, rabbitmq: true }),
   });
 }

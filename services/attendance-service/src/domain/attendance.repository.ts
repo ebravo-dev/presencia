@@ -29,5 +29,7 @@ export interface AttendanceRepository {
     reason: string; correlationId: string;
   }): Promise<boolean>;
   bindingByMatricula(matricula: string): Promise<BindDeviceResult['binding'] | null>;
+  listDeviceBindings(query?: string): Promise<unknown[]>;
+  bindingInfrastructureSummary(): Promise<{ count: number; recentBindings: unknown[] }>;
   coordinationProjectionSnapshot(): Promise<AttendanceCoordinationProjectionSnapshot[]>;
 }

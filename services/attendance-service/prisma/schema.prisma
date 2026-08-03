@@ -15,6 +15,9 @@ model AttendanceRosterGroup {
   name                String
   groupLetter         String   @default("") @map("group_letter")
   professorExternalId String   @map("professor_external_id")
+  professorName       String   @default("") @map("professor_name")
+  classroom           String?
+  period              String?
   schedule            Json
   rosterVersion       String   @map("roster_version")
   rosterObservedAt    DateTime @map("roster_observed_at")

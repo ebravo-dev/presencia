@@ -210,6 +210,8 @@ services:
   attendance-backend:
     image: presencia-attendance:${IMAGE_TAG:-latest}
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     command: ["node", "dist/app.js"]
     environment: *attendance-environment
     depends_on:
@@ -254,6 +256,8 @@ services:
   uat-integration:
     image: presencia-uat-integration:${IMAGE_TAG:-latest}
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     command: ["node", "dist/app.js"]
     environment: *uat-environment
     depends_on:
@@ -298,6 +302,8 @@ services:
   identity-service:
     image: presencia-identity:${IMAGE_TAG:-latest}
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     environment: *identity-environment
     depends_on:
       identity-migrate:
@@ -323,6 +329,8 @@ services:
   academic-service:
     image: presencia-academic:${IMAGE_TAG:-latest}
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     environment: *academic-environment
     depends_on:
       academic-migrate:
@@ -348,6 +356,8 @@ services:
   attendance-service:
     image: presencia-attendance-service:${IMAGE_TAG:-latest}
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     environment: *attendance-service-environment
     depends_on:
       attendance-service-migrate:
@@ -373,6 +383,8 @@ services:
   coordination-query-service:
     image: presencia-coordination-query:${IMAGE_TAG:-latest}
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     environment: *coordination-query-environment
     depends_on:
       coordination-query-migrate:
@@ -392,6 +404,8 @@ services:
       context: ../..
       dockerfile: services/api-gateway/Dockerfile
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
@@ -430,6 +444,8 @@ services:
       context: ../../frontend-coord
       dockerfile: Dockerfile
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     environment:
       API_GATEWAY_UPSTREAM: api-gateway:8080
     depends_on:

@@ -42,7 +42,7 @@ COPY prisma ./prisma
 EXPOSE 3100
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD node -e "const port=process.env.PORT||3100; fetch('http://127.0.0.1:' + port + '/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "const port=process.env.PORT||3100; fetch('http://127.0.0.1:' + port + '/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 USER node
 
