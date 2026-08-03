@@ -14,6 +14,7 @@ export interface AttendanceRosterSnapshot {
   readonly groupLetter: string;
   readonly professorExternalId: string;
   readonly professorName?: string | undefined;
+  readonly professorEmail?: string | null | undefined;
   readonly classroom?: string | null | undefined;
   readonly period?: string | null | undefined;
   readonly schedule: Record<string, unknown>;

@@ -57,6 +57,34 @@ export class AttendanceServiceCommandClient implements AttendanceBindingClient {
     });
   }
 
+  listClassroomBeacons(): Promise<{ data: ClassroomBeaconResponse[] }> {
+    return this.request('/internal/v1/attendance/classroom-beacons', { method: 'GET' });
+  }
+
+  createClassroomBeacon(input: ClassroomBeaconInput & BeaconActorInput): Promise<{ data: ClassroomBeaconResponse }> {
+    return this.request('/internal/v1/attendance/classroom-beacons', {
+      method: 'POST', correlationId: input.correlationId, body: withoutCorrelationId(input),
+    });
+  }
+
+  updateClassroomBeacon(id: string, input: Partial<ClassroomBeaconInput> & BeaconActorInput): Promise<{ data: ClassroomBeaconResponse }> {
+    return this.request(`/internal/v1/attendance/classroom-beacons/${encodeURIComponent(id)}`, {
+      method: 'PUT', correlationId: input.correlationId, body: withoutCorrelationId(input),
+    });
+  }
+
+  async deleteClassroomBeacon(id: string, input: BeaconActorInput): Promise<void> {
+    await this.request(`/internal/v1/attendance/classroom-beacons/${encodeURIComponent(id)}`, {
+      method: 'DELETE', correlationId: input.correlationId, body: withoutCorrelationId(input),
+    });
+  }
+
+  resolveClassroomBeacons(input: { professorExternalId: string; classrooms: string[] }): Promise<{
+    data: ClassroomBeaconResponse[]; missing: string[];
+  }> {
+    return this.request('/internal/v1/attendance/classroom-beacons/resolve', { method: 'POST', body: input });
+  }
+
   bindingInfrastructureSummary(): Promise<{
     data: { count: number; recentBindings: unknown[] }; meta: { generatedAt: string };
   }> {
@@ -66,7 +94,7 @@ export class AttendanceServiceCommandClient implements AttendanceBindingClient {
   private async request<T = unknown>(
     path: string,
     options: {
-      method: 'GET' | 'POST' | 'DELETE'; body?: unknown; correlationId?: string | undefined;
+      method: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; correlationId?: string | undefined;
       query?: Record<string, string | undefined> | undefined;
     },
   ): Promise<T> {
@@ -101,4 +129,30 @@ export class AttendanceServiceCommandClient implements AttendanceBindingClient {
     }
     return payload as T;
   }
+}
+
+export interface ClassroomBeaconResponse {
+  id: string;
+  uuid: string;
+  classroom: string;
+  classroomKey: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ClassroomBeaconInput {
+  uuid: string;
+  classroom: string;
+}
+
+interface BeaconActorInput {
+  actorIdentityId: string;
+  actorRole: 'COORDINATOR' | 'SUPER_USER';
+  reason: string;
+  correlationId: string;
+}
+
+function withoutCorrelationId<T extends { correlationId: string }>(input: T): Omit<T, 'correlationId'> {
+  const { correlationId: _, ...body } = input;
+  return body;
 }

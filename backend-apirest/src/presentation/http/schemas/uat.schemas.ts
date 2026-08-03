@@ -18,6 +18,10 @@ export const professorDeviceBindingResolveSchema = z.object({
   matriculas: z.array(z.string().trim().min(1).max(40)).min(1).max(1_000),
 });
 
+export const professorBeaconResolveSchema = z.object({
+  classrooms: z.array(z.string().trim().min(1).max(160)).min(1).max(1_000),
+});
+
 export const consultaQuerySchema = z.object({
   Id_Ciclo_Escolar: z.coerce.number().int().positive(),
   Id_DES: z.coerce.number().int().positive(),

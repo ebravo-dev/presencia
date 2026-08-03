@@ -27,7 +27,7 @@ un servicio propietario.
 | Resuelto | Las sesiones UAT vivían en un `Map` local de `backend-apirest`. | Una petición dirigida a otra réplica perdía la sesión ASP.NET. | Redis con TTL, CookieJar serializado y cifrado implementados. |
 | Resuelto | `frontend-coord` enrutaba directamente a dos backends. | Los servicios quedaban expuestos y la topología se filtraba al cliente. | API Gateway configurado como único upstream web. |
 | Resuelto | Los eventos de sincronización usaban `EventEmitter`. | Se perdían al reiniciar y no existía reintento o DLQ. | Outbox/inbox y RabbitMQ con reintentos y DLQ implementados. |
-| Mitigado | `backend` poseía identidad, datos académicos, asistencia, beacons, dispositivos y administración en una base. | Acoplamiento de despliegue y contención al escalar. | Identity, Academic y Attendance tienen bases propias; beacons/telemetría BLE permanecen en compatibilidad hasta el corte observado. |
+| Mitigado | `backend` poseía identidad, datos académicos, asistencia, beacons, dispositivos y administración en una base. | Acoplamiento de despliegue y contención al escalar. | Identity, Academic y Attendance tienen bases propias; configuración de beacons y dispositivos ya pertenecen a Attendance. Telemetría BLE y sustituciones conservan compatibilidad temporal. |
 | Resuelto | `backend-apirest` mezclaba integración UAT, coordinación y reportes. | La carga externa de UAT afectaba el dashboard. | Coordination Query posee un read model reconstruible y el BFF delega las lecturas. |
 | Resuelto | La sincronización y la carga UAT dependían de llamadas HTTP entre servicios legados. | Acoplamiento temporal y fallos en cascada. | Comandos internos autenticados, outbox/inbox, RabbitMQ, reintentos y DLQ. |
 | Resuelto | No había contrato central de rutas y eventos. | Cambios incompatibles entre Flutter, web y backends. | Paquetes `contracts-http` y `contracts-events`, versionados y probados. |
@@ -60,7 +60,8 @@ un servicio propietario.
 | `/auth/*`, `/professors/login` | Identity | `backend` |
 | `/professors/*`, `/groups/*` | Academic | `backend` |
 | `/attendance/*` | Attendance | `backend` como fachada móvil; captura UAT ya delegada |
-| `/api/beacons/*` | Attendance | `backend` durante la migración de telemetría BLE |
+| `/api/uat/profesor/beacons/resolve` | Attendance | BFF UAT; autorización de sustituciones pasa temporalmente por la fachada y la configuración siempre se lee de Attendance |
+| `/api/beacons/*` | Attendance | Fachada autenticada para móviles instalados; delega la resolución a Attendance sin leer configuración legada |
 | `/api/student-device-bindings/*` | Attendance | Corte completado; Gateway enruta al propietario y la lectura del profesor pasa por sesión UAT + roster |
 | `/api/superUsuario/auth/*`, `/api/superUsuario/coordinadores/*` | Identity | `backend` |
 

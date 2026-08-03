@@ -112,6 +112,14 @@ describe('API Gateway', () => {
     expect(response.statusCode).toBe(404);
   });
 
+  it('keeps the legacy beacon facade available for rolling mobile upgrades', async () => {
+    const response = await gateway.inject({
+      method: 'POST', url: '/api/beacons/resolve', payload: { classrooms: ['AULA 101'] },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().upstream).toBe('legacy');
+  });
+
   it('protects Prometheus metrics with a distinct token', async () => {
     expect((await gateway.inject({ method: 'GET', url: '/metrics' })).statusCode).toBe(401);
     const response = await gateway.inject({

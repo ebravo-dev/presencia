@@ -45,7 +45,7 @@ const rosterPayloadSchema = z.object({
   externalGroupId: z.string().min(1), professorExternalId: z.string().min(1), groupName: z.string().min(1),
   groupLetter: z.string().default(''), schedule: z.record(z.string(), z.unknown()), rosterVersion: z.string().min(1),
   rosterAuthoritative: z.boolean(),
-  teacher: z.object({ name: z.string().min(1) }).optional(),
+  teacher: z.object({ name: z.string().min(1), email: z.string().trim().min(1).max(320).nullable().optional() }).optional(),
   group: z.object({ classroom: z.string().nullable().optional(), period: z.string().nullable().optional() }).passthrough().optional(),
   students: z.array(z.object({
     matricula: z.string().min(1), name: z.string().min(1),
@@ -191,6 +191,7 @@ export class AttendanceEventBus {
           groupLetter: payload.groupLetter,
           professorExternalId: payload.professorExternalId,
           professorName: payload.teacher?.name,
+          professorEmail: payload.teacher?.email,
           classroom: payload.group?.classroom ?? null,
           period: payload.group?.period ?? null,
           schedule: payload.schedule,

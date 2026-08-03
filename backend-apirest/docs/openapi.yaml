@@ -683,6 +683,30 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /api/uat/profesor/beacons/resolve:
+    post:
+      summary: Resuelve beacons de salones pertenecientes al profesor
+      description: >
+        Valida la sesion UAT y delega la configuración a Attendance Service.
+        Durante el corte, la fachada de compatibilidad conserva la autorización
+        de clases sustituidas. Una solicitud no puede ampliar permisos enviando
+        salones arbitrarios.
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProfessorBeaconResolveRequest" }
+      responses:
+        "200":
+          description: Beacons autorizados y salones autorizados sin configuracion
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProfessorBeaconResolveResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /api/coordinacion/clases-compartidas/opciones:
     get:
       tags: [Coordinacion]
@@ -965,6 +989,36 @@ components:
         missing:
           type: array
           items: { type: string }
+    ProfessorBeaconResolveRequest:
+      type: object
+      required: [classrooms]
+      properties:
+        classrooms:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 160 }
+    ProfessorBeaconResolveResponse:
+      type: object
+      required: [data, missing]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/ClassroomBeacon" }
+        missing:
+          type: array
+          items: { type: string }
+    ClassroomBeacon:
+      type: object
+      required: [id, uuid, classroom, classroomKey, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        uuid: { type: string, format: uuid }
+        classroom: { type: string }
+        classroomKey: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     StudentDeviceBinding:
       type: object
       required: [id, matricula, attendanceUuid, bindingVersion, active, updatedAt]

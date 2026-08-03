@@ -93,6 +93,10 @@ export class AttendanceBackendClient {
     return this.request(() => this.http.get('/internal/coordination/beacons'));
   }
 
+  async resolveProfessorClassroomBeacons(input: { professorEmail: string; classrooms: string[] }) {
+    return this.request(() => this.http.post('/internal/coordination/professor-beacons/resolve', input));
+  }
+
   async getInfrastructureSummary() {
     return this.request(() => this.http.get('/internal/coordination/infrastructure-summary'));
   }

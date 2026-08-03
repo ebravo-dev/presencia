@@ -96,5 +96,12 @@ function repositoryStub(): AttendanceRepository {
     async listDeviceBindings() { return []; },
     async bindingInfrastructureSummary() { return { count: 0, recentBindings: [] }; },
     async coordinationProjectionSnapshot() { return []; },
+    async listClassroomBeacons() { return []; },
+    async createClassroomBeacon() { throw new Error('unexpected'); },
+    async updateClassroomBeacon() { throw new Error('unexpected'); },
+    async deleteClassroomBeacon() {},
+    async importClassroomBeacons() { return { imported: 0, unchanged: 0 }; },
+    async resolveClassroomBeaconsForProfessor() { return { data: [], missing: [] }; },
+    async resolveAuthorizedClassroomBeacons() { return { data: [], missing: [] }; },
   };
 }

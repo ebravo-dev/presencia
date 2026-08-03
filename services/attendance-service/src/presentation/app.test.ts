@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DeviceBindingService } from '../application/device-binding.service.js';
+import { ClassroomBeaconService } from '../application/classroom-beacon.service.js';
 import { attendanceEnvSchema } from '../infrastructure/config.js';
 import { buildAttendanceApp } from './app.js';
 
@@ -112,6 +113,47 @@ describe('Attendance HTTP API', () => {
     expect(response.json()).toEqual({ data: [], missing: [] });
     await app.close();
   });
+
+  it('keeps beacon administration private and records coordinator input', async () => {
+    const app = await testApp();
+    expect((await app.inject({ method: 'GET', url: '/internal/v1/attendance/classroom-beacons' })).statusCode).toBe(404);
+    const response = await app.inject({
+      method: 'POST', url: '/internal/v1/attendance/classroom-beacons',
+      headers: { 'x-internal-service-token': token, 'x-correlation-id': 'beacon-request-1' },
+      payload: {
+        uuid: '12345678-1234-4234-9234-123456789abc', classroom: ' aula á-101 ',
+        actorIdentityId: 'coord-1', actorRole: 'COORDINATOR', reason: 'Alta desde el dashboard.',
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json().data).toMatchObject({
+      uuid: '12345678-1234-4234-9234-123456789abc', classroom: 'AULA Á-101', classroomKey: 'AULAA101',
+    });
+    await app.close();
+  });
+
+  it('resolves classroom beacons only through the professor-scoped private command', async () => {
+    const app = await testApp();
+    const response = await app.inject({
+      method: 'POST', url: '/internal/v1/attendance/classroom-beacons/resolve',
+      headers: { 'x-internal-service-token': token },
+      payload: { professorExternalId: 'teacher-1', classrooms: ['AULA A-101'] },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ data: [], missing: ['AULA A-101'] });
+    await app.close();
+  });
+
+  it('accepts only service-authorized classrooms on the rolling-compatibility endpoint', async () => {
+    const app = await testApp();
+    const response = await app.inject({
+      method: 'POST', url: '/internal/v1/attendance/classroom-beacons/resolve-authorized',
+      headers: { 'x-internal-service-token': token }, payload: { classrooms: ['AULA SUSTITUCIÓN'] },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ data: [], missing: ['AULA SUSTITUCIÓN'] });
+    await app.close();
+  });
 });
 
 async function testApp() {
@@ -128,6 +170,20 @@ async function testApp() {
     bindInitial: async () => ({ binding, created: true, duplicate: false }),
     bindingByMatricula: async () => binding,
     resolveDeviceBindings: async () => ({ data: [], missing: [] }),
+    listClassroomBeacons: async () => [],
+    createClassroomBeacon: async (input: Record<string, unknown>) => ({
+      id: 'beacon-1', uuid: input.uuid, classroom: input.classroom, classroomKey: input.classroomKey,
+      createdAt: now, updatedAt: now,
+    }),
+    updateClassroomBeacon: async () => { throw new Error('unexpected'); },
+    deleteClassroomBeacon: async () => {},
+    importClassroomBeacons: async () => ({ imported: 0, unchanged: 0 }),
+    resolveClassroomBeaconsForProfessor: async (input: { classrooms: Array<{ classroom: string }> }) => ({
+      data: [], missing: input.classrooms.map(({ classroom }) => classroom),
+    }),
+    resolveAuthorizedClassroomBeacons: async (input: Array<{ classroom: string }>) => ({
+      data: [], missing: input.map(({ classroom }) => classroom),
+    }),
   } as never;
   return buildAttendanceApp({
     env: attendanceEnvSchema.parse({
@@ -137,6 +193,7 @@ async function testApp() {
     repository,
     captures: { capture: async () => { throw new Error('unexpected'); } } as never,
     bindings: new DeviceBindingService(repository),
+    beacons: new ClassroomBeaconService(repository),
     ready: async () => ({ database: true, rabbitmq: true }),
   });
 }

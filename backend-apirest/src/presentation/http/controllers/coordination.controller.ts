@@ -62,33 +62,62 @@ export class CoordinationController {
   };
 
   beacons = async (_request: FastifyRequest, reply: FastifyReply) => {
+    if (this.attendanceServiceCommands) return reply.send(await this.attendanceServiceCommands.listClassroomBeacons());
     return reply.send(await this.attendanceBackendClient.listBeacons());
   };
 
   infrastructureSummary = async (_request: FastifyRequest, reply: FastifyReply) => {
     const legacy = await this.attendanceBackendClient.getInfrastructureSummary() as InfrastructureSummaryResponse;
     if (!this.attendanceServiceCommands) return reply.send(legacy);
-    const bindings = await this.attendanceServiceCommands.bindingInfrastructureSummary();
+    const [bindings, beacons] = await Promise.all([
+      this.attendanceServiceCommands.bindingInfrastructureSummary(),
+      this.attendanceServiceCommands.listClassroomBeacons(),
+    ]);
     return reply.send({
       ...legacy,
       data: {
         ...legacy.data,
-        counts: { ...legacy.data.counts, studentDeviceBindings: bindings.data.count },
+        counts: { ...legacy.data.counts, beacons: beacons.data.length, studentDeviceBindings: bindings.data.count },
         recentBindings: bindings.data.recentBindings,
+        recentBeacons: [...beacons.data]
+          .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+          .slice(0, 6),
       },
       meta: { generatedAt: new Date().toISOString() },
     });
   };
 
   createBeacon = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (this.attendanceServiceCommands) {
+      const coordinator = requireCoordinator(request);
+      return reply.code(201).send(await this.attendanceServiceCommands.createClassroomBeacon({
+        ...(request.body as { classroom: string; uuid: string }), actorIdentityId: coordinator.id,
+        actorRole: 'COORDINATOR', reason: 'Alta de beacon desde coordinación.', correlationId: request.id,
+      }));
+    }
     return reply.code(201).send(await this.attendanceBackendClient.createBeacon(request.body as { classroom: string; uuid: string }));
   };
 
   updateBeacon = async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    if (this.attendanceServiceCommands) {
+      const coordinator = requireCoordinator(request);
+      return reply.send(await this.attendanceServiceCommands.updateClassroomBeacon(request.params.id, {
+        ...(request.body as Partial<{ classroom: string; uuid: string }>), actorIdentityId: coordinator.id,
+        actorRole: 'COORDINATOR', reason: 'Actualización de beacon desde coordinación.', correlationId: request.id,
+      }));
+    }
     return reply.send(await this.attendanceBackendClient.updateBeacon(request.params.id, request.body as Partial<{ classroom: string; uuid: string }>));
   };
 
   deleteBeacon = async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    if (this.attendanceServiceCommands) {
+      const coordinator = requireCoordinator(request);
+      await this.attendanceServiceCommands.deleteClassroomBeacon(request.params.id, {
+        actorIdentityId: coordinator.id, actorRole: 'COORDINATOR',
+        reason: 'Baja de beacon desde coordinación.', correlationId: request.id,
+      });
+      return reply.code(204).send();
+    }
     await this.attendanceBackendClient.deleteBeacon(request.params.id);
     return reply.code(204).send();
   };
@@ -187,4 +216,9 @@ interface InfrastructureSummaryResponse {
     recentBindings: unknown[]; recentBeacons: unknown[]; recentSubstitutions: unknown[];
   };
   meta: { generatedAt: string };
+}
+
+function requireCoordinator(request: FastifyRequest) {
+  if (!request.coordinator) throw new ApiError(401, 'COORDINATOR_UNAUTHORIZED', 'Sesión de coordinación requerida.');
+  return request.coordinator;
 }

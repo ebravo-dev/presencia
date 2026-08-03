@@ -124,7 +124,7 @@ export async function superUserRoutes(fastify: FastifyInstance) {
                 await superUserService.deleteBeacon(request.params.id);
                 return reply.code(204).send();
             } catch (error: any) {
-                if (error.code === 'P2025') {
+                if (error.code === 'P2025' || error.code === 'BEACON_NOT_FOUND') {
                     return reply.code(404).send({
                         statusCode: 404,
                         error: 'Not Found',
@@ -257,21 +257,21 @@ function sendValidationError(reply: FastifyReply, messages: string[]) {
 }
 
 function sendBeaconError(error: any, reply: FastifyReply) {
-    if (error.message === 'BEACON_CLASSROOM_EXISTS') {
+    if (error.message === 'BEACON_CLASSROOM_EXISTS' || error.code === 'CLASSROOM_BEACON_EXISTS') {
         return reply.code(409).send({
             statusCode: 409,
             error: 'Conflict',
             message: 'Ya existe un beacon asignado a ese salón',
         });
     }
-    if (error.code === 'P2002') {
+    if (error.code === 'P2002' || error.code === 'BEACON_UUID_EXISTS') {
         return reply.code(409).send({
             statusCode: 409,
             error: 'Conflict',
             message: 'Ya existe un beacon con ese UUID',
         });
     }
-    if (error.code === 'P2025') {
+    if (error.code === 'P2025' || error.code === 'BEACON_NOT_FOUND') {
         return reply.code(404).send({
             statusCode: 404,
             error: 'Not Found',

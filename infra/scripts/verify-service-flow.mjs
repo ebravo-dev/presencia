@@ -55,6 +55,27 @@ const student = await request(academicUrl, '/internal/v1/academic/students/22513
 if (student.data?.scheduleEntries?.length !== 1) throw new Error('Academic did not persist the student schedule.');
 pass('Academic persists professor roster and student schedule snapshots');
 
+const beaconImportBody = {
+  beacons: [{ uuid: '55555555-5555-4555-8555-555555555555', classroom: 'AULA CI 101' }],
+  actorIdentityId: 'migration:ci', actorRole: 'SYSTEM', reason: 'Importación idempotente de verificación CI.',
+};
+const beaconImport = await request(attendanceUrl, '/internal/v1/attendance/classroom-beacons/import', {
+  method: 'POST', expected: 200, body: beaconImportBody,
+});
+if (beaconImport.data?.imported + beaconImport.data?.unchanged !== 1) {
+  throw new Error('Attendance did not accept the classroom beacon import.');
+}
+const professorBeacons = await eventually(async () => request(
+  attendanceUrl,
+  '/internal/v1/attendance/classroom-beacons/resolve',
+  { method: 'POST', expected: 200, body: { professorExternalId: 'teacher-ci', classrooms: ['AULA CI 101', 'FORBIDDEN 404'] } },
+), (result) => result.data?.length === 1, 'Attendance never authorized the classroom beacon from the professor roster.');
+if (professorBeacons.data[0]?.uuid !== '55555555-5555-4555-8555-555555555555'
+  || professorBeacons.missing?.includes('FORBIDDEN 404')) {
+  throw new Error('Attendance beacon resolution did not enforce professor roster scope.');
+}
+pass('Attendance imports classroom beacons idempotently and scopes resolution to the professor roster');
+
 const binding = await request(attendanceUrl, '/internal/v1/attendance/device-bindings/initial', {
   method: 'POST', expected: 201, body: {
     matricula: '2251330007', attendanceUuid: '33333333-3333-4333-8333-333333333333',

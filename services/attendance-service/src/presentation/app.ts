@@ -3,18 +3,25 @@ import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { Registry, collectDefaultMetrics } from 'prom-client';
 import type { CaptureAttendanceService } from '../application/capture-attendance.service.js';
+import type { ClassroomBeaconService } from '../application/classroom-beacon.service.js';
 import type { DeviceBindingService } from '../application/device-binding.service.js';
 import { AttendanceDomainError } from '../domain/attendance.js';
 import type { AttendanceRepository } from '../domain/attendance.repository.js';
+import { ClassroomBeaconDomainError } from '../domain/classroom-beacon.js';
 import { issueBindingToken, verifyBindingToken } from '../infrastructure/binding-token.js';
 import type { AttendanceEnv } from '../infrastructure/config.js';
-import { captureAttendanceSchema, coordinatorBindingSchema, coordinatorUnbindSchema, deviceBindingSchema, resolveDeviceBindingsSchema, rosterSnapshotSchema } from './schemas.js';
+import {
+  captureAttendanceSchema, coordinatorBindingSchema, coordinatorUnbindSchema, createClassroomBeaconSchema,
+  deleteClassroomBeaconSchema, deviceBindingSchema, importClassroomBeaconsSchema, resolveClassroomBeaconsSchema,
+  resolveAuthorizedClassroomBeaconsSchema, resolveDeviceBindingsSchema, rosterSnapshotSchema, updateClassroomBeaconSchema,
+} from './schemas.js';
 
 export async function buildAttendanceApp(options: {
   env: AttendanceEnv;
   repository: AttendanceRepository;
   captures: CaptureAttendanceService;
   bindings: DeviceBindingService;
+  beacons: ClassroomBeaconService;
   ready: () => Promise<{ database: boolean; rabbitmq: boolean }>;
 }) {
   const app = Fastify({ logger: { level: options.env.NODE_ENV === 'test' ? 'silent' : 'info' } });
@@ -105,6 +112,55 @@ export async function buildAttendanceApp(options: {
     return options.bindings.resolveForProfessor(parsed);
   });
 
+  app.get('/internal/v1/attendance/classroom-beacons', { preHandler: internal }, async () => ({
+    data: await options.beacons.list(),
+  }));
+
+  app.post('/internal/v1/attendance/classroom-beacons', { preHandler: internal }, async (request, reply) => {
+    const parsed = createClassroomBeaconSchema.parse(request.body);
+    const beacon = await options.beacons.create({ ...parsed, correlationId: correlationId(request) });
+    return reply.code(201).send({ data: beacon });
+  });
+
+  app.put('/internal/v1/attendance/classroom-beacons/:id', { preHandler: internal }, async (request) => {
+    const parsed = updateClassroomBeaconSchema.parse(request.body);
+    const id = (request.params as { id: string }).id;
+    return { data: await options.beacons.update({
+      id,
+      actorIdentityId: parsed.actorIdentityId,
+      actorRole: parsed.actorRole,
+      reason: parsed.reason,
+      correlationId: correlationId(request),
+      ...(parsed.uuid === undefined ? {} : { uuid: parsed.uuid }),
+      ...(parsed.classroom === undefined ? {} : { classroom: parsed.classroom }),
+    }) };
+  });
+
+  app.delete('/internal/v1/attendance/classroom-beacons/:id', { preHandler: internal }, async (request, reply) => {
+    const parsed = deleteClassroomBeaconSchema.parse(request.body);
+    await options.beacons.delete((request.params as { id: string }).id, { ...parsed, correlationId: correlationId(request) });
+    return reply.code(204).send();
+  });
+
+  app.post('/internal/v1/attendance/classroom-beacons/import', { preHandler: internal }, async (request) => {
+    const parsed = importClassroomBeaconsSchema.parse(request.body);
+    return { data: await options.beacons.import({ ...parsed, correlationId: correlationId(request) }) };
+  });
+
+  app.post('/internal/v1/attendance/classroom-beacons/resolve', { preHandler: internal }, async (request) => {
+    const parsed = resolveClassroomBeaconsSchema.parse(request.body);
+    return options.beacons.resolveForProfessor({
+      classrooms: parsed.classrooms,
+      ...(parsed.professorExternalId ? { professorExternalId: parsed.professorExternalId } : {}),
+      ...(parsed.professorEmail ? { professorEmail: parsed.professorEmail } : {}),
+    });
+  });
+
+  app.post('/internal/v1/attendance/classroom-beacons/resolve-authorized', { preHandler: internal }, async (request) => {
+    const parsed = resolveAuthorizedClassroomBeaconsSchema.parse(request.body);
+    return options.beacons.resolveAuthorized(parsed.classrooms);
+  });
+
   app.put('/internal/v1/attendance/device-bindings/:matricula', { preHandler: internal }, async (request, reply) => {
     const parsed = coordinatorBindingSchema.parse(request.body);
     const matricula = (request.params as { matricula: string }).matricula;
@@ -145,6 +201,11 @@ export async function buildAttendanceApp(options: {
       const notFound = error.code === 'ATTENDANCE_GROUP_NOT_FOUND';
       const unauthorized = error.code === 'DEVICE_BINDING_TOKEN_REVOKED';
       return reply.code(conflict.includes(error.code) ? 409 : forbidden ? 403 : unauthorized ? 401 : notFound ? 404 : 400).send({ error: error.code, message: error.message });
+    }
+    if (error instanceof ClassroomBeaconDomainError) {
+      const notFound = error.code === 'BEACON_NOT_FOUND';
+      const conflict = ['BEACON_UUID_EXISTS', 'CLASSROOM_BEACON_EXISTS'].includes(error.code);
+      return reply.code(notFound ? 404 : conflict ? 409 : 400).send({ error: error.code, message: error.message });
     }
     if (typeof error === 'object' && error !== null && 'issues' in error) return reply.code(400).send({ error: 'VALIDATION_ERROR' });
     return reply.code(500).send({ error: 'INTERNAL_SERVER_ERROR' });

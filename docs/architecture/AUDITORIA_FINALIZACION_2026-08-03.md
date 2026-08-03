@@ -15,7 +15,7 @@ prueba de funcionamiento integral.
 | Cambio de UUID sólo por coordinación | Attendance permite reemplazo/desvinculación sólo por comando interno con rol y motivo auditables; el endpoint público únicamente repite el vínculo exacto. | Implementado y probado. |
 | Captura local y subida posterior a UAT | Attendance usa transacción serializable, idempotencia y outbox; UAT Integration consume, cifra credenciales, reintenta y usa DLQ. | Implementado; CI prueba captura `PENDING`, falta caos contra UAT real. |
 | Asistencia del profesor en dashboard | Coordination Query consume roster/asistencia, reconcilia snapshots y genera reportes semanal/rango. | Implementado; CI prueba la proyección cruzando PostgreSQL y RabbitMQ. |
-| Microservicios y datos separados | Gateway, Identity, Academic, Attendance, UAT Integration y Coordination Query usan límites y bases lógicas propios. | Núcleo implementado; beacons, BLE, sustituciones y fachadas móviles conservan compatibilidad heredada hasta un corte observado. |
+| Microservicios y datos separados | Gateway, Identity, Academic, Attendance, UAT Integration y Coordination Query usan límites y bases lógicas propios. Attendance ya posee beacons y dispositivos con migraciones auditables. | Núcleo implementado; telemetría BLE, sustituciones y otras fachadas móviles conservan compatibilidad heredada hasta un corte observado. |
 | Docker y Dokploy | Compose crea bases/usuarios, migraciones one-shot, Redis AOF, RabbitMQ, redes privadas, egreso UAT, readiness y apagado controlado. | Implementado; workflow CI ejecuta el stack, pendiente primera corrida remota y despliegue Dokploy. |
 | Credenciales móviles | El alumno usa almacenamiento seguro nativo. El profesor migra los tokens de Hive a Keychain/Keystore, elimina la contraseña heredada y sólo la conserva efímeramente en memoria para reintentos del proceso actual. | Implementado y probado; falta auditoría en dispositivos físicos. |
 | Tests | Unitarios, contratos HTTP/eventos, clientes UAT simulados, apps Flutter, dashboard web, smoke público y flujo integral del Compose. | Implementado; E2E UAT/dispositivos requiere infraestructura externa. |
@@ -28,11 +28,12 @@ imágenes. La prueba `verify-service-flow.mjs` comprueba:
 1. Identity crea y verifica una sesión autorizada por UAT;
 2. Academic persiste snapshots de profesor, roster, alumno y horario;
 3. RabbitMQ entrega el roster a Attendance;
-4. Attendance vincula el celular y captura asistencia idempotente;
-5. Gateway valida la renovación acotada y Attendance autoriza la lectura del profesor por roster;
-6. RabbitMQ entrega la asistencia a Coordination Query;
-7. el reporte muestra dos horas tomadas y publicación UAT `PENDING`;
-8. Nginx/Gateway publican health y rutas de clientes, pero no `/internal/*`.
+4. Attendance importa beacons idempotentemente y limita su resolución al roster;
+5. Attendance vincula el celular y captura asistencia idempotente;
+6. Gateway valida la renovación acotada y Attendance autoriza la lectura del profesor por roster;
+7. RabbitMQ entrega la asistencia a Coordination Query;
+8. el reporte muestra dos horas tomadas y publicación UAT `PENDING`;
+9. Nginx/Gateway publican health y rutas de clientes, pero no `/internal/*`.
 
 El mismo workflow ejecuta `flutter analyze` y `flutter test` en las apps de
 alumno y profesor. El bundle inicial del dashboard separa React, consultas e

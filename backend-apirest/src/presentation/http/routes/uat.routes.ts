@@ -60,7 +60,7 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   const asistenciaController = new AsistenciaController(uatService, attendanceBackendClient, attendanceCaptureClient);
   const attendanceUploadController = new AttendanceUploadController(attendanceUploadService, attendanceUploadWorker);
   const sharedClassController = new SharedClassController(sharedClassService);
-  const professorDeviceBindingController = new ProfessorDeviceBindingController(attendanceServiceCommands);
+  const professorDeviceBindingController = new ProfessorDeviceBindingController(attendanceServiceCommands, attendanceBackendClient);
 
   fastify.post('/api/uat/sessions', {
     config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
@@ -89,6 +89,7 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   fastify.get('/api/uat/profesor/control-asistencia/grupos', { preHandler: authUat }, asistenciaController.gruposProfesor);
   fastify.get('/api/uat/profesor/clases-compartidas', { preHandler: authUat }, sharedClassController.forAuthenticatedTeacher);
   fastify.post('/api/uat/profesor/device-bindings/resolve', { preHandler: authUat }, professorDeviceBindingController.resolve);
+  fastify.post('/api/uat/profesor/beacons/resolve', { preHandler: authUat }, professorDeviceBindingController.resolveBeacons);
   fastify.get('/api/uat/profesor/control-asistencia/semanas', { preHandler: authUat }, asistenciaController.semanasGrupo);
   fastify.get(
     '/api/uat/profesor/control-asistencia/asistencia-grupo',

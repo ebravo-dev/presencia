@@ -138,6 +138,7 @@ class ApiConstants {
   static const String uatSharedClasses = '/api/uat/profesor/clases-compartidas';
   static const String uatDeviceBindingsResolve =
       '/api/uat/profesor/device-bindings/resolve';
+  static const String uatBeaconsResolve = '/api/uat/profesor/beacons/resolve';
   static const String uatControlSemanas =
       '/api/uat/profesor/control-asistencia/semanas';
   static const String uatControlAsistenciaGrupo =

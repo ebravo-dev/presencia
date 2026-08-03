@@ -27,4 +27,30 @@ describe('ProfessorDeviceBindingController', () => {
       uatSession: { username: 'profesor@uat.edu.mx', login: { parametros: {} } },
     } as never)).rejects.toMatchObject({ statusCode: 503, code: 'ATTENDANCE_SERVICE_REQUIRED' });
   });
+
+  it('derives professor identity for classroom beacon resolution', async () => {
+    let received: unknown;
+    const controller = new ProfessorDeviceBindingController({
+      resolveClassroomBeacons: async (input: unknown) => { received = input; return { data: [], missing: [] }; },
+    } as never);
+    await controller.resolveBeacons({
+      body: { classrooms: ['AULA 101'] },
+      uatSession: {
+        username: 'profesor@uat.edu.mx', login: { parametros: { Cve_Usuario_AdmonUAT: 'PROF-42' } },
+      },
+    } as never);
+    expect(received).toEqual({ professorExternalId: 'PROF-42', classrooms: ['AULA 101'] });
+  });
+
+  it('preserves substitute-class authorization through the compatibility facade', async () => {
+    let received: unknown;
+    const controller = new ProfessorDeviceBindingController({} as never, {
+      resolveProfessorClassroomBeacons: async (input: unknown) => { received = input; return { data: [], missing: [] }; },
+    } as never);
+    await controller.resolveBeacons({
+      body: { classrooms: ['AULA SUSTITUCIÓN'] },
+      uatSession: { username: 'Profesor@UAT.edu.mx', login: { parametros: {} } },
+    } as never);
+    expect(received).toEqual({ professorEmail: 'Profesor@UAT.edu.mx', classrooms: ['AULA SUSTITUCIÓN'] });
+  });
 });

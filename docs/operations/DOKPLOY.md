@@ -34,7 +34,10 @@ El Compose automatiza el orden:
 1. PostgreSQL crea una base y usuario por servicio; Redis y RabbitMQ esperan
    hasta estar sanos.
 2. Los contenedores `*-migrate` ejecutan las migraciones una sola vez.
-3. Arrancan Identity, Academic y Attendance.
+3. Arrancan Identity, Academic y Attendance. El job `beacon-import` copia de
+   forma idempotente la configuración legada de salones a Attendance antes de
+   habilitar el backend de compatibilidad; si detecta UUIDs o salones
+   ambiguos, el despliegue se detiene sin modificar la fuente.
 4. Coordination Query crea su cola durable y reconstruye su modelo desde
    snapshots de Academic y Attendance.
 5. UAT Integration y el backend de compatibilidad arrancan después de sus
@@ -61,8 +64,9 @@ rutas `/internal/*` no se reenvían. El workflow `Backend platform` genera
 secretos efímeros, construye todas las imágenes, levanta PostgreSQL, Redis,
 RabbitMQ, migraciones, servicios y web, y ejecuta este mismo smoke test mediante
 `docker-compose.ci.yml`. Después inserta snapshots de profesor y alumno,
-comprueba la vinculación del celular, la captura idempotente y la proyección del
-reporte a través de RabbitMQ. El gate también analiza y prueba ambas apps
+comprueba importación y resolución de beacons por roster, la vinculación del
+celular, la captura idempotente y la proyección del reporte a través de
+RabbitMQ. El gate también analiza y prueba ambas apps
 Flutter. Las cuentas y portales UAT reales permanecen fuera de CI.
 
 El dashboard divide el shell en chunks cacheables y carga los exportadores de
@@ -86,7 +90,9 @@ logs. La prueba contra los portales sólo se ejecuta con autorización UAT.
 Los contratos públicos no cambian. `ROUTE_TARGET_OVERRIDES` permite revertir
 una ruta al destino transitorio sin reinstalar las apps móviles. Antes de un
 rollback de esquema, restaura la imagen anterior y conserva las columnas
-nuevas; las migraciones Prisma de esta entrega son aditivas.
+nuevas; las migraciones Prisma de esta entrega son aditivas. La ruta instalada
+`/api/beacons/resolve` permanece como fachada durante la actualización gradual
+de móviles, pero su configuración se lee de Attendance Service.
 
 ## Backup y restauración
 

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Prisma, type PrismaClient, type StudentDeviceBinding } from '../generated/prisma/index.js';
+import { Prisma, type ClassroomBeacon, type PrismaClient, type StudentDeviceBinding } from '../generated/prisma/index.js';
 import type { AttendanceCoordinationProjectionSnapshot, AttendanceRepository } from '../domain/attendance.repository.js';
 import {
   AttendanceDomainError,
@@ -15,6 +15,15 @@ import {
   type DeviceBindingValue,
   type ReplaceDeviceBindingCommand,
 } from '../domain/device-binding.js';
+import {
+  ClassroomBeaconDomainError,
+  normalizeClassroomKey,
+  type BeaconActor,
+  type ClassroomBeaconValue,
+  type ImportClassroomBeaconsCommand,
+  type SaveClassroomBeaconCommand,
+  type UpdateClassroomBeaconCommand,
+} from '../domain/classroom-beacon.js';
 
 export class PrismaAttendanceRepository implements AttendanceRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -35,6 +44,7 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
           groupLetter: snapshot.groupLetter,
           professorExternalId: snapshot.professorExternalId,
           professorName: snapshot.professorName ?? snapshot.professorExternalId,
+          professorEmail: snapshot.professorEmail?.trim().toLowerCase() ?? null,
           classroom: snapshot.classroom ?? null,
           period: snapshot.period ?? null,
           schedule: json(snapshot.schedule),
@@ -48,6 +58,7 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
           groupLetter: snapshot.groupLetter,
           professorExternalId: snapshot.professorExternalId,
           professorName: snapshot.professorName ?? snapshot.professorExternalId,
+          professorEmail: snapshot.professorEmail?.trim().toLowerCase() ?? null,
           classroom: snapshot.classroom ?? null,
           period: snapshot.period ?? null,
           schedule: json(snapshot.schedule),
@@ -243,6 +254,111 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
       });
       return response;
     }, { isolationLevel: 'Serializable' });
+  }
+
+  async listClassroomBeacons(): Promise<ClassroomBeaconValue[]> {
+    return this.prisma.classroomBeacon.findMany({ orderBy: { classroom: 'asc' } });
+  }
+
+  async createClassroomBeacon(command: SaveClassroomBeaconCommand): Promise<ClassroomBeaconValue> {
+    return this.withTransactionRetry(() => this.prisma.$transaction(async (transaction) => {
+      await this.assertBeaconIdentifiersAvailable(transaction, command.uuid, command.classroomKey);
+      const beacon = await transaction.classroomBeacon.create({
+        data: { uuid: command.uuid, classroom: command.classroom, classroomKey: command.classroomKey },
+      });
+      await this.auditBeacon(transaction, beacon, 'CREATED', command, null);
+      return beacon;
+    }, { isolationLevel: 'Serializable' })).catch((error: unknown) => { throw mapBeaconConstraintError(error); });
+  }
+
+  async updateClassroomBeacon(command: UpdateClassroomBeaconCommand): Promise<ClassroomBeaconValue> {
+    return this.withTransactionRetry(() => this.prisma.$transaction(async (transaction) => {
+      const current = await transaction.classroomBeacon.findUnique({ where: { id: command.id } });
+      if (!current) throw new ClassroomBeaconDomainError('BEACON_NOT_FOUND', 'Beacon no encontrado.');
+      const uuid = command.uuid ?? current.uuid;
+      const classroom = command.classroom ?? current.classroom;
+      const classroomKey = command.classroomKey ?? current.classroomKey;
+      await this.assertBeaconIdentifiersAvailable(transaction, uuid, classroomKey, current.id);
+      const beacon = await transaction.classroomBeacon.update({
+        where: { id: current.id }, data: { uuid, classroom, classroomKey },
+      });
+      await this.auditBeacon(transaction, beacon, 'UPDATED', command, beaconJson(current));
+      return beacon;
+    }, { isolationLevel: 'Serializable' })).catch((error: unknown) => { throw mapBeaconConstraintError(error); });
+  }
+
+  async deleteClassroomBeacon(id: string, actor: BeaconActor): Promise<void> {
+    await this.withTransactionRetry(() => this.prisma.$transaction(async (transaction) => {
+      const current = await transaction.classroomBeacon.findUnique({ where: { id } });
+      if (!current) throw new ClassroomBeaconDomainError('BEACON_NOT_FOUND', 'Beacon no encontrado.');
+      await this.auditBeacon(transaction, current, 'DELETED', actor, beaconJson(current), null);
+      await transaction.classroomBeacon.delete({ where: { id } });
+    }, { isolationLevel: 'Serializable' }));
+  }
+
+  async importClassroomBeacons(command: ImportClassroomBeaconsCommand): Promise<{ imported: number; unchanged: number }> {
+    return this.withTransactionRetry(() => this.prisma.$transaction(async (transaction) => {
+      let imported = 0;
+      let unchanged = 0;
+      for (const input of command.beacons) {
+        const [byUuid, byClassroom] = await Promise.all([
+          transaction.classroomBeacon.findUnique({ where: { uuid: input.uuid } }),
+          transaction.classroomBeacon.findUnique({ where: { classroomKey: input.classroomKey } }),
+        ]);
+        if (byClassroom && byClassroom.uuid !== input.uuid) {
+          throw new ClassroomBeaconDomainError(
+            'CLASSROOM_BEACON_EXISTS',
+            `El salón ${input.classroom} ya está asociado con otro beacon.`,
+          );
+        }
+        if (byUuid && byUuid.classroomKey !== input.classroomKey) {
+          throw new ClassroomBeaconDomainError(
+            'BEACON_UUID_EXISTS',
+            `El UUID ${input.uuid} ya está asociado con otro salón.`,
+          );
+        }
+        if (byUuid) {
+          unchanged += 1;
+          continue;
+        }
+        const beacon = await transaction.classroomBeacon.create({ data: input });
+        await this.auditBeacon(transaction, beacon, 'IMPORTED_FROM_LEGACY', command, null);
+        imported += 1;
+      }
+      return { imported, unchanged };
+    }, { isolationLevel: 'Serializable' })).catch((error: unknown) => { throw mapBeaconConstraintError(error); });
+  }
+
+  async resolveClassroomBeaconsForProfessor(input: {
+    professorExternalId?: string;
+    professorEmail?: string;
+    classrooms: Array<{ classroom: string; classroomKey: string }>;
+  }): Promise<{ data: ClassroomBeaconValue[]; missing: string[] }> {
+    const groups = await this.prisma.attendanceRosterGroup.findMany({
+      where: {
+        active: true,
+        classroom: { not: null },
+        OR: [
+          ...(input.professorExternalId ? [{ professorExternalId: input.professorExternalId }] : []),
+          ...(input.professorEmail ? [{ professorEmail: input.professorEmail }] : []),
+        ],
+      },
+      select: { classroom: true },
+    });
+    const authorizedKeys = new Set(groups.flatMap(({ classroom }) => classroom ? [normalizeClassroomKey(classroom)] : []));
+    const requested = input.classrooms.filter(({ classroomKey }) => authorizedKeys.has(classroomKey));
+    return this.resolveAuthorizedClassroomBeacons(requested);
+  }
+
+  async resolveAuthorizedClassroomBeacons(
+    requested: Array<{ classroom: string; classroomKey: string }>,
+  ): Promise<{ data: ClassroomBeaconValue[]; missing: string[] }> {
+    const beacons = requested.length === 0 ? [] : await this.prisma.classroomBeacon.findMany({
+      where: { classroomKey: { in: requested.map(({ classroomKey }) => classroomKey) } },
+      orderBy: { classroom: 'asc' },
+    });
+    const found = new Set(beacons.map(({ classroomKey }) => classroomKey));
+    return { data: beacons, missing: requested.filter(({ classroomKey }) => !found.has(classroomKey)).map(({ classroom }) => classroom) };
   }
 
   async bindInitial(command: BindDeviceCommand): Promise<BindDeviceResult> {
@@ -445,6 +561,42 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
     });
   }
 
+  private async assertBeaconIdentifiersAvailable(
+    transaction: Prisma.TransactionClient,
+    uuid: string,
+    classroomKey: string,
+    excludeId?: string,
+  ): Promise<void> {
+    const conflict = await transaction.classroomBeacon.findFirst({
+      where: {
+        OR: [{ uuid }, { classroomKey }],
+        ...(excludeId ? { NOT: { id: excludeId } } : {}),
+      },
+    });
+    if (!conflict) return;
+    if (conflict.uuid === uuid) {
+      throw new ClassroomBeaconDomainError('BEACON_UUID_EXISTS', 'Ya existe un beacon con ese UUID.');
+    }
+    throw new ClassroomBeaconDomainError('CLASSROOM_BEACON_EXISTS', 'Ya existe un beacon asignado a ese salón.');
+  }
+
+  private async auditBeacon(
+    transaction: Prisma.TransactionClient,
+    beacon: ClassroomBeacon,
+    action: string,
+    actor: BeaconActor,
+    previousValue: Prisma.InputJsonValue | null,
+    newValue: Prisma.InputJsonValue | null = beaconJson(beacon),
+  ): Promise<void> {
+    await transaction.classroomBeaconAuditEvent.create({
+      data: {
+        beaconId: beacon.id, action, actorIdentityId: actor.actorIdentityId, actorRole: actor.actorRole,
+        reason: actor.reason, correlationId: actor.correlationId,
+        previousValue: previousValue ?? Prisma.JsonNull, newValue: newValue ?? Prisma.JsonNull,
+      },
+    });
+  }
+
   private async deviceBindingEvent(
     transaction: Prisma.TransactionClient,
     binding: StudentDeviceBinding,
@@ -506,4 +658,20 @@ function bindingValue(binding: StudentDeviceBinding): DeviceBindingValue {
     deviceBindingId: binding.deviceBindingId, platform: binding.platform, deviceInfo: binding.deviceInfo,
     bindingVersion: binding.bindingVersion, active: binding.active, updatedAt: binding.updatedAt,
   };
+}
+
+function beaconJson(beacon: ClassroomBeacon): Prisma.InputJsonValue {
+  return json({ id: beacon.id, uuid: beacon.uuid, classroom: beacon.classroom, classroomKey: beacon.classroomKey });
+}
+
+function mapBeaconConstraintError(error: unknown): unknown {
+  if (error instanceof ClassroomBeaconDomainError) return error;
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+    const target = Array.isArray(error.meta?.target) ? error.meta.target.join(',') : String(error.meta?.target ?? '');
+    if (target.includes('uuid')) {
+      return new ClassroomBeaconDomainError('BEACON_UUID_EXISTS', 'Ya existe un beacon con ese UUID.');
+    }
+    return new ClassroomBeaconDomainError('CLASSROOM_BEACON_EXISTS', 'Ya existe un beacon asignado a ese salón.');
+  }
+  return error;
 }

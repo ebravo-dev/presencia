@@ -650,9 +650,10 @@ Criterio de salida:
 
 Avance al 2 de agosto de 2026: contratos públicos conservados, Gateway único,
 rutas internas bloqueadas, cortes configurables y documentación de Dokploy,
-smoke test y rollback implementados. El proceso legado aún es necesario para
-beacons, telemetría BLE y sustituciones; la compatibilidad de tokens móviles ya
-se retiró. El resto se retirará sólo después del periodo de observación en
+smoke test y rollback implementados. Attendance ya posee la configuración de
+beacons, con importación idempotente y fachadas para móviles instalados. El
+proceso legado aún es necesario para telemetría BLE y sustituciones; la
+compatibilidad de tokens móviles ya se retiró. El resto se retirará sólo después del periodo de observación en
 producción.
 
 Entregables:

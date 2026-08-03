@@ -1,5 +1,12 @@
 import type { AttendanceRosterSnapshot, CaptureAttendanceCommand, CaptureAttendanceResult } from './attendance.js';
 import type { BindDeviceCommand, BindDeviceResult, ReplaceDeviceBindingCommand } from './device-binding.js';
+import type {
+  BeaconActor,
+  ClassroomBeaconValue,
+  ImportClassroomBeaconsCommand,
+  SaveClassroomBeaconCommand,
+  UpdateClassroomBeaconCommand,
+} from './classroom-beacon.js';
 
 export interface AttendanceCoordinationProjectionSnapshot {
   attendanceSessionId: string;
@@ -36,4 +43,17 @@ export interface AttendanceRepository {
   listDeviceBindings(query?: string): Promise<unknown[]>;
   bindingInfrastructureSummary(): Promise<{ count: number; recentBindings: unknown[] }>;
   coordinationProjectionSnapshot(): Promise<AttendanceCoordinationProjectionSnapshot[]>;
+  listClassroomBeacons(): Promise<ClassroomBeaconValue[]>;
+  createClassroomBeacon(command: SaveClassroomBeaconCommand): Promise<ClassroomBeaconValue>;
+  updateClassroomBeacon(command: UpdateClassroomBeaconCommand): Promise<ClassroomBeaconValue>;
+  deleteClassroomBeacon(id: string, actor: BeaconActor): Promise<void>;
+  importClassroomBeacons(command: ImportClassroomBeaconsCommand): Promise<{ imported: number; unchanged: number }>;
+  resolveClassroomBeaconsForProfessor(input: {
+    professorExternalId?: string;
+    professorEmail?: string;
+    classrooms: Array<{ classroom: string; classroomKey: string }>;
+  }): Promise<{ data: ClassroomBeaconValue[]; missing: string[] }>;
+  resolveAuthorizedClassroomBeacons(
+    classrooms: Array<{ classroom: string; classroomKey: string }>,
+  ): Promise<{ data: ClassroomBeaconValue[]; missing: string[] }>;
 }

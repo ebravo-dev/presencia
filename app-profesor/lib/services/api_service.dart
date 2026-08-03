@@ -1250,16 +1250,16 @@ class ApiService {
         'Resolviendo beacons en backend principal para ${normalizedClassrooms.length} salones',
       );
 
-      final mainBackendToken = AuthStorageService().getMainBackendToken();
-      if (mainBackendToken == null || mainBackendToken.isEmpty) {
-        return const Left('La sesión de asistencia necesita renovarse');
+      final uatSessionId = AuthStorageService().getToken();
+      if (uatSessionId == null || uatSessionId.isEmpty) {
+        return const Left('La sesión UAT necesita renovarse');
       }
 
-      final response = await _attendanceBackendDio.post(
-        '/api/beacons/resolve',
+      final response = await _presenceDio.post(
+        ApiConstants.uatBeaconsResolve,
         data: {'classrooms': normalizedClassrooms},
         options: Options(
-          headers: {'Authorization': 'Bearer $mainBackendToken'},
+          headers: {'X-UAT-Session-Id': uatSessionId},
         ),
       );
 

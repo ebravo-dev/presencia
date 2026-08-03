@@ -2,15 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { env } from '../../core/config/env.js';
 import { prisma } from '../../core/database/prisma.js';
-import {
-    createBeacon,
-    deleteBeacon,
-    findBeaconByClassroom,
-    listBeacons,
-    updateBeacon,
-    BeaconInput,
-    BeaconUpdateInput,
-} from '../beacons/beacons.service.js';
+import type { BeaconInput, BeaconUpdateInput } from '../beacons/beacons.service.js';
 import {
     getAttendanceSettings,
     updateAttendanceSettings,
@@ -95,29 +87,34 @@ export class SuperUserService {
     }
 
     listBeacons() {
-        return listBeacons();
+        if (!this.attendanceCommands) throw Object.assign(new Error('ATTENDANCE_SERVICE_REQUIRED'), { statusCode: 503 });
+        return this.attendanceCommands.listClassroomBeacons().then(({ data }) => data);
     }
 
     async createBeacon(input: BeaconInput) {
-        const existingClassroom = await findBeaconByClassroom(input.classroom);
-        if (existingClassroom) {
-            throw Object.assign(new Error('BEACON_CLASSROOM_EXISTS'), { statusCode: 409 });
-        }
-        return createBeacon(input);
+        if (!this.attendanceCommands) throw Object.assign(new Error('ATTENDANCE_SERVICE_REQUIRED'), { statusCode: 503 });
+        const response = await this.attendanceCommands.createClassroomBeacon({
+            ...input, actorIdentityId: 'super-user:dashboard', actorRole: 'SUPER_USER',
+            reason: 'Alta de beacon desde super usuario.', correlationId: 'super-user-dashboard',
+        });
+        return response.data;
     }
 
     async updateBeacon(id: string, input: BeaconUpdateInput) {
-        if (input.classroom) {
-            const existingClassroom = await findBeaconByClassroom(input.classroom, id);
-            if (existingClassroom) {
-                throw Object.assign(new Error('BEACON_CLASSROOM_EXISTS'), { statusCode: 409 });
-            }
-        }
-        return updateBeacon(id, input);
+        if (!this.attendanceCommands) throw Object.assign(new Error('ATTENDANCE_SERVICE_REQUIRED'), { statusCode: 503 });
+        const response = await this.attendanceCommands.updateClassroomBeacon(id, {
+            ...input, actorIdentityId: 'super-user:dashboard', actorRole: 'SUPER_USER',
+            reason: 'Actualización de beacon desde super usuario.', correlationId: 'super-user-dashboard',
+        });
+        return response.data;
     }
 
-    deleteBeacon(id: string) {
-        return deleteBeacon(id);
+    async deleteBeacon(id: string) {
+        if (!this.attendanceCommands) throw Object.assign(new Error('ATTENDANCE_SERVICE_REQUIRED'), { statusCode: 503 });
+        await this.attendanceCommands.deleteClassroomBeacon(id, {
+            actorIdentityId: 'super-user:dashboard', actorRole: 'SUPER_USER',
+            reason: 'Baja de beacon desde super usuario.', correlationId: 'super-user-dashboard',
+        });
     }
 
     async listStudentDeviceBindings(q?: string) {

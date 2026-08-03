@@ -57,4 +57,33 @@ describe('AttendanceServiceCommandClient', () => {
       professorExternalId: 'teacher-1', matriculas: ['2251330007'],
     });
   });
+
+  it('writes audited beacon commands to Attendance Service', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: { id: 'beacon-1', classroom: 'AULA 101' },
+    }), { status: 201, headers: { 'content-type': 'application/json' } }));
+    const client = new AttendanceServiceCommandClient('http://attendance-service:3400', 'x'.repeat(32));
+    await client.createClassroomBeacon({
+      uuid: '12345678-1234-4234-9234-123456789abc', classroom: 'AULA 101',
+      actorIdentityId: 'coord-1', actorRole: 'COORDINATOR', reason: 'Alta desde coordinación.',
+      correlationId: 'request-beacon-1',
+    });
+    const [url, request] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe('http://attendance-service:3400/internal/v1/attendance/classroom-beacons');
+    expect(request?.headers).toMatchObject({ 'x-correlation-id': 'request-beacon-1' });
+    expect(JSON.parse(String(request?.body))).not.toHaveProperty('correlationId');
+  });
+
+  it('resolves beacons through the professor-scoped private command', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: [], missing: ['AULA 101'],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    const client = new AttendanceServiceCommandClient('http://attendance-service:3400', 'x'.repeat(32));
+    await expect(client.resolveClassroomBeacons({
+      professorExternalId: 'teacher-1', classrooms: ['AULA 101'],
+    })).resolves.toEqual({ data: [], missing: ['AULA 101'] });
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      'http://attendance-service:3400/internal/v1/attendance/classroom-beacons/resolve',
+    );
+  });
 });

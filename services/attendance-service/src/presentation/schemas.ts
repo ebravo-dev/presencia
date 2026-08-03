@@ -5,7 +5,8 @@ export const rosterSnapshotSchema = z.object({
   externalGroupId: z.string().trim().min(1).max(160), uatGroupId: z.number().int().positive().nullable().optional(),
   name: z.string().trim().min(1).max(240), groupLetter: z.string().trim().max(40).default(''),
   professorExternalId: z.string().trim().min(1).max(160),
-  professorName: z.string().trim().max(240).optional(), classroom: z.string().trim().max(160).nullable().optional(),
+  professorName: z.string().trim().max(240).optional(), professorEmail: z.email().nullable().optional(),
+  classroom: z.string().trim().max(160).nullable().optional(),
   period: z.string().trim().max(80).nullable().optional(), schedule: z.record(z.string(), z.unknown()),
   rosterVersion: z.string().min(1).max(160), rosterObservedAt: z.iso.datetime(), rosterAuthoritative: z.boolean(),
   students: z.array(z.object({
@@ -42,4 +43,36 @@ export const coordinatorBindingSchema = deviceBindingSchema.extend({
 export const coordinatorUnbindSchema = z.object({
   actorIdentityId: z.string().trim().min(1).max(160), actorRole: z.enum(['COORDINATOR', 'SUPER_USER']),
   reason: z.string().trim().min(8).max(500),
+});
+
+const beaconValueSchema = z.object({
+  uuid: z.uuid(),
+  classroom: z.string().trim().min(1).max(160),
+});
+const beaconActorSchema = z.object({
+  actorIdentityId: z.string().trim().min(1).max(160),
+  actorRole: z.enum(['COORDINATOR', 'SUPER_USER']),
+  reason: z.string().trim().min(8).max(500),
+});
+export const createClassroomBeaconSchema = beaconValueSchema.extend(beaconActorSchema.shape);
+export const updateClassroomBeaconSchema = beaconValueSchema.partial().extend(beaconActorSchema.shape).refine(
+  ({ uuid, classroom }) => uuid !== undefined || classroom !== undefined,
+  { message: 'uuid o classroom es requerido' },
+);
+export const deleteClassroomBeaconSchema = beaconActorSchema;
+export const importClassroomBeaconsSchema = z.object({
+  beacons: z.array(beaconValueSchema).max(10_000),
+  actorIdentityId: z.string().trim().min(1).max(160),
+  actorRole: z.literal('SYSTEM'),
+  reason: z.string().trim().min(8).max(500),
+});
+export const resolveClassroomBeaconsSchema = z.object({
+  professorExternalId: z.string().trim().min(1).max(160).optional(),
+  professorEmail: z.email().optional(),
+  classrooms: z.array(z.string().trim().min(1).max(160)).min(1).max(1_000),
+}).refine(({ professorExternalId, professorEmail }) => Boolean(professorExternalId || professorEmail), {
+  message: 'professorExternalId o professorEmail es requerido',
+});
+export const resolveAuthorizedClassroomBeaconsSchema = z.object({
+  classrooms: z.array(z.string().trim().min(1).max(160)).min(1).max(1_000),
 });

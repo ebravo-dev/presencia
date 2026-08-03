@@ -16,6 +16,7 @@ model AttendanceRosterGroup {
   groupLetter         String   @default("") @map("group_letter")
   professorExternalId String   @map("professor_external_id")
   professorName       String   @default("") @map("professor_name")
+  professorEmail      String?  @map("professor_email")
   classroom           String?
   period              String?
   schedule            Json
@@ -29,6 +30,7 @@ model AttendanceRosterGroup {
   sessions AttendanceSession[]
 
   @@index([professorExternalId, active])
+  @@index([professorEmail, active])
   @@map("attendance_roster_groups")
 }
 
@@ -104,6 +106,38 @@ model StudentDeviceBinding {
 
   @@index([attendanceUuid])
   @@map("student_device_bindings")
+}
+
+model ClassroomBeacon {
+  id           String   @id @default(cuid())
+  uuid         String   @unique
+  classroom    String
+  classroomKey String   @unique @map("classroom_key")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  auditEvents ClassroomBeaconAuditEvent[]
+
+  @@map("classroom_beacons")
+}
+
+model ClassroomBeaconAuditEvent {
+  id              String   @id @default(cuid())
+  beaconId        String?  @map("beacon_id")
+  action          String
+  actorIdentityId String   @map("actor_identity_id")
+  actorRole       String   @map("actor_role")
+  reason          String
+  previousValue   Json?    @map("previous_value")
+  newValue        Json?    @map("new_value")
+  correlationId   String   @map("correlation_id")
+  occurredAt      DateTime @default(now()) @map("occurred_at")
+
+  beacon ClassroomBeacon? @relation(fields: [beaconId], references: [id], onDelete: SetNull)
+
+  @@index([beaconId, occurredAt])
+  @@index([actorIdentityId, occurredAt])
+  @@map("classroom_beacon_audit_events")
 }
 
 model DeviceBindingAuditEvent {

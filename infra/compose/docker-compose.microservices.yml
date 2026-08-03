@@ -215,7 +215,7 @@ services:
     command: ["node", "dist/app.js"]
     environment: *attendance-environment
     depends_on:
-      attendance-migrate:
+      beacon-import:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
@@ -228,6 +228,18 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    networks: [private]
+
+  beacon-import:
+    image: presencia-attendance:${IMAGE_TAG:-latest}
+    restart: "no"
+    command: ["node", "dist/scripts/import-beacons-to-attendance.js"]
+    environment: *attendance-environment
+    depends_on:
+      attendance-migrate:
+        condition: service_completed_successfully
+      attendance-service:
+        condition: service_healthy
     networks: [private]
 
   uat-migrate:
