@@ -9,7 +9,6 @@ import '../../../core/theme/uat_colors.dart';
 import '../../../core/utils/utils.dart';
 import '../../../services/api_service.dart';
 import '../../../services/auth_storage_service.dart';
-import '../../../services/sync_service.dart';
 import '../../../services/attendance_batch_service.dart';
 import '../../../shared/models/grupo.dart';
 import 'grupo_detail_page.dart';
@@ -25,7 +24,6 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
   final AsistenciaLocalService _asistenciaService = AsistenciaLocalService();
   final ApiService _apiService = ApiService();
   final AuthStorageService _authStorage = AuthStorageService();
-  final SyncService _syncService = SyncService();
   final AttendanceBatchService _attendanceBatchService =
       AttendanceBatchService();
   List<AsistenciaRegistro> _pendientes = [];
@@ -246,22 +244,6 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
 
   Future<void> _subirAsistencias() async {
     if (_pendientes.isEmpty || _isUploading) return;
-
-    final hasInternet = await _syncService.hasInternetConnection();
-    if (!hasInternet) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              'Sin conexión. Las listas permanecen guardadas y se enviarán cuando vuelva internet.',
-            ),
-            backgroundColor: Colors.orange.shade800,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-      return;
-    }
 
     final token = _authStorage.getToken();
     final grupos = _authStorage.getGrupos() ?? [];

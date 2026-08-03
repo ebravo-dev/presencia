@@ -13,6 +13,7 @@ import '../../../services/ble_beacon_verification_service.dart';
 import '../../../services/student_attendance_ble_service.dart';
 import '../../../core/theme/uat_colors.dart';
 import '../../../core/permissions/permission_service.dart';
+import '../../../core/utils/attendance_window.dart';
 import '../../../core/utils/utils.dart';
 
 import '../../../services/auth_storage_service.dart';
@@ -2029,65 +2030,19 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
   // Parsear el horario (ej: "20:00-21:00" -> DateTime de hoy con esas horas)
   DateTime? _parseHorarioInicio() {
-    try {
-      final horarioParts = widget.horario.split('-');
-      if (horarioParts.length != 2) return null;
-
-      final inicioParts = horarioParts[0].trim().split(':');
-      if (inicioParts.length != 2) return null;
-
-      final now = DateTime.now();
-      return DateTime(
-        now.year,
-        now.month,
-        now.day,
-        int.parse(inicioParts[0]),
-        int.parse(inicioParts[1]),
-      );
-    } catch (e) {
-      return null;
-    }
+    return AttendanceWindow.classStart(widget.horario, DateTime.now());
   }
 
   DateTime? _parseHorarioFin() {
-    try {
-      final horarioParts = widget.horario.split('-');
-      if (horarioParts.length != 2) return null;
-
-      final finParts = horarioParts[1].trim().split(':');
-      if (finParts.length != 2) return null;
-
-      final now = DateTime.now();
-      return DateTime(
-        now.year,
-        now.month,
-        now.day,
-        int.parse(finParts[0]),
-        int.parse(finParts[1]),
-      );
-    } catch (e) {
-      return null;
-    }
+    return AttendanceWindow.classEnd(widget.horario, DateTime.now());
   }
 
   bool _puedeMarcarEntrada() {
-    return true; // TODO: Restaurar restricción de horario después de testing BLE
-    // final inicioClase = _parseHorarioInicio();
-    // if (inicioClase == null) return true;
-    // final now = DateTime.now();
-    // final ventanaInicio = inicioClase.subtract(const Duration(minutes: 10));
-    // final ventanaFin = inicioClase.add(const Duration(minutes: 30));
-    // return now.isAfter(ventanaInicio) && now.isBefore(ventanaFin);
+    return AttendanceWindow.canMarkEntry(widget.horario, DateTime.now());
   }
 
   bool _puedeMarcarSalida() {
-    return true; // TODO: Restaurar restricción de horario después de testing BLE
-    // final finClase = _parseHorarioFin();
-    // if (finClase == null) return true;
-    // final now = DateTime.now();
-    // final ventanaInicio = finClase.subtract(const Duration(minutes: 30));
-    // final ventanaFin = finClase.add(const Duration(minutes: 30));
-    // return now.isAfter(ventanaInicio) && now.isBefore(ventanaFin);
+    return AttendanceWindow.canMarkExit(widget.horario, DateTime.now());
   }
 
   String _getMensajeVentanaEntrada() {
