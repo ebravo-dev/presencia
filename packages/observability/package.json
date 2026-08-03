@@ -1,0 +1,26 @@
+{
+  "name": "@presencia/observability",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./register": "./register.mjs"
+  },
+  "scripts": {
+    "test": "OTEL_TRACES_EXPORTER=console OTEL_METRICS_EXPORTER=none OTEL_LOGS_EXPORTER=none OTEL_NODE_RESOURCE_DETECTORS=env OTEL_SERVICE_NAME=presencia-observability-test node --import ./register.mjs --test register.test.mjs"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.221.0",
+    "@opentelemetry/instrumentation": "^0.221.0",
+    "@opentelemetry/instrumentation-amqplib": "^0.68.0",
+    "@opentelemetry/instrumentation-http": "^0.221.0",
+    "@opentelemetry/instrumentation-ioredis": "^0.69.0",
+    "@opentelemetry/instrumentation-undici": "^0.31.0",
+    "@opentelemetry/resources": "^2.10.0",
+    "@opentelemetry/sdk-trace-node": "^2.10.0"
+  },
+  "engines": {
+    "node": ">=24.0.0 <25"
+  }
+}

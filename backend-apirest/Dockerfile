@@ -8,6 +8,7 @@ WORKDIR /app
 
 COPY package*.json ./
 COPY prisma ./prisma
+COPY instrumentation-loader.mjs ./instrumentation-loader.mjs
 RUN npm ci
 RUN npm run prisma:generate
 
@@ -33,6 +34,7 @@ WORKDIR /app
 
 COPY package*.json ./
 COPY prisma ./prisma
+COPY instrumentation-loader.mjs ./instrumentation-loader.mjs
 RUN npm ci --omit=dev && npm cache clean --force
 RUN npm run prisma:generate
 
@@ -46,4 +48,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 
 USER node
 
-CMD ["node", "dist/scripts/start-production.js"]
+CMD ["node", "--import", "./instrumentation-loader.mjs", "dist/scripts/start-production.js"]

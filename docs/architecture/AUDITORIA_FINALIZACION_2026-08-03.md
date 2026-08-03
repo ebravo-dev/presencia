@@ -117,6 +117,11 @@ reglas de alerta y respuesta a incidentes están versionados en el runbook; su
 calibración con tráfico real y la conexión del colector siguen siendo gates del
 host Dokploy.
 
+Las seis imágenes HTTP precargan OpenTelemetry antes de iniciar Fastify, asignan
+un `service.name` independiente y pueden exportar trazas OTLP/HTTP al colector
+privado configurado en Dokploy. La exportación queda desactivada por defecto;
+Prometheus permanece como fuente de métricas y los logs no se duplican por OTLP.
+
 La ejecución Docker local del 3 de agosto de 2026 completó esas 200 lecturas
 con 20 solicitudes concurrentes, 0% de errores, p95 de 35.57 ms, p99 de 36.52
 ms y 663.94 solicitudes por segundo. El mismo gate confirmó que las métricas de

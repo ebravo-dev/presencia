@@ -487,9 +487,9 @@ Avance al 31 de julio de 2026:
 - [x] Migraciones fail-closed; no se marcan fallos como aplicados.
 - [x] Sincronización académica no destructiva para el historial existente.
 - [x] Captura principal de asistencia transaccional con validación de roster.
-- [ ] Backup y restauración comprobados en un entorno de prueba.
-- [ ] Inventario OpenAPI y pruebas de caracterización completas.
-- [ ] Línea base de carga, latencia y errores en un entorno representativo.
+- [x] Backup y restauración comprobados en un entorno de prueba aislado.
+- [x] Inventario OpenAPI y pruebas de caracterización completas.
+- [x] Línea base de carga, latencia y errores contra UAT simulado escalado.
 
 Entregables:
 
@@ -512,10 +512,12 @@ Criterio de salida:
 
 ### Fase 1 — Fundación de plataforma
 
-Avance al 2 de agosto de 2026: estructura de workspaces, contratos HTTP/eventos,
+Avance al 3 de agosto de 2026: estructura de workspaces, contratos HTTP/eventos,
 API Gateway, Redis, RabbitMQ, PostgreSQL aislado por servicio y Compose para
-Dokploy implementados. Falta instrumentación OpenTelemetry y validación real de
-contenedores en un host con Docker.
+Dokploy implementados. Las seis imágenes precargan OpenTelemetry con propagación
+W3C y exportación OTLP opcional; Prometheus conserva las métricas operativas.
+El stack escalado, restauración y failover fueron validados localmente. Falta
+conectar el colector y observar trazas en el primer host Dokploy.
 
 Entregables:
 

@@ -182,3 +182,24 @@ Los SLO iniciales, las reglas Prometheus y los procedimientos de respuesta se
 documentan en `RUNBOOK_INCIDENTES.md`. El gate de carga usa exclusivamente el
 portal simulado y se ejecuta con dos réplicas por servicio; nunca debe apuntarse
 a las plataformas UAT reales.
+
+## Trazas distribuidas
+
+Las seis imágenes HTTP precargan OpenTelemetry antes del código de aplicación.
+La exportación está desactivada por defecto para que la ausencia de un colector
+no afecte disponibilidad. Para activarla en Dokploy, conecta un OpenTelemetry
+Collector a la red privada del proyecto y configura:
+
+```env
+OTEL_TRACES_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+OTEL_LOG_LEVEL=warn
+DEPLOYMENT_ENVIRONMENT=production
+```
+
+No publiques el puerto OTLP ni insertes credenciales en la URL. Si el proveedor
+requiere autenticación, configura sus headers como secretos directamente en
+Dokploy. Prometheus continúa leyendo `/metrics`; `OTEL_METRICS_EXPORTER` y
+`OTEL_LOGS_EXPORTER` permanecen en `none` para evitar duplicación y volumen
+accidental de logs.

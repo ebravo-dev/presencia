@@ -83,6 +83,24 @@ export function validateDokployEnvironment(environment, composeSource) {
   } catch {
     errors.push('ROUTE_TARGET_OVERRIDES must be a JSON object.');
   }
+  const tracesExporter = environment.OTEL_TRACES_EXPORTER || 'none';
+  if (!['none', 'otlp'].includes(tracesExporter)) {
+    errors.push('OTEL_TRACES_EXPORTER must be none or otlp in production.');
+  }
+  if ((environment.OTEL_EXPORTER_OTLP_PROTOCOL || 'http/protobuf') !== 'http/protobuf') {
+    errors.push('OTEL_EXPORTER_OTLP_PROTOCOL must be http/protobuf.');
+  }
+  if (tracesExporter === 'otlp') {
+    try {
+      const endpoint = new URL(environment.OTEL_EXPORTER_OTLP_ENDPOINT || '');
+      if (!['http:', 'https:'].includes(endpoint.protocol)) throw new Error();
+      if (endpoint.username || endpoint.password) {
+        errors.push('OTEL_EXPORTER_OTLP_ENDPOINT must not embed credentials; use OTEL exporter headers in Dokploy.');
+      }
+    } catch {
+      errors.push('OTEL_EXPORTER_OTLP_ENDPOINT must be an HTTP(S) URL when OTLP traces are enabled.');
+    }
+  }
   const origins = (environment.CORS_ALLOWED_ORIGINS || '').split(',').map((value) => value.trim()).filter(Boolean);
   for (const origin of origins) {
     try {

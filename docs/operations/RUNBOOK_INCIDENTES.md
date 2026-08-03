@@ -27,6 +27,12 @@ Bearer distinto por servicio y deben permanecer en la red privada. La
 configuración del colector y su canal de notificación pertenecen al host; no se
 versionan tokens reales.
 
+Las imágenes también precargan OpenTelemetry y propagan W3C Trace Context entre
+peticiones HTTP. Cuando `OTEL_TRACES_EXPORTER=otlp`, consulta el colector por
+`service.name` y `trace_id`; conserva el `x-correlation-id` como clave de
+investigación en logs. Si el colector falla, desactiva temporalmente el exporter
+con `OTEL_TRACES_EXPORTER=none` sin retirar métricas ni health checks.
+
 ## Servicio no disponible
 
 1. Confirma `/health/live` y `/health/ready` en la réplica afectada.

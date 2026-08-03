@@ -25,6 +25,17 @@ test('validation rejects placeholders, reused secrets, and unsafe RabbitMQ defau
   assert.ok(errors.some((error) => error.includes('must not be guest')));
 });
 
+test('validation rejects an unsafe or incomplete OpenTelemetry exporter', () => {
+  const errors = validateDokployEnvironment({
+    ROUTE_TARGET_OVERRIDES: '{}',
+    OTEL_TRACES_EXPORTER: 'otlp',
+    OTEL_EXPORTER_OTLP_PROTOCOL: 'grpc',
+    OTEL_EXPORTER_OTLP_ENDPOINT: 'http://token:secret@collector:4318',
+  }, '');
+  assert.ok(errors.some((error) => error.includes('must be http/protobuf')));
+  assert.ok(errors.some((error) => error.includes('must not embed credentials')));
+});
+
 test('the env parser preserves JSON and URL values', () => {
   assert.deepEqual(parseEnvFile('ROUTE_TARGET_OVERRIDES={"/a":"identity"}\nURL=postgresql://u:p@db:5432/x?schema=public\n'), {
     ROUTE_TARGET_OVERRIDES: '{"/a":"identity"}', URL: 'postgresql://u:p@db:5432/x?schema=public',
@@ -61,6 +72,32 @@ test('application images run as non-root users', async () => {
     const source = await readFile(new URL(dockerfile, import.meta.url), 'utf8');
     assert.match(source, /\nUSER (?!root\b)[^\n]+/, `${dockerfile} must declare a non-root runtime user`);
   }
+});
+
+test('all Node runtime images preload OpenTelemetry before application code', async () => {
+  const workspaceDockerfiles = [
+    '../../services/api-gateway/Dockerfile',
+    '../../services/identity-service/Dockerfile',
+    '../../services/academic-service/Dockerfile',
+    '../../services/attendance-service/Dockerfile',
+    '../../services/coordination-query-service/Dockerfile',
+  ];
+  for (const dockerfile of workspaceDockerfiles) {
+    const source = await readFile(new URL(dockerfile, import.meta.url), 'utf8');
+    assert.match(source, /COPY packages\/observability packages\/observability/);
+    assert.match(source, /npm ci[^\n]*--workspace @presencia\/observability/);
+    assert.match(source, /CMD \["node", "--import", "@presencia\/observability\/register"/);
+  }
+  const uatDockerfile = await readFile(new URL('../../backend-apirest/Dockerfile', import.meta.url), 'utf8');
+  assert.match(uatDockerfile, /CMD \["node", "--import", "\.\/instrumentation-loader\.mjs"/);
+
+  const compose = await readFile(composeUrl, 'utf8');
+  for (const serviceName of [
+    'presencia-api-gateway', 'presencia-uat-integration', 'presencia-identity',
+    'presencia-academic', 'presencia-attendance', 'presencia-coordination-query',
+  ]) assert.match(compose, new RegExp(`OTEL_SERVICE_NAME: ${serviceName}`));
+  assert.match(compose, /OTEL_METRICS_EXPORTER: none/);
+  assert.match(compose, /OTEL_LOGS_EXPORTER: none/);
 });
 
 test('Dokploy runtime services use the hardened read-only profile', async () => {
