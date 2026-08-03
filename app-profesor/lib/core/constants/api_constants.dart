@@ -21,6 +21,26 @@ class ApiConstants {
     'PRESENCIA_DEBUG_SIMULATE_ROOM_BEACON',
     defaultValue: false,
   );
+  static bool runtimeDemoMode = false;
+  static bool runtimeSimulateRoomBeacon = false;
+
+  static bool get isDemoMode => presenciaDebugMode || runtimeDemoMode;
+  static bool get shouldSimulateRoomBeacon =>
+      runtimeSimulateRoomBeacon ||
+      (presenciaDebugMode && debugSimulateRoomBeacon);
+
+  static void configureRuntimeMode({
+    required bool demoMode,
+    bool simulateRoomBeacon = false,
+  }) {
+    runtimeDemoMode = demoMode;
+    runtimeSimulateRoomBeacon = demoMode && simulateRoomBeacon;
+    Logger.info(
+      'Runtime mode: ${isDemoMode ? 'demo' : 'uat'}; '
+      'simulated beacon: $shouldSimulateRoomBeacon',
+    );
+  }
+
   static const String debugExtraClassCode = String.fromEnvironment(
     'PRESENCIA_DEBUG_EXTRA_CLASS_CODE',
     defaultValue: '990001',
@@ -77,7 +97,7 @@ class ApiConstants {
   static void printConfig() {
     Logger.info('API Configuration:');
     Logger.info('   API Gateway baseUrl: $baseUrl');
-    Logger.info('   Debug mode: $presenciaDebugMode');
+    Logger.info('   Debug mode: $isDemoMode');
     Logger.info('   Debug extra current class: $debugExtraCurrentClass');
     Logger.info('   Debug simulate room beacon: $debugSimulateRoomBeacon');
     Logger.info('   Debug extra class hours: $debugExtraClassHours');

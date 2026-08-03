@@ -25,7 +25,7 @@ describe('Attendance HTTP API', () => {
       method: 'POST', url: '/internal/v1/attendance/device-bindings/initial',
       headers: { 'x-internal-service-token': token, 'x-correlation-id': 'request-1' },
       payload: {
-        matricula: '2251330007', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+        matricula: '9900000001', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
         deviceBindingId: '12345678-1234-4234-9234-123456789abd', platform: 'android',
       },
     });
@@ -40,7 +40,7 @@ describe('Attendance HTTP API', () => {
       method: 'POST', url: '/internal/v1/attendance/device-bindings/initial',
       headers: { 'x-internal-service-token': token },
       payload: {
-        matricula: '2251330007',
+        matricula: '9900000001',
         attendanceUuid: '12345678-1234-4234-9234-123456789abc',
       },
     });
@@ -55,7 +55,7 @@ describe('Attendance HTTP API', () => {
       method: 'POST', url: '/internal/v1/attendance/device-bindings/initial',
       headers: { 'x-internal-service-token': token },
       payload: {
-        matricula: '2251330007', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+        matricula: '9900000001', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
         deviceBindingId: '12345678-1234-4234-9234-123456789abd', platform: 'android',
       },
     });
@@ -64,12 +64,12 @@ describe('Attendance HTTP API', () => {
       method: 'POST', url: '/api/student-device-bindings',
       headers: { authorization: `Bearer ${bindingToken}` },
       payload: {
-        matricula: '2251330007', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+        matricula: '9900000001', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
         deviceBindingId: '12345678-1234-4234-9234-123456789abd', platform: 'android',
       },
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json().data).toMatchObject({ matricula: '2251330007', bindingVersion: 1 });
+    expect(response.json().data).toMatchObject({ matricula: '9900000001', bindingVersion: 1 });
     expect(response.json().data.bindingToken.split('.')).toHaveLength(3);
     await app.close();
   });
@@ -92,6 +92,32 @@ describe('Attendance HTTP API', () => {
     await app.close();
   });
 
+  it('forces external upload skipping for captures when demo mode is active', async () => {
+    let command: Record<string, unknown> | undefined;
+    const app = await testApp({
+      debugMode: true,
+      capture: async (input) => {
+        command = input as unknown as Record<string, unknown>;
+        return {
+          attendanceSessionId: 'session-demo', externalGroupId: '990000', date: '2026-08-03',
+          entriesCount: 1, uploadStatus: 'SKIPPED', duplicate: false, version: 1,
+        };
+      },
+    });
+    const response = await app.inject({
+      method: 'POST', url: '/internal/v1/attendance/captures',
+      headers: { 'x-internal-service-token': token, 'idempotency-key': '74b29734-65a8-48b2-9e6e-8cd01f1a0016' },
+      payload: {
+        externalGroupId: '990000', professorExternalId: '90000', date: '2026-08-03',
+        entries: [{ matricula: 'DEMO0001', status: 'PRESENT' }],
+      },
+    });
+    expect(response.statusCode).toBe(202);
+    expect(response.json().data.uploadStatus).toBe('SKIPPED');
+    expect(command).toMatchObject({ skipExternalUpload: true });
+    await app.close();
+  });
+
   it('rejects professor timestamps on attendance captures', async () => {
     const app = await testApp();
     const response = await app.inject({
@@ -103,7 +129,7 @@ describe('Attendance HTTP API', () => {
       payload: {
         externalGroupId: '947699', professorExternalId: 'teacher-1', date: '2026-08-02',
         professorEntryAt: '2026-08-02T08:00:00.000Z',
-        entries: [{ matricula: '2251330007', status: 'PRESENT' }],
+        entries: [{ matricula: '9900000001', status: 'PRESENT' }],
       },
     });
     expect(response.statusCode).toBe(400);
@@ -155,13 +181,13 @@ describe('Attendance HTTP API', () => {
     const app = await testApp();
     const hidden = await app.inject({
       method: 'POST', url: '/internal/v1/attendance/device-bindings/resolve',
-      payload: { professorExternalId: 'teacher-1', matriculas: ['2251330007'] },
+      payload: { professorExternalId: 'teacher-1', matriculas: ['9900000001'] },
     });
     expect(hidden.statusCode).toBe(404);
     const response = await app.inject({
       method: 'POST', url: '/internal/v1/attendance/device-bindings/resolve',
       headers: { 'x-internal-service-token': token },
-      payload: { professorExternalId: 'teacher-1', matriculas: ['2251330007'] },
+      payload: { professorExternalId: 'teacher-1', matriculas: ['9900000001'] },
     });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ data: [], missing: [] });
@@ -229,10 +255,13 @@ describe('Attendance HTTP API', () => {
   });
 });
 
-async function testApp() {
+async function testApp(options: {
+  debugMode?: boolean;
+  capture?: (input: unknown) => Promise<unknown>;
+} = {}) {
   const now = new Date('2026-08-02T12:00:00.000Z');
   const binding = {
-    id: 'binding-1', matricula: '2251330007',
+    id: 'binding-1', matricula: '9900000001',
     attendanceUuid: '12345678-1234-4234-9234-123456789abc',
     deviceBindingId: '12345678-1234-4234-9234-123456789abd',
     platform: 'android', deviceInfo: null, bindingVersion: 1, active: true, updatedAt: now,
@@ -278,9 +307,10 @@ async function testApp() {
     env: attendanceEnvSchema.parse({
       NODE_ENV: 'test', INTERNAL_API_TOKEN: token,
       BINDING_JWT_SECRET: 'test-binding-jwt-secret-with-at-least-32-characters',
+      PRESENCIA_DEBUG_MODE: options.debugMode ?? false,
     }),
     repository,
-    captures: { capture: async () => { throw new Error('unexpected'); } } as never,
+    captures: { capture: options.capture ?? (async () => { throw new Error('unexpected'); }) } as never,
     bindings: new DeviceBindingService(repository),
     beacons: new ClassroomBeaconService(repository),
     presence: new PresenceObservationService(repository, 'America/Monterrey', () => now),

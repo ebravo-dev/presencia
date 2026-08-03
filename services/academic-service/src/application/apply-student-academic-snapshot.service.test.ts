@@ -42,7 +42,7 @@ function makeSnapshot(): StudentAcademicSnapshot {
   return {
     snapshotId: '6af650f3-6772-4d72-b23b-837390c24701', correlationId: 'request-1', causationId: 'request-1',
     synchronizedAt: new Date('2026-08-02T12:00:00.000Z'),
-    student: { matricula: '2251330007', displayName: 'Ana Alumna', email: 'ana@alumnos.uat.edu.mx' },
+    student: { matricula: '9900000001', displayName: 'Ana Alumna', email: 'ana@alumnos.uat.edu.mx' },
     career: { planExternalId: '3313', name: 'Ingenieria en Sistemas', coordinationExternalId: '12' },
     cycle: { externalId: '151', name: '2026 - 2 VERANO' },
     schedule: [{ externalGroupId: '947699', groupLetter: 'A', subjectName: 'Calculo', schedule: {} }],

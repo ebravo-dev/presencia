@@ -212,7 +212,7 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
       if (delegated && !(await this.hasActiveGroupAccess(transaction, group.externalGroupId, command.professorExternalId))) {
         throw new AttendanceDomainError('PROFESSOR_GROUP_FORBIDDEN', 'El profesor no es titular del grupo indicado.');
       }
-      const uploadStatus = delegated ? 'SKIPPED' as const : 'PENDING' as const;
+      const uploadStatus = delegated || command.skipExternalUpload ? 'SKIPPED' as const : 'PENDING' as const;
       const rosterByMatricula = new Map(group.students.map((student) => [student.matricula, student]));
       const rosterByUatId = new Map(group.students.flatMap((student) => student.uatStudentId ? [[student.uatStudentId, student] as const] : []));
       const resolvedEntries = command.entries.map((entry) => ({

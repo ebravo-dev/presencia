@@ -22,7 +22,7 @@ const teacherPassword = 'teacher-ci-password';
 const studentUsername = 'student-ci@alumnos.uat.edu.mx';
 const studentPassword = 'student-ci-password';
 const professorExternalId = '42';
-const matricula = '2251330007';
+const matricula = '9900000001';
 
 const teacherSession = await request(gatewayUrl, '/api/uat/sessions', {
   method: 'POST', expected: 201, body: { username: teacherUsername, password: teacherPassword },

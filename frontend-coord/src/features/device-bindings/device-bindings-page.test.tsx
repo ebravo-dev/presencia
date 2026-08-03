@@ -9,7 +9,7 @@ import { DeviceBindingsPage } from './device-bindings-page';
 
 const binding = {
   id: 'binding-1',
-  matricula: '2251330007',
+  matricula: '9900000001',
   attendanceUuid: '88f639df-7d52-46ac-baf4-35cb96d1f269',
   deviceBindingId: 'device-1',
   platform: 'android',
@@ -17,7 +17,7 @@ const binding = {
   createdAt: '2026-08-03T12:00:00.000Z',
   updatedAt: '2026-08-03T12:00:00.000Z',
   students: [{
-    id: 'student-1', matricula: '2251330007', name: 'Alumno de prueba',
+    id: 'student-1', matricula: '9900000001', name: 'Alumno de prueba',
     group: {
       code: 'TEST-101', groupLetter: 'A', name: 'Grupo de prueba',
       classroom: 'AULA 1', period: '2026-2',
@@ -50,7 +50,7 @@ describe('DeviceBindingsPage', () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Autorizar cambio' }));
 
-    await waitFor(() => expect(deletedMatricula).toBe('2251330007'));
+    await waitFor(() => expect(deletedMatricula).toBe('9900000001'));
     expect(await screen.findByRole('status')).toHaveTextContent('El alumno podrá vincular su nuevo celular');
   });
 

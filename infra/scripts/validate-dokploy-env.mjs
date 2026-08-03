@@ -8,6 +8,7 @@ const SECRET_FIELDS = [
   'INTERNAL_API_TOKEN', 'METRICS_TOKEN', 'UAT_METRICS_TOKEN', 'IDENTITY_METRICS_TOKEN',
   'ACADEMIC_METRICS_TOKEN', 'ATTENDANCE_METRICS_TOKEN', 'COORDINATION_QUERY_METRICS_TOKEN',
   'BINDING_JWT_SECRET', 'ATTENDANCE_JOB_ENCRYPTION_SECRET', 'UAT_SESSION_ENCRYPTION_SECRET',
+  'DEMO_SESSION_SECRET',
 ];
 
 const URL_FIELDS = [
@@ -47,7 +48,7 @@ export function validateDokployEnvironment(environment, composeSource) {
     if (value.length < 32) errors.push(`${field} must contain at least 32 characters.`);
     if (/replace-with|change-me|example/i.test(value)) errors.push(`${field} still contains an example placeholder.`);
   }
-  for (const field of ['SUPER_USER_PASSWORD', 'COORDINATOR_PASSWORD']) {
+  for (const field of ['SUPER_USER_PASSWORD', 'COORDINATOR_PASSWORD', 'PRESENCIA_DEMO_DEFAULT_PASSWORD']) {
     const value = environment[field];
     if (value && value.length < 12) errors.push(`${field} must contain at least 12 characters.`);
     if (value && /replace-with|change-me|example/i.test(value)) errors.push(`${field} still contains an example placeholder.`);
@@ -111,6 +112,12 @@ export function validateDokployEnvironment(environment, composeSource) {
     }
   }
   if (environment.RABBITMQ_USER === 'guest') errors.push('RABBITMQ_USER must not be guest in production.');
+  if (environment.PRESENCIA_DEBUG_MODE && !['true', 'false'].includes(environment.PRESENCIA_DEBUG_MODE)) {
+    errors.push('PRESENCIA_DEBUG_MODE must be true or false.');
+  }
+  if (environment.PRESENCIA_DEBUG_MODE === 'true' && environment.DEPLOYMENT_ENVIRONMENT !== 'demo') {
+    errors.push('PRESENCIA_DEBUG_MODE=true requires DEPLOYMENT_ENVIRONMENT=demo in an isolated Dokploy project.');
+  }
   return errors;
 }
 

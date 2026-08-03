@@ -17,14 +17,6 @@ export class SessionController {
     const response = await this.uatService.toSessionResponse(session);
 
     try {
-      if (env.PRESENCIA_DEBUG_MODE) {
-        request.log.info(
-          { sessionId: session.id, username: credentials.username },
-          'Modo debug activo: login validado; cosecha UAT deshabilitada.',
-        );
-        return reply.code(201).send(response);
-      }
-
       await this.eventBus.publish(
         createTeacherAuthenticatedEvent({
           sessionId: session.id,
@@ -34,11 +26,18 @@ export class SessionController {
           loginParameters: session.login.parametros,
         }),
       );
+      if (env.PRESENCIA_DEBUG_MODE) {
+        request.log.info({ sessionId: session.id }, 'Modo demo activo: cosecha encolada desde el portal simulado.');
+      }
     } catch (error) {
       request.log.error({ err: error, sessionId: session.id }, 'No fue posible despachar la cosecha post-autenticacion.');
     }
 
-    return reply.code(201).send(response);
+    return reply.code(201).send({
+      ...response,
+      demoMode: env.PRESENCIA_DEBUG_MODE,
+      demoCapabilities: { simulateRoomBeacon: env.PRESENCIA_DEBUG_MODE },
+    });
   };
 
   sync = async (request: FastifyRequest, reply: FastifyReply) => {

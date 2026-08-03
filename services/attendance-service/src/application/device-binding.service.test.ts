@@ -12,18 +12,18 @@ describe('DeviceBindingService', () => {
     };
     const service = new DeviceBindingService(repository);
     await expect(service.bindAfterUatAuthentication({
-      matricula: ' 2251330007 ', attendanceUuid: '12345678-1234-4234-9234-123456789ABC',
+      matricula: ' 9900000001 ', attendanceUuid: '12345678-1234-4234-9234-123456789ABC',
       platform: ' Android ', correlationId: 'request-1',
     })).rejects.toThrow('stop');
     expect(received).toMatchObject({
-      matricula: '2251330007', attendanceUuid: '12345678-1234-4234-9234-123456789abc', platform: 'android',
+      matricula: '9900000001', attendanceUuid: '12345678-1234-4234-9234-123456789abc', platform: 'android',
     });
   });
 
   it('requires an auditable reason for coordinator changes', async () => {
     const service = new DeviceBindingService(repositoryStub());
     expect(() => service.replaceByCoordinator({
-      matricula: '2251330007', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+      matricula: '9900000001', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
       actorIdentityId: 'coord-1', actorRole: 'COORDINATOR', reason: 'cambio', correlationId: 'request-1',
     })).toThrow('motivo auditable');
   });
@@ -31,7 +31,7 @@ describe('DeviceBindingService', () => {
   it('only reconciles the exact active binding represented by the scoped token', async () => {
     const repository = repositoryStub();
     repository.bindingByMatricula = async () => ({
-      id: 'binding-1', matricula: '2251330007',
+      id: 'binding-1', matricula: '9900000001',
       attendanceUuid: '12345678-1234-4234-9234-123456789abc',
       deviceBindingId: '12345678-1234-4234-9234-123456789abd',
       platform: 'android', deviceInfo: null, bindingVersion: 3, active: true,
@@ -39,10 +39,10 @@ describe('DeviceBindingService', () => {
     });
     const service = new DeviceBindingService(repository);
     await expect(service.reconcileExisting({
-      matricula: '2251330007', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+      matricula: '9900000001', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
       deviceBindingId: '12345678-1234-4234-9234-123456789abd', correlationId: 'request-1',
     }, {
-      subject: 'binding-1', matricula: '2251330007',
+      subject: 'binding-1', matricula: '9900000001',
       deviceBindingId: '12345678-1234-4234-9234-123456789abd', bindingVersion: 3,
     })).resolves.toMatchObject({ created: false, duplicate: true });
   });
@@ -50,16 +50,16 @@ describe('DeviceBindingService', () => {
   it('rejects a revoked token version without reactivating the binding', async () => {
     const repository = repositoryStub();
     repository.bindingByMatricula = async () => ({
-      id: 'binding-1', matricula: '2251330007',
+      id: 'binding-1', matricula: '9900000001',
       attendanceUuid: '12345678-1234-4234-9234-123456789abc', deviceBindingId: null,
       platform: 'ios', deviceInfo: null, bindingVersion: 4, active: false,
       updatedAt: new Date('2026-08-03T12:00:00.000Z'),
     });
     const service = new DeviceBindingService(repository);
     await expect(service.reconcileExisting({
-      matricula: '2251330007', attendanceUuid: '12345678-1234-4234-9234-123456789abc', correlationId: 'request-1',
+      matricula: '9900000001', attendanceUuid: '12345678-1234-4234-9234-123456789abc', correlationId: 'request-1',
     }, {
-      subject: 'binding-1', matricula: '2251330007', deviceBindingId: null, bindingVersion: 3,
+      subject: 'binding-1', matricula: '9900000001', deviceBindingId: null, bindingVersion: 3,
     })).rejects.toMatchObject({ code: 'DEVICE_BINDING_TOKEN_REVOKED' });
   });
 
@@ -73,11 +73,11 @@ describe('DeviceBindingService', () => {
     const service = new DeviceBindingService(repository);
     await service.resolveForProfessor({
       professorExternalId: ' teacher-1 ',
-      matriculas: [' 2251330007 ', '2251330007', ' 2251330008'],
+      matriculas: [' 9900000001 ', '9900000001', ' 2251330008'],
     });
     expect(received).toEqual({
       professorExternalId: 'teacher-1',
-      matriculas: ['2251330007', '2251330008'],
+      matriculas: ['9900000001', '2251330008'],
     });
   });
 });

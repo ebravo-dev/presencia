@@ -30,6 +30,7 @@ export interface CaptureAttendanceCommand {
   readonly professorExternalId: string;
   readonly externalGroupId: string;
   readonly date: string;
+  readonly skipExternalUpload?: boolean | undefined;
   readonly entries: readonly {
     matricula?: string | undefined;
     uatStudentId?: number | undefined;

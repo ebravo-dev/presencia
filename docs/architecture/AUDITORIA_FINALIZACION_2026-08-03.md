@@ -124,10 +124,13 @@ reglas de alerta y respuesta a incidentes están versionados en el runbook; su
 calibración con tráfico real y la conexión del colector siguen siendo gates del
 host Dokploy.
 
-Las seis imágenes HTTP precargan OpenTelemetry antes de iniciar Fastify, asignan
+Las seis imágenes HTTP auditadas precargan OpenTelemetry antes de iniciar Fastify, asignan
 un `service.name` independiente y pueden exportar trazas OTLP/HTTP al colector
 privado configurado en Dokploy. La exportación queda desactivada por defecto;
 Prometheus permanece como fuente de métricas y los logs no se duplican por OTLP.
+Después de esta auditoría se añadió `demo-portal-service` como auxiliar privado
+para demostraciones; usa el mismo preload, pero no altera los seis límites de
+dominio del producto.
 El registro y la exportación de un span se probaron directamente con el runtime
 Node 24 usado por las imágenes; todavía falta observar una traza cruzada en el
 stack reconstruido y en el colector de Dokploy.

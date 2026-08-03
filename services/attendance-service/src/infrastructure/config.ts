@@ -1,9 +1,15 @@
 import { z } from 'zod';
 
+const booleanValue = z.preprocess(
+  (value) => value === true || value === 'true' ? true : value === false || value === 'false' ? false : value,
+  z.boolean(),
+);
+
 export const attendanceEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().positive().default(3400),
+  PRESENCIA_DEBUG_MODE: booleanValue.default(false),
   APP_TIME_ZONE: z.string().min(1).refine(isValidTimeZone, 'APP_TIME_ZONE must be a valid IANA timezone').default('America/Monterrey'),
   DATABASE_URL: z.string().min(1).default('postgresql://postgres:postgres@localhost:5432/presencia_attendance_v2?schema=public'),
   RABBITMQ_URL: z.string().min(1).default('amqp://guest:guest@localhost:5672'),

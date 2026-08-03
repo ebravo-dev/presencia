@@ -514,7 +514,8 @@ Criterio de salida:
 
 Avance al 3 de agosto de 2026: estructura de workspaces, contratos HTTP/eventos,
 API Gateway, Redis, RabbitMQ, PostgreSQL aislado por servicio y Compose para
-Dokploy implementados. Las seis imágenes precargan OpenTelemetry con propagación
+Dokploy implementados. Las seis imágenes del producto y el portal auxiliar de
+demo precargan OpenTelemetry con propagación
 W3C y exportación OTLP opcional; Prometheus conserva las métricas operativas.
 El stack escalado, restauración y failover fueron validados localmente antes de
 añadir el preload. Después del cambio pasan el preload con Node 24, las pruebas y
@@ -735,7 +736,7 @@ de esquema deberán ser compatibles hacia atrás durante el periodo de corte.
 | Pérdida de historial durante backfill | backups, IDs preservados, hashes y reconciliación |
 | Eventos duplicados | inbox con `eventId` único e idempotencia |
 | Evento perdido después de commit | outbox dentro de la misma transacción |
-| Demasiados servicios para operar | sólo seis deployables y extracción por dominio |
+| Demasiados servicios para operar | seis deployables de producto; el séptimo es un portal auxiliar privado sólo para entornos demo |
 | Latencia por cadenas síncronas | máximo dos saltos y modelos locales de lectura |
 | UAT inestable | circuit breaker, cola durable y degradación funcional |
 | Contratos móviles incompatibles | gateway y pruebas de caracterización |

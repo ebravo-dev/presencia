@@ -55,9 +55,11 @@ El Compose automatiza el orden:
    ni bloqueos administrados desde Identity.
 5. Coordination Query crea su cola durable y reconstruye su modelo desde
    snapshots de Academic y Attendance.
-6. UAT Integration arranca después de sus dependencias. El proceso HTTP del
+6. El portal demo privado arranca con Redis. En producción permanece inactivo;
+   en un proyecto demo sustituye ambos portales UAT sin publicar puertos.
+7. UAT Integration arranca después de sus dependencias. El proceso HTTP del
    monolito ya no forma parte del runtime.
-7. UAT Integration comprueba PostgreSQL, Redis, RabbitMQ, Identity, Academic,
+8. UAT Integration comprueba PostgreSQL, Redis, RabbitMQ, Identity, Academic,
    Attendance y Coordination Query en su readiness. El Gateway también exige
    readiness de todos sus upstreams antes de que arranque la web.
 
@@ -66,6 +68,8 @@ réplicas únicamente de `api-gateway`, `uat-integration`, `identity-service`,
 `academic-service`, `attendance-service` y `coordination-query-service`. Los
 jobs `*-migrate`, `*-import`, PostgreSQL, Redis y RabbitMQ permanecen únicos
 salvo que se sustituyan por servicios administrados de alta disponibilidad.
+`demo-portal-service` también permanece en una sola réplica y sólo almacena
+catálogos ficticios del proyecto demo.
 Nginx vuelve a resolver `api-gateway` mediante el DNS interno de Docker, por lo
 que el frontend conserva servicio si una réplica desaparece.
 
@@ -121,10 +125,10 @@ autorizadas permanecen fuera de CI.
 
 El login de coordinación y superusuario, sus sesiones revocables y las cuentas
 del personal pertenecen a Identity. El BFF conserva `/api/coordinacion/auth/*`
-y `/api/superUsuario/*`; delega beacons y vinculaciones a Attendance. Las
-herramientas debug heredadas están retiradas: el panel conserva una vista de
-estado, las lecturas devuelven colecciones vacías y toda mutación responde
-`410 LEGACY_DEBUG_RETIRED`.
+y `/api/superUsuario/*`; delega beacons y vinculaciones a Attendance. El modo
+demo nuevo se activa con `PRESENCIA_DEBUG_MODE=true` exclusivamente en un
+proyecto aislado con `DEPLOYMENT_ENVIRONMENT=demo`. El panel administra cuentas
+ficticias, materias, padrones y simulaciones; consulta [MODO_DEMO.md](MODO_DEMO.md).
 
 El dashboard divide el shell en chunks cacheables y carga los exportadores de
 Excel/PDF sólo cuando se solicitan, reduciendo el JavaScript inicial servido por
@@ -185,7 +189,8 @@ a las plataformas UAT reales.
 
 ## Trazas distribuidas
 
-Las seis imágenes HTTP precargan OpenTelemetry antes del código de aplicación.
+Las seis imágenes HTTP del producto y el portal auxiliar de demo precargan
+OpenTelemetry antes del código de aplicación.
 La exportación está desactivada por defecto para que la ausencia de un colector
 no afecte disponibilidad. Para activarla en Dokploy, conecta un OpenTelemetry
 Collector a la red privada del proyecto y configura:

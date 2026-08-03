@@ -46,6 +46,8 @@ x-uat-environment: &uat-environment
   RABBITMQ_URL: ${RABBITMQ_URL:?RABBITMQ_URL is required}
   UAT_BASE_URL: ${UAT_BASE_URL:-https://administracionescolar.uat.edu.mx}
   UAT_ALUMNOS_BASE_URL: ${UAT_ALUMNOS_BASE_URL:-https://alumnossur.uat.edu.mx}
+  PRESENCIA_DEBUG_MODE: ${PRESENCIA_DEBUG_MODE:-false}
+  PRESENCIA_DEMO_PORTAL_URL: http://demo-portal-service:3900
   UAT_HTTP_TIMEOUT_MS: ${UAT_HTTP_TIMEOUT_MS:-30000}
   UAT_SESSION_TTL_MINUTES: ${UAT_SESSION_TTL_MINUTES:-45}
   UAT_ID_CICLO_ESCOLAR: ${UAT_ID_CICLO_ESCOLAR:-150}
@@ -100,12 +102,30 @@ x-attendance-service-environment: &attendance-service-environment
   HOST: 0.0.0.0
   PORT: 3400
   APP_TIME_ZONE: ${APP_TIME_ZONE:-America/Monterrey}
+  PRESENCIA_DEBUG_MODE: ${PRESENCIA_DEBUG_MODE:-false}
   DATABASE_URL: ${ATTENDANCE_SERVICE_DATABASE_URL:?ATTENDANCE_SERVICE_DATABASE_URL is required}
   RABBITMQ_URL: ${RABBITMQ_URL:?RABBITMQ_URL is required}
   INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
   BINDING_JWT_SECRET: ${BINDING_JWT_SECRET:?BINDING_JWT_SECRET is required}
   METRICS_TOKEN: ${ATTENDANCE_METRICS_TOKEN:?ATTENDANCE_METRICS_TOKEN is required}
   OTEL_SERVICE_NAME: presencia-attendance
+
+x-demo-portal-environment: &demo-portal-environment
+  <<: *otel-environment
+  NODE_ENV: production
+  HOST: 0.0.0.0
+  PORT: 3900
+  PRESENCIA_DEBUG_MODE: ${PRESENCIA_DEBUG_MODE:-false}
+  PRESENCIA_DEMO_SEED: ${PRESENCIA_DEBUG_MODE:-false}
+  PRESENCIA_DEMO_DEFAULT_PASSWORD: ${PRESENCIA_DEMO_DEFAULT_PASSWORD:?PRESENCIA_DEMO_DEFAULT_PASSWORD is required}
+  PRESENCIA_DEMO_CYCLE_ID: ${PRESENCIA_DEMO_CYCLE_ID:-150}
+  PRESENCIA_DEMO_CYCLE_NAME: ${PRESENCIA_DEMO_CYCLE_NAME:-2026-3}
+  PRESENCIA_DEMO_COORDINATION_ID: ${PRESENCIA_DEMO_COORDINATION_ID:-12}
+  PRESENCIA_DEMO_COORDINATION_NAME: ${PRESENCIA_DEMO_COORDINATION_NAME:-Coordinación Demo}
+  REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+  INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
+  DEMO_SESSION_SECRET: ${DEMO_SESSION_SECRET:?DEMO_SESSION_SECRET is required}
+  OTEL_SERVICE_NAME: presencia-demo-portal
 
 x-coordination-query-environment: &coordination-query-environment
   <<: *otel-environment
@@ -221,6 +241,28 @@ services:
       retries: 10
     networks: [private]
 
+  demo-portal-service:
+    <<: *node-runtime-hardening
+    image: presencia-demo-portal:${IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: services/demo-portal-service/Dockerfile
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 15s
+    environment: *demo-portal-environment
+    depends_on:
+      redis:
+        condition: service_healthy
+    expose: ["3900"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3900/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks: [private]
+
   attendance-migrate:
     image: presencia-attendance:${IMAGE_TAG:-latest}
     build:
@@ -295,6 +337,8 @@ services:
       attendance-service:
         condition: service_healthy
       coordination-query-service:
+        condition: service_healthy
+      demo-portal-service:
         condition: service_healthy
     expose: ["3100"]
     healthcheck:

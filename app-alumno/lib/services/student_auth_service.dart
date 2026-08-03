@@ -12,12 +12,14 @@ class StudentAuthResult {
   final String deviceBindingToken;
   final StudentAcademicProfile profile;
   final String sessionId;
+  final bool demoMode;
 
   const StudentAuthResult({
     required this.matricula,
     required this.deviceBindingToken,
     required this.profile,
     required this.sessionId,
+    required this.demoMode,
   });
 }
 
@@ -85,6 +87,7 @@ class StudentAuthService {
         institutionalEmail: username,
       ),
       sessionId: sessionId,
+      demoMode: decoded['demoMode'] == true,
     );
   }
 

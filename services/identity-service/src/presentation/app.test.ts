@@ -40,7 +40,7 @@ describe('Identity HTTP API', () => {
       url: '/internal/v1/authenticated-sessions',
       headers: { 'x-internal-service-token': internalToken },
       payload: {
-        kind: 'STUDENT', role: 'STUDENT', institutionalIdentifier: '2251330007',
+        kind: 'STUDENT', role: 'STUDENT', institutionalIdentifier: '9900000001',
         displayName: 'Alumno', source: 'UAT_STUDENT', correlationId: 'request-1',
       },
     });

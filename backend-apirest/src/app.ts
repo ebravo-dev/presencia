@@ -25,6 +25,7 @@ import { AcademicServiceClient } from './infrastructure/http/client/academic-ser
 import { AttendanceServiceCommandClient } from './infrastructure/http/client/attendance-service-command.client.js';
 import { AttendanceCaptureClient } from './infrastructure/http/client/attendance-capture.client.js';
 import { CoordinationQueryClient } from './infrastructure/http/client/coordination-query.client.js';
+import { DemoPortalClient } from './infrastructure/http/client/demo-portal.client.js';
 import { DurableDomainEventBus } from './infrastructure/events/durable-domain-event-bus.js';
 import { registerUatIntegrationMetrics } from './infrastructure/observability/http-metrics.js';
 import { RedisKeyValueStore } from './infrastructure/persistence/redis-key-value.store.js';
@@ -115,6 +116,7 @@ export async function buildApp() {
     env.COORDINATION_QUERY_SERVICE_URL,
     env.INTERNAL_API_TOKEN,
   );
+  const demoPortal = new DemoPortalClient(env.PRESENCIA_DEMO_PORTAL_URL, env.INTERNAL_API_TOKEN);
   const uatStudentService = new UatStudentService(
     studentSessionRepository,
     studentClientFactory,
@@ -132,7 +134,7 @@ export async function buildApp() {
     fastify.log,
   );
   if (env.PRESENCIA_DEBUG_MODE) {
-    fastify.log.warn('Modo debug activo: worker de subida UAT deshabilitado.');
+    fastify.log.warn({ demoPortal: env.PRESENCIA_DEMO_PORTAL_URL }, 'Modo demo activo: UAT real aislada y worker de subida externa deshabilitado.');
   } else {
     await attendanceUploadWorker.start();
   }
@@ -201,6 +203,7 @@ export async function buildApp() {
     activeUatStudentSessions: await uatStudentService.getActiveSessionCount(),
     timestamp: new Date().toISOString(),
     timezone: SERVER_TIME_ZONE,
+    mode: env.PRESENCIA_DEBUG_MODE ? 'demo' : 'uat',
   }));
 
   fastify.get('/health/live', async () => ({
@@ -210,7 +213,7 @@ export async function buildApp() {
   }));
 
   fastify.get('/health/ready', async (_request, reply) => {
-    const [database, redisStatus, identityStatus, academicStatus, attendanceStatus, coordinationQueryStatus] = await Promise.all([
+    const [database, redisStatus, identityStatus, academicStatus, attendanceStatus, coordinationQueryStatus, demoPortalStatus] = await Promise.all([
       prisma.$queryRaw`SELECT 1`.then(() => ({ ok: true })).catch((error: unknown) => ({
         ok: false,
         error: error instanceof Error ? error.message : 'Unknown PostgreSQL error',
@@ -231,10 +234,15 @@ export async function buildApp() {
       coordinationQuery.health().then(() => ({ ok: true })).catch((error: unknown) => ({
         ok: false, error: error instanceof Error ? error.message : 'Unknown Coordination Query error',
       })),
+      env.PRESENCIA_DEBUG_MODE
+        ? demoPortal.health().then(() => ({ ok: true })).catch((error: unknown) => ({
+            ok: false, error: error instanceof Error ? error.message : 'Unknown Demo Portal error',
+          }))
+        : Promise.resolve({ ok: true, disabled: true }),
     ]);
     const rabbitmq = { ok: eventBus.isReady() };
     const ready = database.ok && redisStatus.ok && rabbitmq.ok
-      && identityStatus.ok && academicStatus.ok && attendanceStatus.ok && coordinationQueryStatus.ok;
+      && identityStatus.ok && academicStatus.ok && attendanceStatus.ok && coordinationQueryStatus.ok && demoPortalStatus.ok;
     return reply.code(ready ? 200 : 503).send({
       status: ready ? 'ok' : 'degraded',
       service: 'backend-apirest',
@@ -246,6 +254,7 @@ export async function buildApp() {
         academic: academicStatus,
         attendance: attendanceStatus,
         coordinationQuery: coordinationQueryStatus,
+        demoPortal: demoPortalStatus,
       },
     });
   });
@@ -275,6 +284,9 @@ export async function buildApp() {
     authService: superUserAuthService,
     identityService: identityServiceClient,
     attendanceService: attendanceServiceCommands,
+    attendanceCapture: attendanceCaptureClient,
+    academicService: academicServiceClient,
+    demoPortal,
   });
   await fastify.register(coordinationRoutes, {
     authService: coordinatorAuthService,

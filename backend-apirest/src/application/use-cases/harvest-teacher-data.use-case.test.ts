@@ -89,7 +89,7 @@ describe('HarvestTeacherDataUseCase', () => {
       getSemanasGrupoPorSesion: async () => uatList([{ Id_Grupo: 947699, Fec_Ini: '2026-08-03', Fec_Fin: '2026-08-09' }]),
       getAsistenciaGrupoPorSesion: async () => ({
         source: 'UAT', endpoint: 'BuscaAsistenciaGrupo', query: {}, fetchedAt: new Date().toISOString(),
-        data: { exito: true, alumnos: [{ Id_Alumno: 1, Num_Matricula: '2251330007', Txt_Alumno: 'Ana Alumna' }] },
+        data: { exito: true, alumnos: [{ Id_Alumno: 1, Num_Matricula: '9900000001', Txt_Alumno: 'Ana Alumna' }] },
       }),
     });
 
@@ -101,7 +101,7 @@ describe('HarvestTeacherDataUseCase', () => {
       cycle: { externalId: '150', name: '2026-1' },
       groups: [{
         externalGroupId: '947699', rosterAuthoritative: true,
-        students: [{ matricula: '2251330007', name: 'Ana Alumna', uatStudentId: 1 }],
+        students: [{ matricula: '9900000001', name: 'Ana Alumna', uatStudentId: 1 }],
       }],
     });
     expect(capture.snapshots[0]?.snapshotId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);

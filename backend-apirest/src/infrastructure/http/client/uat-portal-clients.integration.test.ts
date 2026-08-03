@@ -36,7 +36,7 @@ describe('UAT ASP.NET portal clients', () => {
       { Id_Grupo: 947699, Txt_Materia: 'Arquitectura', Txt_Letra: 'A' },
     ]);
     await expect(client.getAsistenciaGrupo({ Id_Grupo: 947699, fec_ini: '2026-08-03', fec_fin: '2026-08-08' })).resolves.toMatchObject({
-      alumnos: [{ Id_Alumno: 515722, Num_Matricula: '2251330007', Txt_Alumno: 'Ana Alumna' }],
+      alumnos: [{ Id_Alumno: 515722, Num_Matricula: '9900000001', Txt_Alumno: 'Ana Alumna' }],
     });
     await expect(client.guardaAsistencias({
       Id_Grupo: 947699,
@@ -50,8 +50,8 @@ describe('UAT ASP.NET portal clients', () => {
     await expect(client.authenticate({ username: 'student@uat.edu.mx', password: 'student-secret' })).resolves.toMatchObject({ exito: true });
     expect(client.getCookieDiagnostics()).toMatchObject({ hasSessionCookie: true, hasAuthCookie: true });
 
-    await expect(client.getCareers()).resolves.toEqual([{ Id_Plan_Estudio: 3314, Num_Matricula: '2251330007' }]);
-    await expect(client.selectCareer(3314)).resolves.toMatchObject({ parametros: { Num_Matricula_AlumnosUAT: '2251330007' } });
+    await expect(client.getCareers()).resolves.toEqual([{ Id_Plan_Estudio: 3314, Num_Matricula: '9900000001' }]);
+    await expect(client.selectCareer(3314)).resolves.toMatchObject({ parametros: { Num_Matricula_AlumnosUAT: '9900000001' } });
     await expect(client.getSchedule()).resolves.toEqual([{ Id_Grupo: 947699, Txt_Materia: 'Arquitectura' }]);
     await expect(client.getPartialGrades()).resolves.toEqual([{ Txt_Materia: 'Arquitectura', Calificacion: 95 }]);
     await expect(client.getFinalGrades()).resolves.toEqual([]);
@@ -105,7 +105,7 @@ async function portalHandler(request: IncomingMessage, response: ServerResponse)
       return json(response, { data: [{ id_grupo: 947699, txt_materia: 'Arquitectura', txt_letra: 'A' }] });
     }
     if (request.method === 'GET' && url.pathname === '/Profesor/ControlAsistencia/BuscaAsistenciaGrupo') {
-      return json(response, { data: [{ id_alumno: 515722, num_lista: 1, num_matricula: '2251330007', txt_alumno: 'Ana Alumna' }] });
+      return json(response, { data: [{ id_alumno: 515722, num_lista: 1, num_matricula: '9900000001', txt_alumno: 'Ana Alumna' }] });
     }
     if (request.method === 'POST' && url.pathname === '/Profesor/ControlAsistencia/GuardaAsistencias') {
       const form = new URLSearchParams(body);
@@ -114,11 +114,11 @@ async function portalHandler(request: IncomingMessage, response: ServerResponse)
       return json(response, { exito: true, mensaje: 'Guardado' });
     }
     if (request.method === 'GET' && url.pathname === '/Home/CarrerasAlumno') {
-      return json(response, { data: [{ Id_Plan_Estudio: 3314, Num_Matricula: '2251330007' }] });
+      return json(response, { data: [{ Id_Plan_Estudio: 3314, Num_Matricula: '9900000001' }] });
     }
     if (request.method === 'POST' && url.pathname === '/Home/SeleccionarCarreraAlumno') {
       expect(new URLSearchParams(body).get('Id_Plan_Estudio')).toBe('3314');
-      return json(response, { parametros: { Num_Matricula_AlumnosUAT: '2251330007' } });
+      return json(response, { parametros: { Num_Matricula_AlumnosUAT: '9900000001' } });
     }
     if (request.method === 'GET' && url.pathname === '/Alumno/Horario/SpuSelHorarioFichaAlumno') {
       return json(response, { data: [{ Id_Grupo: 947699, Txt_Materia: 'Arquitectura' }] });

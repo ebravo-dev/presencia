@@ -20,7 +20,7 @@ describe('UatStudentService', () => {
 
     expect(session.username).toBe('alumno@uat.edu.mx');
     expect(client.selectedPlans).toEqual([3313]);
-    expect(session.selectedCareer.parametros?.Num_Matricula_AlumnosUAT).toBe(2251330007);
+    expect(session.selectedCareer.parametros?.Num_Matricula_AlumnosUAT).toBe(9900000001);
   });
 
   it('crea sesion seleccionando la carrera solicitada', async () => {
@@ -54,7 +54,7 @@ describe('UatStudentService', () => {
 
     expect(bindings).toEqual([
       {
-        matricula: '2251330007',
+        matricula: '9900000001',
         attendanceUuid: '12345678-1234-4234-9234-123456789abc',
         deviceBindingId: '12345678-1234-4234-9234-123456789abd',
         platform: 'android',
@@ -109,7 +109,7 @@ describe('UatStudentService', () => {
     expect(snapshots).toHaveLength(1);
     expect(snapshots[0]).toMatchObject({
       correlationId: 'request-1',
-      student: { matricula: '2251330007', email: 'alumno@uat.edu.mx' },
+      student: { matricula: '9900000001', email: 'alumno@uat.edu.mx' },
       career: { planExternalId: '3313', coordinationExternalId: '12' },
       cycle: { externalId: '151', name: '2026 - 2 VERANO' },
       schedule: [{ externalGroupId: '947699', subjectName: 'Calculo I', credits: 5 }],
@@ -209,14 +209,14 @@ function fakeStudentClient(): UatStudentPortalClientPort & { selectedPlans: numb
   const selectedPlans: number[] = [];
   const careers: UatStudentCareerItem[] = [
     {
-      Num_Matricula: 2251330007,
+      Num_Matricula: 9900000001,
       Id_Plan_Estudio: 3313,
       Id_DES: 12,
       Txt_Programa_Academico: 'INGENIERO EN SISTEMAS COMPUTACIONALES',
       CicloActivo: '2026 - 2 VERANO',
     },
     {
-      Num_Matricula: 2251330007,
+      Num_Matricula: 9900000001,
       Id_Plan_Estudio: 3314,
       Id_DES: 12,
       Txt_Programa_Academico: 'INGENIERO EN TECNOLOGIAS',
@@ -238,7 +238,7 @@ function fakeStudentClient(): UatStudentPortalClientPort & { selectedPlans: numb
         exito: true,
         parametros: {
           Id_Alumno_AlumnosUAT: 515722,
-          Num_Matricula_AlumnosUAT: 2251330007,
+          Num_Matricula_AlumnosUAT: 9900000001,
           Id_Plan_Estudio_AlumnosUAT: idPlanEstudio,
           Id_Ciclo_Escolar_Activo_AlumnosUAT: 151,
           Id_DES_AlumnosUAT: 12,

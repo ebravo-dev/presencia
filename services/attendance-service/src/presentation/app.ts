@@ -66,6 +66,7 @@ export async function buildAttendanceApp(options: {
     const parsed = captureAttendanceSchema.parse(request.body);
     const result = await options.captures.capture({
       ...parsed,
+      skipExternalUpload: options.env.PRESENCIA_DEBUG_MODE,
       idempotencyKey,
       correlationId: correlationId(request),
     });

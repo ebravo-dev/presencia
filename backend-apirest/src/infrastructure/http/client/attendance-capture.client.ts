@@ -19,7 +19,10 @@ export interface AttendanceCaptureInput {
   externalGroupId: string;
   professorExternalId: string;
   date: string;
-  entries: Array<{ uatStudentId: number; status: 'PRESENT' | 'ABSENT' }>;
+  entries: Array<{
+    uatStudentId: number;
+    status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED';
+  }>;
 }
 
 export class AttendanceCaptureClient {

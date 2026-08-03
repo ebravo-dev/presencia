@@ -24,6 +24,7 @@ export class CaptureAttendanceService {
       professorExternalId: normalized.professorExternalId,
       externalGroupId: normalized.externalGroupId,
       date: normalized.date,
+      skipExternalUpload: normalized.skipExternalUpload ?? false,
       entries: normalized.entries,
     })).digest('hex');
     return this.repository.capture(normalized, requestHash);

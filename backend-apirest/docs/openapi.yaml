@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Presencia Backend API REST UAT
-  version: 1.2.0
+  version: 1.3.0
   description: >
     API REST interna para autenticar contra el portal escolar UAT con cookies
     ASP.NET y consultar horarios/examenes de profesor.
@@ -954,13 +954,21 @@ components:
           format: date-time
     SessionResponse:
       type: object
-      required: [sessionId, authenticated, login, createdAt, lastUsedAt, expiresAt]
+      required: [sessionId, authenticated, login, createdAt, lastUsedAt, expiresAt, demoMode]
       properties:
         sessionId:
           type: string
           format: uuid
         authenticated:
           type: boolean
+        demoMode:
+          type: boolean
+          description: Indica que la sesión usa exclusivamente el portal ficticio aislado.
+        demoCapabilities:
+          type: object
+          properties:
+            simulateRoomBeacon:
+              type: boolean
         login:
           $ref: "#/components/schemas/SafeLogin"
         createdAt:

@@ -1,4 +1,5 @@
 import '../../shared/models/profesor.dart';
+import '../../core/constants/api_constants.dart';
 
 class UatSessionModel {
   final String sessionId;
@@ -15,6 +16,11 @@ class UatSessionModel {
 
   factory UatSessionModel.fromJson(Map<String, dynamic> json) {
     final login = _asMap(json['login']);
+    final capabilities = _asMap(json['demoCapabilities']);
+    ApiConstants.configureRuntimeMode(
+      demoMode: json['demoMode'] == true,
+      simulateRoomBeacon: capabilities['simulateRoomBeacon'] == true,
+    );
     return UatSessionModel(
       sessionId: json['sessionId']?.toString() ?? '',
       authenticated: json['authenticated'] == true,

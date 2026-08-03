@@ -20,6 +20,7 @@ presencia/
 
 - [Plan de migración a microservicios](docs/architecture/PLAN_MIGRACION_MICROSERVICIOS.md)
 - [Auditoría de finalización y evidencia](docs/architecture/AUDITORIA_FINALIZACION_2026-08-03.md)
+- [Modo demo aislado](docs/operations/MODO_DEMO.md)
 
 ## backend-apirest
 
@@ -38,6 +39,7 @@ apps y separa datos en bases PostgreSQL independientes:
 - `attendance-service`: asistencia, permisos proyectados y vinculación matrícula/celular/UUID;
 - `coordination-query-service`: dashboard y reportes reconstruibles;
 - `backend-apirest`: integración y anticorrupción con los portales UAT;
+- `demo-portal-service`: sustituto privado de ambos portales cuando el despliegue activa el modo demo;
 - RabbitMQ: eventos durables con reintentos/DLQ;
 - Redis: sesiones UAT compartidas, rate limiting y caché efímera.
 
@@ -73,6 +75,8 @@ validación de secretos, smoke test, rollback y backups está en
 [docs/operations/DOKPLOY.md](docs/operations/DOKPLOY.md).
 Los SLO, alertas Prometheus y procedimientos de incidentes están en
 [docs/operations/RUNBOOK_INCIDENTES.md](docs/operations/RUNBOOK_INCIDENTES.md).
+Para presentar las apps sin datos institucionales, usa un proyecto aislado y
+sigue [docs/operations/MODO_DEMO.md](docs/operations/MODO_DEMO.md).
 
 Para el primer coordinador usa:
 

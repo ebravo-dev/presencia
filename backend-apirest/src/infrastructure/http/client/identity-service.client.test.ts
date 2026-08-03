@@ -21,7 +21,7 @@ describe('IdentityServiceClient', () => {
     const result = await client.createAuthenticatedSession({
       kind: 'STUDENT',
       role: 'STUDENT',
-      institutionalIdentifier: '2251330007',
+      institutionalIdentifier: '9900000001',
       displayName: 'Alumno',
       source: 'UAT_STUDENT',
       correlationId: 'request-1',
@@ -31,7 +31,7 @@ describe('IdentityServiceClient', () => {
     expect(result?.accessToken).toBe('signed-token');
     const request = fetchMock.mock.calls[0]?.[1];
     expect(String(request?.body)).not.toContain('password');
-    expect(JSON.parse(String(request?.body))).toMatchObject({ institutionalIdentifier: '2251330007' });
+    expect(JSON.parse(String(request?.body))).toMatchObject({ institutionalIdentifier: '9900000001' });
   });
 
   it('fails visibly when Identity Service is unavailable', async () => {

@@ -59,8 +59,7 @@ class TeacherBeaconAttendanceService {
       );
       _professorEntryRecorded = existing?.horaEntrada != null;
 
-      if (ApiConstants.presenciaDebugMode &&
-          ApiConstants.debugSimulateRoomBeacon) {
+      if (ApiConstants.shouldSimulateRoomBeacon) {
         final simulatedUuid =
             _roomBeaconUuid ?? ApiConstants.debugExtraBeaconUuid;
         final detection = AltBeaconDetection(

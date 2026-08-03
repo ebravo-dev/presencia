@@ -69,6 +69,11 @@ class ApiService {
       final parametros = _asMap(login['parametros']);
       final sessionId = data['sessionId']?.toString() ?? '';
       final authenticated = data['authenticated'] == true;
+      final capabilities = _asMap(data['demoCapabilities']);
+      ApiConstants.configureRuntimeMode(
+        demoMode: data['demoMode'] == true,
+        simulateRoomBeacon: capabilities['simulateRoomBeacon'] == true,
+      );
       final message =
           login['mensaje']?.toString() ?? 'Sesion UAT creada correctamente';
 
@@ -283,8 +288,7 @@ class ApiService {
     List<Grupo> grupos,
     List<Map<String, dynamic>> beacons,
   ) {
-    if (!ApiConstants.presenciaDebugMode ||
-        !ApiConstants.debugExtraCurrentClass) {
+    if (!ApiConstants.isDemoMode || !ApiConstants.debugExtraCurrentClass) {
       return (grupos: grupos, beacons: beacons);
     }
 

@@ -10,6 +10,10 @@ const DEVELOPMENT_SECRETS = new Set([
   'development-uat-session-secret-change-me',
   'development-uat-metrics-token-change-me',
 ]);
+const booleanValue = z.preprocess(
+  (value) => value === true || value === 'true' ? true : value === false || value === 'false' ? false : value,
+  z.boolean(),
+);
 
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -26,6 +30,7 @@ export const envSchema = z.object({
     .url()
     .default(UAT_ALUMNOS_BASE_URL)
     .transform((value) => value.replace(/\/+$/, '')),
+  PRESENCIA_DEMO_PORTAL_URL: z.string().url().default('http://demo-portal-service:3900').transform((value) => value.replace(/\/+$/, '')),
   UAT_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   UAT_CIRCUIT_FAILURE_THRESHOLD: z.coerce.number().int().positive().max(100).default(5),
   UAT_CIRCUIT_OPEN_MS: z.coerce.number().int().positive().max(600_000).default(30_000),
@@ -33,14 +38,8 @@ export const envSchema = z.object({
     (value) => value === undefined || value === '' ? undefined : value,
     z.coerce.number().int().positive().optional(),
   ),
-  PRESENCIA_DEBUG_MODE: z.preprocess(
-    (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
-    z.boolean().default(false),
-  ),
-  PRESENCIA_DEBUG_VERBOSE_LOGS: z.preprocess(
-    (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
-    z.boolean().default(false),
-  ),
+  PRESENCIA_DEBUG_MODE: booleanValue.default(false),
+  PRESENCIA_DEBUG_VERBOSE_LOGS: booleanValue.default(false),
   UAT_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(45),
   REDIS_URL: z.string().url().default('redis://localhost:6379/0'),
   RABBITMQ_URL: z.string().url().default('amqp://guest:guest@localhost:5672'),
@@ -65,6 +64,18 @@ export const envSchema = z.object({
   UAT_SESSION_ENCRYPTION_SECRET: z.string().min(32).default('development-uat-session-secret-change-me'),
   COORDINATION_WEB_DIST: z.string().optional(),
 }).superRefine((value, ctx) => {
+  if (value.PRESENCIA_DEBUG_MODE) {
+    const demoPortal = new URL(value.PRESENCIA_DEMO_PORTAL_URL);
+    const privateDemoHosts = new Set(['demo-portal-service', 'localhost', '127.0.0.1', '[::1]']);
+    if (!privateDemoHosts.has(demoPortal.hostname)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PRESENCIA_DEMO_PORTAL_URL'],
+        message: 'Debug mode must target the private demo-portal-service or a loopback development host',
+      });
+    }
+  }
+
   if (value.NODE_ENV !== 'production') return;
 
   const secretFields = [
@@ -103,14 +114,6 @@ export const envSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['METRICS_TOKEN'],
       message: 'Metrics token must be distinct from encryption secrets and service tokens',
-    });
-  }
-
-  if (value.PRESENCIA_DEBUG_MODE) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['PRESENCIA_DEBUG_MODE'],
-      message: 'Debug mode cannot be enabled in production',
     });
   }
 

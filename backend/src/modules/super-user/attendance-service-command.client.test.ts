@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AttendanceServiceCommandClient } from './attendance-service-command.client.js';
 
 const command = {
-    matricula: '2251330007',
+    matricula: '9900000001',
     actorIdentityId: 'super-user:dashboard',
     actorRole: 'SUPER_USER' as const,
     reason: 'Cambio autorizado desde el dashboard de coordinación.',
@@ -22,7 +22,7 @@ describe('AttendanceServiceCommandClient', () => {
 
         await client.unbindStudentDevice(command);
 
-        expect(receivedUrl).toBe('http://attendance-service:3400/internal/v1/attendance/device-bindings/2251330007');
+        expect(receivedUrl).toBe('http://attendance-service:3400/internal/v1/attendance/device-bindings/9900000001');
         expect(receivedInit).toMatchObject({
             method: 'DELETE',
             headers: {

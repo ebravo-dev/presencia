@@ -269,7 +269,7 @@ class _DebugModeOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!ApiConstants.presenciaDebugMode) {
+    if (!ApiConstants.isDemoMode) {
       return child ?? const SizedBox.shrink();
     }
 

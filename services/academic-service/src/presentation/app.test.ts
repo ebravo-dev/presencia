@@ -37,7 +37,7 @@ describe('Academic HTTP API', () => {
       payload: {
         snapshotId: '6af650f3-6772-4d72-b23b-837390c24701', correlationId: 'request-1', causationId: 'request-1',
         synchronizedAt: '2026-08-02T12:00:00.000Z',
-        student: { matricula: '2251330007', displayName: 'Ana Alumna' },
+        student: { matricula: '9900000001', displayName: 'Ana Alumna' },
         career: { planExternalId: '3313', name: 'Ingenieria', coordinationExternalId: '12' },
         cycle: { externalId: '151', name: '2026 - 2' },
         schedule: [{ externalGroupId: '947699', groupLetter: 'A', subjectName: 'Calculo', schedule: {} }],

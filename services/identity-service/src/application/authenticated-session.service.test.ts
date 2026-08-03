@@ -22,7 +22,7 @@ describe('AuthenticatedSessionService', () => {
     const created = await service.create({
       kind: 'STUDENT',
       role: 'STUDENT',
-      institutionalIdentifier: '2251330007',
+      institutionalIdentifier: '9900000001',
       displayName: 'Alumno Prueba',
       source: 'UAT_STUDENT',
       correlationId: 'request-1',
@@ -53,7 +53,7 @@ const fakeIdentities: IdentityRepository = {
       id,
       kind: 'STUDENT',
       role: 'STUDENT',
-      institutionalIdentifier: '2251330007',
+      institutionalIdentifier: '9900000001',
       email: null,
       displayName: 'Alumno Prueba',
       disabledAt: null,

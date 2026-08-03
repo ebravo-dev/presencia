@@ -48,7 +48,7 @@ describe('encrypted UAT session codecs', () => {
       username: 'student@uat.edu.mx',
       client: factory.restore(jar.serializeSync()),
       login: { exito: true, parametros: {} },
-      careers: [{ Id_Plan_Estudio: 3313, Num_Matricula: 2251330007 }],
+      careers: [{ Id_Plan_Estudio: 3313, Num_Matricula: 9900000001 }],
       selectedCareer: { exito: true, parametros: { Id_Plan_Estudio_AlumnosUAT: 3313 } },
       deviceBindingToken: 'signed-binding-token',
       identitySession: {

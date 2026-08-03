@@ -36,6 +36,22 @@ test('validation rejects an unsafe or incomplete OpenTelemetry exporter', () => 
   assert.ok(errors.some((error) => error.includes('must not embed credentials')));
 });
 
+test('debug mode requires an explicitly isolated demo deployment', () => {
+  const errors = validateDokployEnvironment({
+    ROUTE_TARGET_OVERRIDES: '{}',
+    PRESENCIA_DEBUG_MODE: 'true',
+    DEPLOYMENT_ENVIRONMENT: 'production',
+    PRESENCIA_DEMO_DEFAULT_PASSWORD: 'safe-demo-password',
+  }, '');
+  assert.ok(errors.some((error) => error.includes('DEPLOYMENT_ENVIRONMENT=demo')));
+  assert.deepEqual(validateDokployEnvironment({
+    ROUTE_TARGET_OVERRIDES: '{}',
+    PRESENCIA_DEBUG_MODE: 'true',
+    DEPLOYMENT_ENVIRONMENT: 'demo',
+    PRESENCIA_DEMO_DEFAULT_PASSWORD: 'safe-demo-password',
+  }, ''), []);
+});
+
 test('the env parser preserves JSON and URL values', () => {
   assert.deepEqual(parseEnvFile('ROUTE_TARGET_OVERRIDES={"/a":"identity"}\nURL=postgresql://u:p@db:5432/x?schema=public\n'), {
     ROUTE_TARGET_OVERRIDES: '{"/a":"identity"}', URL: 'postgresql://u:p@db:5432/x?schema=public',
@@ -51,6 +67,7 @@ test('runtime containers gate Docker health on readiness', async () => {
     '../../services/academic-service/Dockerfile',
     '../../services/attendance-service/Dockerfile',
     '../../services/coordination-query-service/Dockerfile',
+    '../../services/demo-portal-service/Dockerfile',
   ];
   for (const dockerfile of dockerfiles) {
     const source = await readFile(new URL(dockerfile, import.meta.url), 'utf8');
@@ -67,6 +84,7 @@ test('application images run as non-root users', async () => {
     '../../services/academic-service/Dockerfile',
     '../../services/attendance-service/Dockerfile',
     '../../services/coordination-query-service/Dockerfile',
+    '../../services/demo-portal-service/Dockerfile',
   ];
   for (const dockerfile of dockerfiles) {
     const source = await readFile(new URL(dockerfile, import.meta.url), 'utf8');
@@ -81,6 +99,7 @@ test('all Node runtime images preload OpenTelemetry before application code', as
     '../../services/academic-service/Dockerfile',
     '../../services/attendance-service/Dockerfile',
     '../../services/coordination-query-service/Dockerfile',
+    '../../services/demo-portal-service/Dockerfile',
   ];
   for (const dockerfile of workspaceDockerfiles) {
     const source = await readFile(new URL(dockerfile, import.meta.url), 'utf8');
@@ -95,6 +114,7 @@ test('all Node runtime images preload OpenTelemetry before application code', as
   for (const serviceName of [
     'presencia-api-gateway', 'presencia-uat-integration', 'presencia-identity',
     'presencia-academic', 'presencia-attendance', 'presencia-coordination-query',
+    'presencia-demo-portal',
   ]) assert.match(compose, new RegExp(`OTEL_SERVICE_NAME: ${serviceName}`));
   assert.match(compose, /OTEL_METRICS_EXPORTER: none/);
   assert.match(compose, /OTEL_LOGS_EXPORTER: none/);
@@ -106,6 +126,7 @@ test('Dokploy runtime services use the hardened read-only profile', async () => 
   for (const serviceName of [
     'uat-integration', 'identity-service', 'academic-service',
     'attendance-service', 'coordination-query-service', 'api-gateway',
+    'demo-portal-service',
   ]) {
     const start = compose.indexOf(`\n  ${serviceName}:`);
     assert.notEqual(start, -1, `${serviceName} must exist in the Dokploy Compose`);
@@ -116,6 +137,11 @@ test('Dokploy runtime services use the hardened read-only profile', async () => 
     assert.match(service, /<<: \*node-runtime-hardening/, `${serviceName} must use runtime hardening`);
   }
   assert.match(compose, /uat-integration:[\s\S]*127\.0\.0\.1:3100\/health\/ready/);
+  assert.match(compose, /demo-portal-service:[\s\S]*networks: \[private\]/);
+  assert.doesNotMatch(
+    compose.slice(compose.indexOf('\n  demo-portal-service:'), compose.indexOf('\n  attendance-migrate:')),
+    /ports:|dokploy-network|uat-egress/,
+  );
   assert.match(
     compose,
     /frontend-coord:[\s\S]*read_only: true[\s\S]*\/etc\/nginx\/conf\.d:size=1m,mode=0775,uid=101,gid=101[\s\S]*cap_drop: \[ALL\]/,

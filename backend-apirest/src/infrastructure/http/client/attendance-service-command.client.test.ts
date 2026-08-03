@@ -11,7 +11,7 @@ describe('AttendanceServiceCommandClient', () => {
     const client = new AttendanceServiceCommandClient('http://attendance-service:3400', 'x'.repeat(32));
 
     await expect(client.createStudentDeviceBinding({
-      matricula: '2251330007', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+      matricula: '9900000001', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
       deviceBindingId: '12345678-1234-4234-9234-123456789abd', platform: 'android',
     })).resolves.toEqual({ data: { bindingToken: 'scoped-token' } });
 
@@ -20,11 +20,27 @@ describe('AttendanceServiceCommandClient', () => {
     expect(request?.headers).toMatchObject({ 'x-internal-service-token': 'x'.repeat(32) });
   });
 
+  it('writes an authoritative demo roster to the private group endpoint', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+    const client = new AttendanceServiceCommandClient('http://attendance-service:3400', 'x'.repeat(32));
+    await client.applyRoster({
+      externalGroupId: '990000', uatGroupId: 990000, name: 'Materia demo', groupLetter: 'A',
+      professorExternalId: '90000', professorName: 'Profesor Demo', professorEmail: 'profesor.demo@uat.edu.mx',
+      classroom: 'DEMO-101', period: '2026-3', schedule: {}, rosterVersion: 'v1',
+      rosterObservedAt: '2026-08-03T12:00:00.000Z', rosterAuthoritative: true,
+      students: [{ matricula: 'DEMO0001', name: 'Alumno Demo', uatStudentId: 500000, listNumber: 1 }],
+    });
+    const [url, request] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe('http://attendance-service:3400/internal/v1/attendance/rosters/990000');
+    expect(request?.method).toBe('PUT');
+    expect(JSON.parse(String(request?.body))).toMatchObject({ externalGroupId: '990000', rosterAuthoritative: true });
+  });
+
   it('forwards the coordinator identity and correlation id when unbinding', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
     const client = new AttendanceServiceCommandClient('http://attendance-service:3400', 'x'.repeat(32));
     await client.unbindStudentDevice({
-      matricula: '2251330007', actorIdentityId: 'coord-1', actorRole: 'COORDINATOR',
+      matricula: '9900000001', actorIdentityId: 'coord-1', actorRole: 'COORDINATOR',
       reason: 'Cambio solicitado por el alumno.', correlationId: 'request-1',
     });
 
@@ -50,12 +66,12 @@ describe('AttendanceServiceCommandClient', () => {
     }), { status: 200, headers: { 'content-type': 'application/json' } }));
     const client = new AttendanceServiceCommandClient('http://attendance-service:3400', 'x'.repeat(32));
     await expect(client.resolveStudentDeviceBindings({
-      professorExternalId: 'teacher-1', matriculas: ['2251330007'],
+      professorExternalId: 'teacher-1', matriculas: ['9900000001'],
     })).resolves.toEqual({ data: [], missing: [] });
     const [url, request] = fetchMock.mock.calls[0] ?? [];
     expect(String(url)).toBe('http://attendance-service:3400/internal/v1/attendance/device-bindings/resolve');
     expect(JSON.parse(String(request?.body))).toEqual({
-      professorExternalId: 'teacher-1', matriculas: ['2251330007'],
+      professorExternalId: 'teacher-1', matriculas: ['9900000001'],
     });
   });
 

@@ -125,6 +125,7 @@ class _AppRouterState extends State<_AppRouter> {
   bool _profileSet = false;
   StudentAcademicProfile? _academicProfile;
   String? _initialUatSessionId;
+  bool _demoMode = false;
 
   @override
   Widget build(BuildContext context) {
@@ -151,6 +152,7 @@ class _AppRouterState extends State<_AppRouter> {
           setState(() {
             _academicProfile = result.profile;
             _initialUatSessionId = result.sessionId;
+            _demoMode = result.demoMode;
             _profileSet = true;
           });
           unawaited(
@@ -170,6 +172,7 @@ class _AppRouterState extends State<_AppRouter> {
       deviceBindingService: widget.deviceBindingService,
       profile: _academicProfile!,
       initialUatSessionId: _initialUatSessionId,
+      demoMode: _demoMode,
       themeMode: widget.themeMode,
       onThemeModeChanged: widget.onThemeModeChanged,
     );

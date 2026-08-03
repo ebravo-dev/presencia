@@ -9,17 +9,17 @@ const secret = 'test-secret-with-at-least-thirty-two-characters';
 
 describe('student device binding authorization', () => {
     it('issues a token scoped to matricula and device identity', () => {
-        const token = issueStudentBindingToken({ matricula: '2251330007', deviceBindingId: 'device-1' }, secret);
+        const token = issueStudentBindingToken({ matricula: '9900000001', deviceBindingId: 'device-1' }, secret);
 
         expect(verifyStudentBindingToken(token, secret)).toEqual({
             type: 'student-device-binding',
-            matricula: '2251330007',
+            matricula: '9900000001',
             deviceBindingId: 'device-1',
         });
     });
 
     it('rejects a token signed with another service secret', () => {
-        const token = issueStudentBindingToken({ matricula: '2251330007' }, secret);
+        const token = issueStudentBindingToken({ matricula: '9900000001' }, secret);
 
         expect(verifyStudentBindingToken(token, 'different-secret-with-at-least-thirty-two-chars')).toBeNull();
     });

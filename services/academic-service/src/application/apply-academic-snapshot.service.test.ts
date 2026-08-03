@@ -46,7 +46,7 @@ function makeSnapshot(): ProfessorAcademicSnapshot {
       subject: { externalId: 'subject-1', name: 'Arquitectura' },
       coordination: { externalId: '12', name: 'FIUAT' },
       rosterAuthoritative: true,
-      students: [{ matricula: '2251330007', name: 'Alumno' }],
+      students: [{ matricula: '9900000001', name: 'Alumno' }],
     }],
   };
 }

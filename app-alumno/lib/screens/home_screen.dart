@@ -22,6 +22,7 @@ class HomeScreen extends StatefulWidget {
     required this.deviceBindingService,
     required this.profile,
     required this.initialUatSessionId,
+    required this.demoMode,
     required this.themeMode,
     required this.onThemeModeChanged,
   });
@@ -32,6 +33,7 @@ class HomeScreen extends StatefulWidget {
   final StudentDeviceBindingService deviceBindingService;
   final StudentAcademicProfile profile;
   final String? initialUatSessionId;
+  final bool demoMode;
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
 
@@ -223,11 +225,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     ];
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 430),
-            child: IndexedStack(index: _selectedTab, children: pages),
-          ),
+        child: Column(
+          children: [
+            if (widget.demoMode)
+              Container(
+                width: double.infinity,
+                color: const Color(0xFFF59E0B),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: const Text(
+                  'MODO DEMO · Datos ficticios, sin conexión a UAT real',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF451A03),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            Expanded(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 430),
+                  child: IndexedStack(index: _selectedTab, children: pages),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
       bottomNavigationBar: SafeArea(

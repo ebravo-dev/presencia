@@ -10,6 +10,7 @@ const RANDOM_SECRET_FIELDS = [
   'INTERNAL_API_TOKEN', 'METRICS_TOKEN', 'UAT_METRICS_TOKEN', 'IDENTITY_METRICS_TOKEN',
   'ACADEMIC_METRICS_TOKEN', 'ATTENDANCE_METRICS_TOKEN', 'COORDINATION_QUERY_METRICS_TOKEN',
   'BINDING_JWT_SECRET', 'ATTENDANCE_JOB_ENCRYPTION_SECRET', 'UAT_SESSION_ENCRYPTION_SECRET',
+  'DEMO_SESSION_SECRET',
 ];
 
 function randomSecret(label) {
@@ -21,6 +22,7 @@ export function buildCiEnvironment(exampleSource) {
   for (const field of RANDOM_SECRET_FIELDS) environment[field] = randomSecret(field);
 
   environment.SUPER_USER_PASSWORD = randomSecret('super-user');
+  environment.PRESENCIA_DEMO_DEFAULT_PASSWORD = randomSecret('demo-default-password');
   environment.COORDINATOR_EMAIL = '';
   environment.COORDINATOR_NAME = '';
   environment.COORDINATOR_PASSWORD = '';

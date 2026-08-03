@@ -17,6 +17,9 @@ describe('superUserRoutes', () => {
       } as never,
       identityService: { createStaffAccount } as never,
       attendanceService: { createClassroomBeacon: createBeacon } as never,
+      attendanceCapture: {} as never,
+      academicService: {} as never,
+      demoPortal: {} as never,
     });
 
     const login = await app.inject({ method: 'POST', url: '/api/superUsuario/auth/login', payload: { password: 'master-password' } });
@@ -53,13 +56,13 @@ describe('superUserRoutes', () => {
       data: { enabled: false, period: 'N/A' },
     });
 
-    const retiredMutation = await app.inject({
+    const disabledMutation = await app.inject({
       method: 'POST', url: '/api/superUsuario/debug/classes',
       headers: { cookie: 'super_user_session=identity-token' },
       payload: {},
     });
-    expect(retiredMutation.statusCode).toBe(410);
-    expect(retiredMutation.json()).toMatchObject({ error: 'LEGACY_DEBUG_RETIRED' });
+    expect(disabledMutation.statusCode).toBe(404);
+    expect(disabledMutation.json()).toMatchObject({ error: 'DEBUG_MODE_DISABLED' });
     await app.close();
   });
 });

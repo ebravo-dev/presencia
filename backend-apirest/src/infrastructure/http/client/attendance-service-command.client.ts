@@ -16,6 +16,13 @@ export class AttendanceServiceCommandClient implements AttendanceBindingClient {
     return this.request('/health/ready', { method: 'GET' });
   }
 
+  async applyRoster(input: AttendanceRosterInput): Promise<void> {
+    await this.request(`/internal/v1/attendance/rosters/${encodeURIComponent(input.externalGroupId)}`, {
+      method: 'PUT',
+      body: input,
+    });
+  }
+
   createStudentDeviceBinding(input: StudentDeviceBindingInput): Promise<StudentDeviceBindingResponse> {
     return this.request('/internal/v1/attendance/device-bindings/initial', {
       method: 'POST',
@@ -196,6 +203,28 @@ interface ProfessorPresenceBase {
   externalGroupId: string;
   trustedGroupAuthorization: boolean;
   correlationId: string;
+}
+
+export interface AttendanceRosterInput {
+  externalGroupId: string;
+  uatGroupId?: number | null;
+  name: string;
+  groupLetter: string;
+  professorExternalId: string;
+  professorName?: string;
+  professorEmail?: string | null;
+  classroom?: string | null;
+  period?: string | null;
+  schedule: Record<string, unknown>;
+  rosterVersion: string;
+  rosterObservedAt: string;
+  rosterAuthoritative: boolean;
+  students: Array<{
+    matricula: string;
+    name: string;
+    uatStudentId?: number | null;
+    listNumber?: number | null;
+  }>;
 }
 
 function withoutCorrelationId<T extends { correlationId: string }>(input: T): Omit<T, 'correlationId'> {

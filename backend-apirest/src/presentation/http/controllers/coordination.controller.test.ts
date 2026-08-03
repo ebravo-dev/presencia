@@ -70,11 +70,11 @@ describe('CoordinationController beacon cutover', () => {
     await controller.deleteStudentDeviceBinding({
       id: 'request-device-1',
       coordinator: { id: 'coord-9', role: 'COORDINATOR' },
-      params: { matricula: '2251330007' },
+      params: { matricula: '9900000001' },
     } as never, reply as never);
 
     expect(received).toEqual({
-      matricula: '2251330007',
+      matricula: '9900000001',
       actorIdentityId: 'coord-9',
       actorRole: 'COORDINATOR',
       reason: 'Desvinculación solicitada desde el dashboard de coordinación.',

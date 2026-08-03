@@ -42,7 +42,7 @@ void main() {
     test('falls back safely when optional UAT profile fields are absent', () {
       final profile = StudentAcademicProfile.fromSessionResponse(
         const {},
-        matricula: '2251330007',
+        matricula: '9900000001',
         institutionalEmail: 'student@alumnos.uat.edu.mx',
       );
 

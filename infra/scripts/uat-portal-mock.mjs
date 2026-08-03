@@ -7,7 +7,7 @@ export const MOCK_UAT = Object.freeze({
   studentUsername: 'student-ci@alumnos.uat.edu.mx',
   studentPassword: 'student-ci-password',
   professorExternalId: '42',
-  matricula: '2251330007',
+  matricula: '9900000001',
   groupId: 947699,
 });
 
