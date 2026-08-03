@@ -58,7 +58,7 @@ ATTENDANCE_BACKEND_URL=http://backend:3000
 ATTENDANCE_BACKEND_SERVICE_TOKEN=token-interno-compartido-de-al-menos-32-caracteres
 COORDINATOR_EMAIL=coordinacion@uat.edu.mx
 COORDINATOR_NAME=Coordinacion Academica
-COORDINATOR_PASSWORD=una-clave-segura-de-al-menos-12-caracteres
+COORDINATOR_PASSWORD=contra123
 # Alternativa para varias cuentas:
 COORDINATORS_JSON=[{"email":"coord1@uat.edu.mx","name":"Coordinador Uno","password":"clave-segura-123"}]
 ```
@@ -257,7 +257,7 @@ frontend:
 ```powershell
 $env:COORDINATOR_EMAIL="coordinacion@uat.edu.mx"
 $env:COORDINATOR_NAME="Coordinación Académica"
-$env:COORDINATOR_PASSWORD="una-clave-segura-de-12-caracteres"
+$env:COORDINATOR_PASSWORD="contra123"
 npm run coordinator:create
 ```
 

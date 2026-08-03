@@ -3,6 +3,7 @@ import { prisma } from '../infrastructure/persistence/prisma/prisma.client.js';
 
 const provisionOnlyIfConfigured = process.argv.includes('--if-configured');
 const superAdminOnly = process.argv.includes('--superadmin-only');
+const MIN_COORDINATOR_PASSWORD_LENGTH = 8;
 const coordinators = readCoordinators({ superAdminOnly });
 
 if (superAdminOnly && coordinators.length === 0) {
@@ -84,7 +85,9 @@ function readCoordinators(options: ReadCoordinatorOptions = {}): CoordinatorSeed
     const name = typeof candidate.name === 'string' ? candidate.name.trim() : '';
     const password = typeof candidate.password === 'string' ? candidate.password : '';
     const role = normalizeRole(typeof candidate.role === 'string' ? candidate.role : undefined);
-    if (!email || !email.includes('@') || !name || password.length < 12) throw invalidCoordinator(index);
+    if (!email || !email.includes('@') || !name || password.length < MIN_COORDINATOR_PASSWORD_LENGTH) {
+      throw invalidCoordinator(index);
+    }
     unique.set(email, { email, name, password, role });
   });
 
@@ -92,7 +95,9 @@ function readCoordinators(options: ReadCoordinatorOptions = {}): CoordinatorSeed
 }
 
 function invalidCoordinator(index: number): Error {
-  return new Error(`Cuenta ${index + 1} invalida: requiere email, name y password de al menos 12 caracteres.`);
+  return new Error(
+    `Cuenta ${index + 1} invalida: requiere email, name y password de al menos ${MIN_COORDINATOR_PASSWORD_LENGTH} caracteres.`,
+  );
 }
 
 function firstEnv(...names: string[]): string | undefined {
