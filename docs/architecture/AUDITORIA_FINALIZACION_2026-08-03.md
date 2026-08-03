@@ -9,10 +9,10 @@ prueba de funcionamiento integral.
 | Requisito | Propietario y evidencia actual | Estado |
 |---|---|---|
 | Datos UAT del profesor mediante REST | UAT Integration implementa sesión ASP.NET, horarios, catálogos, grupos, roster y asistencia. Los tests de cliente y el Compose CI prueban formularios, cookies, cosecha y escritura contra un portal HTTP aislado. Una cuenta real autorizada autenticó y respondió a catálogos, horarios y exámenes en modo de sólo lectura. | Implementado; falta validar una carga real expresamente autorizada. |
-| Login, perfil y horario del alumno | UAT Integration autentica, selecciona carrera y expone horario/calificaciones; Identity emite la sesión y Academic persiste el snapshot. El Compose CI recorre el contrato público desde el Gateway. Una cuenta real autorizada autenticó, entregó carrera y aceptó consultas de horario/calificaciones sin mutaciones. | Implementado; falta E2E del vínculo en dispositivos físicos. |
+| Login, perfil y horario del alumno | UAT Integration autentica, selecciona carrera y expone horario/calificaciones; Identity emite la sesión y Academic persiste el snapshot. Flutter conserva la sesión UAT inicial sólo en memoria mientras descarga el perfil y horario en segundo plano, transforma todos los días y sustituye los datos ficticios por materias, aulas, horas y profesor devueltos por REST. El Compose CI recorre el contrato público desde el Gateway y las pruebas Dart cubren el mapeo. Una cuenta real autorizada autenticó, entregó carrera y aceptó consultas sin mutaciones. | Implementado; falta E2E visual y del vínculo en dispositivos físicos. |
 | Login estudiantil como única alta | Cada login exige UUID BLE, identificador estable y plataforma móvil; el vínculo sólo se ejecuta después de que UAT devuelve login, carrera y matrícula válidos. La misma identidad se reconcilia idempotentemente durante la actualización académica y no existe alta manual pública. | Implementado y probado en BFF, Attendance y Flutter. |
 | Vincular matrícula, teléfono y UUID | Attendance posee `StudentDeviceBinding`, rechaza identificadores duplicados y entrega un token acotado. El Gateway renueva únicamente el vínculo exacto; el profesor lo resuelve mediante sesión UAT y pertenencia al roster, sin dual-write legado. | Implementado y probado. |
-| Cambio de UUID sólo por coordinación | Attendance permite reemplazo/desvinculación sólo por comando interno con rol y motivo auditables; el endpoint público únicamente repite el vínculo exacto. | Implementado y probado. |
+| Cambio de UUID sólo por coordinación | Attendance permite reemplazo/desvinculación sólo por comando interno con rol y motivo auditables; el endpoint público únicamente repite el vínculo exacto. El dashboard protegido muestra los celulares vinculados y permite a `COORDINATOR` revocar el vínculo actual para que el siguiente login estudiantil registre el nuevo UUID; `READ_ONLY` conserva consulta sin escritura. | Implementado y probado en backend y frontend. |
 | Captura local y subida posterior a UAT | La presencia del profesor entra únicamente por el canal de beacon/entrada/salida y usa hora del servidor; la captura de alumnos no puede inyectar timestamps de profesor. Attendance usa transacción serializable e idempotencia. Antes del `202`, UAT Integration persiste un job con credencial cifrada, separado del TTL de Redis; el móvil conserva su `ClientRecordId` hasta recibir `COMPLETED`. El titular queda `PENDING`; una clase compartida queda `SKIPPED`. El Compose fuerza fallos transitorios y terminales y comprueba recuperación sin duplicar la escritura. | Implementado y probado contra el simulador; falta caos contra UAT real. |
 | Asistencia del profesor en dashboard | Coordination Query consume roster/asistencia, reconcilia snapshots y genera reportes semanal/rango. | Implementado; CI prueba la proyección cruzando PostgreSQL y RabbitMQ. |
 | Microservicios y datos separados | Gateway, Identity, Academic, Attendance, UAT Integration y Coordination Query usan límites y bases lógicas propios. Identity es obligatorio para cada login; Academic recibe el único snapshot de profesor/alumno; Attendance posee beacons, dispositivos y telemetría BLE. UAT Integration no mantiene una segunda proyección académica. | El proceso HTTP monolítico y las fachadas móviles antiguas están fuera del runtime; se conservan únicamente imports one-shot idempotentes mientras se valida el primer despliegue. |
@@ -93,6 +93,21 @@ sin firma en un runner macOS. Los dos APK se construyeron también localmente;
 el gate macOS queda verificable al ejecutar el workflow remoto. El bundle
 inicial del dashboard separa React, consultas e iconos en chunks cacheables;
 Excel y PDF continúan como imports bajo demanda.
+
+La app estudiantil ya no muestra materias, aulas ni campus de ejemplo. Después
+de autenticar, reutiliza la sesión UAT inicial para cargar el horario sin un
+segundo login, la revoca al terminar y mantiene asistencia/navegación
+disponibles mientras sincroniza. Presenta estados de carga, vacío, error y
+reintento; el perfil usa nombre, programa, ciclo, promedio y créditos sólo
+cuando UAT los entrega. Diez pruebas Flutter validan identidad estable, perfil
+y horarios de varios días, y el APK actualizado compila localmente.
+
+El dashboard de coordinación incorpora la vista de celulares vinculados. La
+acción **Autorizar cambio** no asigna un UUID manual: revoca el vínculo actual
+con identidad, rol, motivo y correlación auditables; sólo entonces el siguiente
+login institucional del alumno puede registrar el UUID del nuevo teléfono. La
+UI deshabilita la acción para `READ_ONLY` y el backend vuelve a imponer la
+misma restricción con `403`, independientemente del cliente.
 
 La línea base de carga CI ejecuta 200 lecturas UAT simuladas con concurrencia
 20 sobre el stack escalado y exige menos de 1% de errores, p95 menor a 750 ms y

@@ -2,31 +2,39 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../config/app_environment.dart';
+import '../models/student_academic_profile.dart';
+import '../models/student_schedule_entry.dart';
 import 'local_storage_service.dart';
 import 'student_session_request.dart';
 
 class StudentAuthResult {
   final String matricula;
   final String deviceBindingToken;
+  final StudentAcademicProfile profile;
+  final String sessionId;
 
   const StudentAuthResult({
     required this.matricula,
     required this.deviceBindingToken,
+    required this.profile,
+    required this.sessionId,
   });
 }
 
 class StudentInfoSyncResult {
-  final int scheduleCount;
+  final List<StudentScheduleEntry> schedule;
   final int partialGradesCount;
   final int finalGradesCount;
   final DateTime syncedAt;
 
   const StudentInfoSyncResult({
-    required this.scheduleCount,
+    required this.schedule,
     required this.partialGradesCount,
     required this.finalGradesCount,
     required this.syncedAt,
   });
+
+  int get scheduleCount => schedule.length;
 }
 
 class StudentAuthException implements Exception {
@@ -58,67 +66,88 @@ class StudentAuthService {
     );
 
     final sessionId = decoded['sessionId']?.toString() ?? '';
-    try {
-      final matricula = _extractMatricula(decoded);
-      final deviceBindingToken =
-          decoded['deviceBindingToken']?.toString() ?? '';
+    final matricula = _extractMatricula(decoded);
+    final deviceBindingToken = decoded['deviceBindingToken']?.toString() ?? '';
 
-      if (sessionId.isEmpty ||
-          matricula.isEmpty ||
-          deviceBindingToken.isEmpty) {
-        throw const StudentAuthException(
-          'No pudimos preparar tu cuenta. Inténtalo de nuevo.',
-        );
-      }
-
-      return StudentAuthResult(
-        matricula: matricula,
-        deviceBindingToken: deviceBindingToken,
-      );
-    } finally {
+    if (sessionId.isEmpty || matricula.isEmpty || deviceBindingToken.isEmpty) {
       if (sessionId.isNotEmpty) await _deleteStudentSession(sessionId);
+      throw const StudentAuthException(
+        'No pudimos preparar tu cuenta. Inténtalo de nuevo.',
+      );
     }
+
+    return StudentAuthResult(
+      matricula: matricula,
+      deviceBindingToken: deviceBindingToken,
+      profile: StudentAcademicProfile.fromSessionResponse(
+        decoded,
+        matricula: matricula,
+        institutionalEmail: username,
+      ),
+      sessionId: sessionId,
+    );
   }
 
   Future<StudentInfoSyncResult> syncAcademicInfo(
-    LocalStorageService storage,
-  ) async {
-    final credentials = await storage.readInstitutionalCredentials();
-    if (credentials == null) {
-      throw const StudentAuthException(
-        'No pudimos acceder a tus datos de UAT. Inicia sesión de nuevo.',
-        authenticationFailed: true,
-      );
-    }
+    LocalStorageService storage, {
+    String? sessionId,
+  }) async {
+    var activeSessionId = sessionId?.trim() ?? '';
+    if (activeSessionId.isEmpty) {
+      final credentials = await storage.readInstitutionalCredentials();
+      if (credentials == null) {
+        throw const StudentAuthException(
+          'No pudimos acceder a tus datos de UAT. Inicia sesión de nuevo.',
+          authenticationFailed: true,
+        );
+      }
 
-    final session = await _createStudentSession(
-      username: credentials.username,
-      password: credentials.password,
-      storage: storage,
-    );
-    final sessionId = session['sessionId']?.toString() ?? '';
-    if (sessionId.isEmpty) {
-      throw const StudentAuthException(
-        'No pudimos actualizar tus datos de UAT. Inténtalo de nuevo.',
+      final session = await _createStudentSession(
+        username: credentials.username,
+        password: credentials.password,
+        storage: storage,
       );
+      activeSessionId = session['sessionId']?.toString() ?? '';
+      if (activeSessionId.isEmpty) {
+        throw const StudentAuthException(
+          'No pudimos actualizar tus datos de UAT. Inténtalo de nuevo.',
+        );
+      }
+
+      final refreshedBindingToken = session['deviceBindingToken']?.toString();
+      if (refreshedBindingToken != null && refreshedBindingToken.isNotEmpty) {
+        await storage.saveDeviceBindingToken(refreshedBindingToken);
+      }
     }
 
     try {
-      final responses = await Future.wait([
-        _getStudentData('/api/uat/alumnos/horario', sessionId),
-        _getStudentData('/api/uat/alumnos/calificaciones/parciales', sessionId),
-        _getStudentData('/api/uat/alumnos/calificaciones/finales', sessionId),
+      final responses = await Future.wait<List<Map<String, dynamic>>>([
+        _getStudentData('/api/uat/alumnos/horario', activeSessionId),
+        _getOptionalStudentData(
+          '/api/uat/alumnos/calificaciones/parciales',
+          activeSessionId,
+        ),
+        _getOptionalStudentData(
+          '/api/uat/alumnos/calificaciones/finales',
+          activeSessionId,
+        ),
       ]);
 
       return StudentInfoSyncResult(
-        scheduleCount: responses[0],
-        partialGradesCount: responses[1],
-        finalGradesCount: responses[2],
+        schedule: parseStudentSchedule(responses[0]),
+        partialGradesCount: responses[1].length,
+        finalGradesCount: responses[2].length,
         syncedAt: DateTime.now(),
       );
     } finally {
-      await _deleteStudentSession(sessionId);
+      await _deleteStudentSession(activeSessionId);
     }
+  }
+
+  Future<void> discardSession(String sessionId) async {
+    final normalized = sessionId.trim();
+    if (normalized.isEmpty) return;
+    await _deleteStudentSession(normalized);
   }
 
   Future<Map<String, dynamic>> _createStudentSession({
@@ -192,7 +221,10 @@ class StudentAuthService {
     }
   }
 
-  Future<int> _getStudentData(String path, String sessionId) async {
+  Future<List<Map<String, dynamic>>> _getStudentData(
+    String path,
+    String sessionId,
+  ) async {
     final client = HttpClient()..connectionTimeout = _timeout;
     try {
       final uri = Uri.parse(baseUrl).resolve(path);
@@ -217,10 +249,15 @@ class StudentAuthService {
 
       if (decoded is Map<String, dynamic>) {
         final data = decoded['data'];
-        return data is List ? data.length : 0;
+        if (data is List) {
+          return data
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList(growable: false);
+        }
       }
 
-      return 0;
+      return const [];
     } on StudentAuthException {
       rethrow;
     } catch (_) {
@@ -229,6 +266,18 @@ class StudentAuthService {
       );
     } finally {
       client.close(force: true);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _getOptionalStudentData(
+    String path,
+    String sessionId,
+  ) async {
+    try {
+      return await _getStudentData(path, sessionId);
+    } on StudentAuthException catch (error) {
+      if (error.authenticationFailed) rethrow;
+      return const [];
     }
   }
 

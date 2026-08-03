@@ -89,16 +89,24 @@ class _LoginScreenState extends State<LoginScreen> {
       _errorText = null;
     });
     HapticFeedback.mediumImpact();
+    StudentAuthResult? pendingResult;
     try {
-      final result = await _auth.loginAndBind(
+      pendingResult = await _auth.loginAndBind(
         username: username,
         password: password,
         storage: widget.storage,
       );
-      await widget.onAuthenticated(username, password, result);
+      await widget.onAuthenticated(username, password, pendingResult);
+      pendingResult = null;
     } on StudentAuthException catch (error) {
+      if (pendingResult != null) {
+        await _auth.discardSession(pendingResult.sessionId);
+      }
       if (mounted) setState(() => _errorText = error.message);
     } catch (_) {
+      if (pendingResult != null) {
+        await _auth.discardSession(pendingResult.sessionId);
+      }
       if (mounted) {
         setState(
           () => _errorText = 'No pudimos iniciar sesión. Inténtalo de nuevo.',
@@ -306,7 +314,7 @@ class _LoginCard extends StatelessWidget {
               textInputAction: TextInputAction.next,
               onSubmitted: onEmailSubmitted,
               decoration: const InputDecoration(
-                hintText: 'usuario@alumno.uat.edu.mx',
+                hintText: 'matrícula@alumnos.uat.edu.mx',
                 prefixIcon: Icon(Icons.mail_outline_rounded),
               ),
             ),

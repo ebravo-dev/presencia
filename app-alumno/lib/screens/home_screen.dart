@@ -3,9 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/student_academic_profile.dart';
+import '../models/student_schedule_entry.dart';
 import '../services/attendance_session_service.dart';
 import '../services/ble_advertiser_service.dart';
 import '../services/local_storage_service.dart';
+import '../services/student_auth_service.dart';
 import '../services/student_device_binding_service.dart';
 import '../theme/app_theme.dart';
 import 'history_screen.dart';
@@ -17,6 +20,8 @@ class HomeScreen extends StatefulWidget {
     required this.bleService,
     required this.attendanceSession,
     required this.deviceBindingService,
+    required this.profile,
+    required this.initialUatSessionId,
     required this.themeMode,
     required this.onThemeModeChanged,
   });
@@ -25,6 +30,8 @@ class HomeScreen extends StatefulWidget {
   final BleAdvertiserService bleService;
   final AttendanceSessionService attendanceSession;
   final StudentDeviceBindingService deviceBindingService;
+  final StudentAcademicProfile profile;
+  final String? initialUatSessionId;
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
 
@@ -39,10 +46,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   StreamSubscription<String>? _confirmationSubscription;
   StreamSubscription<AttendanceSessionSnapshot>? _attendanceSubscription;
   int _selectedTab = 0;
-  int _selectedClass = 1;
+  int _selectedClass = 0;
   int _historyCount = 0;
   bool _isSyncingDeviceBinding = false;
+  bool _isSyncingAcademicInfo = false;
+  List<StudentScheduleEntry> _schedule = const [];
+  String? _academicSyncError;
+  String? _pendingUatSessionId;
   String? _confirmationId;
+  final _studentAuth = StudentAuthService();
 
   bool get _isActive => _advertiserState == AdvertiserState.advertising;
   bool get _isChecking =>
@@ -61,6 +73,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _historyCount = widget.storage.attendanceHistoryCount;
+    _pendingUatSessionId = widget.initialUatSessionId;
     _advertiserState = widget.bleService.currentState;
     _attendanceState = widget.attendanceSession.currentState;
     _advertiserSubscription = widget.bleService.stateStream.listen((value) {
@@ -90,6 +103,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       });
     });
     unawaited(_syncDeviceBinding());
+    unawaited(_syncAcademicInfo());
   }
 
   @override
@@ -99,6 +113,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     if (state == AppLifecycleState.resumed) {
       unawaited(_syncDeviceBinding());
+      unawaited(_syncAcademicInfo());
     }
   }
 
@@ -110,6 +125,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await widget.storage.setDeviceBindingSyncPending(!synced);
     } finally {
       _isSyncingDeviceBinding = false;
+    }
+  }
+
+  Future<void> _syncAcademicInfo() async {
+    if (_isSyncingAcademicInfo || !widget.storage.isProfileSet) return;
+    _isSyncingAcademicInfo = true;
+    if (mounted) setState(() => _academicSyncError = null);
+    try {
+      final sessionId = _pendingUatSessionId;
+      _pendingUatSessionId = null;
+      final result = await _studentAuth.syncAcademicInfo(
+        widget.storage,
+        sessionId: sessionId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _schedule = result.schedule;
+        _selectedClass = 0;
+      });
+    } on StudentAuthException catch (error) {
+      if (mounted) setState(() => _academicSyncError = error.message);
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _academicSyncError =
+              'No pudimos actualizar tu horario. Inténtalo de nuevo.',
+        );
+      }
+    } finally {
+      _isSyncingAcademicInfo = false;
+      if (mounted) setState(() {});
     }
   }
 
@@ -153,6 +199,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _AttendancePage(
         historyCount: _historyCount,
         selectedClass: _selectedClass,
+        schedule: _schedule,
+        scheduleLoading: _isSyncingAcademicInfo,
         isActive: _isActive,
         isChecking: _isChecking,
         confirmed: _confirmed,
@@ -160,10 +208,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onSelectClass: (index) => setState(() => _selectedClass = index),
         onRegister: _toggleAttendance,
       ),
-      const _SchedulePage(),
+      _SchedulePage(
+        schedule: _schedule,
+        loading: _isSyncingAcademicInfo,
+        errorMessage: _academicSyncError,
+        onRetry: _syncAcademicInfo,
+      ),
       _ProfilePage(
-        matricula: widget.storage.matricula,
-        email: widget.storage.institutionalEmail,
+        profile: widget.profile,
         themeMode: widget.themeMode,
         onThemeModeChanged: widget.onThemeModeChanged,
         onOpenHistory: _openHistory,
@@ -198,6 +250,8 @@ class _AttendancePage extends StatelessWidget {
   const _AttendancePage({
     required this.historyCount,
     required this.selectedClass,
+    required this.schedule,
+    required this.scheduleLoading,
     required this.isActive,
     required this.isChecking,
     required this.confirmed,
@@ -207,6 +261,8 @@ class _AttendancePage extends StatelessWidget {
   });
   final int historyCount;
   final int selectedClass;
+  final List<StudentScheduleEntry> schedule;
+  final bool scheduleLoading;
   final bool isActive, isChecking, confirmed, hasError;
   final ValueChanged<int> onSelectClass;
   final VoidCallback onRegister;
@@ -214,7 +270,10 @@ class _AttendancePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final ratio = (historyCount / 10).clamp(0.0, 1.0);
+    final todayClasses = scheduleForWeekday(schedule, DateTime.now().weekday);
+    final safeSelectedClass = todayClasses.isEmpty
+        ? 0
+        : selectedClass.clamp(0, todayClasses.length - 1);
     final buttonTitle = confirmed
         ? 'Asistencia registrada'
         : isActive || isChecking
@@ -251,37 +310,36 @@ class _AttendancePage extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '${(ratio * 100).round()}%',
+                            '$historyCount',
                             style: Theme.of(
                               context,
                             ).textTheme.headlineSmall?.copyWith(fontSize: 42),
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'asistencia general',
+                            historyCount == 1
+                                ? 'asistencia confirmada'
+                                : 'asistencias confirmadas',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ],
                       ),
                     ),
                     SizedBox(
-                      width: 126,
-                      child: Column(
+                      width: 142,
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            '$historyCount de 10 clases',
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(fontWeight: FontWeight.w700),
+                          Icon(
+                            Icons.verified_outlined,
+                            size: 18,
+                            color: scheme.primary,
                           ),
-                          const SizedBox(height: 12),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(5),
-                            child: LinearProgressIndicator(
-                              value: ratio,
-                              minHeight: 10,
-                              color: scheme.primary,
-                              backgroundColor: scheme.surfaceContainerHighest,
+                          const SizedBox(width: 7),
+                          Expanded(
+                            child: Text(
+                              'Registros confirmados en este celular',
+                              style: Theme.of(context).textTheme.bodySmall,
                             ),
                           ),
                         ],
@@ -308,45 +366,50 @@ class _AttendancePage extends StatelessWidget {
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 14)),
           SliverToBoxAdapter(
-            child: SizedBox(
-              height: 154,
-              child: PageView.builder(
-                controller: PageController(
-                  viewportFraction: .74,
-                  initialPage: selectedClass,
-                ),
-                itemCount: _classes.length,
-                onPageChanged: onSelectClass,
-                itemBuilder: (context, index) => _ClassCard(
-                  item: _classes[index],
-                  selected: index == selectedClass,
-                ),
-              ),
-            ),
+            child: scheduleLoading && schedule.isEmpty
+                ? const _AcademicLoadingCard()
+                : todayClasses.isEmpty
+                ? const _NoClassesTodayCard()
+                : SizedBox(
+                    height: 154,
+                    child: PageView.builder(
+                      controller: PageController(
+                        viewportFraction: .74,
+                        initialPage: safeSelectedClass,
+                      ),
+                      itemCount: todayClasses.length,
+                      onPageChanged: onSelectClass,
+                      itemBuilder: (context, index) => _ClassCard(
+                        occurrence: todayClasses[index],
+                        selected: index == safeSelectedClass,
+                      ),
+                    ),
+                  ),
           ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 14),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(
-                  _classes.length,
-                  (index) => AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    margin: const EdgeInsets.symmetric(horizontal: 5),
-                    width: index == selectedClass ? 18 : 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: index == selectedClass
-                          ? scheme.primary
-                          : appMuted(context).withValues(alpha: .4),
-                      borderRadius: BorderRadius.circular(8),
+          if (todayClasses.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 14),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(
+                    todayClasses.length,
+                    (index) => AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      margin: const EdgeInsets.symmetric(horizontal: 5),
+                      width: index == safeSelectedClass ? 18 : 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: index == safeSelectedClass
+                            ? scheme.primary
+                            : appMuted(context).withValues(alpha: .4),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
           const SliverToBoxAdapter(child: SizedBox(height: 30)),
           SliverToBoxAdapter(
             child: Semantics(
@@ -390,95 +453,129 @@ class _AttendancePage extends StatelessWidget {
 }
 
 class _SchedulePage extends StatefulWidget {
-  const _SchedulePage();
+  const _SchedulePage({
+    required this.schedule,
+    required this.loading,
+    required this.errorMessage,
+    required this.onRetry,
+  });
+
+  final List<StudentScheduleEntry> schedule;
+  final bool loading;
+  final String? errorMessage;
+  final Future<void> Function() onRetry;
+
   @override
   State<_SchedulePage> createState() => _SchedulePageState();
 }
 
 class _SchedulePageState extends State<_SchedulePage> {
-  int _day = DateTime.now().weekday.clamp(1, 5) - 1;
-  static const _days = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
+  int _weekday = DateTime.now().weekday;
+  static const _days = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
   @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _PageHeader(title: 'Horario', subtitle: 'Semana actual'),
-        const SizedBox(height: 24),
-        SizedBox(
-          height: 44,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: _days.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 10),
-            itemBuilder: (_, index) => SizedBox(
-              width: 62,
-              child: ChoiceChip(
-                label: Text(_days[index]),
-                selected: _day == index,
-                onSelected: (_) => setState(() => _day = index),
-                showCheckmark: false,
-                selectedColor: Theme.of(context).colorScheme.primary,
-                labelStyle: TextStyle(
-                  color: _day == index ? Colors.white : null,
-                  fontWeight: FontWeight.w700,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: BorderSide.none,
-                ),
+  Widget build(BuildContext context) {
+    final classes = scheduleForWeekday(widget.schedule, _weekday);
+    return RefreshIndicator(
+      onRefresh: widget.onRetry,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _PageHeader(title: 'Horario', subtitle: 'Datos de UAT'),
+            const SizedBox(height: 24),
+            SizedBox(
+              height: 44,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _days.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
+                itemBuilder: (_, index) {
+                  final weekday = index + 1;
+                  return SizedBox(
+                    width: 62,
+                    child: ChoiceChip(
+                      label: Text(_days[index]),
+                      selected: _weekday == weekday,
+                      onSelected: (_) => setState(() => _weekday = weekday),
+                      showCheckmark: false,
+                      selectedColor: Theme.of(context).colorScheme.primary,
+                      labelStyle: TextStyle(
+                        color: _weekday == weekday ? Colors.white : null,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide.none,
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
-          ),
-        ),
-        const SizedBox(height: 26),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: _day == 4
-                ? const _EmptySchedule()
-                : const Column(
+            const SizedBox(height: 26),
+            if (widget.loading && widget.schedule.isEmpty)
+              const _AcademicLoadingCard()
+            else if (widget.errorMessage != null && widget.schedule.isEmpty)
+              _AcademicErrorCard(
+                message: widget.errorMessage!,
+                onRetry: widget.onRetry,
+              )
+            else if (classes.isEmpty)
+              const Card(child: _EmptySchedule())
+            else
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
                     children: [
-                      _ScheduleItem(
-                        time: '08:00',
-                        subject: 'Sin clases sincronizadas',
-                        room: 'Actualiza tu información académica',
-                        color: AppColors.indigo,
-                      ),
-                      SizedBox(height: 14),
-                      _ScheduleItem(
-                        time: '10:00',
-                        subject: 'Horario disponible pronto',
-                        room: 'Los datos aparecerán aquí',
-                        color: AppColors.orange,
-                      ),
+                      for (var index = 0; index < classes.length; index++) ...[
+                        _ScheduleItem(occurrence: classes[index]),
+                        if (index < classes.length - 1)
+                          const SizedBox(height: 14),
+                      ],
                     ],
                   ),
-          ),
+                ),
+              ),
+            if (widget.errorMessage != null && widget.schedule.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              _InlineSyncWarning(
+                message: widget.errorMessage!,
+                onRetry: widget.onRetry,
+              ),
+            ],
+          ],
         ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
 }
 
 class _ProfilePage extends StatelessWidget {
   const _ProfilePage({
-    required this.matricula,
-    required this.email,
+    required this.profile,
     required this.themeMode,
     required this.onThemeModeChanged,
     required this.onOpenHistory,
   });
-  final String matricula, email;
+  final StudentAcademicProfile profile;
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
   final VoidCallback onOpenHistory;
   @override
   Widget build(BuildContext context) {
-    final initials = matricula.isEmpty
+    final initials = profile.displayName.trim().isEmpty
         ? 'FI'
-        : matricula.substring(0, matricula.length.clamp(0, 2)).toUpperCase();
+        : profile.displayName
+              .trim()
+              .split(RegExp(r'\s+'))
+              .take(2)
+              .map((part) => part.substring(0, 1))
+              .join()
+              .toUpperCase();
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
       child: Column(
@@ -522,17 +619,18 @@ class _ProfilePage extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Estudiante FIUAT',
+                                profile.displayName,
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'Facultad de Ingeniería',
+                                profile.programName ??
+                                    'Programa académico no disponible',
                                 style: Theme.of(context).textTheme.bodyMedium,
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                'Matrícula $matricula',
+                                'Matrícula ${profile.matricula}',
                                 style: Theme.of(context).textTheme.labelSmall,
                               ),
                             ],
@@ -567,14 +665,25 @@ class _ProfilePage extends StatelessWidget {
                 children: [
                   _ProfileField(
                     'CORREO',
-                    email.isEmpty ? 'No sincronizado' : email,
+                    profile.institutionalEmail.isEmpty
+                        ? 'No sincronizado'
+                        : profile.institutionalEmail,
                   ),
                   const Divider(height: 32),
-                  const _ProfileField('SEMESTRE', 'Información pendiente'),
+                  _ProfileField(
+                    'PROGRAMA',
+                    profile.programName ?? 'No disponible en UAT',
+                  ),
                   const Divider(height: 32),
-                  const _ProfileField('CAMPUS', 'Ciudad Victoria'),
+                  _ProfileField(
+                    'CICLO',
+                    profile.cycleName ?? 'No disponible en UAT',
+                  ),
                   const Divider(height: 32),
-                  const _ProfileField('PROGRAMA', 'Facultad de Ingeniería'),
+                  _ProfileField(
+                    'PROMEDIO Y CRÉDITOS',
+                    _academicSummary(profile),
+                  ),
                 ],
               ),
             ),
@@ -615,9 +724,10 @@ class _PageHeader extends StatelessWidget {
 }
 
 class _ClassCard extends StatelessWidget {
-  const _ClassCard({required this.item, required this.selected});
-  final _ClassItem item;
+  const _ClassCard({required this.occurrence, required this.selected});
+  final StudentScheduleOccurrence occurrence;
   final bool selected;
+
   @override
   Widget build(BuildContext context) => AnimatedScale(
     scale: selected ? 1 : .92,
@@ -640,7 +750,7 @@ class _ClassCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item.subject,
+                  occurrence.entry.subject,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -657,7 +767,7 @@ class _ClassCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 5),
                     Text(
-                      item.room,
+                      occurrence.entry.classroom ?? 'Aula por confirmar',
                       style: TextStyle(
                         color: selected ? Colors.white70 : appMuted(context),
                         fontSize: 12,
@@ -667,7 +777,7 @@ class _ClassCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  item.time,
+                  occurrence.slot.displayTime,
                   style: TextStyle(
                     color: selected ? Colors.white70 : appMuted(context),
                     fontSize: 12,
@@ -778,53 +888,185 @@ class _NavItem extends StatelessWidget {
 }
 
 class _ScheduleItem extends StatelessWidget {
-  const _ScheduleItem({
-    required this.time,
-    required this.subject,
-    required this.room,
-    required this.color,
-  });
-  final String time, subject, room;
-  final Color color;
+  const _ScheduleItem({required this.occurrence});
+
+  final StudentScheduleOccurrence occurrence;
+
   @override
-  Widget build(BuildContext context) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      SizedBox(
-        width: 54,
-        child: Text(
-          time,
-          style: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+  Widget build(BuildContext context) {
+    final color = _scheduleColor(occurrence.entry.externalGroupId);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 62,
+          child: Text(
+            occurrence.slot.startTime ?? occurrence.slot.raw,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ),
+        Expanded(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 72),
+            padding: const EdgeInsets.fromLTRB(18, 13, 12, 13),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(16),
+              border: Border(left: BorderSide(color: color, width: 6)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  occurrence.entry.subject,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  occurrence.entry.classroom ?? 'Aula por confirmar',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                if (occurrence.entry.professor != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    occurrence.entry.professor!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AcademicLoadingCard extends StatelessWidget {
+  const _AcademicLoadingCard();
+
+  @override
+  Widget build(BuildContext context) => const Card(
+    child: SizedBox(
+      height: 154,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 14),
+            Text('Actualizando horario desde UAT…'),
+          ],
         ),
       ),
-      Expanded(
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 65),
-          padding: const EdgeInsets.fromLTRB(18, 13, 12, 13),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: .12),
-            borderRadius: BorderRadius.circular(16),
-            border: Border(left: BorderSide(color: color, width: 6)),
-          ),
+    ),
+  );
+}
+
+class _NoClassesTodayCard extends StatelessWidget {
+  const _NoClassesTodayCard();
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: SizedBox(
+      height: 154,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                subject,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+              Icon(Icons.event_available_rounded, color: appMuted(context)),
+              const SizedBox(height: 10),
+              const Text(
+                'No tienes clases programadas para hoy',
+                textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 4),
-              Text(room, style: Theme.of(context).textTheme.bodySmall),
             ],
           ),
         ),
       ),
-    ],
+    ),
   );
+}
+
+class _AcademicErrorCard extends StatelessWidget {
+  const _AcademicErrorCard({required this.message, required this.onRetry});
+
+  final String message;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 38),
+      child: Column(
+        children: [
+          Icon(Icons.cloud_off_rounded, size: 36, color: appMuted(context)),
+          const SizedBox(height: 12),
+          Text(message, textAlign: TextAlign.center),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Volver a intentar'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _InlineSyncWarning extends StatelessWidget {
+  const _InlineSyncWarning({required this.message, required this.onRetry});
+
+  final String message;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Theme.of(context).colorScheme.errorContainer,
+    borderRadius: BorderRadius.circular(16),
+    child: ListTile(
+      leading: const Icon(Icons.sync_problem_rounded),
+      title: const Text('Mostrando el último horario disponible'),
+      subtitle: Text(message),
+      trailing: IconButton(
+        tooltip: 'Reintentar sincronización',
+        onPressed: onRetry,
+        icon: const Icon(Icons.refresh_rounded),
+      ),
+    ),
+  );
+}
+
+Color _scheduleColor(String externalGroupId) {
+  const colors = [
+    AppColors.indigo,
+    AppColors.orange,
+    AppColors.success,
+    Color(0xFF8B5CF6),
+  ];
+  final hash = externalGroupId.codeUnits.fold<int>(
+    0,
+    (sum, item) => sum + item,
+  );
+  return colors[hash % colors.length];
+}
+
+String _academicSummary(StudentAcademicProfile profile) {
+  final details = <String>[];
+  if (profile.average != null) details.add('Promedio ${profile.average}');
+  if (profile.approvedCredits != null) {
+    details.add('${profile.approvedCredits} créditos aprobados');
+  }
+  return details.isEmpty ? 'No disponible en UAT' : details.join(' · ');
 }
 
 class _EmptySchedule extends StatelessWidget {
@@ -869,18 +1111,3 @@ class _ProfileField extends StatelessWidget {
     ],
   );
 }
-
-class _ClassItem {
-  const _ClassItem(this.subject, this.room, this.time);
-  final String subject, room, time;
-}
-
-const _classes = [
-  _ClassItem('Cálculo integral', 'Aula pendiente', '08:00 - 09:00'),
-  _ClassItem(
-    'Tu clase actual',
-    'Disponible al iniciar el pase',
-    'Horario por sincronizar',
-  ),
-  _ClassItem('Programación móvil', 'Aula pendiente', '10:00 - 11:00'),
-];

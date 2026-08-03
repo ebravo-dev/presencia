@@ -116,6 +116,10 @@ automáticamente los tokens heredados de Hive.
 
 - `app-profesor` y `app-alumno` consumen el dominio público del Gateway.
 - UAT Integration consume los portales de maestros y alumnos de la UAT.
+- `app-alumno` obtiene perfil y horario por REST después del login obligatorio,
+  sin bloquear el flujo de asistencia mientras actualiza los datos académicos.
+- El dashboard de coordinación autoriza cambios de celular revocando el vínculo
+  actual; el nuevo UUID sólo se registra en el siguiente login estudiantil.
 
 ## Referencias
 

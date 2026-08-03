@@ -54,6 +54,35 @@ describe('CoordinationController beacon cutover', () => {
     expect(reply.statusCode).toBe(201);
   });
 
+  it('revokes a student device binding with coordinator audit metadata', async () => {
+    let received: unknown;
+    const controller = new CoordinationController(
+      {} as never,
+      {
+        unbindStudentDevice: async (input: unknown) => {
+          received = input;
+        },
+      } as never,
+      {} as never,
+    );
+    const reply = replyStub();
+
+    await controller.deleteStudentDeviceBinding({
+      id: 'request-device-1',
+      coordinator: { id: 'coord-9', role: 'COORDINATOR' },
+      params: { matricula: '2251330007' },
+    } as never, reply as never);
+
+    expect(received).toEqual({
+      matricula: '2251330007',
+      actorIdentityId: 'coord-9',
+      actorRole: 'COORDINATOR',
+      reason: 'Desvinculación solicitada desde el dashboard de coordinación.',
+      correlationId: 'request-device-1',
+    });
+    expect(reply.statusCode).toBe(204);
+  });
+
   it('projects active shared classes into the dashboard instead of legacy substitutions', async () => {
     const controller = new CoordinationController(
       {

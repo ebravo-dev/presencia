@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'models/student_academic_profile.dart';
 import 'services/local_storage_service.dart';
 import 'services/ble_advertiser_service.dart';
 import 'services/attendance_session_service.dart';
@@ -122,6 +123,8 @@ class _AppRouter extends StatefulWidget {
 
 class _AppRouterState extends State<_AppRouter> {
   bool _profileSet = false;
+  StudentAcademicProfile? _academicProfile;
+  String? _initialUatSessionId;
 
   @override
   Widget build(BuildContext context) {
@@ -145,7 +148,11 @@ class _AppRouterState extends State<_AppRouter> {
             attendanceUuid: widget.storage.attendanceUuid,
             deviceBindingId: widget.storage.deviceBindingId,
           );
-          setState(() => _profileSet = true);
+          setState(() {
+            _academicProfile = result.profile;
+            _initialUatSessionId = result.sessionId;
+            _profileSet = true;
+          });
           unawaited(
             _syncDeviceBindingInBackground(
               widget.deviceBindingService,
@@ -161,6 +168,8 @@ class _AppRouterState extends State<_AppRouter> {
       bleService: widget.bleService,
       attendanceSession: widget.attendanceSession,
       deviceBindingService: widget.deviceBindingService,
+      profile: _academicProfile!,
+      initialUatSessionId: _initialUatSessionId,
       themeMode: widget.themeMode,
       onThemeModeChanged: widget.onThemeModeChanged,
     );
