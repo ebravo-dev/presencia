@@ -20,7 +20,12 @@ export class CaptureAttendanceService {
     if (identifiers.some((value) => !value) || new Set(identifiers).size !== identifiers.length) {
       throw new AttendanceDomainError('DUPLICATE_MATRICULA', 'La captura contiene matrículas duplicadas.');
     }
-    const requestHash = createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
+    const requestHash = createHash('sha256').update(JSON.stringify({
+      professorExternalId: normalized.professorExternalId,
+      externalGroupId: normalized.externalGroupId,
+      date: normalized.date,
+      entries: normalized.entries,
+    })).digest('hex');
     return this.repository.capture(normalized, requestHash);
   }
 }

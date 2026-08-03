@@ -255,7 +255,9 @@ if (mockState.attendanceWrites?.length !== 1) {
 pass('The BFF persists one idempotent UAT job before 202 and the worker completes the portal write');
 
 const bindings = await request(attendanceUrl, `/internal/v1/attendance/device-bindings?q=${encodeURIComponent(matricula)}`, { method: 'GET', expected: 200 });
-if (bindings.data?.length !== 1 || bindings.data[0]?.students?.length !== 1) {
+if (bindings.data?.length !== 1 || !bindings.data[0]?.students?.some(
+  (student) => student.group?.externalGroupId === String(captureBody.Id_Grupo),
+)) {
   throw new Error('The authoritative binding is not associated with the synchronized roster.');
 }
 

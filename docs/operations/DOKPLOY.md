@@ -64,6 +64,20 @@ salvo que se sustituyan por servicios administrados de alta disponibilidad.
 
 ## Verificación posterior
 
+Para una ejecución manual o en CI con Compose 5, iniciar el stack en segundo
+plano y dejar que el smoke espere readiness:
+
+```bash
+docker compose --env-file infra/compose/.env.dokploy \
+  -f infra/compose/docker-compose.microservices.yml up --build --detach
+PRESENCIA_BASE_URL=https://presencia.example.edu.mx \
+  node infra/scripts/smoke-deployment.mjs
+```
+
+No se usa `docker compose up --wait`: Compose 5 puede devolver estado distinto
+de cero cuando los jobs one-shot terminan correctamente. El smoke reintenta las
+sondas durante el arranque y mantiene la verificación del estado observable.
+
 Con el dominio ya enrutado por Traefik:
 
 ```bash

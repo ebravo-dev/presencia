@@ -16,9 +16,9 @@ prueba de funcionamiento integral.
 | Captura local y subida posterior a UAT | La presencia del profesor entra únicamente por el canal de beacon/entrada/salida y usa hora del servidor; la captura de alumnos no puede inyectar timestamps de profesor. Attendance usa transacción serializable e idempotencia. Antes del `202`, UAT Integration persiste un job con credencial cifrada, separado del TTL de Redis; el móvil conserva su `ClientRecordId` hasta recibir `COMPLETED`. El titular queda `PENDING`; una clase compartida queda `SKIPPED`. | Implementado; falta caos contra UAT real. |
 | Asistencia del profesor en dashboard | Coordination Query consume roster/asistencia, reconcilia snapshots y genera reportes semanal/rango. | Implementado; CI prueba la proyección cruzando PostgreSQL y RabbitMQ. |
 | Microservicios y datos separados | Gateway, Identity, Academic, Attendance, UAT Integration y Coordination Query usan límites y bases lógicas propios. Identity es obligatorio para cada login; Academic recibe el único snapshot de profesor/alumno; Attendance posee beacons, dispositivos y telemetría BLE. UAT Integration no mantiene una segunda proyección académica. | El proceso HTTP monolítico y las fachadas móviles antiguas están fuera del runtime; se conservan únicamente imports one-shot idempotentes mientras se valida el primer despliegue. |
-| Docker y Dokploy | Compose crea bases/usuarios, migraciones/importaciones one-shot, Redis AOF, RabbitMQ, redes privadas, egreso UAT, readiness y apagado controlado. Las imágenes de aplicación usan usuarios sin privilegios; los runtimes eliminan capacidades, bloquean escalamiento de privilegios y montan el filesystem como sólo lectura con `tmpfs` explícitos. | Implementado y validado estáticamente; workflow CI ejecuta el stack. Pendiente construir en este host porque Docker está detenido, además de la primera corrida remota y el despliegue Dokploy. |
+| Docker y Dokploy | Compose crea bases/usuarios, migraciones/importaciones one-shot, Redis AOF, RabbitMQ, redes privadas, egreso UAT, readiness y apagado controlado. Las imágenes de aplicación usan usuarios sin privilegios; los runtimes eliminan capacidades, bloquean escalamiento de privilegios y montan el filesystem como sólo lectura con `tmpfs` explícitos. Una construcción limpia local validó imágenes, jobs, servicios, web y el flujo integral con Docker 29.7.1 y Compose 5.3.1. | Implementado y validado localmente; faltan la primera corrida remota y el despliegue Dokploy. |
 | Credenciales móviles | El alumno usa almacenamiento seguro nativo. El profesor migra los tokens de Hive a Keychain/Keystore, elimina la contraseña heredada y sólo la conserva efímeramente en memoria para reintentos del proceso actual. | Implementado y probado; falta auditoría en dispositivos físicos. |
-| Tests | Unitarios, contratos HTTP/eventos, clientes UAT simulados, apps Flutter, dashboard web, smoke público y flujo integral del Compose. El smoke UAT real de sólo lectura verifica ambos portales sin imprimir datos académicos. | Implementado; E2E de escritura UAT y dispositivos aún requiere infraestructura externa. |
+| Tests | Unitarios, contratos HTTP/eventos, clientes UAT simulados, apps Flutter, dashboard web, smoke público y flujo integral del Compose. El smoke UAT real de sólo lectura verifica ambos portales sin imprimir datos académicos. | Implementado; la escritura al simulador UAT pasó E2E. La escritura UAT real y los dispositivos físicos aún requieren autorización e infraestructura externa. |
 
 ## Evidencia UAT real de sólo lectura
 
@@ -32,6 +32,26 @@ lista vacía y UAT no ofreció fechas de ciclo para sondear el roster desde un
 grupo del horario. Por ello, una carga real requiere otra ventana o contexto
 académico válido. La prueba no imprimió identidad, matrícula, cookies ni datos
 académicos y nunca invocó `GuardaAsistencias`.
+
+## Evidencia Docker local
+
+El 3 de agosto de 2026 se construyó y levantó desde volúmenes limpios la
+superposición `docker-compose.microservices.yml` + `docker-compose.ci.yml` con
+Docker 29.7.1 y Compose 5.3.1. Los jobs de aprovisionamiento, migración e import
+terminaron con código cero y los servicios de ejecución alcanzaron sus sondas
+de salud. El smoke público completó ocho comprobaciones de web, health,
+readiness, autenticación y bloqueo de rutas internas. El flujo integral
+completó once etapas entre Gateway, Identity, Academic, Attendance, UAT
+Integration, Coordination Query, PostgreSQL, Redis y RabbitMQ.
+
+La ejecución descubrió y corrigió cuatro diferencias respecto de la validación
+estática: el script de aprovisionamiento montado debe invocarse mediante
+`/bin/sh`; la sonda Redis debe reutilizar la contraseña expandida por Compose;
+la cuenta coordinadora opcional no debe recibir sólo un nombre predeterminado;
+y el hash de idempotencia de asistencia debe depender del contenido de negocio,
+no del identificador de correlación de cada reintento. También se ajustó la
+espera de readiness para que los jobs one-shot exitosos no hagan fallar Compose
+5 al usar `--wait`.
 
 ## Gate automatizado del Compose
 
@@ -61,7 +81,7 @@ iconos en chunks cacheables; Excel y PDF continúan como imports bajo demanda.
 - ventana, grupo y lista expresamente autorizados para una escritura UAT real;
 - Android e iOS físicos para BLE, UUID y revinculación;
 - despliegue Dokploy con dos réplicas por servicio;
-- caída/restauración controlada de UAT y verificación de reintento/DLQ;
+- caída/restauración controlada contra UAT real y verificación de reintento/DLQ;
 - backup y restauración de las bases y Redis.
 
 El runtime legado está retirado del Compose. La base histórica y su imagen no

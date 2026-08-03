@@ -91,6 +91,31 @@ test('the generated CI environment satisfies the production validator', async ()
   assert.deepEqual(validateDokployEnvironment(environment, compose), []);
 });
 
+test('PostgreSQL provisioning invokes its read-only script through the shell', async () => {
+  const compose = await readFile(composeUrl, 'utf8');
+  const start = compose.indexOf('\n  postgres-provision:');
+  const end = compose.indexOf('\n  redis:', start);
+  const service = compose.slice(start, end);
+  assert.match(service, /command: \["\/bin\/sh", "\/opt\/presencia\/init-databases\.sh"\]/);
+  assert.match(service, /init-databases\.sh:\/opt\/presencia\/init-databases\.sh:ro/);
+});
+
+test('Redis health authenticates with the same configured password', async () => {
+  const compose = await readFile(composeUrl, 'utf8');
+  const start = compose.indexOf('\n  redis:');
+  const end = compose.indexOf('\n  rabbitmq:', start);
+  const service = compose.slice(start, end);
+  assert.match(service, /environment:\n\s+REDIS_PASSWORD: \$\{REDIS_PASSWORD:\?/);
+  assert.match(service, /REDISCLI_AUTH=\\"\$\$\{REDIS_PASSWORD\}\\" redis-cli ping/);
+});
+
+test('optional coordinator provisioning stays empty when it is not configured', async () => {
+  const compose = await readFile(composeUrl, 'utf8');
+  assert.match(compose, /COORDINATOR_EMAIL: \$\{COORDINATOR_EMAIL:-\}/);
+  assert.match(compose, /COORDINATOR_NAME: \$\{COORDINATOR_NAME:-\}/);
+  assert.match(compose, /COORDINATOR_PASSWORD: \$\{COORDINATOR_PASSWORD:-\}/);
+});
+
 test('UAT has outbound access without joining the public Dokploy network', async () => {
   const compose = await readFile(composeUrl, 'utf8');
   const start = compose.indexOf('\n  uat-integration:');
@@ -118,6 +143,8 @@ test('Compose CI replaces both UAT portals with an isolated non-root simulator',
 test('the cross-service verifier also runs with the hardened Node 24 runtime', async () => {
   const workflow = await readFile(new URL('../../.github/workflows/backend-platform.yml', import.meta.url), 'utf8');
   assert.doesNotMatch(workflow, /node(?:-version:|:) 24\.7/);
+  assert.doesNotMatch(workflow, /up --build --detach --wait/);
+  assert.match(workflow, /up --build --detach/);
   assert.match(workflow, /docker run --rm[\s\S]*--user node[\s\S]*--read-only[\s\S]*--cap-drop ALL[\s\S]*node:24-alpine/);
 });
 

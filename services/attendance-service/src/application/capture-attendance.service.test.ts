@@ -43,6 +43,30 @@ describe('CaptureAttendanceService', () => {
     expect(called).toBe(false);
   });
 
+  it('keeps the payload hash stable when an HTTP retry has a new correlation id', async () => {
+    const hashes: string[] = [];
+    const repository = repositoryStub();
+    repository.capture = async (command, requestHash) => {
+      hashes.push(requestHash);
+      return {
+        attendanceSessionId: 'session-1', externalGroupId: command.externalGroupId, date: command.date,
+        entriesCount: command.entries.length, uploadStatus: 'PENDING', duplicate: hashes.length > 1, version: 1,
+      };
+    };
+    const service = new CaptureAttendanceService(repository);
+    const capture = {
+      idempotencyKey: '74b29734-65a8-48b2-9e6e-8cd01f1a0016',
+      professorExternalId: 'teacher-1', externalGroupId: '947699', date: '2026-08-02',
+      entries: [{ uatStudentId: 515722, status: 'PRESENT' as const }],
+    };
+
+    await service.capture({ ...capture, correlationId: 'request-1' });
+    await service.capture({ ...capture, correlationId: 'request-2' });
+
+    expect(hashes).toHaveLength(2);
+    expect(hashes[1]).toBe(hashes[0]);
+  });
+
   it('normalizes and rejects duplicate UAT student identifiers before writing', async () => {
     let called = false;
     const repository = repositoryStub();

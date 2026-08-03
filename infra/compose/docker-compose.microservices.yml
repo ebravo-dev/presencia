@@ -48,7 +48,7 @@ x-uat-environment: &uat-environment
   ACADEMIC_SERVICE_URL: http://academic-service:3300
   COORDINATION_QUERY_SERVICE_URL: http://coordination-query-service:3500
   COORDINATOR_EMAIL: ${COORDINATOR_EMAIL:-}
-  COORDINATOR_NAME: ${COORDINATOR_NAME:-Coordinacion Academica}
+  COORDINATOR_NAME: ${COORDINATOR_NAME:-}
   COORDINATOR_PASSWORD: ${COORDINATOR_PASSWORD:-}
 
 x-identity-environment: &identity-environment
@@ -138,7 +138,7 @@ services:
   postgres-provision:
     image: postgres:17-alpine
     restart: "no"
-    command: ["/opt/presencia/init-databases.sh"]
+    command: ["/bin/sh", "/opt/presencia/init-databases.sh"]
     environment:
       PGHOST: postgres
       PGPASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}
@@ -173,15 +173,15 @@ services:
     image: redis:7.4-alpine
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a '$${REDIS_PASSWORD}' ping | grep PONG"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli ping | grep -q '^PONG$'"]
       interval: 10s
       timeout: 5s
       retries: 10
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     networks: [private]
 
   rabbitmq:

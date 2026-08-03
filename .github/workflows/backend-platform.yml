@@ -116,7 +116,7 @@ jobs:
           --env-file /tmp/presencia-ci.env
           --file infra/compose/docker-compose.microservices.yml
           --file infra/compose/docker-compose.ci.yml
-          up --build --detach --wait --wait-timeout 300
+          up --build --detach
 
       - name: Run public deployment smoke checks
         env:
