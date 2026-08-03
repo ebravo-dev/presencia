@@ -106,3 +106,31 @@ test('the public web proxy exposes gateway health but never internal routes', as
   assert.match(nginx, /\|health\|metrics\)/);
   assert.doesNotMatch(nginx, /\|internal\|/);
 });
+
+test('Compose CI replaces both UAT portals with an isolated non-root simulator', async () => {
+  const compose = await readFile(new URL('../compose/docker-compose.ci.yml', import.meta.url), 'utf8');
+  assert.match(compose, /uat-portal-mock:[\s\S]*user: node[\s\S]*read_only: true[\s\S]*cap_drop: \[ALL\]/);
+  assert.match(compose, /UAT_BASE_URL: http:\/\/uat-portal-mock:3900/);
+  assert.match(compose, /UAT_ALUMNOS_BASE_URL: http:\/\/uat-portal-mock:3900/);
+  assert.match(compose, /uat-portal-mock:[\s\S]*condition: service_healthy/);
+});
+
+test('the cross-service verifier also runs with the hardened Node 24 runtime', async () => {
+  const workflow = await readFile(new URL('../../.github/workflows/backend-platform.yml', import.meta.url), 'utf8');
+  assert.doesNotMatch(workflow, /node(?:-version:|:) 24\.7/);
+  assert.match(workflow, /docker run --rm[\s\S]*--user node[\s\S]*--read-only[\s\S]*--cap-drop ALL[\s\S]*node:24-alpine/);
+});
+
+test('OpenAPI exactly matches the implemented public UAT routes', async () => {
+  const [openapi, routes] = await Promise.all([
+    readFile(new URL('../../backend-apirest/docs/openapi.yaml', import.meta.url), 'utf8'),
+    readFile(new URL('../../backend-apirest/src/presentation/http/routes/uat.routes.ts', import.meta.url), 'utf8'),
+  ]);
+  assert.doesNotMatch(openapi, /^  \/api\/uat\/asistencia\/lotes(?:\/\{batchId\})?:$/m);
+  assert.match(openapi, /^  \/api\/uat\/asistencia\/registros\/estado:$/m);
+  const implemented = [...routes.matchAll(/fastify\.(?:get|post|put|delete)\(\s*['"](\/api\/uat\/[^'"]+)/g)]
+    .map((match) => match[1].replace(/:([A-Za-z][A-Za-z0-9_]*)/g, '{$1}'))
+    .sort();
+  const documented = [...openapi.matchAll(/^  (\/api\/uat\/[^:]+):$/gm)].map((match) => match[1]).sort();
+  assert.deepEqual(documented, implemented);
+});

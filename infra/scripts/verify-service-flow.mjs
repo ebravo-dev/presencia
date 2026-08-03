@@ -6,19 +6,29 @@ const academicUrl = process.env.ACADEMIC_SERVICE_URL ?? 'http://academic-service
 const attendanceUrl = process.env.ATTENDANCE_SERVICE_URL ?? 'http://attendance-service:3400';
 const queryUrl = process.env.COORDINATION_QUERY_SERVICE_URL ?? 'http://coordination-query-service:3500';
 const gatewayUrl = process.env.API_GATEWAY_URL ?? 'http://api-gateway:8080';
+const uatPortalMockUrl = process.env.UAT_PORTAL_MOCK_URL ?? 'http://uat-portal-mock:3900';
 const headers = { 'x-internal-service-token': internalToken, 'x-correlation-id': 'ci-service-flow' };
-const verificationObservedAt = new Date().toISOString();
+const now = new Date();
+const verificationObservedAt = now.toISOString();
+const attendanceDate = dateInTimeZone(now, 'America/Monterrey');
+const attendanceWeek = isoWeekFor(attendanceDate);
+const schoolCycle = schoolCycleFor(attendanceWeek.weekStart);
+const teacherUsername = 'teacher-ci@uat.edu.mx';
+const teacherPassword = 'teacher-ci-password';
+const studentUsername = 'student-ci@alumnos.uat.edu.mx';
+const studentPassword = 'student-ci-password';
+const professorExternalId = '42';
+const matricula = '2251330007';
 
-const identity = await request(identityUrl, '/internal/v1/authenticated-sessions', {
-  method: 'POST', expected: 201, body: {
-    kind: 'PROFESSOR', role: 'PROFESSOR', institutionalIdentifier: 'teacher-ci',
-    email: 'teacher-ci@uat.edu.mx', displayName: 'Profesor CI', source: 'UAT_TEACHER', correlationId: 'ci-service-flow',
-  },
+const teacherSession = await request(gatewayUrl, '/api/uat/sessions', {
+  method: 'POST', expected: 201, body: { username: teacherUsername, password: teacherPassword },
 });
-const accessToken = identity.data?.accessToken;
+const teacherSessionId = teacherSession.sessionId;
+const accessToken = teacherSession.identitySession?.accessToken;
+if (typeof teacherSessionId !== 'string') throw new Error('UAT Integration did not return a professor session.');
 if (typeof accessToken !== 'string' || accessToken.split('.').length !== 3) throw new Error('Identity did not issue a JWT.');
 await request(identityUrl, '/internal/v1/sessions/verify', { method: 'POST', expected: 200, body: { token: accessToken } });
-pass('Identity creates and verifies a UAT-authorized professor session');
+pass('Gateway authenticates the professor against UAT and Identity verifies the resulting session');
 
 const superUserPassword = process.env.SUPER_USER_PASSWORD;
 if (!superUserPassword) throw new Error('SUPER_USER_PASSWORD is required.');
@@ -48,28 +58,40 @@ const coordinatorMe = await request(gatewayUrl, '/api/coordinacion/auth/me', {
 if (coordinatorMe.data?.user?.role !== 'COORDINATOR') throw new Error('Coordinator session is not backed by Identity.');
 pass('Identity owns coordinator and super-user sessions behind the stable BFF contracts');
 
+const harvestedGroups = await eventually(async () => request(
+  academicUrl,
+  `/internal/v1/academic/professors/${encodeURIComponent(professorExternalId)}/groups`,
+  { method: 'GET', expected: 200 },
+), (result) => result.data?.some((group) => group.externalGroupId === '947699'), 'Academic never received the UAT professor harvest.');
+const harvestedGroup = harvestedGroups.data.find((group) => group.externalGroupId === '947699');
+if (harvestedGroup?.classroom !== 'AULA CI 101'
+  || !harvestedGroup.enrollments?.some((student) => student.matricula === matricula)) {
+  throw new Error('The UAT professor harvest did not preserve its classroom and authoritative roster.');
+}
+pass('UAT Integration harvests professor groups and roster into Academic through RabbitMQ');
+
 await request(academicUrl, '/internal/v1/academic/snapshots/professors', {
   method: 'POST', expected: 202, body: {
     snapshotId: '11111111-1111-4111-8111-111111111111', correlationId: 'ci-service-flow', causationId: 'ci-service-flow',
     teacher: {
-      externalId: 'teacher-ci', institutionalCode: 'CI-42', name: 'Profesor CI',
-      email: 'teacher-ci@uat.edu.mx', authenticatedAt: '2026-08-03T12:00:00.000Z',
+      externalId: professorExternalId, institutionalCode: 'CI-42', name: 'Profesor CI',
+      email: teacherUsername, authenticatedAt: verificationObservedAt,
     },
-    cycle: { externalId: '2026-2', name: '2026-2' },
+    cycle: { externalId: schoolCycle.name, name: schoolCycle.name },
     groups: [{
       externalGroupId: '947699', code: '1-A', groupLetter: 'A', name: 'Arquitectura de Software',
-      level: 'Licenciatura', classroom: 'AULA CI 101', period: '2026-2', schedule: { monday: '07:00-09:00' },
-      subject: { externalId: 'subject-ci', code: 'SW-101', name: 'Arquitectura de Software' },
-      coordination: { externalId: 'coord-ci', name: 'Coordinación CI', shortName: 'CI' },
+      level: 'Licenciatura', classroom: 'AULA CI 101', period: schoolCycle.name, schedule: { monday: '07:00-09:00' },
+      subject: { externalId: '12:SW-101', code: 'SW-101', name: 'Arquitectura de Software' },
+      coordination: { externalId: '12', name: 'Coordinacion CI', shortName: 'CI' },
       rosterAuthoritative: true,
-      students: [{ matricula: '2251330007', name: 'Ana Alumna', uatStudentId: 515722, listNumber: 1 }],
+      students: [{ matricula, name: 'Ana Alumna', uatStudentId: 515722, listNumber: 1 }],
     }, {
       externalGroupId: '947700', code: '1-B', groupLetter: 'B', name: 'Pruebas de Software',
-      level: 'Licenciatura', classroom: 'AULA CI 102', period: '2026-2', schedule: { tuesday: '07:00-09:00' },
+      level: 'Licenciatura', classroom: 'AULA CI 102', period: schoolCycle.name, schedule: { tuesday: '07:00-09:00' },
       subject: { externalId: 'subject-ci-2', code: 'SW-102', name: 'Pruebas de Software' },
-      coordination: { externalId: 'coord-ci', name: 'Coordinación CI', shortName: 'CI' },
+      coordination: { externalId: '12', name: 'Coordinacion CI', shortName: 'CI' },
       rosterAuthoritative: true,
-      students: [{ matricula: '2251330007', name: 'Ana Alumna', uatStudentId: 515722, listNumber: 1 }],
+      students: [{ matricula, name: 'Ana Alumna', uatStudentId: 515722, listNumber: 1 }],
     }],
   },
 });
@@ -78,29 +100,43 @@ await request(academicUrl, '/internal/v1/academic/snapshots/professors', {
     snapshotId: '33333333-1111-4111-8111-111111111111', correlationId: 'ci-service-flow', causationId: 'ci-service-flow',
     teacher: {
       externalId: 'teacher-delegate-ci', institutionalCode: 'CI-43', name: 'Profesor Compartido CI',
-      email: 'teacher-delegate-ci@uat.edu.mx', authenticatedAt: '2026-08-03T12:00:00.000Z',
+      email: 'teacher-delegate-ci@uat.edu.mx', authenticatedAt: verificationObservedAt,
     },
-    cycle: { externalId: '2026-2', name: '2026-2' },
+    cycle: { externalId: schoolCycle.name, name: schoolCycle.name },
     groups: [],
   },
 });
-await request(academicUrl, '/internal/v1/academic/snapshots/students', {
-  method: 'POST', expected: 202, body: {
-    snapshotId: '22222222-2222-4222-8222-222222222222', correlationId: 'ci-service-flow', causationId: 'ci-service-flow',
-    synchronizedAt: '2026-08-03T12:00:00.000Z',
-    student: { matricula: '2251330007', displayName: 'Ana Alumna', email: '2251330007@alumnos.uat.edu.mx' },
-    career: { planExternalId: '3314', name: 'Ingeniería de Software', coordinationExternalId: 'coord-ci' },
-    cycle: { externalId: '2026-2', name: '2026-2' },
-    schedule: [{
-      externalGroupId: '947699', groupLetter: 'A', subjectName: 'Arquitectura de Software',
-      professorName: 'Profesor CI', classroom: 'AULA CI 101', period: '2026-2', credits: 5,
-      schedule: { monday: '07:00-09:00' },
-    }],
+const attendanceUuid = '33333333-3333-4333-8333-333333333333';
+const deviceBindingId = '33333333-3333-4333-8333-333333333334';
+const studentSession = await request(gatewayUrl, '/api/uat/alumnos/sessions', {
+  method: 'POST', expected: 201, body: {
+    username: studentUsername,
+    password: studentPassword,
+    attendanceUuid,
+    deviceBindingId,
+    platform: 'android',
+    deviceInfo: 'CI device',
   },
 });
-const student = await request(academicUrl, '/internal/v1/academic/students/2251330007', { method: 'GET', expected: 200 });
-if (student.data?.scheduleEntries?.length !== 1) throw new Error('Academic did not persist the student schedule.');
-pass('Academic persists professor roster and student schedule snapshots');
+if (typeof studentSession.sessionId !== 'string' || typeof studentSession.deviceBindingToken !== 'string') {
+  throw new Error('Student UAT login did not return its session and device binding token.');
+}
+await request(identityUrl, '/internal/v1/sessions/verify', {
+  method: 'POST', expected: 200, body: { token: studentSession.identitySession?.accessToken },
+});
+const studentSchedule = await request(gatewayUrl, '/api/uat/alumnos/horario', {
+  method: 'GET', expected: 200,
+  requestHeaders: { 'x-uat-student-session-id': studentSession.sessionId },
+});
+if (studentSchedule.data?.length !== 1 || String(studentSchedule.data[0]?.Id_Grupo) !== '947699') {
+  throw new Error('Student API did not return the schedule obtained from UAT.');
+}
+const student = await eventually(async () => request(
+  academicUrl,
+  `/internal/v1/academic/students/${encodeURIComponent(matricula)}`,
+  { method: 'GET', expected: [200, 404] },
+), (result) => result.status === 200 && result.data?.scheduleEntries?.length === 1, 'Academic never persisted the student UAT schedule.');
+pass('Student UAT login binds the phone and the REST API persists the returned schedule in Academic');
 
 const beaconImportBody = {
   beacons: [{ uuid: '55555555-5555-4555-8555-555555555555', classroom: 'AULA CI 101' }],
@@ -115,7 +151,7 @@ if (beaconImport.data?.imported + beaconImport.data?.unchanged !== 1) {
 const professorBeacons = await eventually(async () => request(
   attendanceUrl,
   '/internal/v1/attendance/classroom-beacons/resolve',
-  { method: 'POST', expected: 200, body: { professorExternalId: 'teacher-ci', classrooms: ['AULA CI 101', 'FORBIDDEN 404'] } },
+  { method: 'POST', expected: 200, body: { professorExternalId, classrooms: ['AULA CI 101', 'FORBIDDEN 404'] } },
 ), (result) => result.data?.length === 1, 'Attendance never authorized the classroom beacon from the professor roster.');
 if (professorBeacons.data[0]?.uuid !== '55555555-5555-4555-8555-555555555555'
   || professorBeacons.missing?.includes('FORBIDDEN 404')) {
@@ -123,62 +159,54 @@ if (professorBeacons.data[0]?.uuid !== '55555555-5555-4555-8555-555555555555'
 }
 pass('Attendance imports classroom beacons idempotently and scopes resolution to the professor roster');
 
-const binding = await request(attendanceUrl, '/internal/v1/attendance/device-bindings/initial', {
-  method: 'POST', expected: 201, body: {
-    matricula: '2251330007', attendanceUuid: '33333333-3333-4333-8333-333333333333',
-    deviceBindingId: '33333333-3333-4333-8333-333333333334', platform: 'android', deviceInfo: 'CI device',
-  },
-});
-if (typeof binding.data?.bindingToken !== 'string') throw new Error('Attendance did not return a device binding token.');
 const reconciledBinding = await request(gatewayUrl, '/api/student-device-bindings', {
   method: 'POST', expected: 200,
-  requestHeaders: { authorization: `Bearer ${binding.data.bindingToken}` },
+  requestHeaders: { authorization: `Bearer ${studentSession.deviceBindingToken}` },
   body: {
-    matricula: '2251330007', attendanceUuid: '33333333-3333-4333-8333-333333333333',
-    deviceBindingId: '33333333-3333-4333-8333-333333333334', platform: 'android', deviceInfo: 'CI device',
+    matricula, attendanceUuid, deviceBindingId, platform: 'android', deviceInfo: 'CI device',
   },
 });
-if (reconciledBinding.data?.matricula !== '2251330007') {
+if (reconciledBinding.data?.matricula !== matricula) {
   throw new Error('Gateway did not reconcile the scoped binding through Attendance Service.');
 }
 
 const professorBindings = await eventually(async () => request(
   attendanceUrl,
   '/internal/v1/attendance/device-bindings/resolve',
-  { method: 'POST', expected: 200, body: { professorExternalId: 'teacher-ci', matriculas: ['2251330007'] } },
+  { method: 'POST', expected: 200, body: { professorExternalId, matriculas: [matricula] } },
 ), (result) => result.data?.length === 1, 'Attendance never authorized the binding from the professor roster.');
-if (professorBindings.data[0]?.attendanceUuid !== '33333333-3333-4333-8333-333333333333') {
+if (professorBindings.data[0]?.attendanceUuid !== attendanceUuid) {
   throw new Error('Attendance returned an unexpected student binding.');
 }
 pass('Gateway reconciles the scoped student token and Attendance authorizes professor binding reads');
 
-const professorEntry = await request(attendanceUrl, '/internal/v1/attendance/presence/professor-entry', {
+const professorSessionHeader = { 'x-uat-session-id': teacherSessionId };
+const professorEntry = await request(gatewayUrl, '/api/uat/profesor/presencia/entrada', {
   method: 'POST', expected: [200, 201], body: {
-    professorExternalId: 'teacher-ci', externalGroupId: '947699', trustedGroupAuthorization: false,
+    externalGroupId: '947699',
     beaconUuid: '55555555-5555-4555-8555-555555555555', clientDetectedAt: verificationObservedAt,
     rssi: -58, distance: 1.4, bluetoothAddress: 'CI:BE:AC:ON:01',
-  },
+  }, requestHeaders: professorSessionHeader,
 });
 if (!professorEntry.data?.attendanceSessionId || !professorEntry.data?.professorEntryAt) {
   throw new Error('Attendance did not create the professor presence draft.');
 }
-const studentPresence = await request(attendanceUrl, '/internal/v1/attendance/presence/student-detections', {
+const studentPresence = await request(gatewayUrl, '/api/uat/profesor/presencia/alumnos', {
   method: 'POST', expected: [200, 201], body: {
-    professorExternalId: 'teacher-ci', externalGroupId: '947699', trustedGroupAuthorization: false,
+    externalGroupId: '947699',
     detections: [{
-      beaconUuid: '33333333-3333-4333-8333-333333333333', detectedAt: verificationObservedAt,
+      beaconUuid: attendanceUuid, detectedAt: verificationObservedAt,
       rssi: -62, distance: 1.8, txPower: -59, bluetoothAddress: 'CI:ST:UD:EN:01', major: 1, minor: 7,
     }],
-  },
+  }, requestHeaders: professorSessionHeader,
 });
-if (studentPresence.data?.matchedCount !== 1 || studentPresence.data?.matched?.[0]?.matricula !== '2251330007') {
+if (studentPresence.data?.matchedCount !== 1 || studentPresence.data?.matched?.[0]?.matricula !== matricula) {
   throw new Error('Attendance did not match the BLE detection to the roster and active binding.');
 }
-await request(attendanceUrl, '/internal/v1/attendance/presence/professor-exit', {
+await request(gatewayUrl, '/api/uat/profesor/presencia/salida', {
   method: 'POST', expected: [200, 201], body: {
-    professorExternalId: 'teacher-ci', externalGroupId: '947699', trustedGroupAuthorization: false,
-    clientDetectedAt: verificationObservedAt,
-  },
+    externalGroupId: '947699', clientDetectedAt: verificationObservedAt,
+  }, requestHeaders: professorSessionHeader,
 });
 const draftProjection = await request(attendanceUrl, '/internal/v1/attendance/coordination-projection', {
   method: 'GET', expected: 200,
@@ -192,22 +220,41 @@ if (presenceDraft?.uploadStatus !== 'DRAFT' || presenceDraft.entriesCount !== 1)
 pass('Attendance persists server-timed BLE telemetry as a DRAFT without requesting a UAT upload');
 
 const captureBody = {
-  externalGroupId: '947699', professorExternalId: 'teacher-ci', date: '2026-08-03',
-  professorEntryAt: '2026-08-03T13:00:00.000Z', professorExitAt: '2026-08-03T15:00:00.000Z',
-  entries: [{ matricula: '2251330007', status: 'PRESENT' }],
+  ClientRecordId: 'ci-professor-attendance-1',
+  Id_Grupo: 947699,
+  Fec_Ini: attendanceWeek.uatWeekStart,
+  Asistencia: [{
+    id_alumno: 515722,
+    num_pase_lista: 1,
+    num_dia: 1,
+    sn_asistencia: true,
+  }],
 };
-const capture = await eventually(async () => request(attendanceUrl, '/internal/v1/attendance/captures', {
+const capture = await eventually(async () => request(gatewayUrl, '/api/uat/profesor/control-asistencia/asistencias', {
   method: 'POST', expected: [202, 404],
-  requestHeaders: { 'idempotency-key': '44444444-4444-4444-8444-444444444444' }, body: captureBody,
+  requestHeaders: professorSessionHeader, body: captureBody,
 }), (result) => result.status === 202, 'Attendance never consumed the academic roster event.');
-const duplicate = await request(attendanceUrl, '/internal/v1/attendance/captures', {
-  method: 'POST', expected: 200,
-  requestHeaders: { 'idempotency-key': '44444444-4444-4444-8444-444444444444' }, body: captureBody,
+if (capture.data?.uploadStatus !== 'PENDING' || capture.data?.duplicate !== false) {
+  throw new Error('The owner capture was not accepted as a new pending UAT publication.');
+}
+const duplicate = await request(gatewayUrl, '/api/uat/profesor/control-asistencia/asistencias', {
+  method: 'POST', expected: 202,
+  requestHeaders: professorSessionHeader, body: captureBody,
 });
 if (duplicate.data?.duplicate !== true) throw new Error('Attendance idempotency contract was not preserved.');
-pass('Attendance binds the device and captures attendance idempotently after consuming the roster event');
+const uploadStatus = await eventually(async () => request(gatewayUrl, '/api/uat/asistencia/registros/estado', {
+  method: 'POST', expected: 200,
+  requestHeaders: professorSessionHeader,
+  body: { clientRecordIds: [captureBody.ClientRecordId] },
+}), (result) => result.data?.[0]?.status === 'COMPLETED', 'The durable UAT upload job never completed.');
+if (uploadStatus.data[0]?.attempts !== 1) throw new Error('The idempotent UAT job was processed more than once.');
+const mockState = await request(uatPortalMockUrl, '/__mock/state', { method: 'GET', expected: 200 });
+if (mockState.attendanceWrites?.length !== 1) {
+  throw new Error('The UAT portal did not receive exactly one attendance write.');
+}
+pass('The BFF persists one idempotent UAT job before 202 and the worker completes the portal write');
 
-const bindings = await request(attendanceUrl, '/internal/v1/attendance/device-bindings?q=2251330007', { method: 'GET', expected: 200 });
+const bindings = await request(attendanceUrl, `/internal/v1/attendance/device-bindings?q=${encodeURIComponent(matricula)}`, { method: 'GET', expected: 200 });
 if (bindings.data?.length !== 1 || bindings.data[0]?.students?.length !== 1) {
   throw new Error('The authoritative binding is not associated with the synchronized roster.');
 }
@@ -219,13 +266,13 @@ const teacherId = teachers.data[0]?.id;
 if (typeof teacherId !== 'string') throw new Error('Coordination Query did not expose the projected teacher.');
 const report = await eventually(async () => request(
   queryUrl,
-  `/internal/v1/coordination/reports/attendance-weekly?teacherId=${encodeURIComponent(teacherId)}&weekStart=2026-08-03`,
+  `/internal/v1/coordination/reports/attendance-weekly?teacherId=${encodeURIComponent(teacherId)}&weekStart=${attendanceWeek.weekStart}`,
   { method: 'GET', expected: 200 },
-), (result) => result.data?.summary?.taken === 2, 'Coordination Query never projected the attendance event.');
-if (report.data.rows?.[0]?.cells?.monday?.portalSyncStatus !== 'PENDING') {
-  throw new Error('The dashboard did not preserve the pending UAT upload state.');
+), (result) => result.data?.rows?.some((row) => row.cells?.monday?.portalSyncStatus === 'COMPLETED'), 'Coordination Query never projected the attendance upload result.');
+if (!report.data.rows?.some((row) => row.cells?.monday?.portalSyncStatus === 'COMPLETED')) {
+  throw new Error('The dashboard did not project the completed UAT upload state.');
 }
-pass('RabbitMQ projects professor attendance and pending UAT state into the coordination report');
+pass('RabbitMQ projects professor attendance and completed UAT state into the coordination report');
 
 const sharedOptions = await request(academicUrl, '/internal/v1/academic/shared-classes/options', {
   method: 'GET', expected: 200,
@@ -236,13 +283,14 @@ if (!sharedSource?.id || !sharedTeacher?.id) throw new Error('Academic did not e
 const sharedAssignment = await request(academicUrl, '/internal/v1/academic/shared-classes', {
   method: 'POST', expected: 201, body: {
     sourceAssignmentId: sharedSource.id, assignedTeacherId: sharedTeacher.id,
-    schoolCycleYear: 2026, schoolCycleTerm: 2, active: true, notes: 'Cobertura CI',
+    schoolCycleYear: schoolCycle.year, schoolCycleTerm: schoolCycle.term, active: true, notes: 'Cobertura CI',
     actorIdentityId: 'coord-ci', actorRole: 'COORDINATOR', reason: 'Asignación compartida para verificación CI.',
   },
 });
 if (!sharedAssignment.data?.id) throw new Error('Academic did not create the shared-class assignment.');
 const sharedForTeacher = await request(academicUrl, '/internal/v1/academic/shared-classes/for-teacher', {
-  method: 'POST', expected: 200, body: { identity: 'teacher-delegate-ci', year: 2026, term: 2 },
+  method: 'POST', expected: 200,
+  body: { identity: 'teacher-delegate-ci', year: schoolCycle.year, term: schoolCycle.term },
 });
 if (sharedForTeacher.data?.[0]?.id !== '947700' || sharedForTeacher.data?.[0]?.source !== 'SHARED') {
   throw new Error('Academic did not expose the Flutter-compatible shared class.');
@@ -263,7 +311,7 @@ if (delegateBeacons.data[0]?.uuid !== '66666666-6666-4666-8666-666666666666') {
 }
 const delegateBindings = await request(attendanceUrl, '/internal/v1/attendance/device-bindings/resolve', {
   method: 'POST', expected: 200,
-  body: { professorExternalId: 'teacher-delegate-ci', matriculas: ['2251330007'] },
+  body: { professorExternalId: 'teacher-delegate-ci', matriculas: [matricula] },
 });
 if (delegateBindings.data?.length !== 1) throw new Error('Shared professor could not resolve the assigned roster binding.');
 await request(attendanceUrl, '/internal/v1/attendance/presence/professor-entry', {
@@ -276,8 +324,8 @@ const delegatedCapture = await request(attendanceUrl, '/internal/v1/attendance/c
   method: 'POST', expected: 202,
   requestHeaders: { 'idempotency-key': '77777777-7777-4777-8777-777777777777' },
   body: {
-    externalGroupId: '947700', professorExternalId: 'teacher-delegate-ci', date: '2026-08-04',
-    entries: [{ matricula: '2251330007', status: 'PRESENT' }],
+    externalGroupId: '947700', professorExternalId: 'teacher-delegate-ci', date: attendanceDate,
+    entries: [{ matricula, status: 'PRESENT' }],
   },
 });
 if (delegatedCapture.data?.uploadStatus !== 'SKIPPED') {
@@ -333,4 +381,30 @@ async function eventually(action, predicate, message) {
 
 function pass(message) {
   process.stdout.write(`PASS ${message}\n`);
+}
+
+function dateInTimeZone(date, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function isoWeekFor(date) {
+  const localMidday = new Date(`${date}T12:00:00.000Z`);
+  const dayNumber = ((localMidday.getUTCDay() + 6) % 7) + 1;
+  const weekStartDate = new Date(localMidday);
+  weekStartDate.setUTCDate(weekStartDate.getUTCDate() - dayNumber + 1);
+  const weekStart = weekStartDate.toISOString().slice(0, 10);
+  const [year, month, day] = weekStart.split('-');
+  return { weekStart, uatWeekStart: `${day}/${month}/${year}` };
+}
+
+function schoolCycleFor(date) {
+  const value = new Date(`${date}T12:00:00.000Z`);
+  const month = value.getUTCMonth() + 1;
+  const term = month <= 5 ? 1 : month <= 7 || (month === 8 && value.getUTCDate() <= 7) ? 2 : 3;
+  const year = value.getUTCFullYear();
+  return { year, term, name: `${year}-${term}` };
 }

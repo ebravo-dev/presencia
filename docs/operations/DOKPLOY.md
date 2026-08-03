@@ -74,13 +74,17 @@ Nginx publica únicamente las rutas de cliente y las sondas del Gateway. Las
 rutas `/internal/*` no se reenvían. El workflow `Backend platform` genera
 secretos efímeros, construye todas las imágenes, levanta PostgreSQL, Redis,
 RabbitMQ, migraciones, servicios y web, y ejecuta este mismo smoke test mediante
-`docker-compose.ci.yml`. Después inserta snapshots de profesor y alumno,
-comprueba importación y resolución de beacons por roster, la vinculación del
-celular, la telemetría BLE con tiempo del servidor y estado `DRAFT`, la captura
-idempotente `PENDING`, y una clase compartida autorizada/revocada con captura
-delegada `SKIPPED` sin usar credenciales ajenas. También comprueba la proyección
-del reporte a través de RabbitMQ y analiza/prueba ambas apps
-Flutter. Las cuentas y portales UAT reales permanecen fuera de CI.
+`docker-compose.ci.yml`. En esa superposición, un portal UAT aislado simula los
+formularios ASP.NET de maestros y alumnos. El flujo inicia ambas sesiones por
+el Gateway, conserva cookies, cosecha grupos/roster, obtiene y persiste el
+horario del alumno, vincula su celular, registra telemetría BLE con tiempo del
+servidor y finaliza la lista por la ruta pública del profesor. Antes del `202`
+se crea el job PostgreSQL; el worker vuelve a autenticarse, escribe exactamente
+una vez en el portal simulado y el dashboard recibe `COMPLETED` por RabbitMQ.
+También prueba una clase compartida autorizada/revocada con captura delegada
+`SKIPPED`, y analiza/prueba ambas apps Flutter. El simulador se ejecuta sin root,
+con filesystem de sólo lectura y sin acceso a los portales reales; las cuentas
+UAT autorizadas permanecen fuera de CI.
 
 El login de coordinación y superusuario, sus sesiones revocables y las cuentas
 del personal pertenecen a Identity. El BFF conserva `/api/coordinacion/auth/*`

@@ -44,7 +44,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.7.0
+          node-version: "24"
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -100,7 +100,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.7.0
+          node-version: "24"
 
       - name: Generate isolated integration environment
         run: |
@@ -127,9 +127,14 @@ jobs:
         run: >-
           docker run --rm
           --network presencia-ci_private
+          --user node
+          --read-only
+          --tmpfs /tmp:size=16m,mode=1777
+          --cap-drop ALL
+          --security-opt no-new-privileges
           --env-file /tmp/presencia-ci.env
           --volume "$PWD/infra/scripts:/scripts:ro"
-          node:24.7-alpine
+          node:24-alpine
           node /scripts/verify-service-flow.mjs
 
       - name: Show container diagnostics on failure

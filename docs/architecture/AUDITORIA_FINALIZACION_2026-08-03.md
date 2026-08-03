@@ -8,8 +8,8 @@ prueba de funcionamiento integral.
 
 | Requisito | Propietario y evidencia actual | Estado |
 |---|---|---|
-| Datos UAT del profesor mediante REST | UAT Integration implementa sesión ASP.NET, horarios, catálogos, grupos, roster y asistencia. `uat-portal-clients.integration.test.ts` prueba formularios y cookies contra un portal HTTP simulado. | Implementado; falta E2E con cuenta UAT autorizada. |
-| Login, perfil y horario del alumno | UAT Integration autentica, selecciona carrera y expone horario/calificaciones; Identity emite la sesión y Academic persiste el snapshot. | Implementado; falta E2E con cuenta UAT autorizada. |
+| Datos UAT del profesor mediante REST | UAT Integration implementa sesión ASP.NET, horarios, catálogos, grupos, roster y asistencia. Los tests de cliente y el Compose CI prueban formularios, cookies, cosecha y escritura contra un portal HTTP aislado. | Implementado; falta E2E con cuenta UAT autorizada. |
+| Login, perfil y horario del alumno | UAT Integration autentica, selecciona carrera y expone horario/calificaciones; Identity emite la sesión y Academic persiste el snapshot. El Compose CI recorre el contrato público desde el Gateway. | Implementado; falta E2E con cuenta UAT autorizada. |
 | Login estudiantil como única alta | Cada login exige UUID BLE, identificador estable y plataforma móvil; el vínculo sólo se ejecuta después de que UAT devuelve login, carrera y matrícula válidos. La misma identidad se reconcilia idempotentemente durante la actualización académica y no existe alta manual pública. | Implementado y probado en BFF, Attendance y Flutter. |
 | Vincular matrícula, teléfono y UUID | Attendance posee `StudentDeviceBinding`, rechaza identificadores duplicados y entrega un token acotado. El Gateway renueva únicamente el vínculo exacto; el profesor lo resuelve mediante sesión UAT y pertenencia al roster, sin dual-write legado. | Implementado y probado. |
 | Cambio de UUID sólo por coordinación | Attendance permite reemplazo/desvinculación sólo por comando interno con rol y motivo auditables; el endpoint público únicamente repite el vínculo exacto. | Implementado y probado. |
@@ -22,19 +22,21 @@ prueba de funcionamiento integral.
 
 ## Gate automatizado del Compose
 
-El job `compose-integration` genera secretos efímeros y levanta todas las
-imágenes. La prueba `verify-service-flow.mjs` comprueba:
+El job `compose-integration` genera secretos efímeros, sustituye ambos portales
+UAT por un simulador HTTP no privilegiado y levanta todas las imágenes. La
+prueba `verify-service-flow.mjs` comprueba:
 
-1. Identity crea y verifica una sesión autorizada por UAT;
-2. Academic persiste snapshots de profesor, roster, alumno y horario;
-3. RabbitMQ entrega el roster a Attendance;
-4. Attendance importa beacons idempotentemente y limita su resolución al roster;
-5. Attendance vincula el celular y Gateway valida la renovación acotada;
-6. Attendance valida beacon, roster y UUID, deduplica alumno y proyecta la telemetría como `DRAFT` sin solicitar subida UAT;
-7. Attendance finaliza la captura idempotente y la cambia a `PENDING`;
-8. RabbitMQ entrega la asistencia a Coordination Query y el reporte refleja la publicación pendiente;
-9. Nginx/Gateway publican health y rutas de clientes, pero no `/internal/*`.
-10. Academic crea/revoca una clase compartida y Attendance aplica el permiso a
+1. Gateway autentica al profesor contra el formulario UAT e Identity verifica su sesión;
+2. UAT Integration cosecha grupo/roster y Academic los persiste;
+3. Gateway autentica al alumno, Attendance vincula su celular y Academic persiste el horario leído de UAT;
+4. RabbitMQ entrega el roster a Attendance;
+5. Attendance importa beacons idempotentemente y limita su resolución al roster;
+6. Gateway valida la renovación acotada del vínculo estudiantil;
+7. Las rutas públicas del profesor validan beacon, roster y UUID, deduplican al alumno y proyectan telemetría `DRAFT` con tiempo del servidor;
+8. La ruta pública de captura crea un job durable antes del `202`, deduplica el reintento y el worker escribe exactamente una vez en UAT;
+9. RabbitMQ entrega `COMPLETED` a Attendance y Coordination Query para el dashboard;
+10. Nginx/Gateway publican health y rutas de clientes, pero no `/internal/*`.
+11. Academic crea/revoca una clase compartida y Attendance aplica el permiso a
     beacons, roster, presencia y captura `SKIPPED` sin generar una subida UAT.
 
 El mismo workflow ejecuta `flutter analyze` y `flutter test` en las apps de
