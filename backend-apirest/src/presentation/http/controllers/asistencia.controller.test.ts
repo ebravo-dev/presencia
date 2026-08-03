@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AsistenciaController } from './asistencia.controller.js';
 
 describe('AsistenciaController', () => {
@@ -9,7 +9,6 @@ describe('AsistenciaController', () => {
       {
         registrarAsistencias: async () => { directUatCalled = true; return {}; },
       } as never,
-      undefined,
       {
         capture: async (input: unknown) => {
           captured = input;
@@ -53,7 +52,7 @@ describe('AsistenciaController', () => {
   });
 
   it('rejects a payload that mixes more than one attendance day', async () => {
-    const controller = new AsistenciaController({} as never, undefined, { capture: async () => ({}) } as never);
+    const controller = new AsistenciaController({} as never, { capture: async () => ({}) } as never);
     await expect(controller.guardar({
       id: 'request-1',
       body: {
@@ -68,5 +67,24 @@ describe('AsistenciaController', () => {
         id: '74b29734-65a8-48b2-9e6e-8cd01f1a0016', username: 'profesor@uat.edu.mx', login: { parametros: {} },
       },
     } as never)).rejects.toMatchObject({ code: 'ATTENDANCE_MULTIPLE_DAYS' });
+  });
+
+  it('rejects the removed monolith-only debug payload instead of uploading it to UAT', async () => {
+    const capture = vi.fn(async () => ({}));
+    const controller = new AsistenciaController({} as never, { capture } as never);
+
+    await expect(controller.guardar({
+      id: 'request-debug',
+      body: {
+        Id_Grupo: 947699,
+        Fec_Ini: '27/07/2026',
+        Asistencia: [{ id_alumno: 515722, num_pase_lista: 1, num_dia: 1, sn_asistencia: true }],
+        DebugReportOnly: true,
+      },
+      uatSession: {
+        id: '74b29734-65a8-48b2-9e6e-8cd01f1a0016', username: 'profesor@uat.edu.mx', login: { parametros: {} },
+      },
+    } as never)).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(capture).not.toHaveBeenCalled();
   });
 });

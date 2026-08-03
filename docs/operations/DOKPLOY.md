@@ -24,8 +24,8 @@ node infra/scripts/validate-dokploy-env.mjs infra/compose/.env.dokploy
 
 Las contraseñas incluidas en URLs deben estar codificadas para URL. Cada JWT,
 token interno, token de métricas y clave de cifrado debe ser aleatorio y
-distinto. `RSA_PRIVATE_KEY` conserva el formato requerido por el backend
-legado durante la migración reversible.
+distinto. `RSA_PRIVATE_KEY` conserva el formato requerido únicamente por la
+imagen histórica que ejecuta los jobs one-shot de migración e importación.
 
 ## Orden de arranque
 
@@ -44,8 +44,8 @@ El Compose automatiza el orden:
    ni bloqueos administrados desde Identity.
 5. Coordination Query crea su cola durable y reconstruye su modelo desde
    snapshots de Academic y Attendance.
-6. UAT Integration y el backend de compatibilidad arrancan después de sus
-   dependencias.
+6. UAT Integration arranca después de sus dependencias. El proceso HTTP del
+   monolito ya no forma parte del runtime.
 7. El Gateway sólo queda listo cuando todos los upstreams requeridos responden
    en readiness; después arranca la web.
 
@@ -78,8 +78,9 @@ Flutter. Las cuentas y portales UAT reales permanecen fuera de CI.
 El login de coordinación y superusuario, sus sesiones revocables y las cuentas
 del personal pertenecen a Identity. El BFF conserva `/api/coordinacion/auth/*`
 y `/api/superUsuario/*`; delega beacons y vinculaciones a Attendance. Las
-herramientas debug se aíslan detrás de un endpoint interno del backend de
-compatibilidad y nunca se publican directamente.
+herramientas debug heredadas están retiradas: el panel conserva una vista de
+estado, las lecturas devuelven colecciones vacías y toda mutación responde
+`410 LEGACY_DEBUG_RETIRED`.
 
 El dashboard divide el shell en chunks cacheables y carga los exportadores de
 Excel/PDF sólo cuando se solicitan, reduciendo el JavaScript inicial servido por
@@ -111,7 +112,8 @@ la versión móvil correspondiente. Conserva las columnas y los valores
 
 Programar backups independientes para las bases:
 
-- `presencia_attendance` (compatibilidad);
+- `presencia_attendance` (fuente histórica de los imports one-shot, hasta
+  validar y cerrar la migración);
 - `presencia_uat`;
 - `presencia_identity`;
 - `presencia_academic`;

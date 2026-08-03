@@ -660,13 +660,12 @@ rutas internas bloqueadas, cortes configurables y documentación de Dokploy,
 smoke test y rollback implementados. Attendance ya posee la configuración de
 beacons y la telemetría BLE, con importación idempotente y fachadas para móviles
 instalados. Academic ya posee las clases compartidas, importa el estado anterior
-y entrega a Attendance permisos revocables por eventos. El proceso legado aún
-es necesario para las sustituciones temporales antiguas y otras rutas de
-compatibilidad; la compatibilidad de tokens móviles ya se retiró. El resto se
-retirará sólo después del periodo de observación en
-producción. Las rutas duplicadas de sustituciones ya se retiraron del BFF y el
-panel de superusuario usa Identity/Attendance; el backend legado sólo aporta
-herramientas debug mediante la red privada.
+y entrega a Attendance permisos revocables por eventos. Las apps móviles ya
+consumen UAT Integration y los microservicios propietarios; el Gateway rechaza
+las rutas antiguas. El proceso HTTP `backend` fue retirado del Compose y las
+herramientas debug quedaron deshabilitadas con mutaciones `410`. Sólo permanecen
+la imagen y la base histórica para los imports one-shot de beacons y migraciones
+hasta validar el primer despliegue y su restauración.
 
 Entregables:
 

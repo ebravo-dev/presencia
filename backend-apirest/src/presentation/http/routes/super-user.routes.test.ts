@@ -17,7 +17,6 @@ describe('superUserRoutes', () => {
       } as never,
       identityService: { createStaffAccount } as never,
       attendanceService: { createClassroomBeacon: createBeacon } as never,
-      attendanceBackend: {} as never,
     });
 
     const login = await app.inject({ method: 'POST', url: '/api/superUsuario/auth/login', payload: { password: 'master-password' } });
@@ -44,6 +43,23 @@ describe('superUserRoutes', () => {
     expect(createStaffAccount).toHaveBeenCalledWith(expect.objectContaining({
       actorIdentityId: 'identity-super', reason: 'Alta de cuenta coordinadora.',
     }));
+
+    const debugStatus = await app.inject({
+      method: 'GET', url: '/api/superUsuario/debug/status',
+      headers: { cookie: 'super_user_session=identity-token' },
+    });
+    expect(debugStatus.statusCode).toBe(200);
+    expect(debugStatus.json()).toMatchObject({
+      data: { enabled: false, period: 'N/A' },
+    });
+
+    const retiredMutation = await app.inject({
+      method: 'POST', url: '/api/superUsuario/debug/classes',
+      headers: { cookie: 'super_user_session=identity-token' },
+      payload: {},
+    });
+    expect(retiredMutation.statusCode).toBe(410);
+    expect(retiredMutation.json()).toMatchObject({ error: 'LEGACY_DEBUG_RETIRED' });
     await app.close();
   });
 });

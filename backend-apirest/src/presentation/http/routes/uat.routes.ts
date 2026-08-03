@@ -2,7 +2,6 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { UatService } from '../../../application/services/uat.service.js';
 import type { UatStudentService } from '../../../application/services/uat-student.service.js';
 import type { IDomainEventBus } from '../../../domain/events/domain-event-bus.js';
-import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
 import type { AcademicServiceClient } from '../../../infrastructure/http/client/academic-service.client.js';
 import type { AttendanceUploadService } from '../../../application/services/attendance-upload.service.js';
 import type { AttendanceUploadWorker } from '../../../infrastructure/jobs/attendance-upload.worker.js';
@@ -26,16 +25,15 @@ export interface UatRoutesOptions {
   uatStudentService: UatStudentService;
   eventBus: IDomainEventBus;
   academicServiceClient: AcademicServiceClient;
-  attendanceBackendClient: AttendanceBackendClient;
   attendanceUploadService: AttendanceUploadService;
   attendanceUploadWorker: AttendanceUploadWorker;
-  attendanceCaptureClient?: AttendanceCaptureClient;
+  attendanceCaptureClient: AttendanceCaptureClient;
   attendanceServiceCommands?: AttendanceServiceCommandClient;
 }
 
 export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   fastify,
-  { uatService, uatStudentService, eventBus, academicServiceClient, attendanceBackendClient, attendanceUploadService, attendanceUploadWorker, attendanceCaptureClient, attendanceServiceCommands },
+  { uatService, uatStudentService, eventBus, academicServiceClient, attendanceUploadService, attendanceUploadWorker, attendanceCaptureClient, attendanceServiceCommands },
 ) => {
   fastify.addHook('preHandler', async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return;
@@ -58,7 +56,7 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   const studentSessionController = new StudentSessionController(uatStudentService);
   const consultaController = new ConsultaController(uatService);
   const catalogoController = new CatalogoController(uatService);
-  const asistenciaController = new AsistenciaController(uatService, attendanceBackendClient, attendanceCaptureClient);
+  const asistenciaController = new AsistenciaController(uatService, attendanceCaptureClient);
   const attendanceUploadController = new AttendanceUploadController(attendanceUploadService, attendanceUploadWorker);
   const sharedClassController = new SharedClassController(academicServiceClient);
   const professorDeviceBindingController = new ProfessorDeviceBindingController(attendanceServiceCommands);

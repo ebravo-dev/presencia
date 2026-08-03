@@ -33,9 +33,7 @@ x-uat-environment: &uat-environment
   INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
   COORDINATION_WEB_ORIGIN: ${COORDINATION_WEB_ORIGIN:?COORDINATION_WEB_ORIGIN is required}
   COORDINATION_COOKIE_SECURE: "true"
-  ATTENDANCE_BACKEND_URL: http://attendance-backend:3000
   ATTENDANCE_SERVICE_URL: http://attendance-service:3400
-  ATTENDANCE_SERVICE_REQUIRED: "true"
   ATTENDANCE_BACKEND_SERVICE_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
   ATTENDANCE_JOB_ENCRYPTION_SECRET: ${ATTENDANCE_JOB_ENCRYPTION_SECRET:?ATTENDANCE_JOB_ENCRYPTION_SECRET is required}
   UAT_SESSION_ENCRYPTION_SECRET: ${UAT_SESSION_ENCRYPTION_SECRET:?UAT_SESSION_ENCRYPTION_SECRET is required}
@@ -44,7 +42,6 @@ x-uat-environment: &uat-environment
   ACADEMIC_SERVICE_URL: http://academic-service:3300
   ACADEMIC_SERVICE_REQUIRED: "true"
   COORDINATION_QUERY_SERVICE_URL: http://coordination-query-service:3500
-  COORDINATION_QUERY_SERVICE_REQUIRED: "true"
   COORDINATOR_EMAIL: ${COORDINATOR_EMAIL:-}
   COORDINATOR_NAME: ${COORDINATOR_NAME:-Coordinacion Academica}
   COORDINATOR_PASSWORD: ${COORDINATOR_PASSWORD:-}
@@ -210,29 +207,6 @@ services:
         condition: service_completed_successfully
     networks: [private]
 
-  attendance-backend:
-    image: presencia-attendance:${IMAGE_TAG:-latest}
-    restart: unless-stopped
-    init: true
-    stop_grace_period: 30s
-    command: ["node", "dist/app.js"]
-    environment: *attendance-environment
-    depends_on:
-      beacon-import:
-        condition: service_completed_successfully
-      redis:
-        condition: service_healthy
-      attendance-service:
-        condition: service_healthy
-    expose: ["3000"]
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    networks: [private]
-
   beacon-import:
     image: presencia-attendance:${IMAGE_TAG:-latest}
     restart: "no"
@@ -285,8 +259,6 @@ services:
       redis:
         condition: service_healthy
       rabbitmq:
-        condition: service_healthy
-      attendance-backend:
         condition: service_healthy
       identity-service:
         condition: service_healthy

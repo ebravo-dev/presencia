@@ -1,8 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import type { CoordinationService } from '../../../application/services/coordination.service.js';
 import type { CoordinatorAuthService } from '../../../application/services/coordinator-auth.service.js';
-import type { WeeklyAttendanceReportService } from '../../../application/services/weekly-attendance-report.service.js';
-import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
 import type { AcademicServiceClient } from '../../../infrastructure/http/client/academic-service.client.js';
 import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
 import type { CoordinationQueryClient } from '../../../infrastructure/http/client/coordination-query.client.js';
@@ -11,25 +8,19 @@ import { coordinationRouteSchemas } from '../schemas/coordination.schemas.js';
 import { buildCoordinatorAuthHook } from '../hooks/coordinator-auth.hook.js';
 
 export interface CoordinationRoutesOptions {
-  coordinationService: CoordinationService;
   authService: CoordinatorAuthService;
-  weeklyAttendanceReport: WeeklyAttendanceReportService;
-  attendanceBackendClient: AttendanceBackendClient;
   academicServiceClient: AcademicServiceClient;
-  attendanceServiceCommands?: AttendanceServiceCommandClient;
-  coordinationQuery?: CoordinationQueryClient;
+  attendanceServiceCommands: AttendanceServiceCommandClient;
+  coordinationQuery: CoordinationQueryClient;
 }
 
 export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> = async (
   fastify,
-  { coordinationService, authService, weeklyAttendanceReport, attendanceBackendClient, academicServiceClient, attendanceServiceCommands, coordinationQuery },
+  { authService, academicServiceClient, attendanceServiceCommands, coordinationQuery },
 ) => {
   fastify.addHook('preHandler', buildCoordinatorAuthHook(authService));
   const requireWriteCoordinator = buildCoordinatorAuthHook(authService, { write: true });
   const controller = new CoordinationController(
-    coordinationService,
-    weeklyAttendanceReport,
-    attendanceBackendClient,
     academicServiceClient,
     attendanceServiceCommands,
     coordinationQuery,
@@ -58,9 +49,7 @@ export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> =
     controller.rangeReport,
   );
 
-  // Compatibilidad temporal para bundles viejos de frontend-coord.
-  // La administracion nueva vive en /superUsuario en el backend principal,
-  // pero estas rutas evitan 404 mientras se propaga el nuevo frontend.
+  // El BFF autentica y delega; los datos pertenecen a sus servicios de dominio.
   fastify.get('/api/coordinacion/infraestructura/resumen', controller.infrastructureSummary);
   fastify.get('/api/coordinacion/infraestructura/beacons', controller.beacons);
   fastify.post('/api/coordinacion/infraestructura/beacons', { preHandler: requireWriteCoordinator }, controller.createBeacon);

@@ -293,10 +293,11 @@ function DebugAdmin() {
   const [schedule, setSchedule] = useState<Record<DebugDay, DebugScheduleSlot[]>>(defaultDebugSchedule);
   const [toleranceMinutes, setToleranceMinutes] = useState('10');
   const status = useQuery({ queryKey: ['super-user', 'debug', 'status'], queryFn: superUserApi.debugStatus, refetchInterval: REFRESH_INTERVAL_MS });
-  const settings = useQuery({ queryKey: ['super-user', 'debug', 'settings'], queryFn: superUserApi.debugSettings, refetchInterval: REFRESH_INTERVAL_MS });
-  const classes = useQuery({ queryKey: ['super-user', 'debug', 'classes'], queryFn: superUserApi.debugClasses, refetchInterval: REFRESH_INTERVAL_MS });
-  const attendance = useQuery({ queryKey: ['super-user', 'debug', 'attendance'], queryFn: superUserApi.debugStudentAttendance, refetchInterval: REFRESH_INTERVAL_MS });
-  const logs = useQuery({ queryKey: ['super-user', 'debug', 'logs'], queryFn: superUserApi.debugFlowLogs, refetchInterval: REFRESH_INTERVAL_MS });
+  const debugEnabled = status.data?.data.enabled === true;
+  const settings = useQuery({ queryKey: ['super-user', 'debug', 'settings'], queryFn: superUserApi.debugSettings, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
+  const classes = useQuery({ queryKey: ['super-user', 'debug', 'classes'], queryFn: superUserApi.debugClasses, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
+  const attendance = useQuery({ queryKey: ['super-user', 'debug', 'attendance'], queryFn: superUserApi.debugStudentAttendance, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
+  const logs = useQuery({ queryKey: ['super-user', 'debug', 'logs'], queryFn: superUserApi.debugFlowLogs, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
 
   useEffect(() => {
     const current = settings.data?.data.teacherAttendanceToleranceMinutes ?? status.data?.data.settings.teacherAttendanceToleranceMinutes;
@@ -368,7 +369,7 @@ function DebugAdmin() {
     }));
   };
 
-  const enabled = status.data?.data.enabled ?? false;
+  const enabled = debugEnabled;
   const startClassEdit = (item: DebugClass) => {
     setEditingDebugClass(item);
     setClassForm({
@@ -414,6 +415,38 @@ function DebugAdmin() {
     });
     setSchedule(defaultDebugSchedule);
   };
+
+  if (status.isError) {
+    return (
+      <Card className="p-5">
+        <div className="flex items-start gap-3">
+          <div className="rounded-xl bg-red-50 p-2.5 text-[#C8102E]"><Bug size={21} /></div>
+          <div>
+            <h2 className="font-bold">No se pudo consultar el estado de Debug</h2>
+            <p className="mt-1 text-sm text-slate-500">Reintenta en unos segundos. Las funciones de prueba permanecen inaccesibles mientras no se confirme su estado.</p>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  if (!status.isPending && !enabled) {
+    return (
+      <Card className="p-5">
+        <div className="flex items-start gap-3">
+          <div className="rounded-xl bg-emerald-50 p-2.5 text-emerald-700"><Bug size={21} /></div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-bold">Modo debug retirado</h2>
+              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase text-emerald-800">Producción real</span>
+            </div>
+            <p className="mt-2 text-sm text-slate-500">{status.data?.data.apiRestPolicy}</p>
+            <p className="mt-2 text-sm text-slate-500">Las clases, asistencias, beacons y vinculaciones se administran ahora desde sus microservicios propietarios.</p>
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-4">

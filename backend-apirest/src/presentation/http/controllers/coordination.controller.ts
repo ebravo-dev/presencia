@@ -1,7 +1,4 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import type { CoordinationService } from '../../../application/services/coordination.service.js';
-import type { WeeklyAttendanceReportService } from '../../../application/services/weekly-attendance-report.service.js';
-import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
 import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
 import type { AcademicServiceClient } from '../../../infrastructure/http/client/academic-service.client.js';
 import type { CoordinationQueryClient } from '../../../infrastructure/http/client/coordination-query.client.js';
@@ -19,57 +16,44 @@ import {
 
 export class CoordinationController {
   constructor(
-    private readonly coordinationService: CoordinationService,
-    private readonly weeklyAttendanceReport: WeeklyAttendanceReportService,
-    private readonly attendanceBackendClient: AttendanceBackendClient,
     private readonly academicService: AcademicServiceClient,
-    private readonly attendanceServiceCommands?: AttendanceServiceCommandClient,
-    private readonly coordinationQuery?: CoordinationQueryClient,
+    private readonly attendanceServiceCommands: AttendanceServiceCommandClient,
+    private readonly coordinationQuery: CoordinationQueryClient,
   ) {}
 
   overview = async (_request: FastifyRequest, reply: FastifyReply) => {
-    if (this.coordinationQuery) return reply.code(200).send(await this.coordinationQuery.overview());
-    return reply.code(200).send(await this.coordinationService.getOverview());
+    return reply.code(200).send(await this.coordinationQuery.overview());
   };
 
   coordinations = async (_request: FastifyRequest, reply: FastifyReply) => {
-    if (this.coordinationQuery) return reply.code(200).send(await this.coordinationQuery.coordinations());
-    return reply.code(200).send(await this.coordinationService.listCoordinations());
+    return reply.code(200).send(await this.coordinationQuery.coordinations());
   };
 
   teachers = async (request: FastifyRequest, reply: FastifyReply) => {
     const query = parseCoordinationPayload(teacherListQuerySchema, request.query);
-    if (this.coordinationQuery) return reply.code(200).send(await this.coordinationQuery.teachers(query));
-    return reply.code(200).send(await this.coordinationService.listTeachers(query));
+    return reply.code(200).send(await this.coordinationQuery.teachers(query));
   };
 
   teacherAssignments = async (request: FastifyRequest, reply: FastifyReply) => {
     const { teacherId } = parseCoordinationPayload(teacherParamsSchema, request.params);
-    if (this.coordinationQuery) return reply.code(200).send(await this.coordinationQuery.teacherAssignments(teacherId));
-    return reply.code(200).send(await this.coordinationService.getTeacherAssignments(teacherId));
+    return reply.code(200).send(await this.coordinationQuery.teacherAssignments(teacherId));
   };
 
   weeklyReport = async (request: FastifyRequest, reply: FastifyReply) => {
     const query = parseCoordinationPayload(weeklyReportQuerySchema, request.query);
-    if (this.coordinationQuery) return reply.send(await this.coordinationQuery.weeklyReport(query));
-    return reply.send(await this.weeklyAttendanceReport.getReport(query.teacherId, query.weekStart));
+    return reply.send(await this.coordinationQuery.weeklyReport(query));
   };
 
   rangeReport = async (request: FastifyRequest, reply: FastifyReply) => {
     const query = parseCoordinationPayload(rangeReportQuerySchema, request.query);
-    if (this.coordinationQuery) return reply.send(await this.coordinationQuery.rangeReport(query));
-    return reply.send(await this.weeklyAttendanceReport.getRangeReport(query.teacherId, query.startDate, query.endDate));
+    return reply.send(await this.coordinationQuery.rangeReport(query));
   };
 
   beacons = async (_request: FastifyRequest, reply: FastifyReply) => {
-    if (this.attendanceServiceCommands) return reply.send(await this.attendanceServiceCommands.listClassroomBeacons());
-    return reply.send(await this.attendanceBackendClient.listBeacons());
+    return reply.send(await this.attendanceServiceCommands.listClassroomBeacons());
   };
 
   infrastructureSummary = async (_request: FastifyRequest, reply: FastifyReply) => {
-    if (!this.attendanceServiceCommands) {
-      return reply.send(await this.attendanceBackendClient.getInfrastructureSummary());
-    }
     const [attendance, sharedClasses] = await Promise.all([
       this.attendanceServiceCommands.infrastructureSummary(),
       this.academicService.listSharedClasses(),
@@ -102,64 +86,44 @@ export class CoordinationController {
   };
 
   createBeacon = async (request: FastifyRequest, reply: FastifyReply) => {
-    if (this.attendanceServiceCommands) {
-      const coordinator = requireCoordinator(request);
-      return reply.code(201).send(await this.attendanceServiceCommands.createClassroomBeacon({
-        ...(request.body as { classroom: string; uuid: string }), actorIdentityId: coordinator.id,
-        actorRole: 'COORDINATOR', reason: 'Alta de beacon desde coordinación.', correlationId: request.id,
-      }));
-    }
-    return reply.code(201).send(await this.attendanceBackendClient.createBeacon(request.body as { classroom: string; uuid: string }));
+    const coordinator = requireCoordinator(request);
+    return reply.code(201).send(await this.attendanceServiceCommands.createClassroomBeacon({
+      ...(request.body as { classroom: string; uuid: string }), actorIdentityId: coordinator.id,
+      actorRole: 'COORDINATOR', reason: 'Alta de beacon desde coordinación.', correlationId: request.id,
+    }));
   };
 
   updateBeacon = async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    if (this.attendanceServiceCommands) {
-      const coordinator = requireCoordinator(request);
-      return reply.send(await this.attendanceServiceCommands.updateClassroomBeacon(request.params.id, {
-        ...(request.body as Partial<{ classroom: string; uuid: string }>), actorIdentityId: coordinator.id,
-        actorRole: 'COORDINATOR', reason: 'Actualización de beacon desde coordinación.', correlationId: request.id,
-      }));
-    }
-    return reply.send(await this.attendanceBackendClient.updateBeacon(request.params.id, request.body as Partial<{ classroom: string; uuid: string }>));
+    const coordinator = requireCoordinator(request);
+    return reply.send(await this.attendanceServiceCommands.updateClassroomBeacon(request.params.id, {
+      ...(request.body as Partial<{ classroom: string; uuid: string }>), actorIdentityId: coordinator.id,
+      actorRole: 'COORDINATOR', reason: 'Actualización de beacon desde coordinación.', correlationId: request.id,
+    }));
   };
 
   deleteBeacon = async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    if (this.attendanceServiceCommands) {
-      const coordinator = requireCoordinator(request);
-      await this.attendanceServiceCommands.deleteClassroomBeacon(request.params.id, {
-        actorIdentityId: coordinator.id, actorRole: 'COORDINATOR',
-        reason: 'Baja de beacon desde coordinación.', correlationId: request.id,
-      });
-      return reply.code(204).send();
-    }
-    await this.attendanceBackendClient.deleteBeacon(request.params.id);
+    const coordinator = requireCoordinator(request);
+    await this.attendanceServiceCommands.deleteClassroomBeacon(request.params.id, {
+      actorIdentityId: coordinator.id, actorRole: 'COORDINATOR',
+      reason: 'Baja de beacon desde coordinación.', correlationId: request.id,
+    });
     return reply.code(204).send();
   };
 
   studentDeviceBindings = async (request: FastifyRequest<{ Querystring: { q?: string } }>, reply: FastifyReply) => {
-    if (this.attendanceServiceCommands) {
-      return reply.send(await this.attendanceServiceCommands.listStudentDeviceBindings({ q: request.query.q }));
-    }
-    return reply.send(await this.attendanceBackendClient.listStudentDeviceBindings({ q: request.query.q }));
+    return reply.send(await this.attendanceServiceCommands.listStudentDeviceBindings({ q: request.query.q }));
   };
 
   deleteStudentDeviceBinding = async (request: FastifyRequest<{ Params: { matricula: string } }>, reply: FastifyReply) => {
     const coordinator = request.coordinator;
     if (!coordinator) return reply.code(401).send({ error: 'COORDINATOR_UNAUTHORIZED' });
-    if (this.attendanceServiceCommands) {
-      await this.attendanceServiceCommands.unbindStudentDevice({
-        matricula: request.params.matricula,
-        actorIdentityId: coordinator.id,
-        actorRole: 'COORDINATOR',
-        reason: 'Desvinculación solicitada desde el dashboard de coordinación.',
-        correlationId: request.id,
-      });
-    }
-    try {
-      await this.attendanceBackendClient.deleteStudentDeviceBinding(request.params.matricula);
-    } catch (error) {
-      if (!(this.attendanceServiceCommands && error instanceof ApiError && error.statusCode === 404)) throw error;
-    }
+    await this.attendanceServiceCommands.unbindStudentDevice({
+      matricula: request.params.matricula,
+      actorIdentityId: coordinator.id,
+      actorRole: 'COORDINATOR',
+      reason: 'Desvinculación solicitada desde el dashboard de coordinación.',
+      correlationId: request.id,
+    });
     return reply.code(204).send();
   };
 

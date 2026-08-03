@@ -112,43 +112,10 @@ export const asistenciaAlumnoInputSchema = z.object({
 export const registrarAsistenciasBodySchema = z.object({
   Id_Grupo: z.number().int().positive(),
   Fec_Ini: fechaUatSchema,
-  Asistencia: z.array(asistenciaAlumnoInputSchema),
-  DebugReportOnly: z.boolean().optional().default(false),
-  Code: z.string().trim().optional(),
-  GroupLetter: z.string().trim().optional().default(''),
-  Period: z.string().trim().optional(),
-  GroupName: z.string().trim().optional(),
-  Classroom: z.string().trim().optional(),
-  Level: z.string().trim().optional(),
-  Schedule: z.record(z.unknown()).optional(),
-  CreateMissingGroup: z.boolean().optional().default(false),
-  Date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  Asistencia: z.array(asistenciaAlumnoInputSchema).min(1),
   ProfessorEntryAt: isoLikeDateTimeSchema,
   ProfessorExitAt: isoLikeDateTimeSchema,
-}).superRefine((value, ctx) => {
-  if (!value.DebugReportOnly && value.Asistencia.length < 1) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.too_small,
-      minimum: 1,
-      type: 'array',
-      inclusive: true,
-      path: ['Asistencia'],
-      message: 'Debe enviar al menos una asistencia.',
-    });
-  }
-
-  if (value.DebugReportOnly) {
-    if (!value.Code) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['Code'], message: 'Code es requerido en modo debug.' });
-    }
-    if (!value.Period) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['Period'], message: 'Period es requerido en modo debug.' });
-    }
-    if (!value.Date) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['Date'], message: 'Date es requerido en modo debug.' });
-    }
-  }
-});
+}).strict();
 
 export const sessionParamsSchema = z.object({
   sessionId: z.string().uuid(),

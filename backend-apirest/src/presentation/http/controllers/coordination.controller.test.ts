@@ -5,13 +5,14 @@ describe('CoordinationController beacon cutover', () => {
   it('sends coordinator identity and request correlation to Attendance Service', async () => {
     let received: unknown;
     const controller = new CoordinationController(
-      {} as never, {} as never, {} as never, {} as never,
+      {} as never,
       {
         createClassroomBeacon: async (input: unknown) => {
           received = input;
           return { data: { id: 'beacon-1' } };
         },
       } as never,
+      {} as never,
     );
     const reply = replyStub();
     await controller.createBeacon({
@@ -28,13 +29,14 @@ describe('CoordinationController beacon cutover', () => {
   it('sends coordinator audit metadata when creating a shared class', async () => {
     let received: unknown;
     const controller = new CoordinationController(
-      {} as never, {} as never, {} as never,
       {
         createSharedClass: async (input: unknown) => {
           received = input;
           return { data: { id: 'shared-1' } };
         },
       } as never,
+      {} as never,
+      {} as never,
     );
     const reply = replyStub();
     await controller.createSharedClass({
@@ -54,8 +56,6 @@ describe('CoordinationController beacon cutover', () => {
 
   it('projects active shared classes into the dashboard instead of legacy substitutions', async () => {
     const controller = new CoordinationController(
-      {} as never, {} as never,
-      {} as never,
       {
         listSharedClasses: async () => ({
           data: [{
@@ -78,6 +78,7 @@ describe('CoordinationController beacon cutover', () => {
           meta: { generatedAt: '2026-08-03T12:00:00.000Z' },
         }),
       } as never,
+      {} as never,
     );
 
     const result = await controller.infrastructureSummary({} as never, replyStub() as never) as {

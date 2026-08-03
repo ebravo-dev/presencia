@@ -1,7 +1,6 @@
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { SuperUserAuthService } from '../../../application/services/super-user-auth.service.js';
-import type { AttendanceBackendClient } from '../../../infrastructure/http/client/attendance-backend.client.js';
 import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
 import type { IdentityServiceClient } from '../../../infrastructure/http/client/identity-service.client.js';
 import { env } from '../../../config/env.js';
@@ -11,7 +10,6 @@ interface SuperUserRoutesOptions {
   authService: SuperUserAuthService;
   identityService: IdentityServiceClient;
   attendanceService: AttendanceServiceCommandClient;
-  attendanceBackend: AttendanceBackendClient;
 }
 
 const loginSchema = z.object({ password: z.string().min(1).max(256) });
@@ -25,7 +23,7 @@ const beaconUpdateSchema = beaconSchema.partial();
 
 export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async (
   fastify,
-  { authService, identityService, attendanceService, attendanceBackend },
+  { authService, identityService, attendanceService },
 ) => {
   fastify.post('/api/superUsuario/auth/login', {
     config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
@@ -110,15 +108,34 @@ export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async
     return reply.code(204).send();
   });
 
-  fastify.get('/api/superUsuario/debug/status', async () => attendanceBackend.getDebugStatus());
-  fastify.get('/api/superUsuario/debug/settings', async () => attendanceBackend.getDebugSettings());
-  fastify.put('/api/superUsuario/debug/settings', async (request) => attendanceBackend.updateDebugSettings(request.body));
-  fastify.get('/api/superUsuario/debug/classes', async () => attendanceBackend.listDebugClasses());
-  fastify.post('/api/superUsuario/debug/classes', async (request) => attendanceBackend.createDebugClass(request.body));
-  fastify.put<{ Params: { id: string } }>('/api/superUsuario/debug/classes/:id', async (request) => attendanceBackend.updateDebugClass(request.params.id, request.body));
-  fastify.get('/api/superUsuario/debug/student-attendance', async () => attendanceBackend.listDebugStudentAttendance());
-  fastify.get('/api/superUsuario/debug/flow-logs', async () => attendanceBackend.listDebugFlowLogs());
+  fastify.get('/api/superUsuario/debug/status', async () => ({
+    data: {
+      enabled: false,
+      period: 'N/A',
+      settings: { teacherAttendanceToleranceMinutes: 10 },
+      apiRestPolicy: 'Herramientas debug heredadas retiradas del runtime de microservicios.',
+    },
+    meta: { generatedAt: new Date().toISOString() },
+  }));
+  fastify.get('/api/superUsuario/debug/settings', async () => ({
+    data: { teacherAttendanceToleranceMinutes: 10 },
+  }));
+  fastify.put('/api/superUsuario/debug/settings', async (_request, reply) => retiredDebugMutation(reply));
+  fastify.get('/api/superUsuario/debug/classes', async () => ({ data: [] }));
+  fastify.post('/api/superUsuario/debug/classes', async (_request, reply) => retiredDebugMutation(reply));
+  fastify.put<{ Params: { id: string } }>('/api/superUsuario/debug/classes/:id', async (_request, reply) => retiredDebugMutation(reply));
+  fastify.get('/api/superUsuario/debug/student-attendance', async () => ({ data: [] }));
+  fastify.get('/api/superUsuario/debug/flow-logs', async () => ({
+    data: { syncJobs: [], attendanceRecords: [], recentBindings: [] },
+  }));
 };
+
+function retiredDebugMutation(reply: FastifyReply) {
+  return reply.code(410).send({
+    error: 'LEGACY_DEBUG_RETIRED',
+    message: 'Las herramientas debug heredadas fueron retiradas del runtime de microservicios.',
+  });
+}
 
 function actor(identityId: string | undefined, correlationId: string, reason: string) {
   if (!identityId) throw new Error('SUPER_USER_IDENTITY_REQUIRED');

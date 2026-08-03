@@ -9,10 +9,8 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Redis } from 'ioredis';
 import { SyncTeacherDataListener } from './application/listeners/sync-teacher-data.listener.js';
-import { CoordinationService } from './application/services/coordination.service.js';
 import { CoordinatorAuthService } from './application/services/coordinator-auth.service.js';
 import { SuperUserAuthService } from './application/services/super-user-auth.service.js';
-import { WeeklyAttendanceReportService } from './application/services/weekly-attendance-report.service.js';
 import { UatStudentService } from './application/services/uat-student.service.js';
 import { AttendanceUploadService } from './application/services/attendance-upload.service.js';
 import { UatService } from './application/services/uat.service.js';
@@ -23,7 +21,6 @@ import type { StoredUatStudentSession } from './domain/types/uat.interfaces.js';
 import { ApiError } from './errors/api-error.js';
 import { UatClientFactory } from './infrastructure/http/client/uat-client.factory.js';
 import { UatStudentClientFactory } from './infrastructure/http/client/uat-student-client.factory.js';
-import { AttendanceBackendClient } from './infrastructure/http/client/attendance-backend.client.js';
 import { IdentityServiceClient } from './infrastructure/http/client/identity-service.client.js';
 import { AcademicServiceClient } from './infrastructure/http/client/academic-service.client.js';
 import { AttendanceServiceCommandClient } from './infrastructure/http/client/attendance-service-command.client.js';
@@ -112,20 +109,19 @@ export async function buildApp() {
     env.ACADEMIC_SERVICE_REQUIRED,
   );
   const uatService = new UatService(sessionRepository, clientFactory, credentialCipher, identityServiceClient);
-  const attendanceBackendClient = new AttendanceBackendClient(
-    env.ATTENDANCE_BACKEND_URL,
+  const attendanceServiceCommands = new AttendanceServiceCommandClient(
+    env.ATTENDANCE_SERVICE_URL,
     env.ATTENDANCE_BACKEND_SERVICE_TOKEN,
   );
-  const attendanceServiceCommands = env.ATTENDANCE_SERVICE_URL
-    ? new AttendanceServiceCommandClient(env.ATTENDANCE_SERVICE_URL, env.ATTENDANCE_BACKEND_SERVICE_TOKEN)
-    : undefined;
   const attendanceBindingClient = attendanceServiceCommands;
-  const attendanceCaptureClient = env.ATTENDANCE_SERVICE_URL
-    ? new AttendanceCaptureClient(env.ATTENDANCE_SERVICE_URL, env.ATTENDANCE_BACKEND_SERVICE_TOKEN)
-    : undefined;
-  const coordinationQuery = env.COORDINATION_QUERY_SERVICE_URL
-    ? new CoordinationQueryClient(env.COORDINATION_QUERY_SERVICE_URL, env.INTERNAL_API_TOKEN)
-    : undefined;
+  const attendanceCaptureClient = new AttendanceCaptureClient(
+    env.ATTENDANCE_SERVICE_URL,
+    env.ATTENDANCE_BACKEND_SERVICE_TOKEN,
+  );
+  const coordinationQuery = new CoordinationQueryClient(
+    env.COORDINATION_QUERY_SERVICE_URL,
+    env.INTERNAL_API_TOKEN,
+  );
   const uatStudentService = new UatStudentService(
     studentSessionRepository,
     studentClientFactory,
@@ -187,19 +183,8 @@ export async function buildApp() {
   const unsubscribeSync = new SyncTeacherDataListener(eventBus, harvestTeacherData, fastify.log).register();
   await eventBus.start();
   if (!env.PRESENCIA_DEBUG_MODE) await attendanceUploadConsumer.start();
-  const coordinationService = new CoordinationService(
-    teacherRepository,
-    subjectRepository,
-    coordinationRepository,
-    groupAssignmentRepository,
-  );
   const coordinatorAuthService = new CoordinatorAuthService(identityServiceClient);
   const superUserAuthService = new SuperUserAuthService(identityServiceClient);
-  const weeklyAttendanceReport = new WeeklyAttendanceReportService(
-    teacherRepository,
-    attendanceBackendClient,
-    groupAssignmentRepository,
-  );
 
   fastify.addHook('onClose', async () => {
     unsubscribeSync();
@@ -265,11 +250,9 @@ export async function buildApp() {
         ok: false,
         error: error instanceof Error ? error.message : 'Unknown Redis error',
       })),
-      coordinationQuery
-        ? coordinationQuery.health().then(() => ({ ok: true })).catch((error: unknown) => ({
-          ok: false, error: error instanceof Error ? error.message : 'Unknown Coordination Query error',
-        }))
-        : Promise.resolve({ ok: !env.COORDINATION_QUERY_SERVICE_REQUIRED }),
+      coordinationQuery.health().then(() => ({ ok: true })).catch((error: unknown) => ({
+        ok: false, error: error instanceof Error ? error.message : 'Unknown Coordination Query error',
+      })),
     ]);
     const rabbitmq = { ok: eventBus.isReady() };
     const attendanceConsumer = {
@@ -298,30 +281,23 @@ export async function buildApp() {
     uatStudentService,
     eventBus,
     academicServiceClient,
-    attendanceBackendClient,
     attendanceUploadService,
     attendanceUploadWorker,
-    ...(attendanceCaptureClient ? { attendanceCaptureClient } : {}),
-    ...(attendanceServiceCommands ? { attendanceServiceCommands } : {}),
+    attendanceCaptureClient,
+    attendanceServiceCommands,
   });
 
   await fastify.register(coordinatorAuthRoutes, { authService: coordinatorAuthService });
-  if (attendanceServiceCommands) {
-    await fastify.register(superUserRoutes, {
-      authService: superUserAuthService,
-      identityService: identityServiceClient,
-      attendanceService: attendanceServiceCommands,
-      attendanceBackend: attendanceBackendClient,
-    });
-  }
+  await fastify.register(superUserRoutes, {
+    authService: superUserAuthService,
+    identityService: identityServiceClient,
+    attendanceService: attendanceServiceCommands,
+  });
   await fastify.register(coordinationRoutes, {
-    coordinationService,
     authService: coordinatorAuthService,
-    weeklyAttendanceReport,
-    attendanceBackendClient,
     academicServiceClient,
-    ...(attendanceServiceCommands ? { attendanceServiceCommands } : {}),
-    ...(coordinationQuery ? { coordinationQuery } : {}),
+    attendanceServiceCommands,
+    coordinationQuery,
   });
 
   const webDist = resolve(env.COORDINATION_WEB_DIST || resolve(process.cwd(), '../frontend-coord/dist'));
