@@ -6,22 +6,12 @@ import { buildGateway } from './app.js';
 const metricsToken = 'a-different-metrics-token-with-at-least-32-characters';
 
 describe('API Gateway', () => {
-  let legacy: FastifyInstance;
   let uat: FastifyInstance;
   let attendance: FastifyInstance;
   let gateway: FastifyInstance;
   let env: GatewayEnv;
 
   beforeEach(async () => {
-    legacy = Fastify();
-    legacy.all('/*', async (request) => ({
-      upstream: 'legacy',
-      correlationId: request.headers['x-correlation-id'],
-      internalToken: request.headers['x-internal-service-token'],
-      traceparent: request.headers.traceparent,
-    }));
-    await legacy.listen({ host: '127.0.0.1', port: 0 });
-
     uat = Fastify();
     uat.all('/*', async (request) => ({
       upstream: 'uat',
@@ -42,7 +32,6 @@ describe('API Gateway', () => {
     env = gatewayEnvSchema.parse({
       NODE_ENV: 'test',
       LOG_LEVEL: 'silent',
-      LEGACY_BACKEND_URL: legacy.listeningOrigin,
       UAT_INTEGRATION_URL: uat.listeningOrigin,
       ATTENDANCE_SERVICE_URL: attendance.listeningOrigin,
       METRICS_TOKEN: metricsToken,
@@ -54,7 +43,7 @@ describe('API Gateway', () => {
   });
 
   afterEach(async () => {
-    await Promise.all([gateway?.close(), legacy?.close(), uat?.close(), attendance?.close()]);
+    await Promise.all([gateway?.close(), uat?.close(), attendance?.close()]);
   });
 
   it('routes UAT requests and strips untrusted internal headers', async () => {
@@ -82,19 +71,19 @@ describe('API Gateway', () => {
     const cutoverGateway = await buildGateway({
       env: gatewayEnvSchema.parse({
         ...env,
-        ROUTE_TARGET_OVERRIDES: '{"/professors/login":"identity"}',
+        ROUTE_TARGET_OVERRIDES: '{"/api/uat/profesor/sync":"identity"}',
       }),
       redis: { ping: async () => 'PONG', quit: async () => 'OK' },
     });
-    const response = await cutoverGateway.inject({ method: 'POST', url: '/professors/login', payload: {} });
+    const response = await cutoverGateway.inject({ method: 'POST', url: '/api/uat/profesor/sync', payload: {} });
     expect(response.statusCode).toBe(503);
     await cutoverGateway.close();
   });
 
-  it('routes existing attendance endpoints without changing their path', async () => {
+  it('rejects retired attendance facade routes', async () => {
     const response = await gateway.inject({ method: 'POST', url: '/attendance/record', payload: {} });
-    expect(response.statusCode).toBe(200);
-    expect(response.json().upstream).toBe('legacy');
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ error: 'NOT_FOUND' });
   });
 
   it('cuts student binding reconciliation over to Attendance without exposing service identity', async () => {
@@ -112,12 +101,12 @@ describe('API Gateway', () => {
     expect(response.statusCode).toBe(404);
   });
 
-  it('keeps the legacy beacon facade available for rolling mobile upgrades', async () => {
+  it('rejects the retired beacon facade', async () => {
     const response = await gateway.inject({
       method: 'POST', url: '/api/beacons/resolve', payload: { classrooms: ['AULA 101'] },
     });
-    expect(response.statusCode).toBe(200);
-    expect(response.json().upstream).toBe('legacy');
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ error: 'NOT_FOUND' });
   });
 
   it('protects Prometheus metrics with a distinct token', async () => {

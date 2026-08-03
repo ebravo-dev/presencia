@@ -58,7 +58,6 @@ export async function buildGateway(options: BuildGatewayOptions = {}): Promise<F
   const requestTraceparent = new Map<string, string>();
   const routeOverrides = parseRouteOverrides(env.ROUTE_TARGET_OVERRIDES);
   const upstreams: Partial<Record<GatewayTarget, string>> = {
-    'legacy-backend': env.LEGACY_BACKEND_URL,
     'uat-integration': env.UAT_INTEGRATION_URL,
     ...(env.IDENTITY_SERVICE_URL ? { identity: env.IDENTITY_SERVICE_URL } : {}),
     ...(env.ACADEMIC_SERVICE_URL ? { academic: env.ACADEMIC_SERVICE_URL } : {}),
@@ -119,7 +118,6 @@ export async function buildGateway(options: BuildGatewayOptions = {}): Promise<F
 
   app.get('/health/ready', { config: { rateLimit: false } }, async (_request, reply) => {
     const configured = {
-      legacyBackend: { url: env.LEGACY_BACKEND_URL, path: '/health' },
       uatIntegration: { url: env.UAT_INTEGRATION_URL, path: '/health/ready' },
       ...(env.IDENTITY_SERVICE_URL ? { identity: { url: env.IDENTITY_SERVICE_URL, path: '/health/ready' } } : {}),
       ...(env.ACADEMIC_SERVICE_URL ? { academic: { url: env.ACADEMIC_SERVICE_URL, path: '/health/ready' } } : {}),

@@ -23,9 +23,10 @@ describe('gateway configuration', () => {
   });
 
   it('parses route cutovers and rejects reserved internal prefixes', () => {
-    expect(parseRouteOverrides('{"/professors/login":"identity"}')).toEqual([
-      { prefix: '/professors/login', target: 'identity' },
+    expect(parseRouteOverrides('{"/api/uat/profesor/sync":"identity"}')).toEqual([
+      { prefix: '/api/uat/profesor/sync', target: 'identity' },
     ]);
     expect(() => parseRouteOverrides('{"/internal":"uat-integration"}')).toThrow();
+    expect(() => parseRouteOverrides('{"/professors":"identity"}')).toThrow();
   });
 });

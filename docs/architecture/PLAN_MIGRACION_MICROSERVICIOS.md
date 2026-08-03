@@ -147,8 +147,11 @@ Enrutamiento inicial:
 | `/api/superUsuario/beacons/*` | Attendance Service |
 | `/api/superUsuario/coordinadores/*` | Identity Service |
 
-Durante la transición cada ruta podrá apuntar al backend legado o al servicio
-nuevo sin cambiar al cliente.
+El corte actual consolidó los clientes móviles bajo `/api/uat/*` y
+`/api/student-device-bindings/*`. Los prefijos antiguos `/auth`, `/professors`,
+`/groups`, `/attendance`, `/api/beacons` y `/api/student-attendance` ya no están
+en la lista pública del Gateway. Los overrides sólo pueden cambiar el destino
+de un contrato vigente y no pueden reactivar rutas retiradas.
 
 ### 4.2 Identity Service
 

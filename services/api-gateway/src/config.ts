@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import type { GatewayRouteOverride, GatewayTarget } from '@presencia/contracts-http';
+import {
+  publicRouteContracts,
+  type GatewayRouteOverride,
+  type GatewayTarget,
+} from '@presencia/contracts-http';
 
 const developmentSecrets = new Set([
   'development-metrics-token-change-me',
@@ -10,7 +14,6 @@ export const gatewayEnvSchema = z.object({
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().positive().default(8080),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
-  LEGACY_BACKEND_URL: z.url().default('http://localhost:3000'),
   UAT_INTEGRATION_URL: z.url().default('http://localhost:3100'),
   IDENTITY_SERVICE_URL: z.url().optional(),
   ACADEMIC_SERVICE_URL: z.url().optional(),
@@ -50,7 +53,6 @@ export function parseCorsOrigins(value: string): string[] {
 }
 
 const overridableTargetSchema = z.enum([
-  'legacy-backend',
   'uat-integration',
   'identity',
   'academic',
@@ -67,6 +69,14 @@ export function parseRouteOverrides(value: string): GatewayRouteOverride[] {
     if (prefix === '/internal' || prefix.startsWith('/internal/') || prefix === '/health' || prefix === '/metrics') {
       throw new Error(`Reserved gateway prefix cannot be overridden: ${prefix}`);
     }
-    return { prefix: prefix.replace(/\/+$/, '') || '/', target };
+    const normalizedPrefix = prefix.replace(/\/+$/, '') || '/';
+    const belongsToPublicContract = publicRouteContracts.some(
+      (contract) => normalizedPrefix === contract.prefix
+        || normalizedPrefix.startsWith(`${contract.prefix}/`),
+    );
+    if (!belongsToPublicContract) {
+      throw new Error(`Retired or unknown gateway prefix cannot be overridden: ${prefix}`);
+    }
+    return { prefix: normalizedPrefix, target };
   });
 }

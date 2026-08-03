@@ -100,14 +100,12 @@ logs. La prueba contra los portales sólo se ejecuta con autorización UAT.
 
 ## Rollback
 
-Los contratos públicos existentes no cambian; las rutas UAT de presencia son
-aditivas. `ROUTE_TARGET_OVERRIDES` permite revertir
-una ruta al destino transitorio sin reinstalar las apps móviles. Antes de un
-rollback de aplicación, restaura la imagen anterior y conserva las columnas y
-los valores `DRAFT`/`SKIPPED`; las migraciones de base son forward-only y no eliminan datos.
-La ruta instalada
-`/api/beacons/resolve` permanece como fachada durante la actualización gradual
-de móviles, pero su configuración se lee de Attendance Service.
+`ROUTE_TARGET_OVERRIDES` sólo puede cambiar el destino de prefijos que siguen
+en la lista pública. No puede reactivar `/auth`, `/professors`, `/groups`,
+`/attendance`, `/api/beacons` ni `/api/student-attendance`; restaurar esos
+contratos exige volver a desplegar una imagen anterior del Gateway junto con
+la versión móvil correspondiente. Conserva las columnas y los valores
+`DRAFT`/`SKIPPED`: las migraciones de base son forward-only y no eliminan datos.
 
 ## Backup y restauración
 
