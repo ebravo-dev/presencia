@@ -1,4 +1,4 @@
-FROM node:24.7-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /workspace
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/contracts-http/package.json packages/contracts-http/package.json
@@ -9,7 +9,7 @@ COPY services/api-gateway services/api-gateway
 RUN npm run build --workspace @presencia/contracts-http \
   && npm run build --workspace @presencia/api-gateway
 
-FROM node:24.7-alpine AS production
+FROM node:24-alpine AS production
 ENV NODE_ENV=production
 WORKDIR /workspace
 COPY package.json package-lock.json ./

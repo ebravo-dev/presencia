@@ -1,4 +1,4 @@
-FROM node:24.7-slim AS builder
+FROM node:24-slim AS builder
 WORKDIR /workspace
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY services/academic-service/package.json services/academic-service/package.json
@@ -6,7 +6,7 @@ RUN npm ci --workspace @presencia/academic-service --include-workspace-root
 COPY services/academic-service services/academic-service
 RUN npm run build --workspace @presencia/academic-service
 
-FROM node:24.7-slim AS production
+FROM node:24-slim AS production
 ENV NODE_ENV=production
 WORKDIR /workspace
 COPY package.json package-lock.json ./

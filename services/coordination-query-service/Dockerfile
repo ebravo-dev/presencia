@@ -1,4 +1,4 @@
-FROM node:24.7-slim AS builder
+FROM node:24-slim AS builder
 WORKDIR /workspace
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/contracts-events/package.json packages/contracts-events/package.json
@@ -8,7 +8,7 @@ COPY packages/contracts-events packages/contracts-events
 COPY services/coordination-query-service services/coordination-query-service
 RUN npm run build --workspace @presencia/contracts-events && npm run build --workspace @presencia/coordination-query-service
 
-FROM node:24.7-slim AS production
+FROM node:24-slim AS production
 ENV NODE_ENV=production
 WORKDIR /workspace
 COPY package.json package-lock.json ./

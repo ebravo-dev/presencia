@@ -1,4 +1,4 @@
-FROM node:24.7-slim AS builder
+FROM node:24-slim AS builder
 WORKDIR /workspace
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY services/attendance-service/package.json services/attendance-service/package.json
@@ -6,7 +6,7 @@ RUN npm ci --workspace @presencia/attendance-service --include-workspace-root
 COPY services/attendance-service services/attendance-service
 RUN npm run build --workspace @presencia/attendance-service
 
-FROM node:24.7-slim AS production
+FROM node:24-slim AS production
 ENV NODE_ENV=production
 WORKDIR /workspace
 COPY package.json package-lock.json ./

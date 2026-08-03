@@ -34,6 +34,7 @@ test('the env parser preserves JSON and URL values', () => {
 test('runtime containers gate Docker health on readiness', async () => {
   const dockerfiles = [
     '../../backend-apirest/Dockerfile',
+    '../../frontend-coord/Dockerfile',
     '../../services/api-gateway/Dockerfile',
     '../../services/identity-service/Dockerfile',
     '../../services/academic-service/Dockerfile',
@@ -44,6 +45,44 @@ test('runtime containers gate Docker health on readiness', async () => {
     const source = await readFile(new URL(dockerfile, import.meta.url), 'utf8');
     assert.match(source, /HEALTHCHECK[\s\S]*\/health\/ready/, `${dockerfile} must check readiness`);
   }
+});
+
+test('application images run as non-root users', async () => {
+  const dockerfiles = [
+    '../../backend-apirest/Dockerfile',
+    '../../frontend-coord/Dockerfile',
+    '../../services/api-gateway/Dockerfile',
+    '../../services/identity-service/Dockerfile',
+    '../../services/academic-service/Dockerfile',
+    '../../services/attendance-service/Dockerfile',
+    '../../services/coordination-query-service/Dockerfile',
+  ];
+  for (const dockerfile of dockerfiles) {
+    const source = await readFile(new URL(dockerfile, import.meta.url), 'utf8');
+    assert.match(source, /\nUSER (?!root\b)[^\n]+/, `${dockerfile} must declare a non-root runtime user`);
+  }
+});
+
+test('Dokploy runtime services use the hardened read-only profile', async () => {
+  const compose = await readFile(composeUrl, 'utf8');
+  assert.match(compose, /x-node-runtime-hardening:[\s\S]*read_only: true[\s\S]*cap_drop: \[ALL\][\s\S]*no-new-privileges:true/);
+  for (const serviceName of [
+    'uat-integration', 'identity-service', 'academic-service',
+    'attendance-service', 'coordination-query-service', 'api-gateway',
+  ]) {
+    const start = compose.indexOf(`\n  ${serviceName}:`);
+    assert.notEqual(start, -1, `${serviceName} must exist in the Dokploy Compose`);
+    const remainder = compose.slice(start + 1);
+    const nextService = remainder.match(/\n  [a-z][a-z0-9-]+:\n/);
+    const end = nextService?.index === undefined ? -1 : start + 1 + nextService.index;
+    const service = compose.slice(start, end === -1 ? undefined : end);
+    assert.match(service, /<<: \*node-runtime-hardening/, `${serviceName} must use runtime hardening`);
+  }
+  assert.match(compose, /uat-integration:[\s\S]*127\.0\.0\.1:3100\/health\/ready/);
+  assert.match(
+    compose,
+    /frontend-coord:[\s\S]*read_only: true[\s\S]*\/etc\/nginx\/conf\.d:size=1m,mode=0775,uid=101,gid=101[\s\S]*cap_drop: \[ALL\]/,
+  );
 });
 
 test('the generated CI environment satisfies the production validator', async () => {

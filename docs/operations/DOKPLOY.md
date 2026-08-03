@@ -7,13 +7,19 @@
 - Directorio raíz: raíz de este repositorio.
 - Dominio público: servicio `frontend-coord`, puerto `8080`.
 - Red externa: `dokploy-network` (o el valor de `DOKPLOY_NETWORK_NAME`).
-- Node.js de producción: 24 LTS, fijado en las imágenes.
+- Node.js de producción: línea 24 LTS, actualizada al reconstruir las imágenes.
 
 Sólo `frontend-coord` y `api-gateway` comparten la red de Dokploy. PostgreSQL,
 Redis, RabbitMQ y todos los servicios de dominio permanecen en la red privada
 del Compose y no deben recibir dominios públicos. `uat-integration` también se
 conecta a `uat-egress`, una red bridge sin puertos publicados que le permite
 abrir HTTPS hacia los portales UAT; no debe agregarse a `dokploy-network`.
+
+Los procesos de aplicación se ejecutan sin privilegios, con filesystem de sólo
+lectura, todas las capacidades Linux retiradas y `no-new-privileges`. Los
+únicos directorios temporales escribibles son `tmpfs`; en la web esto incluye
+`/etc/nginx/conf.d`, donde el entrypoint genera la configuración a partir de la
+variable `API_GATEWAY_UPSTREAM`.
 
 Copiar `infra/compose/.env.dokploy.example`, sustituir todos los valores de
 ejemplo y validar el archivo antes de cargarlo en Dokploy:
