@@ -8,6 +8,7 @@ const metricsToken = 'a-different-metrics-token-with-at-least-32-characters';
 describe('API Gateway', () => {
   let legacy: FastifyInstance;
   let uat: FastifyInstance;
+  let attendance: FastifyInstance;
   let gateway: FastifyInstance;
   let env: GatewayEnv;
 
@@ -30,11 +31,20 @@ describe('API Gateway', () => {
     }));
     await uat.listen({ host: '127.0.0.1', port: 0 });
 
+    attendance = Fastify();
+    attendance.all('/*', async (request) => ({
+      upstream: 'attendance',
+      authorization: request.headers.authorization,
+      internalToken: request.headers['x-internal-service-token'],
+    }));
+    await attendance.listen({ host: '127.0.0.1', port: 0 });
+
     env = gatewayEnvSchema.parse({
       NODE_ENV: 'test',
       LOG_LEVEL: 'silent',
       LEGACY_BACKEND_URL: legacy.listeningOrigin,
       UAT_INTEGRATION_URL: uat.listeningOrigin,
+      ATTENDANCE_SERVICE_URL: attendance.listeningOrigin,
       METRICS_TOKEN: metricsToken,
     });
     gateway = await buildGateway({
@@ -44,7 +54,7 @@ describe('API Gateway', () => {
   });
 
   afterEach(async () => {
-    await Promise.all([gateway?.close(), legacy?.close(), uat?.close()]);
+    await Promise.all([gateway?.close(), legacy?.close(), uat?.close(), attendance?.close()]);
   });
 
   it('routes UAT requests and strips untrusted internal headers', async () => {
@@ -85,6 +95,16 @@ describe('API Gateway', () => {
     const response = await gateway.inject({ method: 'POST', url: '/attendance/record', payload: {} });
     expect(response.statusCode).toBe(200);
     expect(response.json().upstream).toBe('legacy');
+  });
+
+  it('cuts student binding reconciliation over to Attendance without exposing service identity', async () => {
+    const response = await gateway.inject({
+      method: 'POST', url: '/api/student-device-bindings', payload: {},
+      headers: { authorization: 'Bearer scoped-binding-token', 'x-internal-service-token': 'attacker-value' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ upstream: 'attendance', authorization: 'Bearer scoped-binding-token' });
+    expect(response.json().internalToken).toBeUndefined();
   });
 
   it('never exposes internal service routes', async () => {

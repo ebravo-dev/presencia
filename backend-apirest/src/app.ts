@@ -24,7 +24,7 @@ import type { StoredUatStudentSession } from './domain/types/uat.interfaces.js';
 import { ApiError } from './errors/api-error.js';
 import { UatClientFactory } from './infrastructure/http/client/uat-client.factory.js';
 import { UatStudentClientFactory } from './infrastructure/http/client/uat-student-client.factory.js';
-import { AttendanceBackendClient, MirroredAttendanceBindingClient } from './infrastructure/http/client/attendance-backend.client.js';
+import { AttendanceBackendClient } from './infrastructure/http/client/attendance-backend.client.js';
 import { IdentityServiceClient } from './infrastructure/http/client/identity-service.client.js';
 import { AcademicServiceClient } from './infrastructure/http/client/academic-service.client.js';
 import { AttendanceServiceCommandClient } from './infrastructure/http/client/attendance-service-command.client.js';
@@ -121,9 +121,7 @@ export async function buildApp() {
   const attendanceServiceCommands = env.ATTENDANCE_SERVICE_URL
     ? new AttendanceServiceCommandClient(env.ATTENDANCE_SERVICE_URL, env.ATTENDANCE_BACKEND_SERVICE_TOKEN)
     : undefined;
-  const attendanceBindingClient = attendanceServiceCommands
-    ? new MirroredAttendanceBindingClient(attendanceServiceCommands, attendanceBackendClient)
-    : attendanceBackendClient;
+  const attendanceBindingClient = attendanceServiceCommands;
   const attendanceCaptureClient = env.ATTENDANCE_SERVICE_URL
     ? new AttendanceCaptureClient(env.ATTENDANCE_SERVICE_URL, env.ATTENDANCE_BACKEND_SERVICE_TOKEN)
     : undefined;
@@ -308,6 +306,7 @@ export async function buildApp() {
     attendanceUploadService,
     attendanceUploadWorker,
     ...(attendanceCaptureClient ? { attendanceCaptureClient } : {}),
+    ...(attendanceServiceCommands ? { attendanceServiceCommands } : {}),
   });
 
   await fastify.register(coordinatorAuthRoutes, { authService: coordinatorAuthService });

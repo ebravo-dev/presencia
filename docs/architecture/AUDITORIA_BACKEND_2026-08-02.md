@@ -60,7 +60,8 @@ un servicio propietario.
 | `/auth/*`, `/professors/login` | Identity | `backend` |
 | `/professors/*`, `/groups/*` | Academic | `backend` |
 | `/attendance/*` | Attendance | `backend` como fachada móvil; captura UAT ya delegada |
-| `/api/beacons/*`, `/api/student-device-bindings/*` | Attendance | `backend` |
+| `/api/beacons/*` | Attendance | `backend` durante la migración de telemetría BLE |
+| `/api/student-device-bindings/*` | Attendance | Corte completado; Gateway enruta al propietario y la lectura del profesor pasa por sesión UAT + roster |
 | `/api/superUsuario/auth/*`, `/api/superUsuario/coordinadores/*` | Identity | `backend` |
 
 Las rutas `/internal/*` nunca se publicarán en el gateway. Sólo estarán

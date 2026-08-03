@@ -42,4 +42,19 @@ describe('AttendanceServiceCommandClient', () => {
       'http://attendance-service:3400/internal/v1/attendance/device-bindings?q=2251+%2F+A',
     );
   });
+
+  it('resolves student devices through the professor-scoped private command', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: [], missing: [],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    const client = new AttendanceServiceCommandClient('http://attendance-service:3400', 'x'.repeat(32));
+    await expect(client.resolveStudentDeviceBindings({
+      professorExternalId: 'teacher-1', matriculas: ['2251330007'],
+    })).resolves.toEqual({ data: [], missing: [] });
+    const [url, request] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe('http://attendance-service:3400/internal/v1/attendance/device-bindings/resolve');
+    expect(JSON.parse(String(request?.body))).toEqual({
+      professorExternalId: 'teacher-1', matriculas: ['2251330007'],
+    });
+  });
 });

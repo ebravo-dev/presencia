@@ -604,7 +604,8 @@ Criterio de salida:
 Avance al 2 de agosto de 2026: servicio aislado con base propia, roster local,
 captura serializable e idempotente, outbox, carga UAT durable, resultado
 versionado, vinculación UUID autoritativa y auditoría de cambios implementados.
-La lectura de vinculaciones del dashboard ya usa este propietario; beacons y
+La escritura, renovación del token móvil, lectura del dashboard y resolución
+autorizada para el profesor ya usan este propietario sin dual-write. Beacons y
 telemetría BLE conservan una fachada de compatibilidad durante el corte.
 
 Entregables:
@@ -650,8 +651,9 @@ Criterio de salida:
 Avance al 2 de agosto de 2026: contratos públicos conservados, Gateway único,
 rutas internas bloqueadas, cortes configurables y documentación de Dokploy,
 smoke test y rollback implementados. El proceso legado aún es necesario para
-beacons, telemetría BLE, sustituciones y compatibilidad de tokens móviles; se
-retirará sólo después del periodo de observación en producción.
+beacons, telemetría BLE y sustituciones; la compatibilidad de tokens móviles ya
+se retiró. El resto se retirará sólo después del periodo de observación en
+producción.
 
 Entregables:
 

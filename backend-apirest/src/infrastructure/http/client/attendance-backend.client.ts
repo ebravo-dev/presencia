@@ -1,11 +1,6 @@
 import axios, { type AxiosInstance } from 'axios';
 import { ApiError } from '../../../errors/api-error.js';
 import type { JsonValue } from '../../../domain/types/uat.interfaces.js';
-import type {
-  AttendanceBindingClient,
-  StudentDeviceBindingInput,
-  StudentDeviceBindingResponse,
-} from '../../../application/ports/attendance-binding.client.js';
 
 export interface AttendanceSourceRecord {
   date: string;
@@ -42,7 +37,7 @@ export interface AttendanceSettings {
 
 export class AttendanceBackendUnavailableError extends Error {}
 
-export class AttendanceBackendClient implements AttendanceBindingClient {
+export class AttendanceBackendClient {
   private readonly http: AxiosInstance;
 
   constructor(baseUrl: string, serviceToken: string) {
@@ -122,10 +117,6 @@ export class AttendanceBackendClient implements AttendanceBindingClient {
     await this.request(() => this.http.delete(`/internal/coordination/student-device-bindings/${encodeURIComponent(matricula)}`));
   }
 
-  async createStudentDeviceBinding(input: StudentDeviceBindingInput): Promise<StudentDeviceBindingResponse> {
-    return this.request(() => this.http.post('/api/student-device-bindings', input));
-  }
-
   async getSubstitutionOptions() {
     return this.request(() => this.http.get('/internal/coordination/substitutions/options'));
   }
@@ -188,19 +179,5 @@ export class AttendanceBackendClient implements AttendanceBindingClient {
     }
 
     return new ApiError(502, 'ATTENDANCE_BACKEND_UNAVAILABLE', 'No fue posible contactar el backend de asistencia.');
-  }
-}
-
-export class MirroredAttendanceBindingClient implements AttendanceBindingClient {
-  constructor(
-    private readonly primary: AttendanceBindingClient,
-    private readonly compatibilityProjection: AttendanceBindingClient,
-  ) {}
-
-  async createStudentDeviceBinding(input: StudentDeviceBindingInput): Promise<StudentDeviceBindingResponse> {
-    await this.primary.createStudentDeviceBinding(input);
-    // The professor app still resolves bindings from the legacy read model.
-    // Return its token until that read route is cut over to Attendance Service.
-    return this.compatibilityProjection.createStudentDeviceBinding(input);
   }
 }

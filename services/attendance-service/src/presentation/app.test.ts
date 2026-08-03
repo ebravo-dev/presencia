@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DeviceBindingService } from '../application/device-binding.service.js';
 import { attendanceEnvSchema } from '../infrastructure/config.js';
 import { buildAttendanceApp } from './app.js';
 
@@ -24,6 +25,39 @@ describe('Attendance HTTP API', () => {
     });
     expect(response.statusCode).toBe(201);
     expect(response.json().data.bindingToken.split('.')).toHaveLength(3);
+    await app.close();
+  });
+
+  it('lets the student app refresh only its exact active binding through the public route', async () => {
+    const app = await testApp();
+    const initial = await app.inject({
+      method: 'POST', url: '/internal/v1/attendance/device-bindings/initial',
+      headers: { 'x-internal-service-token': token },
+      payload: {
+        matricula: '2251330007', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+        deviceBindingId: '12345678-1234-4234-9234-123456789abd', platform: 'android',
+      },
+    });
+    const bindingToken = initial.json().data.bindingToken as string;
+    const response = await app.inject({
+      method: 'POST', url: '/api/student-device-bindings',
+      headers: { authorization: `Bearer ${bindingToken}` },
+      payload: {
+        matricula: '2251330007', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+        deviceBindingId: '12345678-1234-4234-9234-123456789abd', platform: 'android',
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({ matricula: '2251330007', bindingVersion: 1 });
+    expect(response.json().data.bindingToken.split('.')).toHaveLength(3);
+    await app.close();
+  });
+
+  it('rejects public binding reconciliation without the scoped token', async () => {
+    const app = await testApp();
+    const response = await app.inject({ method: 'POST', url: '/api/student-device-bindings', payload: {} });
+    expect(response.statusCode).toBe(401);
+    expect(response.json().error).toBe('UNAUTHORIZED');
     await app.close();
   });
 
@@ -61,30 +95,48 @@ describe('Attendance HTTP API', () => {
     expect(response.json()).toEqual({ data: [] });
     await app.close();
   });
+
+  it('resolves bindings only through the private professor-scoped command', async () => {
+    const app = await testApp();
+    const hidden = await app.inject({
+      method: 'POST', url: '/internal/v1/attendance/device-bindings/resolve',
+      payload: { professorExternalId: 'teacher-1', matriculas: ['2251330007'] },
+    });
+    expect(hidden.statusCode).toBe(404);
+    const response = await app.inject({
+      method: 'POST', url: '/internal/v1/attendance/device-bindings/resolve',
+      headers: { 'x-internal-service-token': token },
+      payload: { professorExternalId: 'teacher-1', matriculas: ['2251330007'] },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ data: [], missing: [] });
+    await app.close();
+  });
 });
 
 async function testApp() {
   const now = new Date('2026-08-02T12:00:00.000Z');
+  const binding = {
+    id: 'binding-1', matricula: '2251330007',
+    attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+    deviceBindingId: '12345678-1234-4234-9234-123456789abd',
+    platform: 'android', deviceInfo: null, bindingVersion: 1, active: true, updatedAt: now,
+  };
+  const repository = {
+    applyRoster: async () => {}, coordinationProjectionSnapshot: async () => [],
+    listDeviceBindings: async () => [], bindingInfrastructureSummary: async () => ({ count: 0, recentBindings: [] }),
+    bindInitial: async () => ({ binding, created: true, duplicate: false }),
+    bindingByMatricula: async () => binding,
+    resolveDeviceBindings: async () => ({ data: [], missing: [] }),
+  } as never;
   return buildAttendanceApp({
     env: attendanceEnvSchema.parse({
       NODE_ENV: 'test', INTERNAL_API_TOKEN: token,
       BINDING_JWT_SECRET: 'test-binding-jwt-secret-with-at-least-32-characters',
     }),
-    repository: {
-      applyRoster: async () => {}, coordinationProjectionSnapshot: async () => [],
-      listDeviceBindings: async () => [], bindingInfrastructureSummary: async () => ({ count: 0, recentBindings: [] }),
-    } as never,
+    repository,
     captures: { capture: async () => { throw new Error('unexpected'); } } as never,
-    bindings: {
-      bindAfterUatAuthentication: async (command: { matricula: string; attendanceUuid: string; deviceBindingId?: string }) => ({
-        binding: {
-          id: 'binding-1', matricula: command.matricula, attendanceUuid: command.attendanceUuid,
-          deviceBindingId: command.deviceBindingId ?? null, platform: 'android', deviceInfo: null,
-          bindingVersion: 1, active: true, updatedAt: now,
-        },
-        created: true, duplicate: false,
-      }),
-    } as never,
+    bindings: new DeviceBindingService(repository),
     ready: async () => ({ database: true, rabbitmq: true }),
   });
 }

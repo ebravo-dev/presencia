@@ -41,6 +41,22 @@ export class AttendanceServiceCommandClient implements AttendanceBindingClient {
     return this.request('/internal/v1/attendance/device-bindings', { method: 'GET', query: input });
   }
 
+  resolveStudentDeviceBindings(input: { professorExternalId: string; matriculas: string[] }): Promise<{
+    data: Array<{
+      matricula: string;
+      attendanceUuid: string;
+      deviceBindingId: string | null;
+      platform: string | null;
+      bindingVersion: number;
+    }>;
+    missing: string[];
+  }> {
+    return this.request('/internal/v1/attendance/device-bindings/resolve', {
+      method: 'POST',
+      body: input,
+    });
+  }
+
   bindingInfrastructureSummary(): Promise<{
     data: { count: number; recentBindings: unknown[] }; meta: { generatedAt: string };
   }> {

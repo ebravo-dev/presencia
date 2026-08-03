@@ -41,7 +41,7 @@ export class UatStudentService {
   constructor(
     private readonly sessionRepository: IUatSessionRepository<StoredUatStudentSession>,
     private readonly clientFactory: UatStudentClientFactory,
-    private readonly attendanceBackendClient?: AttendanceBindingClient,
+    private readonly attendanceBindingClient?: AttendanceBindingClient,
     private readonly identityService?: IdentityServiceClient,
     private readonly academicSnapshotPublisher?: StudentAcademicSnapshotPublisher,
     private readonly logger?: StudentAcademicSyncLogger,
@@ -216,8 +216,8 @@ export class UatStudentService {
     fallbackCareer: UatStudentCareerItem,
   ): Promise<string | undefined> {
     if (!input.attendanceUuid) return undefined;
-    if (!this.attendanceBackendClient) {
-      throw new ApiError(500, 'ATTENDANCE_BACKEND_NOT_CONFIGURED', 'No se configuro el backend de asistencia para vincular alumnos.');
+    if (!this.attendanceBindingClient) {
+      throw new ApiError(503, 'ATTENDANCE_SERVICE_NOT_CONFIGURED', 'Attendance Service es obligatorio para vincular alumnos.');
     }
 
     const matricula = readStudentMatricula(selectedCareer, fallbackCareer);
@@ -228,7 +228,7 @@ export class UatStudentService {
       });
     }
 
-    const response = await this.attendanceBackendClient.createStudentDeviceBinding({
+    const response = await this.attendanceBindingClient.createStudentDeviceBinding({
       matricula,
       attendanceUuid: input.attendanceUuid,
       deviceBindingId: input.deviceBindingId,

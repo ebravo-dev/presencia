@@ -7,6 +7,7 @@ import type { AttendanceBackendClient } from '../../../infrastructure/http/clien
 import type { AttendanceUploadService } from '../../../application/services/attendance-upload.service.js';
 import type { AttendanceUploadWorker } from '../../../infrastructure/jobs/attendance-upload.worker.js';
 import type { AttendanceCaptureClient } from '../../../infrastructure/http/client/attendance-capture.client.js';
+import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
 import { AsistenciaController } from '../controllers/asistencia.controller.js';
 import { AttendanceUploadController } from '../controllers/attendance-upload.controller.js';
 import { CatalogoController } from '../controllers/catalogo.controller.js';
@@ -14,6 +15,7 @@ import { ConsultaController } from '../controllers/consulta.controller.js';
 import { SessionController } from '../controllers/session.controller.js';
 import { StudentSessionController } from '../controllers/student-session.controller.js';
 import { SharedClassController } from '../controllers/shared-class.controller.js';
+import { ProfessorDeviceBindingController } from '../controllers/professor-device-binding.controller.js';
 import { buildAuthUatHook } from '../hooks/auth-uat.hook.js';
 import { buildAuthUatStudentHook } from '../hooks/auth-uat-student.hook.js';
 import { env } from '../../../config/env.js';
@@ -27,11 +29,12 @@ export interface UatRoutesOptions {
   attendanceUploadService: AttendanceUploadService;
   attendanceUploadWorker: AttendanceUploadWorker;
   attendanceCaptureClient?: AttendanceCaptureClient;
+  attendanceServiceCommands?: AttendanceServiceCommandClient;
 }
 
 export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   fastify,
-  { uatService, uatStudentService, eventBus, sharedClassService, attendanceBackendClient, attendanceUploadService, attendanceUploadWorker, attendanceCaptureClient },
+  { uatService, uatStudentService, eventBus, sharedClassService, attendanceBackendClient, attendanceUploadService, attendanceUploadWorker, attendanceCaptureClient, attendanceServiceCommands },
 ) => {
   fastify.addHook('preHandler', async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return;
@@ -57,6 +60,7 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   const asistenciaController = new AsistenciaController(uatService, attendanceBackendClient, attendanceCaptureClient);
   const attendanceUploadController = new AttendanceUploadController(attendanceUploadService, attendanceUploadWorker);
   const sharedClassController = new SharedClassController(sharedClassService);
+  const professorDeviceBindingController = new ProfessorDeviceBindingController(attendanceServiceCommands);
 
   fastify.post('/api/uat/sessions', {
     config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
@@ -84,6 +88,7 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
 
   fastify.get('/api/uat/profesor/control-asistencia/grupos', { preHandler: authUat }, asistenciaController.gruposProfesor);
   fastify.get('/api/uat/profesor/clases-compartidas', { preHandler: authUat }, sharedClassController.forAuthenticatedTeacher);
+  fastify.post('/api/uat/profesor/device-bindings/resolve', { preHandler: authUat }, professorDeviceBindingController.resolve);
   fastify.get('/api/uat/profesor/control-asistencia/semanas', { preHandler: authUat }, asistenciaController.semanasGrupo);
   fastify.get(
     '/api/uat/profesor/control-asistencia/asistencia-grupo',

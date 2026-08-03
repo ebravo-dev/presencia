@@ -335,6 +335,34 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
     return binding ? bindingValue(binding) : null;
   }
 
+  async resolveDeviceBindings(input: {
+    professorExternalId: string;
+    matriculas: string[];
+  }): Promise<{ data: DeviceBindingValue[]; missing: string[] }> {
+    const requested = [...new Set(input.matriculas.map((value) => value.trim().toUpperCase()).filter(Boolean))];
+    if (requested.length === 0) return { data: [], missing: [] };
+    const authorizedStudents = await this.prisma.attendanceRosterStudent.findMany({
+      where: {
+        active: true,
+        matricula: { in: requested },
+        group: { active: true, professorExternalId: input.professorExternalId },
+      },
+      select: { matricula: true },
+    });
+    const authorized = [...new Set(authorizedStudents.map(({ matricula }) => matricula))];
+    const bindings = authorized.length === 0
+      ? []
+      : await this.prisma.studentDeviceBinding.findMany({
+        where: { active: true, matricula: { in: authorized } },
+        orderBy: { matricula: 'asc' },
+      });
+    const found = new Set(bindings.map(({ matricula }) => matricula));
+    return {
+      data: bindings.map(bindingValue),
+      missing: authorized.filter((matricula) => !found.has(matricula)),
+    };
+  }
+
   async listDeviceBindings(query?: string, limit = 500): Promise<unknown[]> {
     const normalizedQuery = query?.trim().toUpperCase();
     const bindings = await this.prisma.studentDeviceBinding.findMany({

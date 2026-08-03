@@ -660,6 +660,29 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ProfessorSharedClassesResponse" }
         "401": { $ref: "#/components/responses/Error" }
+  /api/uat/profesor/device-bindings/resolve:
+    post:
+      summary: Resuelve UUID de alumnos pertenecientes al roster del profesor
+      description: >
+        Valida la sesion UAT del profesor y delega la consulta al propietario
+        Attendance Service. Las matriculas fuera de sus grupos activos nunca se
+        incluyen en la respuesta.
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProfessorDeviceBindingResolveRequest" }
+      responses:
+        "200":
+          description: Vinculaciones activas autorizadas por el roster
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProfessorDeviceBindingResolveResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /api/coordinacion/clases-compartidas/opciones:
     get:
       tags: [Coordinacion]
@@ -893,6 +916,8 @@ components:
               type: boolean
             hasAuthCookie:
               type: boolean
+        identitySession:
+          $ref: "#/components/schemas/IdentitySessionGrant"
     StudentSessionResponse:
       allOf:
         - $ref: "#/components/schemas/SessionResponse"
@@ -907,6 +932,52 @@ components:
             selectedCareer:
               type: object
               additionalProperties: true
+            deviceBindingToken:
+              type: string
+              description: Token acotado para renovar exclusivamente el vínculo exacto del celular.
+            identitySession:
+              $ref: "#/components/schemas/IdentitySessionGrant"
+    IdentitySessionGrant:
+      type: object
+      required: [identityId, sessionId, accessToken, expiresAt]
+      properties:
+        identityId: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        accessToken: { type: string }
+        expiresAt: { type: string, format: date-time }
+    ProfessorDeviceBindingResolveRequest:
+      type: object
+      required: [matriculas]
+      properties:
+        matriculas:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 40 }
+    ProfessorDeviceBindingResolveResponse:
+      type: object
+      required: [data, missing]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/StudentDeviceBinding" }
+        missing:
+          type: array
+          items: { type: string }
+    StudentDeviceBinding:
+      type: object
+      required: [id, matricula, attendanceUuid, bindingVersion, active, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        matricula: { type: string }
+        attendanceUuid: { type: string, format: uuid }
+        deviceBindingId: { type: string, format: uuid, nullable: true }
+        platform: { type: string, nullable: true }
+        deviceInfo: { type: string, nullable: true }
+        bindingVersion: { type: integer, minimum: 1 }
+        active: { type: boolean }
+        updatedAt: { type: string, format: date-time }
     SafeLogin:
       type: object
       properties:

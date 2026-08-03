@@ -1742,23 +1742,16 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       _studentBeaconScanUuids.add(beaconUuid);
     }
 
-    final token = _authStorage.getToken();
-    final code = widget.grupo.code;
-    final groupLetter = widget.grupo.groupLetter;
-    final period = widget.grupo.period;
-    if (token == null ||
-        token.isEmpty ||
-        code == null ||
-        groupLetter == null ||
-        period == null) {
-      return fallback;
-    }
+    final matriculas = widget.grupo.students
+        .map((alumno) => alumno.matricula?.trim().toUpperCase())
+        .whereType<String>()
+        .where((matricula) => matricula.isNotEmpty)
+        .toSet()
+        .toList();
+    if (matriculas.isEmpty) return fallback;
 
-    final result = await _apiService.getStudentBeaconBindings(
-      token: token,
-      code: code,
-      groupLetter: groupLetter,
-      period: period,
+    final result = await _apiService.resolveStudentDeviceBindings(
+      matriculas: matriculas,
     );
 
     return result.fold(
@@ -1782,7 +1775,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         for (final binding in bindings) {
           final studentId = binding['studentId']?.toString();
           final matricula = binding['matricula']?.toString();
-          final beaconUuid = binding['beaconUuid']?.toString();
+          final beaconUuid = binding['attendanceUuid']?.toString();
           if (beaconUuid == null || beaconUuid.isEmpty) {
             continue;
           }

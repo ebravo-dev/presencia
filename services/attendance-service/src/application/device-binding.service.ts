@@ -1,12 +1,55 @@
 import type { AttendanceRepository } from '../domain/attendance.repository.js';
 import { AttendanceDomainError } from '../domain/attendance.js';
 import type { BindDeviceCommand, ReplaceDeviceBindingCommand } from '../domain/device-binding.js';
+import type { BindingTokenClaims } from '../infrastructure/binding-token.js';
 
 export class DeviceBindingService {
   constructor(private readonly repository: AttendanceRepository) {}
 
   bindAfterUatAuthentication(command: BindDeviceCommand) {
     return this.repository.bindInitial(normalize(command));
+  }
+
+  async reconcileExisting(command: BindDeviceCommand, claims: BindingTokenClaims) {
+    const normalized = normalize(command);
+    if (
+      claims.matricula.trim().toUpperCase() !== normalized.matricula
+      || claims.deviceBindingId !== normalized.deviceBindingId
+    ) {
+      throw new AttendanceDomainError(
+        'DEVICE_BINDING_TOKEN_MISMATCH',
+        'La autorización no corresponde al celular enviado.',
+      );
+    }
+    const current = await this.repository.bindingByMatricula(normalized.matricula);
+    if (
+      !current
+      || !current.active
+      || current.id !== claims.subject
+      || current.bindingVersion !== claims.bindingVersion
+    ) {
+      throw new AttendanceDomainError(
+        'DEVICE_BINDING_TOKEN_REVOKED',
+        'La autorización del celular fue revocada; inicia sesión nuevamente.',
+      );
+    }
+    if (
+      current.attendanceUuid !== normalized.attendanceUuid
+      || current.deviceBindingId !== normalized.deviceBindingId
+    ) {
+      throw new AttendanceDomainError(
+        'DEVICE_BINDING_CHANGE_REQUIRES_COORDINATOR',
+        'La matrícula ya está vinculada; sólo coordinación puede cambiar su UUID.',
+      );
+    }
+    return { binding: current, created: false, duplicate: true };
+  }
+
+  resolveForProfessor(input: { professorExternalId: string; matriculas: string[] }) {
+    return this.repository.resolveDeviceBindings({
+      professorExternalId: input.professorExternalId.trim(),
+      matriculas: [...new Set(input.matriculas.map((value) => value.trim().toUpperCase()).filter(Boolean))],
+    });
   }
 
   replaceByCoordinator(command: ReplaceDeviceBindingCommand) {

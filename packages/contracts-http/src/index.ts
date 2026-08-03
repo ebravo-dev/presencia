@@ -29,7 +29,7 @@ export const publicRouteContracts = [
   { prefix: '/groups', owner: 'academic', transitionalTarget: 'legacy-backend' },
   { prefix: '/attendance', owner: 'attendance', transitionalTarget: 'legacy-backend' },
   { prefix: '/api/beacons', owner: 'attendance', transitionalTarget: 'legacy-backend' },
-  { prefix: '/api/student-device-bindings', owner: 'attendance', transitionalTarget: 'legacy-backend' },
+  { prefix: '/api/student-device-bindings', owner: 'attendance', transitionalTarget: 'attendance' },
   { prefix: '/api/student-attendance', owner: 'attendance', transitionalTarget: 'legacy-backend' },
   { prefix: '/api/superUsuario', owner: 'identity', transitionalTarget: 'legacy-backend' },
 ] as const satisfies readonly PublicRouteContract[];

@@ -27,6 +27,59 @@ describe('DeviceBindingService', () => {
       actorIdentityId: 'coord-1', actorRole: 'COORDINATOR', reason: 'cambio', correlationId: 'request-1',
     })).toThrow('motivo auditable');
   });
+
+  it('only reconciles the exact active binding represented by the scoped token', async () => {
+    const repository = repositoryStub();
+    repository.bindingByMatricula = async () => ({
+      id: 'binding-1', matricula: '2251330007',
+      attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+      deviceBindingId: '12345678-1234-4234-9234-123456789abd',
+      platform: 'android', deviceInfo: null, bindingVersion: 3, active: true,
+      updatedAt: new Date('2026-08-03T12:00:00.000Z'),
+    });
+    const service = new DeviceBindingService(repository);
+    await expect(service.reconcileExisting({
+      matricula: '2251330007', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+      deviceBindingId: '12345678-1234-4234-9234-123456789abd', correlationId: 'request-1',
+    }, {
+      subject: 'binding-1', matricula: '2251330007',
+      deviceBindingId: '12345678-1234-4234-9234-123456789abd', bindingVersion: 3,
+    })).resolves.toMatchObject({ created: false, duplicate: true });
+  });
+
+  it('rejects a revoked token version without reactivating the binding', async () => {
+    const repository = repositoryStub();
+    repository.bindingByMatricula = async () => ({
+      id: 'binding-1', matricula: '2251330007',
+      attendanceUuid: '12345678-1234-4234-9234-123456789abc', deviceBindingId: null,
+      platform: 'ios', deviceInfo: null, bindingVersion: 4, active: false,
+      updatedAt: new Date('2026-08-03T12:00:00.000Z'),
+    });
+    const service = new DeviceBindingService(repository);
+    await expect(service.reconcileExisting({
+      matricula: '2251330007', attendanceUuid: '12345678-1234-4234-9234-123456789abc', correlationId: 'request-1',
+    }, {
+      subject: 'binding-1', matricula: '2251330007', deviceBindingId: null, bindingVersion: 3,
+    })).rejects.toMatchObject({ code: 'DEVICE_BINDING_TOKEN_REVOKED' });
+  });
+
+  it('normalizes and deduplicates the professor-scoped roster query', async () => {
+    const repository = repositoryStub();
+    let received: unknown;
+    repository.resolveDeviceBindings = async (input) => {
+      received = input;
+      return { data: [], missing: [] };
+    };
+    const service = new DeviceBindingService(repository);
+    await service.resolveForProfessor({
+      professorExternalId: ' teacher-1 ',
+      matriculas: [' 2251330007 ', '2251330007', ' 2251330008'],
+    });
+    expect(received).toEqual({
+      professorExternalId: 'teacher-1',
+      matriculas: ['2251330007', '2251330008'],
+    });
+  });
 });
 
 function repositoryStub(): AttendanceRepository {
@@ -39,6 +92,7 @@ function repositoryStub(): AttendanceRepository {
     async replaceBinding() { throw new Error('unexpected'); },
     async unbind() { return false; },
     async bindingByMatricula() { return null; },
+    async resolveDeviceBindings() { return { data: [], missing: [] }; },
     async listDeviceBindings() { return []; },
     async bindingInfrastructureSummary() { return { count: 0, recentBindings: [] }; },
     async coordinationProjectionSnapshot() { return []; },

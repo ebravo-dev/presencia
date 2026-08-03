@@ -1313,17 +1313,15 @@ class ApiService {
 
       if (normalizedMatriculas.isEmpty) return const Right([]);
 
-      final mainBackendToken = AuthStorageService().getMainBackendToken();
-      if (mainBackendToken == null || mainBackendToken.isEmpty) {
-        return const Left('La sesión de asistencia necesita renovarse');
+      final uatSessionId = AuthStorageService().getToken();
+      if (uatSessionId == null || uatSessionId.isEmpty) {
+        return const Left('La sesión UAT necesita renovarse');
       }
 
-      final response = await _attendanceBackendDio.post(
-        '/api/student-device-bindings/resolve',
+      final response = await _presenceDio.post(
+        ApiConstants.uatDeviceBindingsResolve,
         data: {'matriculas': normalizedMatriculas},
-        options: Options(
-          headers: {'Authorization': 'Bearer $mainBackendToken'},
-        ),
+        options: Options(headers: {'X-UAT-Session-Id': uatSessionId}),
       );
 
       if (response.statusCode == 200) {
@@ -1607,72 +1605,6 @@ class ApiService {
     } catch (e, stackTrace) {
       Logger.error(
         'Error inesperado registrando beacons de alumnos',
-        e,
-        stackTrace,
-      );
-      return Left('Error inesperado: ${e.toString()}');
-    }
-  }
-
-  Future<Either<String, List<Map<String, dynamic>>>> getStudentBeaconBindings({
-    required String token,
-    required String code,
-    required String groupLetter,
-    required String period,
-    bool retrySession = true,
-  }) async {
-    try {
-      final mainBackendToken = await _resolveMainBackendToken(token);
-      if (mainBackendToken == null) {
-        return const Left(
-          'No pudimos validar la sesión con el backend principal. Inicia sesión de nuevo.',
-        );
-      }
-
-      final response = await _attendanceBackendDio.post(
-        '/attendance/student-beacon-bindings',
-        data: {'code': code, 'groupLetter': groupLetter, 'period': period},
-        options: Options(
-          headers: {'Authorization': 'Bearer $mainBackendToken'},
-        ),
-      );
-
-      if (response.statusCode == 200) {
-        final data = response.data['data'] as List<dynamic>? ?? [];
-        return Right(
-          data.map((item) => Map<String, dynamic>.from(item as Map)).toList(),
-        );
-      }
-
-      return Left(response.data['message'] ?? 'Error obteniendo UUIDs');
-    } on DioException catch (e) {
-      if (e.response?.statusCode == 401 &&
-          retrySession &&
-          _usesBackendApiRest) {
-        final refreshedToken = await _resolveMainBackendToken(
-          token,
-          refresh: true,
-        );
-        if (refreshedToken != null && refreshedToken.isNotEmpty) {
-          Logger.info(
-            'Reintentando consulta de UUIDs con sesion principal renovada.',
-          );
-          return getStudentBeaconBindings(
-            token: token,
-            code: code,
-            groupLetter: groupLetter,
-            period: period,
-            retrySession: false,
-          );
-        }
-      }
-
-      final errorMessage = _handleDioError(e);
-      Logger.error('Error obteniendo UUIDs de alumnos: $errorMessage', e);
-      return Left(errorMessage);
-    } catch (e, stackTrace) {
-      Logger.error(
-        'Error inesperado obteniendo UUIDs de alumnos',
         e,
         stackTrace,
       );

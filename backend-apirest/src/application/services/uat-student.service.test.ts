@@ -66,6 +66,15 @@ describe('UatStudentService', () => {
     expect(session.deviceBindingToken).toBe('signed-binding-token');
   });
 
+  it('falla cerrado si se solicita vincular y Attendance Service no está configurado', async () => {
+    const service = new UatStudentService(memoryRepository(), fakeFactory(fakeStudentClient()));
+    await expect(service.createSession({
+      username: 'alumno@uat.edu.mx', password: 'secret',
+      attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+      deviceBindingId: '12345678-1234-4234-9234-123456789abd',
+    })).rejects.toMatchObject({ statusCode: 503, code: 'ATTENDANCE_SERVICE_NOT_CONFIGURED' });
+  });
+
   it('rechaza un plan que no pertenece al alumno', async () => {
     const client = fakeStudentClient();
     const service = new UatStudentService(memoryRepository(), fakeFactory(client));

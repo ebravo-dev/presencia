@@ -5,6 +5,7 @@ const identityUrl = process.env.IDENTITY_SERVICE_URL ?? 'http://identity-service
 const academicUrl = process.env.ACADEMIC_SERVICE_URL ?? 'http://academic-service:3300';
 const attendanceUrl = process.env.ATTENDANCE_SERVICE_URL ?? 'http://attendance-service:3400';
 const queryUrl = process.env.COORDINATION_QUERY_SERVICE_URL ?? 'http://coordination-query-service:3500';
+const gatewayUrl = process.env.API_GATEWAY_URL ?? 'http://api-gateway:8080';
 const headers = { 'x-internal-service-token': internalToken, 'x-correlation-id': 'ci-service-flow' };
 
 const identity = await request(identityUrl, '/internal/v1/authenticated-sessions', {
@@ -61,6 +62,27 @@ const binding = await request(attendanceUrl, '/internal/v1/attendance/device-bin
   },
 });
 if (typeof binding.data?.bindingToken !== 'string') throw new Error('Attendance did not return a device binding token.');
+const reconciledBinding = await request(gatewayUrl, '/api/student-device-bindings', {
+  method: 'POST', expected: 200,
+  requestHeaders: { authorization: `Bearer ${binding.data.bindingToken}` },
+  body: {
+    matricula: '2251330007', attendanceUuid: '33333333-3333-4333-8333-333333333333',
+    deviceBindingId: '33333333-3333-4333-8333-333333333334', platform: 'android', deviceInfo: 'CI device',
+  },
+});
+if (reconciledBinding.data?.matricula !== '2251330007') {
+  throw new Error('Gateway did not reconcile the scoped binding through Attendance Service.');
+}
+
+const professorBindings = await eventually(async () => request(
+  attendanceUrl,
+  '/internal/v1/attendance/device-bindings/resolve',
+  { method: 'POST', expected: 200, body: { professorExternalId: 'teacher-ci', matriculas: ['2251330007'] } },
+), (result) => result.data?.length === 1, 'Attendance never authorized the binding from the professor roster.');
+if (professorBindings.data[0]?.attendanceUuid !== '33333333-3333-4333-8333-333333333333') {
+  throw new Error('Attendance returned an unexpected student binding.');
+}
+pass('Gateway reconciles the scoped student token and Attendance authorizes professor binding reads');
 
 const captureBody = {
   externalGroupId: '947699', professorExternalId: 'teacher-ci', date: '2026-08-03',

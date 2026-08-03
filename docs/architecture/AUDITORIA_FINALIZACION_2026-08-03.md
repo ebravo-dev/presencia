@@ -11,7 +11,7 @@ prueba de funcionamiento integral.
 | Datos UAT del profesor mediante REST | UAT Integration implementa sesión ASP.NET, horarios, catálogos, grupos, roster y asistencia. `uat-portal-clients.integration.test.ts` prueba formularios y cookies contra un portal HTTP simulado. | Implementado; falta E2E con cuenta UAT autorizada. |
 | Login, perfil y horario del alumno | UAT Integration autentica, selecciona carrera y expone horario/calificaciones; Identity emite la sesión y Academic persiste el snapshot. | Implementado; falta E2E con cuenta UAT autorizada. |
 | Login estudiantil como única alta | El vínculo inicial sólo se ejecuta después de que el portal devuelve login, carrera y matrícula válidos. No existe alta manual pública. | Implementado y probado en servicios. |
-| Vincular matrícula, teléfono y UUID | Attendance posee `StudentDeviceBinding`, rechaza identificadores duplicados y entrega un token acotado. El flujo integral CI verifica vínculo y asociación al roster. | Implementado. |
+| Vincular matrícula, teléfono y UUID | Attendance posee `StudentDeviceBinding`, rechaza identificadores duplicados y entrega un token acotado. El Gateway renueva únicamente el vínculo exacto; el profesor lo resuelve mediante sesión UAT y pertenencia al roster, sin dual-write legado. | Implementado y probado. |
 | Cambio de UUID sólo por coordinación | Attendance permite reemplazo/desvinculación sólo por comando interno con rol y motivo auditables; el endpoint público únicamente repite el vínculo exacto. | Implementado y probado. |
 | Captura local y subida posterior a UAT | Attendance usa transacción serializable, idempotencia y outbox; UAT Integration consume, cifra credenciales, reintenta y usa DLQ. | Implementado; CI prueba captura `PENDING`, falta caos contra UAT real. |
 | Asistencia del profesor en dashboard | Coordination Query consume roster/asistencia, reconcilia snapshots y genera reportes semanal/rango. | Implementado; CI prueba la proyección cruzando PostgreSQL y RabbitMQ. |
@@ -29,9 +29,10 @@ imágenes. La prueba `verify-service-flow.mjs` comprueba:
 2. Academic persiste snapshots de profesor, roster, alumno y horario;
 3. RabbitMQ entrega el roster a Attendance;
 4. Attendance vincula el celular y captura asistencia idempotente;
-5. RabbitMQ entrega la asistencia a Coordination Query;
-6. el reporte muestra dos horas tomadas y publicación UAT `PENDING`;
-7. Nginx/Gateway publican health y rutas de clientes, pero no `/internal/*`.
+5. Gateway valida la renovación acotada y Attendance autoriza la lectura del profesor por roster;
+6. RabbitMQ entrega la asistencia a Coordination Query;
+7. el reporte muestra dos horas tomadas y publicación UAT `PENDING`;
+8. Nginx/Gateway publican health y rutas de clientes, pero no `/internal/*`.
 
 El mismo workflow ejecuta `flutter analyze` y `flutter test` en las apps de
 alumno y profesor. El bundle inicial del dashboard separa React, consultas e
