@@ -26,6 +26,7 @@ import { AttendanceServiceCommandClient } from './infrastructure/http/client/att
 import { AttendanceCaptureClient } from './infrastructure/http/client/attendance-capture.client.js';
 import { CoordinationQueryClient } from './infrastructure/http/client/coordination-query.client.js';
 import { DurableDomainEventBus } from './infrastructure/events/durable-domain-event-bus.js';
+import { registerUatIntegrationMetrics } from './infrastructure/observability/http-metrics.js';
 import { RedisKeyValueStore } from './infrastructure/persistence/redis-key-value.store.js';
 import { RedisUatSessionStore } from './infrastructure/persistence/redis-session.store.js';
 import { StudentSessionCodec, TeacherSessionCodec } from './infrastructure/persistence/session-codec.js';
@@ -66,6 +67,7 @@ export async function buildApp() {
           : undefined,
     },
   });
+  registerUatIntegrationMetrics(fastify, env.METRICS_TOKEN);
 
   const clientFactory = new UatClientFactory();
   const studentClientFactory = new UatStudentClientFactory();

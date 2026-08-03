@@ -8,6 +8,7 @@ const DEVELOPMENT_SECRETS = new Set([
   'development-internal-service-token-change-me',
   'development-attendance-job-secret-change-me',
   'development-uat-session-secret-change-me',
+  'development-uat-metrics-token-change-me',
 ]);
 
 export const envSchema = z.object({
@@ -49,6 +50,7 @@ export const envSchema = z.object({
     .min(1)
     .default('postgresql://postgres:postgres@localhost:5432/presencia_coordination?schema=public'),
   INTERNAL_API_TOKEN: z.string().min(32).default('development-internal-service-token-change-me'),
+  METRICS_TOKEN: z.string().min(32).default('development-uat-metrics-token-change-me'),
   COORDINATION_WEB_ORIGIN: z.string().url().default('http://localhost:5173'),
   COORDINATION_COOKIE_SECURE: z.preprocess(
     (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
@@ -70,6 +72,7 @@ export const envSchema = z.object({
     'ATTENDANCE_BACKEND_SERVICE_TOKEN',
     'ATTENDANCE_JOB_ENCRYPTION_SECRET',
     'UAT_SESSION_ENCRYPTION_SECRET',
+    'METRICS_TOKEN',
   ] as const;
 
   for (const field of secretFields) {
@@ -93,6 +96,13 @@ export const envSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['ATTENDANCE_JOB_ENCRYPTION_SECRET'],
       message: 'Encryption secrets must be distinct from service tokens and from each other',
+    });
+  }
+  if ([...identitySecrets, ...serviceSecrets].includes(value.METRICS_TOKEN)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['METRICS_TOKEN'],
+      message: 'Metrics token must be distinct from encryption secrets and service tokens',
     });
   }
 

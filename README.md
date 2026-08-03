@@ -71,6 +71,8 @@ por Dokploy, como PostgreSQL, mediante su hostname interno.
 Copia y sustituye `infra/compose/.env.dokploy.example`. La guía completa,
 validación de secretos, smoke test, rollback y backups está en
 [docs/operations/DOKPLOY.md](docs/operations/DOKPLOY.md).
+Los SLO, alertas Prometheus y procedimientos de incidentes están en
+[docs/operations/RUNBOOK_INCIDENTES.md](docs/operations/RUNBOOK_INCIDENTES.md).
 
 Para el primer coordinador usa:
 

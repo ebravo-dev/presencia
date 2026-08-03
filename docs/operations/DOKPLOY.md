@@ -114,9 +114,10 @@ intentos; al restaurarlo, el mismo comando completa sin una escritura duplicada.
 El gate también comprueba una DLQ real, una clase compartida
 autorizada/revocada con captura delegada `SKIPPED`, el failover de una réplica
 del Gateway y la restauración aislada de PostgreSQL/Redis. Además analiza y
-prueba ambas apps Flutter. El simulador se ejecuta sin root, con filesystem de
-sólo lectura y sin acceso a los portales reales; las cuentas UAT autorizadas
-permanecen fuera de CI.
+prueba ambas apps Flutter y las compila para Android e iOS; la compilación iOS
+se realiza sin firma en un runner macOS. El simulador se ejecuta sin root, con
+filesystem de sólo lectura y sin acceso a los portales reales; las cuentas UAT
+autorizadas permanecen fuera de CI.
 
 El login de coordinación y superusuario, sus sesiones revocables y las cuentas
 del personal pertenecen a Identity. El BFF conserva `/api/coordinacion/auth/*`
@@ -176,3 +177,8 @@ El workflow ejecuta `verify-postgres-backup-restore.sh` para las seis bases y
 `PRESENCIA_BACKUP_VERIFY_ALLOW=ci`; crean únicamente destinos efímeros y los
 eliminan al terminar. Esta prueba valida el procedimiento, pero no sustituye la
 programación, cifrado, retención externa ni alertas de los backups de producción.
+
+Los SLO iniciales, las reglas Prometheus y los procedimientos de respuesta se
+documentan en `RUNBOOK_INCIDENTES.md`. El gate de carga usa exclusivamente el
+portal simulado y se ejecuta con dos réplicas por servicio; nunca debe apuntarse
+a las plataformas UAT reales.

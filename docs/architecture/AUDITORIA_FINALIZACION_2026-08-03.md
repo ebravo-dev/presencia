@@ -88,8 +88,25 @@ destinos efímeros aislados y compara los conteos respaldados. Los verificadores
 destructivos se niegan a ejecutar si no reciben la guarda explícita de CI.
 
 El mismo workflow ejecuta `flutter analyze` y `flutter test` en las apps de
-alumno y profesor. El bundle inicial del dashboard separa React, consultas e
-iconos en chunks cacheables; Excel y PDF continúan como imports bajo demanda.
+alumno y profesor, compila APK debug en Linux y compila ambas aplicaciones iOS
+sin firma en un runner macOS. Los dos APK se construyeron también localmente;
+el gate macOS queda verificable al ejecutar el workflow remoto. El bundle
+inicial del dashboard separa React, consultas e iconos en chunks cacheables;
+Excel y PDF continúan como imports bajo demanda.
+
+La línea base de carga CI ejecuta 200 lecturas UAT simuladas con concurrencia
+20 sobre el stack escalado y exige menos de 1% de errores, p95 menor a 750 ms y
+p99 menor a 1.5 s. UAT Integration expone ahora contadores y histogramas HTTP
+Prometheus protegidos, igual que el resto de los servicios. Los SLO iniciales,
+reglas de alerta y respuesta a incidentes están versionados en el runbook; su
+calibración con tráfico real y la conexión del colector siguen siendo gates del
+host Dokploy.
+
+La ejecución Docker local del 3 de agosto de 2026 completó esas 200 lecturas
+con 20 solicitudes concurrentes, 0% de errores, p95 de 35.57 ms, p99 de 36.52
+ms y 663.94 solicitudes por segundo. El mismo gate confirmó que las métricas de
+UAT Integration responden `401` sin token y exponen el contador HTTP con su
+Bearer dedicado.
 
 ## Gates externos aún obligatorios
 
@@ -98,6 +115,7 @@ iconos en chunks cacheables; Excel y PDF continúan como imports bajo demanda.
 - despliegue Dokploy con dos réplicas por servicio;
 - caída/restauración controlada contra UAT real; reintento y DLQ ya están validados en el simulador;
 - programación, retención externa y monitoreo de backups de producción; la restauración aislada ya está automatizada.
+- colector/Alertmanager y calibración de SLO con tráfico representativo; las reglas y el gate de carga simulado ya están versionados.
 
 El runtime legado está retirado del Compose. La base histórica y su imagen no
 deben eliminarse hasta ejecutar el primer despliegue, comprobar los imports

@@ -158,6 +158,31 @@ test('the cross-service verifier also runs with the hardened Node 24 runtime', a
   assert.match(workflow, /docker run --rm[\s\S]*--user node[\s\S]*--read-only[\s\S]*--cap-drop ALL[\s\S]*node:24-alpine/);
 });
 
+test('CI compiles both Flutter apps for Android and unsigned iOS', async () => {
+  const workflow = await readFile(new URL('../../.github/workflows/backend-platform.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /mobile-platform-builds:/);
+  assert.match(workflow, /platform: android[\s\S]*command: flutter build apk --debug/);
+  assert.match(workflow, /platform: ios[\s\S]*command: flutter build ios --debug --no-codesign/);
+  assert.match(workflow, /working-directory: app-alumno[\s\S]*\$\{\{ matrix\.command \}\}/);
+  assert.match(workflow, /working-directory: app-profesor[\s\S]*\$\{\{ matrix\.command \}\}/);
+  assert.match(workflow, /needs: \[mobile-contracts, mobile-platform-builds, verify\]/);
+});
+
+test('CI enforces a guarded load SLO against the scaled simulated UAT flow', async () => {
+  const [workflow, loadVerifier, alerts] = await Promise.all([
+    readFile(new URL('../../.github/workflows/backend-platform.yml', import.meta.url), 'utf8'),
+    readFile(new URL('verify-load.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../observability/prometheus-alerts.yml', import.meta.url), 'utf8'),
+  ]);
+  assert.match(workflow, /Verify scaled UAT read load SLO[\s\S]*PRESENCIA_LOAD_TEST_ALLOW=ci[\s\S]*verify-load\.mjs/);
+  assert.match(loadVerifier, /PRESENCIA_LOAD_TEST_ALLOW !== 'ci'/);
+  assert.match(loadVerifier, /requiredEnvironmentValue\(process\.env\.UAT_METRICS_TOKEN/);
+  assert.match(loadVerifier, /unauthorizedResponse\.status !== 401/);
+  assert.match(alerts, /PresenciaGatewayHighErrorRate/);
+  assert.match(alerts, /PresenciaUatIntegrationHighErrorRate/);
+  assert.match(alerts, /presencia_uat_integration_http_request_duration_seconds_bucket/);
+});
+
 test('destructive restore checks require an explicit CI-only guard', async () => {
   for (const script of ['verify-postgres-backup-restore.sh', 'verify-redis-backup-restore.sh']) {
     const source = await readFile(new URL(script, import.meta.url), 'utf8');
