@@ -72,24 +72,6 @@ export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> =
     { preHandler: requireWriteCoordinator },
     controller.deleteStudentDeviceBinding,
   );
-  fastify.get('/api/coordinacion/infraestructura/sustituciones/opciones', controller.substitutionOptions);
-  fastify.get('/api/coordinacion/infraestructura/sustituciones', controller.substituteAssignments);
-  fastify.post(
-    '/api/coordinacion/infraestructura/sustituciones',
-    { preHandler: requireWriteCoordinator },
-    controller.createSubstituteAssignment,
-  );
-  fastify.put<{ Params: { id: string } }>(
-    '/api/coordinacion/infraestructura/sustituciones/:id',
-    { preHandler: requireWriteCoordinator },
-    controller.updateSubstituteAssignment,
-  );
-  fastify.delete<{ Params: { id: string } }>(
-    '/api/coordinacion/infraestructura/sustituciones/:id',
-    { preHandler: requireWriteCoordinator },
-    controller.deleteSubstituteAssignment,
-  );
-
   fastify.get('/api/coordinacion/clases-compartidas/opciones', controller.sharedClassOptions);
   fastify.get('/api/coordinacion/clases-compartidas', controller.sharedClasses);
   fastify.post('/api/coordinacion/clases-compartidas', { preHandler: requireWriteCoordinator }, controller.createSharedClass);

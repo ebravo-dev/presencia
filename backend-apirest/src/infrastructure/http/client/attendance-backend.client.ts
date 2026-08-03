@@ -93,10 +93,6 @@ export class AttendanceBackendClient {
     return this.request(() => this.http.get('/internal/coordination/beacons'));
   }
 
-  async resolveProfessorClassroomBeacons(input: { professorEmail: string; classrooms: string[] }) {
-    return this.request(() => this.http.post('/internal/coordination/professor-beacons/resolve', input));
-  }
-
   async getInfrastructureSummary() {
     return this.request(() => this.http.get('/internal/coordination/infrastructure-summary'));
   }
@@ -119,40 +115,6 @@ export class AttendanceBackendClient {
 
   async deleteStudentDeviceBinding(matricula: string) {
     await this.request(() => this.http.delete(`/internal/coordination/student-device-bindings/${encodeURIComponent(matricula)}`));
-  }
-
-  async getSubstitutionOptions() {
-    return this.request(() => this.http.get('/internal/coordination/substitutions/options'));
-  }
-
-  async listSubstituteAssignments() {
-    return this.request(() => this.http.get('/internal/coordination/substitute-assignments'));
-  }
-
-  async createSubstituteAssignment(input: {
-    groupId: string;
-    substituteProfessorId: string;
-    startsAt?: string | null;
-    endsAt?: string | null;
-    active?: boolean;
-    notes?: string | null;
-  }) {
-    return this.request(() => this.http.post('/internal/coordination/substitute-assignments', input));
-  }
-
-  async updateSubstituteAssignment(id: string, input: Partial<{
-    groupId: string;
-    substituteProfessorId: string;
-    startsAt: string | null;
-    endsAt: string | null;
-    active: boolean;
-    notes: string | null;
-  }>) {
-    return this.request(() => this.http.put(`/internal/coordination/substitute-assignments/${id}`, input));
-  }
-
-  async deleteSubstituteAssignment(id: string) {
-    await this.request(() => this.http.delete(`/internal/coordination/substitute-assignments/${id}`));
   }
 
   private async request<T>(call: () => Promise<{ data: T }>): Promise<T> {

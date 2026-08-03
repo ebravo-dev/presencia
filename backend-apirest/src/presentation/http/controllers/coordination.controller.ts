@@ -208,40 +208,6 @@ export class CoordinationController {
     return reply.code(204).send();
   };
 
-  substitutionOptions = async (_request: FastifyRequest, reply: FastifyReply) => {
-    return reply.send(await this.attendanceBackendClient.getSubstitutionOptions());
-  };
-
-  substituteAssignments = async (_request: FastifyRequest, reply: FastifyReply) => {
-    return reply.send(await this.attendanceBackendClient.listSubstituteAssignments());
-  };
-
-  createSubstituteAssignment = async (request: FastifyRequest, reply: FastifyReply) => {
-    return reply.code(201).send(await this.attendanceBackendClient.createSubstituteAssignment(request.body as {
-      groupId: string;
-      substituteProfessorId: string;
-      startsAt?: string | null;
-      endsAt?: string | null;
-      active?: boolean;
-      notes?: string | null;
-    }));
-  };
-
-  updateSubstituteAssignment = async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    return reply.send(await this.attendanceBackendClient.updateSubstituteAssignment(request.params.id, request.body as Partial<{
-      groupId: string;
-      substituteProfessorId: string;
-      startsAt: string | null;
-      endsAt: string | null;
-      active: boolean;
-      notes: string | null;
-    }>));
-  };
-
-  deleteSubstituteAssignment = async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    await this.attendanceBackendClient.deleteSubstituteAssignment(request.params.id);
-    return reply.code(204).send();
-  };
 }
 
 function requireCoordinator(request: FastifyRequest) {
