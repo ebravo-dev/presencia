@@ -26,11 +26,11 @@ void main() {
             },
           ],
         },
-        matricula: 'a2251330007',
+        matricula: 'a0000000000',
         institutionalEmail: ' ALUMNA@ALUMNOS.UAT.EDU.MX ',
       );
 
-      expect(profile.matricula, 'A2251330007');
+      expect(profile.matricula, 'A0000000000');
       expect(profile.institutionalEmail, 'alumna@alumnos.uat.edu.mx');
       expect(profile.displayName, 'Ana Alumna');
       expect(profile.programName, 'Ingeniería de Software');

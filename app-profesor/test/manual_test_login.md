@@ -1,8 +1,9 @@
 # Manual Test - Login Flow
 
-## Credenciales de Prueba
-- Email: `ejgonzalez@uat.edu.mx`
-- Password: `Uat@alumnos.uat.mx`
+## Credenciales de prueba
+
+Obtén una cuenta temporal mediante el canal seguro del equipo. Nunca escribas
+correos personales ni contraseñas reales en este archivo o en los logs.
 
 ## Escenarios de Prueba
 
@@ -12,9 +13,9 @@
 2. Abrir app
 3. Debería mostrar pantalla de login (no splash infinito)
 4. Hacer clic en campo de email
-5. Escribir: `ejgonzalez@uat.edu.mx`
+5. Escribir el correo de la cuenta temporal
 6. Hacer clic en campo de contraseña
-7. Escribir: `Uat@alumnos.uat.mx`
+7. Escribir la contraseña recibida por el canal seguro
 8. Hacer clic en "Iniciar Sesión"
 
 **Resultado Esperado:**
@@ -102,7 +103,7 @@ flutter run --hot
 [INFO] Iniciando verificación de sesión almacenada
 [INFO] No hay sesión almacenada
 [INFO] Verificación de sesión completada
-[INFO] Iniciando login del profesor con email: ejgonzalez@uat.edu.mx
+[INFO] Iniciando login del profesor
 [INFO] Login exitoso para: [Nombre del profesor]
 [INFO] Cargando clases del profesor: [ID]
 [INFO] Clases cargadas exitosamente: 6 clases

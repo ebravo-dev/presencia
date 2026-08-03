@@ -165,7 +165,7 @@ function makeEvent(): TeacherAuthenticatedEvent {
       plantillaId: 308127,
       institutionalCode: '308127',
       name: 'Eder Jahir Gonzalez Bravo',
-      email: 'ejgonzalez@uat.edu.mx',
+      email: 'profesor.prueba@uat.edu.mx',
     },
   };
 }
