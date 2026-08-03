@@ -219,9 +219,9 @@ extension UATPaletteContext on BuildContext {
 extension UATColorExtension on Color {
   /// Convierte un color UAT a MaterialColor para usar en temas
   MaterialColor toMaterialColor() {
-    final int red = this.red;
-    final int green = this.green;
-    final int blue = this.blue;
+    final int red = (r * 255.0).round().clamp(0, 255);
+    final int green = (g * 255.0).round().clamp(0, 255);
+    final int blue = (b * 255.0).round().clamp(0, 255);
 
     final Map<int, Color> shades = {
       50: Color.fromRGBO(red, green, blue, .1),
@@ -236,6 +236,6 @@ extension UATColorExtension on Color {
       900: Color.fromRGBO(red, green, blue, 1),
     };
 
-    return MaterialColor(value, shades);
+    return MaterialColor(toARGB32(), shades);
   }
 }

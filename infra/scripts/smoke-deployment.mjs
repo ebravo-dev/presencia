@@ -2,9 +2,12 @@ const baseUrl = process.env.PRESENCIA_BASE_URL;
 if (!baseUrl) throw new Error('PRESENCIA_BASE_URL is required.');
 
 const checks = [
+  { path: '/coordinacion/', expected: 200 },
   { path: '/health/live', expected: 200 },
   { path: '/health/ready', expected: 200 },
   { path: '/metrics', expected: 401 },
+  { path: '/api/uat/alumnos/horario', expected: 401 },
+  { path: '/api/coordinacion/auth/me', expected: 401 },
   { path: '/internal/v1/attendance/coordination-projection', expected: 404 },
 ];
 

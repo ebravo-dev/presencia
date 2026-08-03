@@ -297,7 +297,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       token: token,
       records: List<AsistenciaRegistro>.from(_pendientes),
       groups: grupos,
-      encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
+      encryptedPassword: _authStorage.getCachedUatPassword() ?? '',
     );
     _updateStep(
       1,
@@ -725,7 +725,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
           width: 120,
           height: 120,
           decoration: BoxDecoration(
-            color: Colors.green.withOpacity(0.15),
+            color: Colors.green.withValues(alpha: 0.15),
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -766,9 +766,9 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             margin: const EdgeInsets.only(bottom: 14),
             decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
+              color: Colors.blue.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.blue.withOpacity(0.2)),
+              border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
             ),
             child: Row(
               children: [
@@ -813,7 +813,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.12),
+                        color: Colors.orange.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(
@@ -1095,7 +1095,7 @@ class _CalendarModalState extends State<_CalendarModal> {
                       fontSize: 16,
                     ),
                     todayDecoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.3),
+                      color: Colors.blue.withValues(alpha: 0.3),
                       shape: BoxShape.circle,
                     ),
                     todayTextStyle: const TextStyle(
@@ -1164,7 +1164,7 @@ class _CalendarModalState extends State<_CalendarModal> {
                               width: 40,
                               height: 40,
                               decoration: BoxDecoration(
-                                color: Colors.blue.withOpacity(0.3),
+                                color: Colors.blue.withValues(alpha: 0.3),
                                 shape: BoxShape.circle,
                               ),
                               child: Center(
@@ -1290,7 +1290,7 @@ class _CalendarModalState extends State<_CalendarModal> {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Container(
+          SizedBox(
             width: 40,
             height: 40,
             child: Center(

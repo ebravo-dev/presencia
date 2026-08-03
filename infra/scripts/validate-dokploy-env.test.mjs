@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { buildCiEnvironment } from './create-ci-env.mjs';
 import { parseEnvFile, requiredEnvironmentVariables, validateDokployEnvironment } from './validate-dokploy-env.mjs';
 
 const composeUrl = new URL('../compose/docker-compose.microservices.yml', import.meta.url);
@@ -43,4 +44,26 @@ test('runtime containers gate Docker health on readiness', async () => {
     const source = await readFile(new URL(dockerfile, import.meta.url), 'utf8');
     assert.match(source, /HEALTHCHECK[\s\S]*\/health\/ready/, `${dockerfile} must check readiness`);
   }
+});
+
+test('the generated CI environment satisfies the production validator', async () => {
+  const [compose, example] = await Promise.all([readFile(composeUrl, 'utf8'), readFile(exampleUrl, 'utf8')]);
+  const environment = buildCiEnvironment(example);
+  assert.deepEqual(validateDokployEnvironment(environment, compose), []);
+});
+
+test('UAT has outbound access without joining the public Dokploy network', async () => {
+  const compose = await readFile(composeUrl, 'utf8');
+  const start = compose.indexOf('\n  uat-integration:');
+  const end = compose.indexOf('\n  identity-migrate:', start);
+  const service = compose.slice(start, end);
+  assert.match(service, /networks: \[private, uat-egress\]/);
+  assert.doesNotMatch(service, /dokploy-network/);
+  assert.match(compose, /\n  uat-egress:\n    driver: bridge/);
+});
+
+test('the public web proxy exposes gateway health but never internal routes', async () => {
+  const nginx = await readFile(new URL('../../frontend-coord/nginx/default.conf.template', import.meta.url), 'utf8');
+  assert.match(nginx, /\|health\|metrics\)/);
+  assert.doesNotMatch(nginx, /\|internal\|/);
 });

@@ -229,7 +229,9 @@ class _MyAppState extends ConsumerState<MyApp> {
                   'Cargando...',
                   style: TextStyle(
                     fontSize: 16,
-                    color: activeTheme.colorScheme.onSurface.withOpacity(0.72),
+                    color: activeTheme.colorScheme.onSurface.withValues(
+                      alpha: 0.72,
+                    ),
                   ),
                 ),
               ],

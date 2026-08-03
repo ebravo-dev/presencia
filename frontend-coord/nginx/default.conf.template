@@ -31,7 +31,7 @@ server {
 
   # El navegador sólo conoce al API Gateway. La selección del microservicio
   # propietario ocurre dentro de la red privada.
-  location ~ ^/(api|attendance|auth|professors|groups)(/|$) {
+  location ~ ^/(api|attendance|auth|professors|groups|health|metrics)(/|$) {
     proxy_pass http://${API_GATEWAY_UPSTREAM};
     proxy_http_version 1.1;
     proxy_set_header Host $host;

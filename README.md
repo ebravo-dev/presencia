@@ -19,6 +19,7 @@ presencia/
 ## Arquitectura
 
 - [Plan de migración a microservicios](docs/architecture/PLAN_MIGRACION_MICROSERVICIOS.md)
+- [Auditoría de finalización y evidencia](docs/architecture/AUDITORIA_FINALIZACION_2026-08-03.md)
 
 ## backend-apirest
 
@@ -39,6 +40,9 @@ apps y separa datos en bases PostgreSQL independientes:
 - `backend-apirest`: integración y anticorrupción con los portales UAT;
 - RabbitMQ: eventos durables con reintentos/DLQ;
 - Redis: sesiones UAT compartidas, rate limiting y caché efímera.
+
+UAT Integration conserva salida HTTPS mediante una red de egreso dedicada,
+sin publicar puertos. La red privada de datos continúa aislada de Internet.
 
 Los backends anteriores permanecen como fachadas de compatibilidad sólo donde
 los clientes aún necesitan el contrato histórico. Los nuevos servicios son los
@@ -91,7 +95,19 @@ npm run typecheck --prefix backend
 npm test --prefix backend -- --run
 npm run typecheck --prefix frontend-coord
 npm test --prefix frontend-coord
+cd app-alumno && flutter analyze && flutter test
+cd ../app-profesor && flutter analyze && flutter test
 ```
+
+El workflow de CI también levanta el Compose completo con secretos efímeros y
+ejecuta las sondas públicas a través del mismo Nginx usado en Dokploy. Antes de
+levantar el stack valida también ambos clientes Flutter.
+
+La app del profesor no persiste la contraseña UAT: elimina la clave heredada de
+Hive y sólo mantiene una copia efímera en memoria durante el proceso activo.
+Los identificadores de sesión se guardan en el almacén seguro nativo
+(Android Keystore/iOS Keychain) y las instalaciones existentes migran y eliminan
+automáticamente los tokens heredados de Hive.
 
 ## Integraciones
 

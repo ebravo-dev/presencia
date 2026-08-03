@@ -48,14 +48,11 @@ dependencies:
   # Local Storage
   hive: ^2.2.3
   hive_flutter: ^1.1.0
+  flutter_secure_storage: ^9.2.4
 
   # Utils
   dartz: ^0.10.1
   equatable: ^2.0.5
-
-  # Encryption
-  encrypt: ^5.0.3
-  pointycastle: ^3.9.1
 
   # Permissions
   permission_handler: ^11.3.1

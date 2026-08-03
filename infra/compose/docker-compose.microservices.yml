@@ -284,7 +284,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    networks: [private]
+    # Needs outbound HTTPS access to the UAT portals. The service still has no
+    # published port and remains reachable internally only through `private`.
+    networks: [private, uat-egress]
 
   identity-migrate:
     image: presencia-identity:${IMAGE_TAG:-latest}
@@ -462,6 +464,8 @@ volumes:
 networks:
   private:
     internal: true
+  uat-egress:
+    driver: bridge
   dokploy-network:
     external: true
     name: ${DOKPLOY_NETWORK_NAME:-dokploy-network}

@@ -13,6 +13,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  mobile-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Verify student app contracts
+        working-directory: app-alumno
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+
+      - name: Verify professor app contracts
+        working-directory: app-profesor
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -67,3 +91,58 @@ jobs:
           npm audit --omit=dev --audit-level=high
           npm audit --omit=dev --audit-level=high --prefix backend
           npm audit --omit=dev --audit-level=high --prefix backend-apirest
+
+  compose-integration:
+    needs: [mobile-contracts, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.7.0
+
+      - name: Generate isolated integration environment
+        run: |
+          node infra/scripts/create-ci-env.mjs /tmp/presencia-ci.env
+          node infra/scripts/validate-dokploy-env.mjs /tmp/presencia-ci.env
+
+      - name: Create Dokploy-compatible ingress network
+        run: docker network create dokploy-network
+
+      - name: Build and start the complete platform
+        run: >-
+          docker compose --project-name presencia-ci
+          --env-file /tmp/presencia-ci.env
+          --file infra/compose/docker-compose.microservices.yml
+          --file infra/compose/docker-compose.ci.yml
+          up --build --detach --wait --wait-timeout 300
+
+      - name: Run public deployment smoke checks
+        env:
+          PRESENCIA_BASE_URL: http://127.0.0.1:18080
+        run: node infra/scripts/smoke-deployment.mjs
+
+      - name: Verify the cross-service academic and attendance flow
+        run: >-
+          docker run --rm
+          --network presencia-ci_private
+          --env-file /tmp/presencia-ci.env
+          --volume "$PWD/infra/scripts:/scripts:ro"
+          node:24.7-alpine
+          node /scripts/verify-service-flow.mjs
+
+      - name: Show container diagnostics on failure
+        if: failure()
+        run: >-
+          docker compose --project-name presencia-ci
+          --env-file /tmp/presencia-ci.env
+          --file infra/compose/docker-compose.microservices.yml
+          --file infra/compose/docker-compose.ci.yml
+          logs --no-color --tail 250
+
+      - name: Remove integration stack
+        if: always()
+        run: |
+          docker compose --project-name presencia-ci --env-file /tmp/presencia-ci.env --file infra/compose/docker-compose.microservices.yml --file infra/compose/docker-compose.ci.yml down --volumes --remove-orphans
+          docker network rm dokploy-network || true

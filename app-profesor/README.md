@@ -81,7 +81,7 @@ lib/
 - **Framework**: Flutter 3.24+
 - **State Management**: Riverpod 2.5+
 - **Navigation**: Go Router
-- **Local Database**: Hive/SQLite
+- **Local Database**: Hive/SQLite para caché no sensible y Keychain/Keystore para sesiones
 - **Bluetooth**: Flutter Blue Plus
 - **HTTP Client**: Dio
 - **Code Generation**: Build Runner

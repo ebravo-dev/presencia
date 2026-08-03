@@ -2,15 +2,23 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:dartz/dartz.dart';
+import 'package:mocktail/mocktail.dart';
 import 'package:appprofesoresuniversidad/services/auth_storage_service.dart';
+import 'package:appprofesoresuniversidad/services/api_service.dart';
 import 'package:appprofesoresuniversidad/features/authentication/providers/profesor_auth_provider.dart';
 import 'package:appprofesoresuniversidad/shared/models/profesor.dart';
+import 'package:appprofesoresuniversidad/shared/models/grupo.dart';
+
+class MockApiService extends Mock implements ApiService {}
 
 void main() {
   late AuthStorageService authStorage;
   late Directory testDir;
 
   setUpAll(() async {
+    FlutterSecureStorage.setMockInitialValues({});
     // Crear directorio temporal para tests
     testDir = Directory.systemTemp.createTempSync('hive_test_');
     // Inicializar Hive con el directorio temporal
@@ -66,6 +74,11 @@ void main() {
       // Assert
       expect(authStorage.hasActiveSession(), true);
       expect(authStorage.getToken(), testToken);
+      expect(Hive.box('auth').containsKey('jwt_token'), isFalse);
+      expect(
+        await const FlutterSecureStorage().read(key: 'professor_session_token'),
+        testToken,
+      );
 
       final savedProfesor = authStorage.getProfesor();
       expect(savedProfesor, isNotNull);
@@ -139,7 +152,47 @@ void main() {
 
       // Assert
       expect(isValid, false); // El token está expirado
-      expect(hasSession, true); // Pero sí hay sesión guardada (solo valida existencia)
+      expect(
+        hasSession,
+        true,
+      ); // Pero sí hay sesión guardada (solo valida existencia)
+    });
+
+    test('Escenario 6: La contraseña UAT nunca se persiste en Hive', () async {
+      final box = Hive.box('auth');
+      await box.put('encrypted_password', 'credencial-heredada');
+
+      await authStorage.init();
+      expect(box.containsKey('encrypted_password'), isFalse);
+
+      await authStorage.cacheUatPasswordForProcess('solo-en-memoria');
+      expect(authStorage.getCachedUatPassword(), 'solo-en-memoria');
+      expect(box.containsKey('encrypted_password'), isFalse);
+
+      await authStorage.clearCachedUatPassword();
+      expect(authStorage.getCachedUatPassword(), isNull);
+    });
+
+    test('Escenario 7: Migra sesiones heredadas al almacén seguro', () async {
+      final box = Hive.box('auth');
+      await box.put('jwt_token', 'uat-session-heredada');
+      await box.put('main_backend_jwt_token', 'backend-session-heredada');
+
+      await authStorage.init();
+
+      expect(authStorage.getToken(), 'uat-session-heredada');
+      expect(authStorage.getMainBackendToken(), 'backend-session-heredada');
+      expect(box.containsKey('jwt_token'), isFalse);
+      expect(box.containsKey('main_backend_jwt_token'), isFalse);
+      const secureStorage = FlutterSecureStorage();
+      expect(
+        await secureStorage.read(key: 'professor_session_token'),
+        'uat-session-heredada',
+      );
+      expect(
+        await secureStorage.read(key: 'professor_main_backend_token'),
+        'backend-session-heredada',
+      );
     });
   });
 
@@ -176,7 +229,16 @@ void main() {
 
       await authStorage.saveSession(token: validToken, profesor: testProfesor);
 
-      final container = ProviderContainer();
+      final apiService = MockApiService();
+      when(() => apiService.usesBackendApiRest).thenReturn(false);
+      when(() => apiService.getGruposProfesor(validToken)).thenAnswer(
+        (_) async =>
+            const Right((grupos: <Grupo>[], beacons: <Map<String, dynamic>>[])),
+      );
+
+      final container = ProviderContainer(
+        overrides: [apiServiceProvider.overrideWithValue(apiService)],
+      );
       final notifier = container.read(profesorAuthProvider.notifier);
 
       // Act

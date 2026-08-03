@@ -87,18 +87,6 @@ class ApiService {
     );
   }
 
-  /// El backend nuevo recibe la contrasena original y administra las cookies
-  /// ASP.NET en su propio Cookie Jar. Se conserva el nombre por compatibilidad.
-  String encryptPassword(String password) => password;
-
-  bool isLikelyEncrypted(String value) {
-    if (value.length < 80) return false;
-    final base64Regex = RegExp(r'^[A-Za-z0-9+/=]+$');
-    return base64Regex.hasMatch(value);
-  }
-
-  String ensureEncryptedPassword(String value) => value;
-
   bool get _usesBackendApiRest {
     return ApiConstants.useBackendApiRest;
   }
@@ -268,24 +256,17 @@ class ApiService {
         'Grupos sincronizados con el portal.';
   }
 
-  Future<Either<String, LoginResponse>> loginProfesorWithEncryptedPassword({
-    required String email,
-    required String encryptedPassword,
-  }) {
-    return loginProfesor(email: email, password: encryptedPassword);
-  }
-
   Future<String?> _refreshBackendApiRestSession() async {
     final authStorage = AuthStorageService();
     final profesor = authStorage.getProfesor();
-    final password = authStorage.getEncryptedPassword();
+    final password = authStorage.getCachedUatPassword();
 
     if (profesor == null ||
         profesor.institutionalEmail.isEmpty ||
         password == null ||
         password.isEmpty) {
       Logger.error(
-        'No se pudo renovar sesion UAT: faltan profesor o contrasena guardada.',
+        'No se pudo renovar sesion UAT: falta profesor o credencial efimera.',
       );
       return null;
     }
@@ -1226,7 +1207,7 @@ class ApiService {
     }
 
     final profesor = authStorage.getProfesor();
-    final password = authStorage.getEncryptedPassword();
+    final password = authStorage.getCachedUatPassword();
     if (profesor == null || password == null || password.isEmpty) return null;
 
     final syncResult = await syncPortalHistory(

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../../../core/theme/uat_colors.dart';
 
 class EmailDomainField extends StatefulWidget {

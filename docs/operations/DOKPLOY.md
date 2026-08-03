@@ -11,7 +11,9 @@
 
 Sólo `frontend-coord` y `api-gateway` comparten la red de Dokploy. PostgreSQL,
 Redis, RabbitMQ y todos los servicios de dominio permanecen en la red privada
-del Compose y no deben recibir dominios públicos.
+del Compose y no deben recibir dominios públicos. `uat-integration` también se
+conecta a `uat-egress`, una red bridge sin puertos publicados que le permite
+abrir HTTPS hacia los portales UAT; no debe agregarse a `dokploy-network`.
 
 Copiar `infra/compose/.env.dokploy.example`, sustituir todos los valores de
 ejemplo y validar el archivo antes de cargarlo en Dokploy:
@@ -53,6 +55,19 @@ Con el dominio ya enrutado por Traefik:
 ```bash
 PRESENCIA_BASE_URL=https://presencia.example.edu.mx node infra/scripts/smoke-deployment.mjs
 ```
+
+Nginx publica únicamente las rutas de cliente y las sondas del Gateway. Las
+rutas `/internal/*` no se reenvían. El workflow `Backend platform` genera
+secretos efímeros, construye todas las imágenes, levanta PostgreSQL, Redis,
+RabbitMQ, migraciones, servicios y web, y ejecuta este mismo smoke test mediante
+`docker-compose.ci.yml`. Después inserta snapshots de profesor y alumno,
+comprueba la vinculación del celular, la captura idempotente y la proyección del
+reporte a través de RabbitMQ. El gate también analiza y prueba ambas apps
+Flutter. Las cuentas y portales UAT reales permanecen fuera de CI.
+
+El dashboard divide el shell en chunks cacheables y carga los exportadores de
+Excel/PDF sólo cuando se solicitan, reduciendo el JavaScript inicial servido por
+Nginx.
 
 Después ejecutar con cuentas UAT de prueba autorizadas:
 

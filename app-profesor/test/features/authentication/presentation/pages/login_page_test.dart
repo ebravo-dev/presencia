@@ -1,189 +1,127 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mocktail/mocktail.dart';
 
+import 'package:appprofesoresuniversidad/core/theme/uat_colors.dart';
 import 'package:appprofesoresuniversidad/features/authentication/presentation/pages/login_page.dart';
-import 'package:appprofesoresuniversidad/features/authentication/providers/auth_provider.dart';
-import 'package:appprofesoresuniversidad/features/authentication/models/auth_models.dart';
-import 'package:appprofesoresuniversidad/features/authentication/services/auth_service.dart';
+import 'package:appprofesoresuniversidad/features/authentication/providers/profesor_auth_provider.dart';
+import 'package:appprofesoresuniversidad/services/api_service.dart';
+import 'package:appprofesoresuniversidad/services/auth_storage_service.dart';
 
-// Mock classes
-class MockAuthService extends Mock implements AuthService {}
-
-class TestAuthNotifier extends AuthNotifier {
-  TestAuthNotifier(AuthState initialState, AuthService authService)
-    : super(authService) {
+class TestProfesorAuthNotifier extends ProfesorAuthNotifier {
+  TestProfesorAuthNotifier([
+    ProfesorAuthState initialState = const ProfesorAuthState(),
+  ]) : super(ApiService(), AuthStorageService()) {
     state = initialState;
   }
 
-  void setState(AuthState newState) {
-    state = newState;
-  }
-
-  @override
-  Future<void> login(String email, String password) async {
-    state = state.copyWith(status: AuthStatus.loading);
-  }
-
-  @override
-  void clearError() {
-    state = state.copyWith(errorMessage: null);
+  void emit(ProfesorAuthState nextState) {
+    state = nextState;
   }
 }
 
 void main() {
   group('LoginPage Widget Tests', () {
-    late MockAuthService mockAuthService;
-    late TestAuthNotifier testAuthNotifier;
+    late TestProfesorAuthNotifier notifier;
 
-    setUp(() {
-      mockAuthService = MockAuthService();
+    void setViewport(WidgetTester tester, Size size) {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = size;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+    }
 
-      // Set up default mock responses
-      when(
-        () => mockAuthService.getCurrentUser(),
-      ).thenAnswer((_) async => null);
-      when(
-        () => mockAuthService.getUserGroups(any()),
-      ).thenAnswer((_) async => []);
-      when(() => mockAuthService.logout()).thenAnswer(
-        (_) async =>
-            const AuthResult(isSuccess: true, message: 'Logout exitoso'),
-      );
-
-      testAuthNotifier = TestAuthNotifier(const AuthState(), mockAuthService);
-    });
-
-    Widget createTestWidget({AuthState? authState}) {
-      if (authState != null) {
-        testAuthNotifier.setState(authState);
-      }
-
+    Widget createTestWidget({ProfesorAuthState? state}) {
+      notifier = TestProfesorAuthNotifier(state ?? const ProfesorAuthState());
       return ProviderScope(
-        overrides: [
-          authServiceProvider.overrideWithValue(mockAuthService),
-          authStateProvider.overrideWith((ref) => testAuthNotifier),
-        ],
-        child: MaterialApp(home: const LoginPage()),
+        overrides: [profesorAuthProvider.overrideWith((ref) => notifier)],
+        child: const MaterialApp(home: LoginPage()),
       );
     }
 
-    testWidgets('renders login page with all elements', (tester) async {
-      const authState = AuthState();
-
-      await tester.pumpWidget(createTestWidget(authState: authState));
-
-      // Check header elements
-      expect(find.byIcon(Icons.school), findsOneWidget);
-      expect(find.text('Universidad Autónoma de Tamaulipas'), findsOneWidget);
-      expect(find.text('Sistema de Asistencia Profesores'), findsOneWidget);
-
-      // Check login form title (check if there are multiple and that's OK)
-      expect(find.text('Iniciar Sesión'), findsWidgets);
-
-      // Check footer
-      expect(find.text('Versión 1.0.0'), findsOneWidget);
-
-      // Check that LoginForm is present (indirectly through its key elements)
-      expect(find.text('Usuario UAT'), findsOneWidget);
-      expect(find.text('Contraseña'), findsOneWidget);
-
-      // Check that the login button exists using its key
-      expect(find.byKey(const Key('login_button')), findsOneWidget);
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
     });
 
-    testWidgets('shows loading indicator when authenticating', (tester) async {
-      const authState = AuthState(status: AuthStatus.loading);
+    testWidgets('renders current professor login contract', (tester) async {
+      setViewport(tester, const Size(390, 844));
+      await tester.pumpWidget(createTestWidget());
 
-      await tester.pumpWidget(createTestWidget(authState: authState));
+      expect(find.byIcon(Icons.school_rounded), findsOneWidget);
+      expect(find.text('Universidad Autónoma de Tamaulipas'), findsOneWidget);
+      expect(find.text('Sistema de Asistencia Profesores'), findsOneWidget);
+      expect(find.text('Acceso Profesores'), findsOneWidget);
+      expect(find.byKey(const Key('email_field')), findsOneWidget);
+      expect(find.byKey(const Key('password_field')), findsOneWidget);
+      expect(find.byKey(const Key('login_button')), findsOneWidget);
+      expect(find.text('v1.0.0'), findsOneWidget);
+    });
 
-      // Should show loading indicator and text
-      expect(find.byType(CircularProgressIndicator), findsWidgets);
+    testWidgets('shows loading state while authenticating', (tester) async {
+      setViewport(tester, const Size(390, 844));
+      await tester.pumpWidget(
+        createTestWidget(
+          state: const ProfesorAuthState(status: ProfesorAuthStatus.loading),
+        ),
+      );
+
+      expect(find.byType(CircularProgressIndicator), findsNWidgets(2));
       expect(find.text('Verificando credenciales...'), findsOneWidget);
     });
 
-    testWidgets('has correct styling and layout', (tester) async {
-      const authState = AuthState();
+    testWidgets('uses the responsive narrow layout', (tester) async {
+      setViewport(tester, const Size(390, 844));
+      await tester.pumpWidget(createTestWidget());
 
-      await tester.pumpWidget(createTestWidget(authState: authState));
-
-      // Check that it's wrapped in a Scaffold
       expect(find.byType(Scaffold), findsOneWidget);
-
-      // Check that it has SafeArea
       expect(find.byType(SafeArea), findsOneWidget);
-
-      // Check that it has SingleChildScrollView for responsiveness
       expect(find.byType(SingleChildScrollView), findsOneWidget);
-
-      // Check that form is in a Card
-      expect(find.byType(Card), findsOneWidget);
-    });
-
-    testWidgets('has correct color scheme', (tester) async {
-      const authState = AuthState();
-
-      await tester.pumpWidget(createTestWidget(authState: authState));
-
-      // Check that scaffold has blue background
-      final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
-      expect(scaffold.backgroundColor, equals(Colors.blue.shade50));
-    });
-
-    testWidgets('shows error state correctly', (tester) async {
-      const authState = AuthState(
-        status: AuthStatus.error,
-        errorMessage: 'Error de conexión',
-      );
-
-      await tester.pumpWidget(createTestWidget(authState: authState));
-
-      // Should show error message from LoginForm
-      expect(find.text('Error de conexión'), findsOneWidget);
-      expect(find.byIcon(Icons.error_outline), findsOneWidget);
-
-      // Should not show loading indicator
-      expect(find.text('Verificando credenciales...'), findsNothing);
-    });
-
-    testWidgets('has responsive design constraints', (tester) async {
-      const authState = AuthState();
-
-      await tester.pumpWidget(createTestWidget(authState: authState));
-
-      // Find the constrained container
       final constrainedContainer = find.descendant(
         of: find.byType(SingleChildScrollView),
         matching: find.byWidgetPredicate(
           (widget) =>
-              widget is Container && widget.constraints?.maxWidth == 400,
+              widget is ConstrainedBox && widget.constraints.maxWidth == 400,
         ),
       );
-
       expect(constrainedContainer, findsOneWidget);
     });
 
-    testWidgets('displays university branding correctly', (tester) async {
-      const authState = AuthState();
+    testWidgets('uses the responsive wide layout', (tester) async {
+      setViewport(tester, const Size(1200, 800));
+      await tester.pumpWidget(createTestWidget());
 
-      await tester.pumpWidget(createTestWidget(authState: authState));
+      expect(find.byType(SingleChildScrollView), findsNothing);
+      expect(find.text('Universidad Autónoma\nde Tamaulipas'), findsOneWidget);
+      expect(
+        find.text('Sistema de Asistencia para Profesores'),
+        findsOneWidget,
+      );
+    });
 
-      // Check logo container styling
-      final logoContainer = find.descendant(
-        of: find.byType(SingleChildScrollView),
-        matching: find.byWidgetPredicate(
-          (widget) =>
-              widget is Container &&
-              widget.decoration is BoxDecoration &&
-              (widget.decoration as BoxDecoration).shape == BoxShape.circle,
+    testWidgets('uses the UAT surface color', (tester) async {
+      await tester.pumpWidget(createTestWidget());
+
+      final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
+      expect(scaffold.backgroundColor, UATColors.surface);
+    });
+
+    testWidgets('shows authentication errors as an actionable snackbar', (
+      tester,
+    ) async {
+      await tester.pumpWidget(createTestWidget());
+      notifier.emit(
+        const ProfesorAuthState(
+          status: ProfesorAuthStatus.error,
+          errorMessage: 'Error de conexión',
         ),
       );
+      await tester.pump();
 
-      expect(logoContainer, findsOneWidget);
-
-      // Check school icon
-      expect(find.byIcon(Icons.school), findsOneWidget);
+      expect(find.text('Error de conexión'), findsOneWidget);
+      expect(find.text('Cerrar'), findsOneWidget);
+      expect(find.text('Verificando credenciales...'), findsNothing);
     });
   });
 }

@@ -31,6 +31,8 @@ un servicio propietario.
 | Resuelto | `backend-apirest` mezclaba integración UAT, coordinación y reportes. | La carga externa de UAT afectaba el dashboard. | Coordination Query posee un read model reconstruible y el BFF delega las lecturas. |
 | Resuelto | La sincronización y la carga UAT dependían de llamadas HTTP entre servicios legados. | Acoplamiento temporal y fallos en cascada. | Comandos internos autenticados, outbox/inbox, RabbitMQ, reintentos y DLQ. |
 | Resuelto | No había contrato central de rutas y eventos. | Cambios incompatibles entre Flutter, web y backends. | Paquetes `contracts-http` y `contracts-events`, versionados y probados. |
+| Resuelto | La app del profesor persistía en Hive una contraseña UAT en texto plano bajo el nombre `encrypted_password`. | Exposición de la cuenta institucional si se extraía el almacenamiento del dispositivo. | Migración que elimina la clave heredada; la credencial sólo vive en memoria durante el proceso y se solicita nuevamente tras reiniciar. |
+| Resuelto | La app del profesor persistía identificadores de sesión en Hive. | Robo de sesión si se extraía el almacenamiento local de la aplicación. | Migración automática a Keychain/Keystore mediante almacenamiento seguro nativo y eliminación de las claves heredadas. |
 | Mitigado | La observabilidad se limitaba a logs y `/health`. | No se conocían latencias, saturación ni fallos por dependencia. | Correlation/trace ID, readiness por dependencia, métricas Prometheus y logs estructurados; falta conectar un colector/alertas en el host. |
 | Resuelto | El arranque de producción ejecutaba migraciones y aprovisionamiento junto al servidor. | Varias réplicas podían competir durante un despliegue. | Jobs de migración/aprovisionamiento únicos antes de las réplicas HTTP. |
 
@@ -46,8 +48,8 @@ un servicio propietario.
 | Captura local aunque UAT esté fuera | Transacción serializable con idempotencia y outbox en la misma base. | Prueba de caos en el host Docker. |
 | Actualización de asistencia en UAT | Consumidor durable, credenciales cifradas, reintentos, DLQ y resultado versionado. | E2E con cuenta UAT autorizada. |
 | Asistencia de profesores en dashboard | Proyección reconstruible por eventos y reconciliación de snapshots. | Medir lag y fijar alerta. |
-| Docker y Dokploy | Compose integral con red privada, bases/usuarios separados, healthchecks, migraciones one-shot, validador y smoke test. | Validarlo en un host con Docker/Dokploy y ensayar restauración. |
-| Pruebas | Contratos, Gateway, Identity, Academic, Attendance, Coordination Query, Redis, UAT, outbox y clientes BFF tienen pruebas automatizadas. | Migraciones sobre PostgreSQL/RabbitMQ reales y E2E UAT autorizado. |
+| Docker y Dokploy | Compose integral con red privada, egreso UAT aislado, bases/usuarios separados, healthchecks, migraciones one-shot, validador y smoke test. | Validarlo en un host Dokploy y ensayar restauración. |
+| Pruebas | Contratos, Gateway, Identity, Academic, Attendance, Coordination Query, Redis, UAT, outbox, clientes BFF, web y apps Flutter tienen pruebas automatizadas; CI levanta PostgreSQL/RabbitMQ y el stack completo. | E2E UAT autorizado y dispositivos físicos. |
 
 ## Límites de servicio durante la migración
 

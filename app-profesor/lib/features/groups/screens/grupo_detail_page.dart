@@ -329,7 +329,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                                   boxShadow: [
                                     BoxShadow(
                                       color: widget.gradientColors[0]
-                                          .withOpacity(0.3),
+                                          .withValues(alpha: 0.3),
                                       blurRadius: 20,
                                       offset: const Offset(0, 6),
                                     ),
@@ -356,12 +356,12 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                                                   ),
                                               decoration: BoxDecoration(
                                                 color: widget.accentColor
-                                                    .withOpacity(0.2),
+                                                    .withValues(alpha: 0.2),
                                                 borderRadius:
                                                     BorderRadius.circular(8),
                                                 border: Border.all(
                                                   color: widget.accentColor
-                                                      .withOpacity(0.3),
+                                                      .withValues(alpha: 0.3),
                                                 ),
                                               ),
                                               child: Text(
@@ -378,7 +378,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                                               widget.horario,
                                               style: TextStyle(
                                                 color: widget.accentColor
-                                                    .withOpacity(0.8),
+                                                    .withValues(alpha: 0.8),
                                                 fontSize: 14,
                                                 fontWeight: FontWeight.w600,
                                                 letterSpacing: 0.5,
@@ -394,7 +394,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                                             widget.dias,
                                             style: TextStyle(
                                               color: widget.accentColor
-                                                  .withOpacity(0.6),
+                                                  .withValues(alpha: 0.6),
                                               fontSize: 10,
                                               fontWeight: FontWeight.w500,
                                               letterSpacing: 0.5,
@@ -442,7 +442,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                                               'GRUPO',
                                               style: TextStyle(
                                                 color: widget.accentColor
-                                                    .withOpacity(0.7),
+                                                    .withValues(alpha: 0.7),
                                                 fontSize: 10,
                                                 fontWeight: FontWeight.w600,
                                                 letterSpacing: 1,
@@ -467,7 +467,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                                               'ESTUDIANTES',
                                               style: TextStyle(
                                                 color: widget.accentColor
-                                                    .withOpacity(0.7),
+                                                    .withValues(alpha: 0.7),
                                                 fontSize: 10,
                                                 fontWeight: FontWeight.w600,
                                                 letterSpacing: 1,
@@ -589,15 +589,15 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                               borderRadius: BorderRadius.circular(22),
                               boxShadow: [
                                 BoxShadow(
-                                  color: neonColor.withOpacity(
-                                    0.7 * glowIntensity,
+                                  color: neonColor.withValues(
+                                    alpha: 0.7 * glowIntensity,
                                   ),
                                   blurRadius: 16 * glowIntensity,
                                   spreadRadius: 2 * glowIntensity,
                                 ),
                                 BoxShadow(
-                                  color: neonColor.withOpacity(
-                                    0.4 * glowIntensity,
+                                  color: neonColor.withValues(
+                                    alpha: 0.4 * glowIntensity,
                                   ),
                                   blurRadius: 30 * glowIntensity,
                                   spreadRadius: 4 * glowIntensity,
@@ -620,8 +620,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                                     color: palette.controlBackground,
                                     borderRadius: BorderRadius.circular(22),
                                     border: Border.all(
-                                      color: neonColor.withOpacity(
-                                        0.3 + 0.5 * glowIntensity,
+                                      color: neonColor.withValues(
+                                        alpha: 0.3 + 0.5 * glowIntensity,
                                       ),
                                       width: 1.5,
                                     ),
@@ -715,10 +715,12 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                           height: 44,
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF2C2C2E).withOpacity(0.72),
+                            color: const Color(
+                              0xFF2C2C2E,
+                            ).withValues(alpha: 0.72),
                             borderRadius: BorderRadius.circular(22),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.1),
+                              color: Colors.white.withValues(alpha: 0.1),
                               width: 0.5,
                             ),
                           ),
@@ -823,10 +825,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.15),
+              color: Colors.orange.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Colors.orange.withOpacity(0.3),
+                color: Colors.orange.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
@@ -877,8 +879,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                     }
                   : null,
               borderRadius: BorderRadius.circular(12),
-              splashColor: widget.gradientColors[0].withOpacity(0.2),
-              highlightColor: widget.gradientColors[0].withOpacity(0.1),
+              splashColor: widget.gradientColors[0].withValues(alpha: 0.2),
+              highlightColor: widget.gradientColors[0].withValues(alpha: 0.1),
               child: Opacity(
                 opacity: _entradaProfesor == null && _puedeMarcarAsistenciaHoy()
                     ? 1.0
@@ -892,10 +894,14 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                         width: 48,
                         height: 48,
                         decoration: BoxDecoration(
-                          color: widget.gradientColors[0].withOpacity(0.2),
+                          color: widget.gradientColors[0].withValues(
+                            alpha: 0.2,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: widget.gradientColors[0].withOpacity(0.3),
+                            color: widget.gradientColors[0].withValues(
+                              alpha: 0.3,
+                            ),
                           ),
                         ),
                         child: Icon(
@@ -912,7 +918,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                               ? 'Marcar Entrada'
                               : 'Entrada: ${_getFormattedDate(_entradaProfesor!)} ${_formatTime(_entradaProfesor!)}',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.9),
+                            color: Colors.white.withValues(alpha: 0.9),
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                           ),
@@ -964,8 +970,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                     }
                   : null,
               borderRadius: BorderRadius.circular(12),
-              splashColor: widget.gradientColors[0].withOpacity(0.2),
-              highlightColor: widget.gradientColors[0].withOpacity(0.1),
+              splashColor: widget.gradientColors[0].withValues(alpha: 0.2),
+              highlightColor: widget.gradientColors[0].withValues(alpha: 0.1),
               child: Opacity(
                 opacity:
                     _entradaProfesor != null &&
@@ -982,10 +988,14 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                         width: 48,
                         height: 48,
                         decoration: BoxDecoration(
-                          color: widget.gradientColors[0].withOpacity(0.2),
+                          color: widget.gradientColors[0].withValues(
+                            alpha: 0.2,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: widget.gradientColors[0].withOpacity(0.3),
+                            color: widget.gradientColors[0].withValues(
+                              alpha: 0.3,
+                            ),
                           ),
                         ),
                         child: Icon(
@@ -1003,8 +1013,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                               : 'Salida: ${_getFormattedDate(_salidaProfesor!)} ${_formatTime(_salidaProfesor!)}',
                           style: TextStyle(
                             color: _entradaProfesor == null
-                                ? Colors.white.withOpacity(0.5)
-                                : Colors.white.withOpacity(0.9),
+                                ? Colors.white.withValues(alpha: 0.5)
+                                : Colors.white.withValues(alpha: 0.9),
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                           ),
@@ -1049,8 +1059,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                     }
                   : null,
               borderRadius: BorderRadius.circular(12),
-              splashColor: widget.gradientColors[0].withOpacity(0.2),
-              highlightColor: widget.gradientColors[0].withOpacity(0.1),
+              splashColor: widget.gradientColors[0].withValues(alpha: 0.2),
+              highlightColor: widget.gradientColors[0].withValues(alpha: 0.1),
               child: Opacity(
                 opacity: _puedeSubirAsistencia() ? 1.0 : 0.6,
                 child: Padding(
@@ -1062,10 +1072,14 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                         width: 48,
                         height: 48,
                         decoration: BoxDecoration(
-                          color: widget.gradientColors[0].withOpacity(0.2),
+                          color: widget.gradientColors[0].withValues(
+                            alpha: 0.2,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: widget.gradientColors[0].withOpacity(0.3),
+                            color: widget.gradientColors[0].withValues(
+                              alpha: 0.3,
+                            ),
                           ),
                         ),
                         child: Icon(
@@ -1081,8 +1095,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                           'Subir Asistencia',
                           style: TextStyle(
                             color: _puedeSubirAsistencia()
-                                ? Colors.white.withOpacity(0.9)
-                                : Colors.white.withOpacity(0.5),
+                                ? Colors.white.withValues(alpha: 0.9)
+                                : Colors.white.withValues(alpha: 0.5),
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                           ),
@@ -1458,7 +1472,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       period: widget.grupo.period ?? '',
       date: _selectedDateTime,
       attendances: attendances,
-      encryptedPassword: _authStorage.getEncryptedPassword() ?? '',
+      encryptedPassword: _authStorage.getCachedUatPassword() ?? '',
       groupName: widget.grupo.name,
       classroom: widget.grupo.classroom,
       level: widget.grupo.level,
@@ -1514,7 +1528,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                   width: 80,
                   height: 80,
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.2),
+                    color: Colors.green.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -1593,7 +1607,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                   width: 80,
                   height: 80,
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.2),
+                    color: Colors.orange.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(Icons.cloud_off, color: Colors.orange, size: 50),
@@ -1617,9 +1631,11 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
+                    color: Colors.orange.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                    border: Border.all(
+                      color: Colors.orange.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -2250,7 +2266,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: _isStudentBeaconScanning
-              ? widget.gradientColors[0].withOpacity(0.45)
+              ? widget.gradientColors[0].withValues(alpha: 0.45)
               : palette.border,
         ),
         boxShadow: [
@@ -2267,7 +2283,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: widget.gradientColors[0].withOpacity(0.14),
+              color: widget.gradientColors[0].withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
@@ -2362,10 +2378,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.15),
+              color: Colors.orange.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Colors.orange.withOpacity(0.3),
+                color: Colors.orange.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
@@ -2423,9 +2439,11 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                         });
                         await _guardarAsistencia();
                       },
-                      splashColor: widget.gradientColors[0].withOpacity(0.15),
-                      highlightColor: widget.gradientColors[0].withOpacity(
-                        0.08,
+                      splashColor: widget.gradientColors[0].withValues(
+                        alpha: 0.15,
+                      ),
+                      highlightColor: widget.gradientColors[0].withValues(
+                        alpha: 0.08,
                       ),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
@@ -2502,10 +2520,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                 }
               : null,
           splashColor: puedeMarcar
-              ? widget.gradientColors[0].withOpacity(0.2)
+              ? widget.gradientColors[0].withValues(alpha: 0.2)
               : Colors.transparent,
           highlightColor: puedeMarcar
-              ? widget.gradientColors[0].withOpacity(0.1)
+              ? widget.gradientColors[0].withValues(alpha: 0.1)
               : Colors.transparent,
           child: Column(
             children: [
@@ -2536,7 +2554,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                         curve: Curves.easeInOut,
                         decoration: BoxDecoration(
                           color: (_asistencias[_alumnoKey(alumno)] ?? false)
-                              ? widget.gradientColors[0].withOpacity(0.15)
+                              ? widget.gradientColors[0].withValues(alpha: 0.15)
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -2804,7 +2822,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-              color: widget.gradientColors[0].withOpacity(0.2),
+              color: widget.gradientColors[0].withValues(alpha: 0.2),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -2819,7 +2837,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
           width: 80,
           height: 80,
           decoration: BoxDecoration(
-            color: Colors.green.withOpacity(0.2),
+            color: Colors.green.withValues(alpha: 0.2),
             shape: BoxShape.circle,
           ),
           child: const Icon(
@@ -2833,7 +2851,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
           width: 80,
           height: 80,
           decoration: BoxDecoration(
-            color: Colors.orange.withOpacity(0.2),
+            color: Colors.orange.withValues(alpha: 0.2),
             shape: BoxShape.circle,
           ),
           child: const Icon(
@@ -2847,7 +2865,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
           width: 80,
           height: 80,
           decoration: BoxDecoration(
-            color: widget.gradientColors[0].withOpacity(0.15),
+            color: widget.gradientColors[0].withValues(alpha: 0.15),
             shape: BoxShape.circle,
           ),
           child: Icon(

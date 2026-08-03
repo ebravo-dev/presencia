@@ -55,7 +55,7 @@ class _ReloginPageState extends ConsumerState<ReloginPage> {
                     width: 72,
                     height: 72,
                     decoration: BoxDecoration(
-                      color: primaryColor.withOpacity(0.1),
+                      color: primaryColor.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
@@ -148,8 +148,11 @@ class _ReloginPageState extends ConsumerState<ReloginPage> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.error_outline,
-                              color: Colors.red[700], size: 18),
+                          Icon(
+                            Icons.error_outline,
+                            color: Colors.red[700],
+                            size: 18,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -204,9 +207,8 @@ class _ReloginPageState extends ConsumerState<ReloginPage> {
                   TextButton(
                     onPressed: isLoading
                         ? null
-                        : () => ref
-                            .read(profesorAuthProvider.notifier)
-                            .logout(),
+                        : () =>
+                              ref.read(profesorAuthProvider.notifier).logout(),
                     child: Text(
                       'Cerrar sesión completamente',
                       style: TextStyle(color: Colors.grey[500], fontSize: 13),
