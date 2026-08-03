@@ -287,6 +287,7 @@ class _AsistenciasPendientesPageState
 
     final result = await _apiService.uploadAttendance(
       token: token,
+      clientRecordId: registroActualizado.id,
       groupId: grupo.id,
       code: grupo.code ?? '',
       groupLetter: grupo.groupLetter ?? '',
@@ -313,7 +314,7 @@ class _AsistenciasPendientesPageState
         return false;
       },
       (response) async {
-        await _asistenciaService.marcarComoSincronizada(registroActualizado.id);
+        await _asistenciaService.guardarSnapshotEnviado(registroActualizado.id);
         if (showSnackbars && mounted) {
           final isDebugUpload = response['skippedApiRestUpload'] == true;
           final message = isDebugUpload

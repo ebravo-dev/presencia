@@ -490,6 +490,7 @@ class ApiService {
 
   Future<Either<String, Map<String, dynamic>>> uploadAttendance({
     required String token,
+    required String clientRecordId,
     required String code,
     required String groupLetter,
     required String period,
@@ -503,6 +504,7 @@ class ApiService {
   }) async {
     return _uploadAttendanceViaBackendApiRest(
       token: token,
+      clientRecordId: clientRecordId,
       groupId: groupId,
       code: code,
       groupLetter: groupLetter,
@@ -516,54 +518,10 @@ class ApiService {
     );
   }
 
-  /// Hands an entire set of pending attendance records to the durable server queue.
-  /// A successful response means ownership was transferred to the server, not that
-  /// every record has already reached UAT.
-  Future<Either<String, Map<String, dynamic>>> submitAttendanceBatch({
-    required String token,
-    required List<Map<String, dynamic>> records,
-  }) async {
-    try {
-      final response = await _presenceDio.post(
-        ApiConstants.uatAttendanceBatches,
-        data: {'records': records},
-        options: Options(headers: {'X-UAT-Session-Id': token}),
-      );
-      return Right(_asMap(response.data));
-    } on DioException catch (e) {
-      final errorMessage = _handleDioError(e);
-      Logger.error('Error entregando lote de asistencias: $errorMessage', e);
-      return Left(errorMessage);
-    } catch (e, stackTrace) {
-      Logger.error(
-        'Error inesperado entregando lote de asistencias',
-        e,
-        stackTrace,
-      );
-      return Left(_cleanException(e));
-    }
-  }
-
-  Future<Either<String, Map<String, dynamic>>> getAttendanceBatchStatus({
-    required String token,
-    required String batchId,
-  }) async {
-    try {
-      final response = await _presenceDio.get(
-        '${ApiConstants.uatAttendanceBatches}/$batchId',
-        options: Options(headers: {'X-UAT-Session-Id': token}),
-      );
-      return Right(_asMap(response.data));
-    } on DioException catch (e) {
-      return Left(_handleDioError(e));
-    } catch (e) {
-      return Left(_cleanException(e));
-    }
-  }
-
   Future<Either<String, Map<String, dynamic>>>
   _uploadAttendanceViaBackendApiRest({
     required String token,
+    required String clientRecordId,
     String? groupId,
     required String code,
     String groupLetter = '',
@@ -633,6 +591,7 @@ class ApiService {
       final response = await _presenceDio.post(
         ApiConstants.uatAsistenciaGuardar,
         data: {
+          'ClientRecordId': clientRecordId,
           'Id_Grupo': idGrupo,
           'Fec_Ini': formatUatWeekStart(date),
           if (debugReportOnly) ...{
@@ -666,6 +625,7 @@ class ApiService {
           Logger.info('Reintentando subida con sesion UAT renovada.');
           return _uploadAttendanceViaBackendApiRest(
             token: refreshedToken,
+            clientRecordId: clientRecordId,
             groupId: groupId,
             code: code,
             groupLetter: groupLetter,
@@ -899,7 +859,8 @@ class ApiService {
         options: Options(headers: {'X-UAT-Session-Id': token}),
       );
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
+      if ((response.statusCode ?? 0) >= 200 &&
+          (response.statusCode ?? 0) < 300) {
         return Right(response.data as Map<String, dynamic>);
       }
 

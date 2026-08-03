@@ -213,9 +213,10 @@ La captura de asistencia se realizará en una transacción única:
 2. validar que los alumnos pertenecen al roster o snapshot autorizado;
 3. bloquear o versionar la sesión que se está modificando;
 4. escribir cabecera y detalles;
-5. insertar `attendance.upload_requested.v1` en outbox;
-6. confirmar la transacción;
-7. responder sin esperar a UAT.
+5. confirmar la transacción y devolver la versión de captura al BFF;
+6. el BFF persiste idempotentemente el job UAT con la credencial ya cifrada;
+7. responder sin esperar al portal UAT. Si el paso 6 falla, el reintento del
+   cliente recupera la misma captura y vuelve a intentar la entrega durable.
 
 El servicio conservará un snapshot mínimo del roster necesario para validar una
 captura aunque Academic Service esté temporalmente fuera de línea.
@@ -292,7 +293,6 @@ academic.group_deactivated.v1
 academic.substitution_changed.v1
 attendance.recorded.v1
 attendance.corrected.v1
-attendance.upload_requested.v1
 attendance.device_bound.v1
 attendance.device_unbound.v1
 uat.attendance_uploaded.v1

@@ -151,6 +151,8 @@ model AttendanceUploadJob {
   batchId        String                    @map("batch_id")
   ownerUsername  String                    @map("owner_username")
   clientRecordId String                    @map("client_record_id")
+  attendanceSessionId String?              @map("attendance_session_id")
+  attendanceVersion   Int?                 @map("attendance_version")
   idGrupo        Int                       @map("id_grupo")
   fechaInicio    String                    @map("fecha_inicio")
   attendances    Json
@@ -168,6 +170,7 @@ model AttendanceUploadJob {
 
   @@unique([batchId, clientRecordId])
   @@index([ownerUsername, clientRecordId, createdAt])
+  @@index([attendanceSessionId, attendanceVersion])
   @@index([status, nextAttemptAt, createdAt])
   @@map("attendance_upload_jobs")
 }

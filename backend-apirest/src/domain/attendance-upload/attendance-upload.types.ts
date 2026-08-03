@@ -2,6 +2,8 @@ import type { UatAsistenciaAlumnoInput } from '../types/uat.interfaces.js';
 
 export interface AttendanceUploadRecordInput {
   clientRecordId: string;
+  attendanceSessionId: string;
+  attendanceVersion: number;
   idGrupo: number;
   fechaInicio: string;
   attendances: UatAsistenciaAlumnoInput[];
@@ -19,6 +21,8 @@ export interface AttendanceUploadJobClaim {
   batchId: string;
   ownerUsername: string;
   clientRecordId: string;
+  attendanceSessionId: string | null;
+  attendanceVersion: number | null;
   idGrupo: number;
   fechaInicio: string;
   attendances: UatAsistenciaAlumnoInput[];

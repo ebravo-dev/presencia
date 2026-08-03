@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { AttendanceUploadRepository } from '../../domain/attendance-upload/attendance-upload.repository.js';
 import type { AttendanceUploadRecordInput } from '../../domain/attendance-upload/attendance-upload.types.js';
-import { ApiError } from '../../errors/api-error.js';
 
 export class AttendanceUploadService {
   constructor(private readonly repository: AttendanceUploadRepository) {}
@@ -24,12 +23,6 @@ export class AttendanceUploadService {
       idempotencyKey: hash(records.map(({ payloadHash, clientRecordId }) => ({ clientRecordId, payloadHash }))),
       records,
     });
-  }
-
-  async getBatch(ownerUsername: string, batchId: string) {
-    const batch = await this.repository.findBatch(ownerUsername, batchId);
-    if (!batch) throw new ApiError(404, 'ATTENDANCE_BATCH_NOT_FOUND', 'No existe el lote de asistencia solicitado.');
-    return batch;
   }
 
   async getRecordStatuses(ownerUsername: string, clientRecordIds: string[]) {

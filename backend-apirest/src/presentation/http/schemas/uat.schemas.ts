@@ -100,6 +100,7 @@ export const asistenciaAlumnoInputSchema = z.object({
 });
 
 export const registrarAsistenciasBodySchema = z.object({
+  ClientRecordId: z.string().trim().min(1).max(160),
   Id_Grupo: z.number().int().positive(),
   Fec_Ini: fechaUatSchema,
   Asistencia: z.array(asistenciaAlumnoInputSchema).min(1),

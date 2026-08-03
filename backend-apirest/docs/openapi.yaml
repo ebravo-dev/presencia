@@ -279,11 +279,11 @@ paths:
           $ref: "#/components/responses/Error"
   /api/uat/profesor/control-asistencia/asistencias:
     post:
-      summary: Guarda asistencias en el portal UAT
+      summary: Acepta una captura durable para publicar en UAT
       description: >
-        Recibe un arreglo tipado de asistencias, lo serializa como JSON
-        comprimido y lo envia al endpoint UAT GuardaAsistencias como
-        application/x-www-form-urlencoded.
+        Attendance Service valida y versiona la lista. Antes de responder, UAT
+        Integration persiste un job idempotente con la credencial cifrada; la
+        publicación al portal ocurre de forma asíncrona.
       parameters:
         - $ref: "#/components/parameters/UatSessionHeader"
       requestBody:
@@ -293,12 +293,12 @@ paths:
             schema:
               $ref: "#/components/schemas/RegistrarAsistenciasRequest"
       responses:
-        "200":
-          description: Respuesta cruda del portal UAT
+        "202":
+          description: Captura aceptada y entrega UAT persistida
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GuardaAsistenciasResponse"
+                $ref: "#/components/schemas/AttendanceCaptureResponse"
         "400":
           $ref: "#/components/responses/Error"
         "401":
@@ -307,7 +307,7 @@ paths:
           $ref: "#/components/responses/Error"
   /api/uat/asistencia/guardar:
     post:
-      summary: Alias corto para guardar asistencias
+      summary: Alias corto para aceptar una captura durable
       parameters:
         - $ref: "#/components/parameters/UatSessionHeader"
       requestBody:
@@ -317,12 +317,12 @@ paths:
             schema:
               $ref: "#/components/schemas/RegistrarAsistenciasRequest"
       responses:
-        "200":
-          description: Respuesta cruda del portal UAT
+        "202":
+          description: Captura aceptada y entrega UAT persistida
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GuardaAsistenciasResponse"
+                $ref: "#/components/schemas/AttendanceCaptureResponse"
   /api/uat/alumnos/sessions:
     post:
       summary: Crea una sesion autenticada contra el portal de alumnos SUR
@@ -1271,8 +1271,13 @@ components:
           example: true
     RegistrarAsistenciasRequest:
       type: object
-      required: [Id_Grupo, Fec_Ini, Asistencia]
+      required: [ClientRecordId, Id_Grupo, Fec_Ini, Asistencia]
       properties:
+        ClientRecordId:
+          type: string
+          minLength: 1
+          maxLength: 160
+          description: Identificador estable del registro local usado para reconciliar el resultado asíncrono.
         Id_Grupo:
           type: integer
           minimum: 1
@@ -1296,6 +1301,23 @@ components:
           example: true
         mensaje:
           type: string
+    AttendanceCaptureResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [attendanceSessionId, externalGroupId, date, entriesCount, uploadStatus, duplicate, version]
+          properties:
+            attendanceSessionId: { type: string }
+            externalGroupId: { type: string }
+            date: { type: string, format: date }
+            entriesCount: { type: integer, minimum: 1 }
+            uploadStatus:
+              type: string
+              enum: [PENDING, SKIPPED]
+            duplicate: { type: boolean }
+            version: { type: integer, minimum: 1 }
     SnapshotRequest:
       allOf:
         - $ref: "#/components/schemas/Credentials"

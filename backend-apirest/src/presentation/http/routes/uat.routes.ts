@@ -56,8 +56,10 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   const studentSessionController = new StudentSessionController(uatStudentService);
   const consultaController = new ConsultaController(uatService);
   const catalogoController = new CatalogoController(uatService);
-  const asistenciaController = new AsistenciaController(uatService, attendanceCaptureClient);
-  const attendanceUploadController = new AttendanceUploadController(attendanceUploadService, attendanceUploadWorker);
+  const asistenciaController = new AsistenciaController(
+    uatService, attendanceCaptureClient, attendanceUploadService, attendanceUploadWorker,
+  );
+  const attendanceUploadController = new AttendanceUploadController(attendanceUploadService);
   const sharedClassController = new SharedClassController(academicServiceClient);
   const professorDeviceBindingController = new ProfessorDeviceBindingController(attendanceServiceCommands);
   const professorPresenceController = new ProfessorPresenceController(attendanceServiceCommands);
@@ -100,9 +102,11 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
     { preHandler: authUat },
     asistenciaController.asistenciaGrupo,
   );
-  fastify.post('/api/uat/profesor/control-asistencia/asistencias', { preHandler: authUat }, asistenciaController.guardar);
-  fastify.post('/api/uat/asistencia/guardar', { preHandler: authUat }, asistenciaController.guardar);
-  fastify.post('/api/uat/asistencia/lotes', { preHandler: authUat }, attendanceUploadController.submit);
+  fastify.post('/api/uat/profesor/control-asistencia/asistencias', { preHandler: authUat }, async (request, reply) => {
+    return reply.code(202).send(await asistenciaController.guardar(request));
+  });
+  fastify.post('/api/uat/asistencia/guardar', { preHandler: authUat }, async (request, reply) => {
+    return reply.code(202).send(await asistenciaController.guardar(request));
+  });
   fastify.post('/api/uat/asistencia/registros/estado', { preHandler: authUat }, attendanceUploadController.recordStatuses);
-  fastify.get('/api/uat/asistencia/lotes/:batchId', { preHandler: authUat }, attendanceUploadController.status);
 };

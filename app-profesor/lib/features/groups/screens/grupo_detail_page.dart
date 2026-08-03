@@ -1502,6 +1502,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
     final result = await _apiService.uploadAttendance(
       token: token,
+      clientRecordId: _registroAsistenciaId(),
       groupId: widget.grupo.id,
       code: widget.grupo.code ?? '',
       groupLetter: widget.grupo.groupLetter ?? widget.grupo.grupoLetra,
@@ -1526,7 +1527,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         }
       },
       (response) async {
-        await _asistenciaService.marcarComoSincronizada(
+        await _asistenciaService.guardarSnapshotEnviado(
           _registroAsistenciaId(),
         );
         if (mounted) {

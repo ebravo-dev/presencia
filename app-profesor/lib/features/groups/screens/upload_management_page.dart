@@ -154,7 +154,9 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
             'Reconciliación: $key tiene cambios locales posteriores al envío, mantener como pendiente',
           );
         }
-      } else if (status == 'IN_PROGRESS' || status == 'PENDING') {
+      } else if (status == 'IN_PROGRESS' ||
+          status == 'PROCESSING' ||
+          status == 'PENDING') {
         // The server is still processing this record (professor left mid-upload).
         Logger.info('Reconciliación: $key está sincronizando en el servidor');
         newSyncingOnServer.add(key);
@@ -264,7 +266,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         label: 'Procesando en servidor',
         status: _StepStatus.pending,
       ),
-      _SyncStepData(label: '¡Terminado!', status: _StepStatus.pending),
+      _SyncStepData(label: 'Confirmación de UAT', status: _StepStatus.pending),
     ];
 
     _updateStep(0, _StepStatus.completed);
@@ -284,20 +286,23 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       1,
       directResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
       subtitle:
-          '${directResult.uploaded} subida${directResult.uploaded == 1 ? '' : 's'}, '
+          '${directResult.accepted} aceptada${directResult.accepted == 1 ? '' : 's'}, '
           '${directResult.skipped} omitida${directResult.skipped == 1 ? '' : 's'}, '
           '${directResult.failed} fallida${directResult.failed == 1 ? '' : 's'}',
     );
     _updateStep(
       2,
-      directResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
+      directResult.failed > 0 ? _StepStatus.failed : _StepStatus.pending,
+      subtitle: directResult.failed > 0
+          ? null
+          : 'El worker publicará las listas en segundo plano.',
     );
     _updateStep(
       3,
-      directResult.failed > 0 ? _StepStatus.failed : _StepStatus.completed,
+      directResult.failed > 0 ? _StepStatus.failed : _StepStatus.pending,
       subtitle: directResult.failed > 0
           ? 'Las listas fallidas permanecen pendientes.'
-          : null,
+          : 'La app las marcará sincronizadas sólo después de recibir COMPLETED.',
     );
     HapticFeedback.heavyImpact();
 

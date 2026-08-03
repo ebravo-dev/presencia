@@ -15,7 +15,6 @@ import { UatStudentService } from './application/services/uat-student.service.js
 import { AttendanceUploadService } from './application/services/attendance-upload.service.js';
 import { UatService } from './application/services/uat.service.js';
 import { HarvestTeacherDataUseCase } from './application/use-cases/harvest-teacher-data.use-case.js';
-import { ProcessAttendanceUploadRequestedUseCase } from './application/use-cases/process-attendance-upload-requested.use-case.js';
 import { env } from './config/env.js';
 import type { StoredUatStudentSession } from './domain/types/uat.interfaces.js';
 import { ApiError } from './errors/api-error.js';
@@ -27,7 +26,6 @@ import { AttendanceServiceCommandClient } from './infrastructure/http/client/att
 import { AttendanceCaptureClient } from './infrastructure/http/client/attendance-capture.client.js';
 import { CoordinationQueryClient } from './infrastructure/http/client/coordination-query.client.js';
 import { DurableDomainEventBus } from './infrastructure/events/durable-domain-event-bus.js';
-import { AttendanceUploadRequestedConsumer } from './infrastructure/events/attendance-upload-requested.consumer.js';
 import { RedisKeyValueStore } from './infrastructure/persistence/redis-key-value.store.js';
 import { RedisUatSessionStore } from './infrastructure/persistence/redis-session.store.js';
 import { StudentSessionCodec, TeacherSessionCodec } from './infrastructure/persistence/session-codec.js';
@@ -131,17 +129,6 @@ export async function buildApp() {
     credentialCipher,
     fastify.log,
   );
-  const attendanceUploadRequested = new ProcessAttendanceUploadRequestedUseCase(
-    uatService,
-    attendanceUploadService,
-    attendanceUploadWorker,
-  );
-  const attendanceUploadConsumer = new AttendanceUploadRequestedConsumer(
-    prisma,
-    env.RABBITMQ_URL,
-    attendanceUploadRequested,
-    fastify.log,
-  );
   if (env.PRESENCIA_DEBUG_MODE) {
     fastify.log.warn('Modo debug activo: worker de subida UAT deshabilitado.');
   } else {
@@ -164,13 +151,11 @@ export async function buildApp() {
   );
   const unsubscribeSync = new SyncTeacherDataListener(eventBus, harvestTeacherData, fastify.log).register();
   await eventBus.start();
-  if (!env.PRESENCIA_DEBUG_MODE) await attendanceUploadConsumer.start();
   const coordinatorAuthService = new CoordinatorAuthService(identityServiceClient);
   const superUserAuthService = new SuperUserAuthService(identityServiceClient);
 
   fastify.addHook('onClose', async () => {
     unsubscribeSync();
-    await attendanceUploadConsumer.stop();
     await eventBus.stop();
     await attendanceUploadWorker.stop();
     await prisma.$disconnect();
@@ -246,11 +231,7 @@ export async function buildApp() {
       })),
     ]);
     const rabbitmq = { ok: eventBus.isReady() };
-    const attendanceConsumer = {
-      ok: env.PRESENCIA_DEBUG_MODE || attendanceUploadConsumer.isReady(),
-      disabled: env.PRESENCIA_DEBUG_MODE,
-    };
-    const ready = database.ok && redisStatus.ok && rabbitmq.ok && attendanceConsumer.ok
+    const ready = database.ok && redisStatus.ok && rabbitmq.ok
       && identityStatus.ok && academicStatus.ok && attendanceStatus.ok && coordinationQueryStatus.ok;
     return reply.code(ready ? 200 : 503).send({
       status: ready ? 'ok' : 'degraded',
@@ -259,7 +240,6 @@ export async function buildApp() {
         database,
         redis: redisStatus,
         rabbitmq,
-        attendanceConsumer,
         identity: identityStatus,
         academic: academicStatus,
         attendance: attendanceStatus,

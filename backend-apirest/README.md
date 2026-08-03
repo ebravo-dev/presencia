@@ -309,11 +309,13 @@ Guardar asistencias:
 curl -X POST http://localhost:3100/api/uat/profesor/control-asistencia/asistencias \
   -H "Content-Type: application/json" \
   -H "X-UAT-Session-Id: SESSION_ID" \
-  -d "{\"Id_Grupo\":947699,\"Fec_Ini\":\"19/01/2026\",\"Asistencia\":[{\"id_alumno\":371591,\"num_pase_lista\":1,\"num_dia\":1,\"sn_asistencia\":true}]}"
+  -d "{\"ClientRecordId\":\"947699_2026-01-19\",\"Id_Grupo\":947699,\"Fec_Ini\":\"19/01/2026\",\"Asistencia\":[{\"id_alumno\":371591,\"num_pase_lista\":1,\"num_dia\":1,\"sn_asistencia\":true}]}"
 ```
 
-El backend serializa `Asistencia` como JSON comprimido y lo envia al portal UAT
-en `application/x-www-form-urlencoded` contra
+El BFF registra primero la captura idempotente en Attendance Service y, antes
+de responder, persiste en PostgreSQL el job de publicación con la credencial
+cifrada. El worker serializa `Asistencia` y la envía después al portal UAT como
+`application/x-www-form-urlencoded` contra
 `/Profesor/ControlAsistencia/GuardaAsistencias`.
 
 ## Clases compartidas
@@ -327,11 +329,14 @@ se proyectan por eventos en Attendance.
 
 ## Cola durable de asistencias
 
-`POST /api/uat/asistencia/lotes` persiste el lote completo en PostgreSQL y responde `202 Accepted`.
-Un worker procesa una lista a la vez por profesor, reintenta errores transitorios con backoff y recupera jobs
-interrumpidos. La clave `ATTENDANCE_JOB_ENCRYPTION_SECRET` cifra las credenciales necesarias para reautenticar
-contra UAT; debe conservarse estable entre despliegues. El cliente puede consultar el lote y reconciliar sus
-registros locales después de cerrar o reiniciar la aplicación.
+Los endpoints de captura existentes persisten el job durable antes de responder
+`202 Accepted`. Un worker procesa una lista a la vez por profesor, reintenta
+errores transitorios con backoff y recupera jobs interrumpidos. La clave
+`ATTENDANCE_JOB_ENCRYPTION_SECRET` cifra las credenciales necesarias para
+reautenticar contra UAT; debe conservarse estable entre despliegues. El cliente
+reconcilia cada `clientRecordId` mediante
+`POST /api/uat/asistencia/registros/estado`, incluso después de reiniciar la app.
+La entrega ya no depende de que la sesión temporal continúe en Redis.
 
 ## Script CLI opcional
 

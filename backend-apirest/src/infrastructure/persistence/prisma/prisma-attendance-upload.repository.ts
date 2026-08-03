@@ -62,6 +62,8 @@ export class PrismaAttendanceUploadRepository implements AttendanceUploadReposit
             create: input.records.map((record) => ({
               ownerUsername: input.ownerUsername,
               clientRecordId: record.clientRecordId,
+              attendanceSessionId: record.attendanceSessionId,
+              attendanceVersion: record.attendanceVersion,
               idGrupo: record.idGrupo,
               fechaInicio: record.fechaInicio,
               attendances: record.attendances as Prisma.InputJsonValue,
@@ -87,21 +89,13 @@ export class PrismaAttendanceUploadRepository implements AttendanceUploadReposit
     }
   }
 
-  async findBatch(ownerUsername: string, batchId: string): Promise<AttendanceUploadBatchView | null> {
-    const batch = await this.db.attendanceUploadBatch.findFirst({
-      where: { id: batchId, ownerUsername },
-      include: batchInclude,
-    });
-    return batch ? toBatchView(batch) : null;
-  }
-
   async findLatestJobStatuses(ownerUsername: string, clientRecordIds: string[]): Promise<AttendanceUploadBatchView['jobs']> {
     const jobs = await this.db.attendanceUploadJob.findMany({
       where: { ownerUsername, clientRecordId: { in: clientRecordIds } },
       orderBy: { createdAt: 'desc' },
       select: { clientRecordId: true, status: true, attempts: true, error: true },
     });
-    return [...new Map(jobs.map((job) => [job.clientRecordId, job])).values()];
+    return latestJobsByClientRecordId(jobs);
   }
 
   async recoverStaleJobs(staleBefore: Date): Promise<number> {
@@ -133,6 +127,8 @@ export class PrismaAttendanceUploadRepository implements AttendanceUploadReposit
           batchId: candidate.batchId,
           ownerUsername: candidate.ownerUsername,
           clientRecordId: candidate.clientRecordId,
+          attendanceSessionId: candidate.attendanceSessionId,
+          attendanceVersion: candidate.attendanceVersion,
           idGrupo: candidate.idGrupo,
           fechaInicio: candidate.fechaInicio,
           attendances: candidate.attendances as unknown as UatAsistenciaAlumnoInput[],
@@ -213,9 +209,7 @@ async function createUploadResultEvent(
   eventType: 'uat.attendance_uploaded.v1' | 'uat.attendance_upload_failed.v1',
   error: string | null,
 ): Promise<void> {
-  const match = job.clientRecordId.match(/^(.*):v(\d+)$/);
-  const attendanceSessionId = match?.[1] ?? job.clientRecordId;
-  const version = match?.[2] ? Number(match[2]) : 1;
+  const { attendanceSessionId, version } = attendanceUploadIdentity(job);
   const eventId = randomUUID();
   const occurredAt = new Date();
   const correlationId = job.clientRecordId;
@@ -246,6 +240,24 @@ async function createUploadResultEvent(
       occurredAt,
     },
   });
+}
+
+export function attendanceUploadIdentity(
+  job: Pick<AttendanceUploadJobClaim, 'clientRecordId' | 'attendanceSessionId' | 'attendanceVersion'>,
+): { attendanceSessionId: string; version: number } {
+  const legacyMatch = job.clientRecordId.match(/^(.*):v(\d+)$/);
+  return {
+    attendanceSessionId: job.attendanceSessionId ?? legacyMatch?.[1] ?? job.clientRecordId,
+    version: job.attendanceVersion ?? (legacyMatch?.[2] ? Number(legacyMatch[2]) : 1),
+  };
+}
+
+export function latestJobsByClientRecordId<TJob extends { clientRecordId: string }>(jobsNewestFirst: TJob[]): TJob[] {
+  const latest = new Map<string, TJob>();
+  for (const job of jobsNewestFirst) {
+    if (!latest.has(job.clientRecordId)) latest.set(job.clientRecordId, job);
+  }
+  return [...latest.values()];
 }
 
 type BatchWithJobs = Prisma.AttendanceUploadBatchGetPayload<{ include: typeof batchInclude }>;

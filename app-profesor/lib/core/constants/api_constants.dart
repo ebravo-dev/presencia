@@ -114,7 +114,6 @@ class ApiConstants {
   static const String uatControlGuardarAsistencias =
       '/api/uat/profesor/control-asistencia/asistencias';
   static const String uatAsistenciaGuardar = '/api/uat/asistencia/guardar';
-  static const String uatAttendanceBatches = '/api/uat/asistencia/lotes';
   static const String uatAttendanceRecordStatuses =
       '/api/uat/asistencia/registros/estado';
 }

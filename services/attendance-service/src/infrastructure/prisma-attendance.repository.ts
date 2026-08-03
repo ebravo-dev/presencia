@@ -263,7 +263,6 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
         professorExternalId: command.professorExternalId,
         professorEntryAt: session.professorEntryAt?.toISOString() ?? null,
         professorExitAt: session.professorExitAt?.toISOString() ?? null,
-        uatSessionId: command.uatSessionId ?? null,
         entries: resolvedEntries.map((entry) => {
           const roster = entry.roster!;
           return {
@@ -273,16 +272,12 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
         }),
         version: session.version,
       };
-      const events: Array<[string, typeof uploadPayload]> = [[eventType, uploadPayload]];
-      if (!delegated) events.push(['attendance.upload_requested.v1', uploadPayload]);
-      for (const [type, payload] of events) {
-        await transaction.attendanceOutboxEvent.create({
-          data: {
-            eventId: randomUUID(), eventType: type, aggregateId: session.id,
-            correlationId: command.correlationId, causationId: command.correlationId, payload: json(payload),
-          },
-        });
-      }
+      await transaction.attendanceOutboxEvent.create({
+        data: {
+          eventId: randomUUID(), eventType, aggregateId: session.id,
+          correlationId: command.correlationId, causationId: command.correlationId, payload: json(uploadPayload),
+        },
+      });
       const response: CaptureAttendanceResult = {
         attendanceSessionId: session.id, externalGroupId: group.externalGroupId, date: command.date,
         entriesCount: command.entries.length, uploadStatus,

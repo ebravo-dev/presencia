@@ -1,6 +1,7 @@
 import type { FastifyRequest } from 'fastify';
 import type { UatService } from '../../../application/services/uat.service.js';
 import type { AttendanceCaptureClient } from '../../../infrastructure/http/client/attendance-capture.client.js';
+import type { AttendanceUploadService } from '../../../application/services/attendance-upload.service.js';
 import { ApiError } from '../../../errors/api-error.js';
 import {
   asistenciaGrupoQuerySchema,
@@ -10,10 +11,14 @@ import {
   semanasGrupoQuerySchema,
 } from '../schemas/uat.schemas.js';
 
+interface AttendanceUploadWakePort { wake(): void }
+
 export class AsistenciaController {
   constructor(
     private readonly uatService: UatService,
     private readonly attendanceCaptureClient: AttendanceCaptureClient,
+    private readonly attendanceUploads: AttendanceUploadService,
+    private readonly attendanceUploadWorker: AttendanceUploadWakePort,
   ) {}
 
   gruposProfesor = async (request: FastifyRequest) => {
@@ -44,9 +49,8 @@ export class AsistenciaController {
     if (dayNumbers.length !== 1) {
       throw new ApiError(400, 'ATTENDANCE_MULTIPLE_DAYS', 'Una captura sólo puede corresponder a un día.');
     }
-    return this.attendanceCaptureClient.capture({
+    const capture = await this.attendanceCaptureClient.capture({
       correlationId: request.id,
-      uatSessionId: request.uatSession.id,
       externalGroupId: String(body.Id_Grupo),
       professorExternalId,
       date: dateFromWeekStart(body.Fec_Ini, dayNumbers[0]!),
@@ -55,6 +59,22 @@ export class AsistenciaController {
         status: attendance.sn_asistencia ? 'PRESENT' : 'ABSENT',
       })),
     });
+    if (capture.data.uploadStatus === 'PENDING') {
+      await this.attendanceUploads.submit({
+        ownerUsername: request.uatSession.username,
+        credentialCipher: request.uatSession.credentialCipher,
+        records: [{
+          clientRecordId: body.ClientRecordId,
+          attendanceSessionId: capture.data.attendanceSessionId,
+          attendanceVersion: capture.data.version,
+          idGrupo: body.Id_Grupo,
+          fechaInicio: body.Fec_Ini,
+          attendances: body.Asistencia,
+        }],
+      });
+      this.attendanceUploadWorker.wake();
+    }
+    return capture;
   };
 }
 

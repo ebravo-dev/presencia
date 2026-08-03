@@ -5,6 +5,8 @@ describe('AsistenciaController', () => {
   it('cuts the existing Flutter route over to the durable Attendance Service capture', async () => {
     let directUatCalled = false;
     let captured: unknown;
+    let enqueued: unknown;
+    let wakes = 0;
     const controller = new AsistenciaController(
       {
         registrarAsistencias: async () => { directUatCalled = true; return {}; },
@@ -12,14 +14,20 @@ describe('AsistenciaController', () => {
       {
         capture: async (input: unknown) => {
           captured = input;
-          return { data: { attendanceSessionId: 'attendance-1', uploadStatus: 'PENDING' } };
+          return { data: {
+            attendanceSessionId: 'attendance-1', externalGroupId: '947699', date: '2026-08-02',
+            entriesCount: 2, uploadStatus: 'PENDING', duplicate: false, version: 3,
+          } };
         },
       } as never,
+      { submit: async (input: unknown) => { enqueued = input; return { id: 'batch-1' }; } } as never,
+      { wake: () => { wakes += 1; } },
     );
 
     const result = await controller.guardar({
       id: 'request-1',
       body: {
+        ClientRecordId: '947699_2026-08-02',
         Id_Grupo: 947699,
         Fec_Ini: '27/07/2026',
         Asistencia: [
@@ -30,6 +38,7 @@ describe('AsistenciaController', () => {
       uatSession: {
         id: '74b29734-65a8-48b2-9e6e-8cd01f1a0016',
         username: 'profesor@uat.edu.mx',
+        credentialCipher: 'encrypted-before-accepting-capture',
         login: { parametros: { Id_Plantilla_AdmonUAT: '308127' } },
       },
     } as never);
@@ -37,7 +46,6 @@ describe('AsistenciaController', () => {
     expect(directUatCalled).toBe(false);
     expect(captured).toEqual({
       correlationId: 'request-1',
-      uatSessionId: '74b29734-65a8-48b2-9e6e-8cd01f1a0016',
       externalGroupId: '947699',
       professorExternalId: '308127',
       date: '2026-08-02',
@@ -46,14 +54,30 @@ describe('AsistenciaController', () => {
         { uatStudentId: 515723, status: 'ABSENT' },
       ],
     });
+    expect(enqueued).toEqual({
+      ownerUsername: 'profesor@uat.edu.mx',
+      credentialCipher: 'encrypted-before-accepting-capture',
+      records: [{
+        clientRecordId: '947699_2026-08-02', attendanceSessionId: 'attendance-1', attendanceVersion: 3,
+        idGrupo: 947699, fechaInicio: '27/07/2026',
+        attendances: [
+          { id_alumno: 515722, num_pase_lista: 1, num_dia: 7, sn_asistencia: true },
+          { id_alumno: 515723, num_pase_lista: 2, num_dia: 7, sn_asistencia: false },
+        ],
+      }],
+    });
+    expect(wakes).toBe(1);
     expect(result).toMatchObject({ data: { attendanceSessionId: 'attendance-1' } });
   });
 
   it('rejects a payload that mixes more than one attendance day', async () => {
-    const controller = new AsistenciaController({} as never, { capture: async () => ({}) } as never);
+    const controller = new AsistenciaController(
+      {} as never, { capture: async () => ({}) } as never, {} as never, { wake() {} },
+    );
     await expect(controller.guardar({
       id: 'request-1',
       body: {
+        ClientRecordId: '947699_2026-07-27',
         Id_Grupo: 947699,
         Fec_Ini: '27/07/2026',
         Asistencia: [
@@ -67,13 +91,42 @@ describe('AsistenciaController', () => {
     } as never)).rejects.toMatchObject({ code: 'ATTENDANCE_MULTIPLE_DAYS' });
   });
 
+  it('does not create a UAT job for a delegated shared-class capture', async () => {
+    const submit = vi.fn(async () => ({ id: 'unexpected' }));
+    const wake = vi.fn();
+    const controller = new AsistenciaController(
+      {} as never,
+      { capture: async () => ({ data: {
+        attendanceSessionId: 'attendance-shared', externalGroupId: '947699', date: '2026-08-02',
+        entriesCount: 1, uploadStatus: 'SKIPPED', duplicate: false, version: 1,
+      } }) } as never,
+      { submit } as never,
+      { wake },
+    );
+
+    await controller.guardar({
+      id: 'request-shared',
+      body: {
+        ClientRecordId: '947699_2026-08-02', Id_Grupo: 947699, Fec_Ini: '27/07/2026',
+        Asistencia: [{ id_alumno: 515722, num_pase_lista: 1, num_dia: 7, sn_asistencia: true }],
+      },
+      uatSession: {
+        username: 'substitute@uat.edu.mx', credentialCipher: 'encrypted', login: { parametros: {} },
+      },
+    } as never);
+
+    expect(submit).not.toHaveBeenCalled();
+    expect(wake).not.toHaveBeenCalled();
+  });
+
   it('rejects the removed monolith-only debug payload instead of uploading it to UAT', async () => {
     const capture = vi.fn(async () => ({}));
-    const controller = new AsistenciaController({} as never, { capture } as never);
+    const controller = new AsistenciaController({} as never, { capture } as never, {} as never, { wake() {} });
 
     await expect(controller.guardar({
       id: 'request-debug',
       body: {
+        ClientRecordId: '947699_2026-07-27',
         Id_Grupo: 947699,
         Fec_Ini: '27/07/2026',
         Asistencia: [{ id_alumno: 515722, num_pase_lista: 1, num_dia: 1, sn_asistencia: true }],
@@ -88,11 +141,12 @@ describe('AsistenciaController', () => {
 
   it('rejects client-authored professor timestamps so presence only comes from the verified channel', async () => {
     const capture = vi.fn(async () => ({}));
-    const controller = new AsistenciaController({} as never, { capture } as never);
+    const controller = new AsistenciaController({} as never, { capture } as never, {} as never, { wake() {} });
 
     await expect(controller.guardar({
       id: 'request-forged-presence',
       body: {
+        ClientRecordId: '947699_2026-08-02',
         Id_Grupo: 947699,
         Fec_Ini: '27/07/2026',
         Asistencia: [{ id_alumno: 515722, num_pase_lista: 1, num_dia: 7, sn_asistencia: true }],

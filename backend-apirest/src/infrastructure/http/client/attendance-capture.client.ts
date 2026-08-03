@@ -2,6 +2,26 @@ import { createHash } from 'node:crypto';
 import axios, { type AxiosInstance } from 'axios';
 import { ApiError } from '../../../errors/api-error.js';
 
+export interface AttendanceCaptureResponse {
+  data: {
+    attendanceSessionId: string;
+    externalGroupId: string;
+    date: string;
+    entriesCount: number;
+    uploadStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
+    duplicate: boolean;
+    version: number;
+  };
+}
+
+export interface AttendanceCaptureInput {
+  correlationId: string;
+  externalGroupId: string;
+  professorExternalId: string;
+  date: string;
+  entries: Array<{ uatStudentId: number; status: 'PRESENT' | 'ABSENT' }>;
+}
+
 export class AttendanceCaptureClient {
   private readonly http: AxiosInstance;
 
@@ -12,26 +32,18 @@ export class AttendanceCaptureClient {
     });
   }
 
-  async capture(input: {
-    correlationId: string;
-    uatSessionId: string;
-    externalGroupId: string;
-    professorExternalId: string;
-    date: string;
-    entries: Array<{ uatStudentId: number; status: 'PRESENT' | 'ABSENT' }>;
-  }) {
-    const idempotencyKey = stableUuid(JSON.stringify(input));
+  async capture(input: AttendanceCaptureInput) {
+    const command = attendanceCaptureCommand(input);
+    const idempotencyKey = attendanceCaptureIdempotencyKey(input);
     try {
-      const response = await this.http.post('/internal/v1/attendance/captures', {
-        externalGroupId: input.externalGroupId,
-        professorExternalId: input.professorExternalId,
-        date: input.date,
-        uatSessionId: input.uatSessionId,
-        entries: input.entries,
-      }, {
+      const response = await this.http.post('/internal/v1/attendance/captures', command, {
         headers: { 'Idempotency-Key': idempotencyKey, 'X-Correlation-Id': input.correlationId },
       });
-      return response.data as unknown;
+      const body = response.data as AttendanceCaptureResponse;
+      if (!body?.data?.attendanceSessionId || !body.data.version || !body.data.uploadStatus) {
+        throw new ApiError(502, 'ATTENDANCE_CAPTURE_INVALID_RESPONSE', 'Attendance Service devolvió una captura inválida.');
+      }
+      return body;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response) {
         const body = error.response.data as Record<string, unknown> | undefined;
@@ -44,6 +56,19 @@ export class AttendanceCaptureClient {
       throw new ApiError(503, 'ATTENDANCE_SERVICE_UNAVAILABLE', 'Attendance Service no está disponible.');
     }
   }
+}
+
+export function attendanceCaptureIdempotencyKey(input: AttendanceCaptureInput): string {
+  return stableUuid(JSON.stringify(attendanceCaptureCommand(input)));
+}
+
+function attendanceCaptureCommand(input: AttendanceCaptureInput) {
+  return {
+    externalGroupId: input.externalGroupId.trim(),
+    professorExternalId: input.professorExternalId.trim(),
+    date: input.date,
+    entries: [...input.entries].sort((left, right) => left.uatStudentId - right.uatStudentId),
+  };
 }
 
 function stableUuid(value: string): string {

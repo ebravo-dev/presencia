@@ -18,7 +18,6 @@ export const captureAttendanceSchema = z.object({
   externalGroupId: z.string().trim().min(1).max(160),
   professorExternalId: z.string().trim().min(1).max(160),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  uatSessionId: z.uuid().nullable().optional(),
   entries: z.array(z.object({
     matricula: z.string().trim().min(1).max(40).optional(),
     uatStudentId: z.number().int().positive().optional(),

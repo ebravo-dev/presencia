@@ -1,5 +1,3 @@
-import 'package:dartz/dartz.dart';
-
 import '../data/models/uat_asistencia_model.dart';
 import '../shared/models/asistencia_registro.dart';
 import '../shared/models/grupo.dart';
@@ -19,12 +17,12 @@ class PreparedAttendanceBatch {
 }
 
 class DebugAttendanceBatchResult {
-  final int uploaded;
+  final int accepted;
   final int skipped;
   final int failed;
 
   const DebugAttendanceBatchResult({
-    required this.uploaded,
+    required this.accepted,
     required this.skipped,
     required this.failed,
   });
@@ -106,28 +104,12 @@ class AttendanceBatchService {
     );
   }
 
-  Future<Either<String, Map<String, dynamic>>> submit({
-    required String token,
-    required PreparedAttendanceBatch batch,
-  }) async {
-    final result = await _apiService.submitAttendanceBatch(
-      token: token,
-      records: batch.payload,
-    );
-    await result.fold((_) async {}, (_) async {
-      for (final record in batch.recordsById.values) {
-        await _localService.guardarSnapshotEnviado(record.id);
-      }
-    });
-    return result;
-  }
-
   Future<DebugAttendanceBatchResult> submitDebugReportOnly({
     required String token,
     required List<AsistenciaRegistro> records,
     required List<Grupo> groups,
   }) async {
-    var uploaded = 0;
+    var accepted = 0;
     var skipped = 0;
     var failed = 0;
 
@@ -140,6 +122,7 @@ class AttendanceBatchService {
 
       final result = await _apiService.uploadAttendance(
         token: token,
+        clientRecordId: record.id,
         groupId: group.id,
         code: group.code ?? record.grupoCode ?? '',
         groupLetter:
@@ -158,14 +141,14 @@ class AttendanceBatchService {
           failed++;
         },
         (_) async {
-          await _localService.marcarComoSincronizada(record.id);
-          uploaded++;
+          await _localService.guardarSnapshotEnviado(record.id);
+          accepted++;
         },
       );
     }
 
     return DebugAttendanceBatchResult(
-      uploaded: uploaded,
+      accepted: accepted,
       skipped: skipped,
       failed: failed,
     );
@@ -176,7 +159,7 @@ class AttendanceBatchService {
     required List<AsistenciaRegistro> records,
     required List<Grupo> groups,
   }) async {
-    var uploaded = 0;
+    var accepted = 0;
     var skipped = 0;
     var failed = 0;
 
@@ -195,6 +178,7 @@ class AttendanceBatchService {
 
       final result = await _apiService.uploadAttendance(
         token: token,
+        clientRecordId: record.id,
         groupId: group.id,
         code: group.code ?? record.grupoCode ?? '',
         groupLetter:
@@ -213,14 +197,14 @@ class AttendanceBatchService {
           failed++;
         },
         (_) async {
-          await _localService.marcarComoSincronizada(record.id);
-          uploaded++;
+          await _localService.guardarSnapshotEnviado(record.id);
+          accepted++;
         },
       );
     }
 
     return DebugAttendanceBatchResult(
-      uploaded: uploaded,
+      accepted: accepted,
       skipped: skipped,
       failed: failed,
     );
