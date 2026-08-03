@@ -17,7 +17,8 @@
     "import:shared-classes": "node dist/scripts/import-shared-classes-to-academic.js",
     "import:staff-accounts": "node dist/scripts/import-coordinators-to-identity.js",
     "test": "NODE_ENV=test vitest run",
-    "fetch:horarios": "tsx src/scripts/fetch-horarios.ts"
+    "fetch:horarios": "tsx src/scripts/fetch-horarios.ts",
+    "smoke:uat:readonly": "tsx src/scripts/smoke-uat-readonly.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

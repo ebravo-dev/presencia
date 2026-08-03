@@ -350,6 +350,13 @@ UAT_ID_DES=12 \
 npm run fetch:horarios
 ```
 
+Para validar ambos portales sin imprimir datos académicos ni ejecutar
+`GuardaAsistencias`, usa `npm run smoke:uat:readonly`. Requiere
+`UAT_STUDENT_USER`, `UAT_STUDENT_PASS`, `UAT_TEACHER_USER` y
+`UAT_TEACHER_PASS` sólo en el entorno del proceso. El resultado se limita a
+conteos y diagnóstico de cookies; no guardes credenciales reales en `.env` ni
+en archivos versionados.
+
 En PowerShell:
 
 ```powershell

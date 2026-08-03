@@ -8,8 +8,8 @@ prueba de funcionamiento integral.
 
 | Requisito | Propietario y evidencia actual | Estado |
 |---|---|---|
-| Datos UAT del profesor mediante REST | UAT Integration implementa sesión ASP.NET, horarios, catálogos, grupos, roster y asistencia. Los tests de cliente y el Compose CI prueban formularios, cookies, cosecha y escritura contra un portal HTTP aislado. | Implementado; falta E2E con cuenta UAT autorizada. |
-| Login, perfil y horario del alumno | UAT Integration autentica, selecciona carrera y expone horario/calificaciones; Identity emite la sesión y Academic persiste el snapshot. El Compose CI recorre el contrato público desde el Gateway. | Implementado; falta E2E con cuenta UAT autorizada. |
+| Datos UAT del profesor mediante REST | UAT Integration implementa sesión ASP.NET, horarios, catálogos, grupos, roster y asistencia. Los tests de cliente y el Compose CI prueban formularios, cookies, cosecha y escritura contra un portal HTTP aislado. Una cuenta real autorizada autenticó y respondió a catálogos, horarios y exámenes en modo de sólo lectura. | Implementado; falta validar una carga real expresamente autorizada. |
+| Login, perfil y horario del alumno | UAT Integration autentica, selecciona carrera y expone horario/calificaciones; Identity emite la sesión y Academic persiste el snapshot. El Compose CI recorre el contrato público desde el Gateway. Una cuenta real autorizada autenticó, entregó carrera y aceptó consultas de horario/calificaciones sin mutaciones. | Implementado; falta E2E del vínculo en dispositivos físicos. |
 | Login estudiantil como única alta | Cada login exige UUID BLE, identificador estable y plataforma móvil; el vínculo sólo se ejecuta después de que UAT devuelve login, carrera y matrícula válidos. La misma identidad se reconcilia idempotentemente durante la actualización académica y no existe alta manual pública. | Implementado y probado en BFF, Attendance y Flutter. |
 | Vincular matrícula, teléfono y UUID | Attendance posee `StudentDeviceBinding`, rechaza identificadores duplicados y entrega un token acotado. El Gateway renueva únicamente el vínculo exacto; el profesor lo resuelve mediante sesión UAT y pertenencia al roster, sin dual-write legado. | Implementado y probado. |
 | Cambio de UUID sólo por coordinación | Attendance permite reemplazo/desvinculación sólo por comando interno con rol y motivo auditables; el endpoint público únicamente repite el vínculo exacto. | Implementado y probado. |
@@ -18,7 +18,20 @@ prueba de funcionamiento integral.
 | Microservicios y datos separados | Gateway, Identity, Academic, Attendance, UAT Integration y Coordination Query usan límites y bases lógicas propios. Identity es obligatorio para cada login; Academic recibe el único snapshot de profesor/alumno; Attendance posee beacons, dispositivos y telemetría BLE. UAT Integration no mantiene una segunda proyección académica. | El proceso HTTP monolítico y las fachadas móviles antiguas están fuera del runtime; se conservan únicamente imports one-shot idempotentes mientras se valida el primer despliegue. |
 | Docker y Dokploy | Compose crea bases/usuarios, migraciones/importaciones one-shot, Redis AOF, RabbitMQ, redes privadas, egreso UAT, readiness y apagado controlado. Las imágenes de aplicación usan usuarios sin privilegios; los runtimes eliminan capacidades, bloquean escalamiento de privilegios y montan el filesystem como sólo lectura con `tmpfs` explícitos. | Implementado y validado estáticamente; workflow CI ejecuta el stack. Pendiente construir en este host porque Docker está detenido, además de la primera corrida remota y el despliegue Dokploy. |
 | Credenciales móviles | El alumno usa almacenamiento seguro nativo. El profesor migra los tokens de Hive a Keychain/Keystore, elimina la contraseña heredada y sólo la conserva efímeramente en memoria para reintentos del proceso actual. | Implementado y probado; falta auditoría en dispositivos físicos. |
-| Tests | Unitarios, contratos HTTP/eventos, clientes UAT simulados, apps Flutter, dashboard web, smoke público y flujo integral del Compose. | Implementado; E2E UAT/dispositivos requiere infraestructura externa. |
+| Tests | Unitarios, contratos HTTP/eventos, clientes UAT simulados, apps Flutter, dashboard web, smoke público y flujo integral del Compose. El smoke UAT real de sólo lectura verifica ambos portales sin imprimir datos académicos. | Implementado; E2E de escritura UAT y dispositivos aún requiere infraestructura externa. |
+
+## Evidencia UAT real de sólo lectura
+
+El 3 de agosto de 2026 se ejecutó `npm run smoke:uat:readonly` con credenciales
+entregadas de forma efímera al proceso. Los dos portales autenticaron y
+entregaron cookies ASP.NET válidas. El portal estudiantil devolvió una carrera;
+horario y calificaciones estaban vacíos para el contexto seleccionado. El
+portal de profesores devolvió catálogos, cinco horarios y cinco exámenes para
+el ciclo activo; la consulta de grupos de control de asistencia devolvió una
+lista vacía y UAT no ofreció fechas de ciclo para sondear el roster desde un
+grupo del horario. Por ello, una carga real requiere otra ventana o contexto
+académico válido. La prueba no imprimió identidad, matrícula, cookies ni datos
+académicos y nunca invocó `GuardaAsistencias`.
 
 ## Gate automatizado del Compose
 
@@ -45,7 +58,7 @@ iconos en chunks cacheables; Excel y PDF continúan como imports bajo demanda.
 
 ## Gates externos aún obligatorios
 
-- cuentas de prueba autorizadas para maestros y alumnos UAT;
+- ventana, grupo y lista expresamente autorizados para una escritura UAT real;
 - Android e iOS físicos para BLE, UUID y revinculación;
 - despliegue Dokploy con dos réplicas por servicio;
 - caída/restauración controlada de UAT y verificación de reintento/DLQ;
