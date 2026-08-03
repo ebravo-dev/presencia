@@ -1,0 +1,4 @@
+# Compatibility entrypoint for existing Dokploy projects.
+# The canonical stack remains in infra/compose/docker-compose.microservices.yml.
+include:
+  - path: ./infra/compose/docker-compose.microservices.yml

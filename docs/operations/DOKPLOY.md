@@ -9,6 +9,10 @@
 - Red externa: `dokploy-network` (o el valor de `DOKPLOY_NETWORK_NAME`).
 - Node.js de producción: línea 24 LTS, actualizada al reconstruir las imágenes.
 
+Los proyectos Dokploy existentes que todavía apuntan a
+`compose.coordination.yaml` pueden conservar esa ruta: el archivo raíz es una
+entrada de compatibilidad que incluye el Compose canónico de microservicios.
+
 Sólo `frontend-coord` y `api-gateway` comparten la red de Dokploy. PostgreSQL,
 Redis, RabbitMQ y todos los servicios de dominio permanecen en la red privada
 del Compose y no deben recibir dominios públicos. `uat-integration` también se
