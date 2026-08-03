@@ -16,7 +16,7 @@ prueba de funcionamiento integral.
 | Captura local y subida posterior a UAT | La presencia del profesor entra únicamente por el canal de beacon/entrada/salida y usa hora del servidor; la captura de alumnos no puede inyectar timestamps de profesor. Attendance usa transacción serializable e idempotencia. Antes del `202`, UAT Integration persiste un job con credencial cifrada, separado del TTL de Redis; el móvil conserva su `ClientRecordId` hasta recibir `COMPLETED`. El titular queda `PENDING`; una clase compartida queda `SKIPPED`. El Compose fuerza fallos transitorios y terminales y comprueba recuperación sin duplicar la escritura. | Implementado y probado contra el simulador; falta caos contra UAT real. |
 | Asistencia del profesor en dashboard | Coordination Query consume roster/asistencia, reconcilia snapshots y genera reportes semanal/rango. | Implementado; CI prueba la proyección cruzando PostgreSQL y RabbitMQ. |
 | Microservicios y datos separados | Gateway, Identity, Academic, Attendance, UAT Integration y Coordination Query usan límites y bases lógicas propios. Identity es obligatorio para cada login; Academic recibe el único snapshot de profesor/alumno; Attendance posee beacons, dispositivos y telemetría BLE. UAT Integration no mantiene una segunda proyección académica. | El proceso HTTP monolítico y las fachadas móviles antiguas están fuera del runtime; se conservan únicamente imports one-shot idempotentes mientras se valida el primer despliegue. |
-| Docker y Dokploy | Compose crea bases/usuarios, migraciones/importaciones one-shot, Redis AOF, RabbitMQ, redes privadas, egreso UAT, readiness y apagado controlado. Las imágenes de aplicación usan usuarios sin privilegios; los runtimes eliminan capacidades, bloquean escalamiento de privilegios y montan el filesystem como sólo lectura con `tmpfs` explícitos. Una construcción limpia local validó dos réplicas de los seis servicios, failover del Gateway, jobs, web y el flujo integral con Docker 29.7.1 y Compose 5.3.1. | Implementado y validado localmente; faltan la primera corrida remota y el despliegue Dokploy. |
+| Docker y Dokploy | Compose crea bases/usuarios, migraciones/importaciones one-shot, Redis AOF, RabbitMQ, redes privadas, egreso UAT, readiness y apagado controlado. Las imágenes de aplicación usan usuarios sin privilegios; los runtimes eliminan capacidades, bloquean escalamiento de privilegios y montan el filesystem como sólo lectura con `tmpfs` explícitos. Una construcción limpia local validó dos réplicas de los seis servicios, failover del Gateway, jobs, web y el flujo integral con Docker 29.7.1 y Compose 5.3.1 antes de incorporar el preload OpenTelemetry. Después de ese cambio pasan la resolución del preload con Node 24, los tests y `docker compose config`, pero aún debe repetirse la construcción integral de las imágenes actuales. | Implementado; falta revalidar el runtime actual y ejecutar el primer despliegue Dokploy. |
 | Credenciales móviles | El alumno usa almacenamiento seguro nativo. El profesor migra los tokens de Hive a Keychain/Keystore, elimina la contraseña heredada y sólo la conserva efímeramente en memoria para reintentos del proceso actual. | Implementado y probado; falta auditoría en dispositivos físicos. |
 | Tests | Unitarios, contratos HTTP/eventos, clientes UAT simulados, apps Flutter, dashboard web, smoke público, flujo integral escalado, DLQ y restauración de datos. El smoke UAT real de sólo lectura verifica ambos portales sin imprimir datos académicos. | Implementado; escritura, reintento y recuperación pasaron contra el simulador UAT. La escritura UAT real y los dispositivos físicos aún requieren autorización e infraestructura externa. |
 
@@ -34,6 +34,13 @@ académico válido. La prueba no imprimió identidad, matrícula, cookies ni dat
 académicos y nunca invocó `GuardaAsistencias`.
 
 ## Evidencia Docker local
+
+La corrida descrita a continuación corresponde al stack inmediatamente anterior
+al commit que añadió el preload OpenTelemetry. Sigue probando el flujo funcional,
+la separación de datos, la escala y la recuperación, pero no sustituye la
+construcción de las imágenes actuales. Para estas últimas se verificaron el
+preload directamente con Node 24, el conjunto completo de tests y la resolución
+estática de Compose; el gate de contenedores debe repetirse.
 
 El 3 de agosto de 2026 se construyó y levantó desde volúmenes limpios la
 superposición `docker-compose.microservices.yml` + `docker-compose.ci.yml` con
@@ -121,6 +128,9 @@ Las seis imágenes HTTP precargan OpenTelemetry antes de iniciar Fastify, asigna
 un `service.name` independiente y pueden exportar trazas OTLP/HTTP al colector
 privado configurado en Dokploy. La exportación queda desactivada por defecto;
 Prometheus permanece como fuente de métricas y los logs no se duplican por OTLP.
+El registro y la exportación de un span se probaron directamente con el runtime
+Node 24 usado por las imágenes; todavía falta observar una traza cruzada en el
+stack reconstruido y en el colector de Dokploy.
 
 La ejecución Docker local del 3 de agosto de 2026 completó esas 200 lecturas
 con 20 solicitudes concurrentes, 0% de errores, p95 de 35.57 ms, p99 de 36.52
@@ -130,6 +140,8 @@ Bearer dedicado.
 
 ## Gates externos aún obligatorios
 
+- reconstrucción y flujo integral de las imágenes actuales después de incorporar
+  el preload OpenTelemetry;
 - ventana, grupo y lista expresamente autorizados para una escritura UAT real;
 - Android e iOS físicos para BLE, UUID y revinculación;
 - despliegue Dokploy con dos réplicas por servicio;

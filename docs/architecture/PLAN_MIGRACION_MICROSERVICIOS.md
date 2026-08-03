@@ -516,8 +516,10 @@ Avance al 3 de agosto de 2026: estructura de workspaces, contratos HTTP/eventos,
 API Gateway, Redis, RabbitMQ, PostgreSQL aislado por servicio y Compose para
 Dokploy implementados. Las seis imágenes precargan OpenTelemetry con propagación
 W3C y exportación OTLP opcional; Prometheus conserva las métricas operativas.
-El stack escalado, restauración y failover fueron validados localmente. Falta
-conectar el colector y observar trazas en el primer host Dokploy.
+El stack escalado, restauración y failover fueron validados localmente antes de
+añadir el preload. Después del cambio pasan el preload con Node 24, las pruebas y
+la resolución estática de Compose; falta reconstruir las imágenes, repetir el
+flujo integral y observar trazas cruzadas en el primer host Dokploy.
 
 Entregables:
 
