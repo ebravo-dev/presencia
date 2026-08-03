@@ -126,7 +126,6 @@ class AttendanceBatchService {
     required String token,
     required List<AsistenciaRegistro> records,
     required List<Grupo> groups,
-    String encryptedPassword = '',
   }) async {
     var uploaded = 0;
     var skipped = 0;
@@ -148,7 +147,6 @@ class AttendanceBatchService {
         period: group.period ?? record.grupoPeriod ?? '',
         date: record.fecha,
         attendances: _buildAttendances(record, group),
-        encryptedPassword: encryptedPassword,
         groupName: group.name,
         classroom: group.classroom,
         level: group.level,
@@ -179,7 +177,6 @@ class AttendanceBatchService {
     required String token,
     required List<AsistenciaRegistro> records,
     required List<Grupo> groups,
-    String encryptedPassword = '',
   }) async {
     var uploaded = 0;
     var skipped = 0;
@@ -207,7 +204,6 @@ class AttendanceBatchService {
         period: group.period ?? record.grupoPeriod ?? '',
         date: record.fecha,
         attendances: attendances,
-        encryptedPassword: encryptedPassword,
         groupName: group.name,
         classroom: group.classroom,
         level: group.level,

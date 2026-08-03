@@ -245,7 +245,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     await _authStorage.clearGrupos();
   }
 
-  /// Sincronizar ciclo contra el backend principal.
+  /// Solicitar una nueva cosecha academica al backend.
   Future<Either<String, String>> syncGroups(String password) async {
     if (!state.isAuthenticated ||
         state.profesor == null ||
@@ -262,12 +262,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     // Clear local groups before syncing to avoid showing stale data
     await clearGrupos();
 
-    // Usar ApiService para sincronizar contra el backend principal.
-    final result = await _apiService.forceSync(
-      email: state.profesor!.institutionalEmail,
-      encryptedPassword: password,
-      token: state.token!,
-    );
+    final result = await _apiService.forceSync(token: state.token!);
 
     await result.fold(
       (error) async {
@@ -322,21 +317,6 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
             profesor: profesor,
             token: token,
           );
-          if (_apiService.usesBackendApiRest) {
-            final password = _authStorage.getCachedUatPassword();
-            if (password != null && password.isNotEmpty) {
-              final portalSync = await _apiService.syncPortalHistory(
-                email: profesor.institutionalEmail,
-                password: password,
-              );
-              portalSync.fold(
-                (error) => Logger.error(
-                  'No se pudo sincronizar historial con el portal: $error',
-                ),
-                (_) {},
-              );
-            }
-          }
           // Cargar grupos del profesor
           await _loadGrupos();
         } else {
@@ -364,6 +344,16 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
   /// Cerrar sesión
   Future<void> logout() async {
     Logger.info('Cerrando sesión del profesor');
+    final token = state.token ?? _authStorage.getToken();
+    if (token != null && token.isNotEmpty) {
+      final result = await _apiService.logoutProfesor(token);
+      result.fold(
+        (error) => Logger.error(
+          'La sesión local se cerrará aunque no se pudo revocar la remota: $error',
+        ),
+        (_) {},
+      );
+    }
     await _authStorage.clearSession();
     state = const ProfesorAuthState(status: ProfesorAuthStatus.unauthenticated);
   }

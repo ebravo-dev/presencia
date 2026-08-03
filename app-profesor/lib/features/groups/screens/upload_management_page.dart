@@ -291,13 +291,12 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       1,
       _StepStatus.inProgress,
       subtitle:
-          '${_pendientes.length} lista${_pendientes.length == 1 ? '' : 's'} al backend principal',
+          '${_pendientes.length} lista${_pendientes.length == 1 ? '' : 's'} al servicio de asistencia',
     );
     final directResult = await _attendanceBatchService.submitDirectToBackend(
       token: token,
       records: List<AsistenciaRegistro>.from(_pendientes),
       groups: grupos,
-      encryptedPassword: _authStorage.getCachedUatPassword() ?? '',
     );
     _updateStep(
       1,

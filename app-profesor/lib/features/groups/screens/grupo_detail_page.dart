@@ -1470,7 +1470,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       period: widget.grupo.period ?? '',
       date: _selectedDateTime,
       attendances: attendances,
-      encryptedPassword: _authStorage.getCachedUatPassword() ?? '',
       groupName: widget.grupo.name,
       classroom: widget.grupo.classroom,
       level: widget.grupo.level,

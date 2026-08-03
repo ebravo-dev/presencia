@@ -41,6 +41,26 @@ export class SessionController {
     return reply.code(201).send(response);
   };
 
+  sync = async (request: FastifyRequest, reply: FastifyReply) => {
+    const session = request.uatSession;
+
+    await this.eventBus.publish(
+      createTeacherAuthenticatedEvent({
+        sessionId: session.id,
+        username: session.username,
+        correlationId: request.id,
+        causationId: request.id,
+        loginParameters: session.login.parametros,
+      }),
+    );
+
+    return reply.code(202).send({
+      accepted: true,
+      sessionId: session.id,
+      message: 'Sincronizacion academica encolada.',
+    });
+  };
+
   delete = async (request: FastifyRequest, reply: FastifyReply) => {
     const { sessionId } = parsePayload(sessionParamsSchema, request.params);
     const deleted = await this.uatService.deleteSession(sessionId);

@@ -44,32 +44,5 @@ void main() {
       expect(profesor.institutionalEmail, "test@uat.edu.mx");
       expect(profesor.nombreCompleto, "Test Profesor");
     });
-
-    test('LoginRequest debe generar JSON correcto con institutionalEmail', () {
-      final loginRequest = LoginRequest(
-        institutionalEmail: "test@uat.edu.mx",
-        encryptedPassword: "encrypted-password-base64",
-      );
-
-      final json = loginRequest.toJson();
-
-      expect(json['institutionalEmail'], "test@uat.edu.mx");
-      expect(json['encryptedPassword'], "encrypted-password-base64");
-      expect(json.containsKey('email'), false); // NO debe tener 'email'
-    });
-
-    test('RegisterRequest debe generar JSON correcto', () {
-      final registerRequest = RegisterRequest(
-        name: "Dr. Test",
-        institutionalEmail: "test@uat.edu.mx",
-        encryptedPassword: "encrypted-password-base64",
-      );
-
-      final json = registerRequest.toJson();
-
-      expect(json['name'], "Dr. Test");
-      expect(json['institutionalEmail'], "test@uat.edu.mx");
-      expect(json['encryptedPassword'], "encrypted-password-base64");
-    });
   });
 }

@@ -370,11 +370,8 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     });
 
     final token = _authStorage.getToken();
-    final password = _authStorage.getCachedUatPassword();
-    final authState = ref.read(profesorAuthProvider);
-    final email = authState.profesor?.institutionalEmail;
 
-    if (token == null || password == null || email == null) {
+    if (token == null || token.isEmpty) {
       setState(() {
         _error = 'Sesión expirada. Vuelve a iniciar sesión.';
         _isRetrying = false;
@@ -401,12 +398,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
       );
     });
 
-    // Reintentar sin escribir la credencial en almacenamiento persistente.
-    final result = await _apiService.forceSync(
-      email: email,
-      encryptedPassword: password,
-      token: token,
-    );
+    final result = await _apiService.forceSync(token: token);
 
     result.fold(
       (error) {

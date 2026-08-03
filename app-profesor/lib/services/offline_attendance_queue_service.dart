@@ -92,7 +92,6 @@ class OfflineAttendanceQueueService {
         token: token,
         records: pending,
         groups: groups,
-        encryptedPassword: _authStorage.getCachedUatPassword() ?? '',
       );
       return OfflineAttendanceQueueResult(
         pending: pending.length,

@@ -73,9 +73,8 @@ class SyncEvent {
 
 /// Compatibility shim for the old sync-status UI.
 ///
-/// The main backend now performs UAT orchestration synchronously over REST, so
-/// there is no queue stream to subscribe to. This stream emits a completed
-/// event and lets the existing screen navigate/refresh without legacy workers.
+/// UAT Integration encola la cosecha mediante un outbox durable y no expone
+/// SSE al cliente. Este stream conserva la transicion visual existente.
 class SSEService {
   StreamController<SyncEvent>? _controller;
   bool _isConnected = false;
@@ -87,14 +86,14 @@ class SSEService {
     _isConnected = true;
 
     scheduleMicrotask(() {
-      Logger.info('Sync shim: REST backend has no SSE queue for $professorId');
+      Logger.info('Sync shim: la cola durable no expone SSE para $professorId');
       _controller?.add(
         SyncEvent(
           type: SyncEventType.connected,
           status: 'IN_PROGRESS',
           step: 1,
           totalSteps: 5,
-          message: 'Conectando con backend principal...',
+          message: 'Conectando con servicios académicos...',
         ),
       );
       _controller?.add(
@@ -103,7 +102,7 @@ class SSEService {
           status: 'COMPLETED',
           step: 5,
           totalSteps: 5,
-          message: 'Datos sincronizados desde backend principal',
+          message: 'Sincronización académica encolada',
         ),
       );
       disconnect();

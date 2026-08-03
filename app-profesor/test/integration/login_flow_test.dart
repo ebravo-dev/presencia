@@ -173,25 +173,28 @@ void main() {
       expect(authStorage.getCachedUatPassword(), isNull);
     });
 
-    test('Escenario 7: Migra sesiones heredadas al almacén seguro', () async {
+    test('Escenario 7: Migra UAT y elimina la sesión monolítica', () async {
       final box = Hive.box('auth');
       await box.put('jwt_token', 'uat-session-heredada');
       await box.put('main_backend_jwt_token', 'backend-session-heredada');
+      const secureStorage = FlutterSecureStorage();
+      await secureStorage.write(
+        key: 'professor_main_backend_token',
+        value: 'backend-session-segura-heredada',
+      );
 
       await authStorage.init();
 
       expect(authStorage.getToken(), 'uat-session-heredada');
-      expect(authStorage.getMainBackendToken(), 'backend-session-heredada');
       expect(box.containsKey('jwt_token'), isFalse);
       expect(box.containsKey('main_backend_jwt_token'), isFalse);
-      const secureStorage = FlutterSecureStorage();
       expect(
         await secureStorage.read(key: 'professor_session_token'),
         'uat-session-heredada',
       );
       expect(
         await secureStorage.read(key: 'professor_main_backend_token'),
-        'backend-session-heredada',
+        isNull,
       );
     });
   });
@@ -230,7 +233,6 @@ void main() {
       await authStorage.saveSession(token: validToken, profesor: testProfesor);
 
       final apiService = MockApiService();
-      when(() => apiService.usesBackendApiRest).thenReturn(false);
       when(() => apiService.getGruposProfesor(validToken)).thenAnswer(
         (_) async =>
             const Right((grupos: <Grupo>[], beacons: <Map<String, dynamic>>[])),
@@ -251,6 +253,33 @@ void main() {
       expect(state.token, validToken);
 
       container.dispose();
+    });
+
+    test('logout revoca la sesión remota antes de limpiar el equipo', () async {
+      const validToken = 'uat-session-activa';
+      final testProfesor = Profesor(
+        id: '123',
+        name: 'Test Profesor',
+        institutionalEmail: 'test@uat.edu.mx',
+      );
+      await authStorage.saveSession(token: validToken, profesor: testProfesor);
+
+      final apiService = MockApiService();
+      when(() => apiService.getGruposProfesor(validToken)).thenAnswer(
+        (_) async =>
+            const Right((grupos: <Grupo>[], beacons: <Map<String, dynamic>>[])),
+      );
+      when(
+        () => apiService.logoutProfesor(validToken),
+      ).thenAnswer((_) async => const Right(true));
+      final notifier = ProfesorAuthNotifier(apiService, authStorage);
+
+      await notifier.checkStoredSession();
+      await notifier.logout();
+
+      verify(() => apiService.logoutProfesor(validToken)).called(1);
+      expect(notifier.state.status, ProfesorAuthStatus.unauthenticated);
+      expect(authStorage.hasActiveSession(), isFalse);
     });
   });
 }

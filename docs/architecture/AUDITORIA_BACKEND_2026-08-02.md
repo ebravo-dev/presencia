@@ -27,12 +27,12 @@ un servicio propietario.
 | Resuelto | Las sesiones UAT vivían en un `Map` local de `backend-apirest`. | Una petición dirigida a otra réplica perdía la sesión ASP.NET. | Redis con TTL, CookieJar serializado y cifrado implementados. |
 | Resuelto | `frontend-coord` enrutaba directamente a dos backends. | Los servicios quedaban expuestos y la topología se filtraba al cliente. | API Gateway configurado como único upstream web. |
 | Resuelto | Los eventos de sincronización usaban `EventEmitter`. | Se perdían al reiniciar y no existía reintento o DLQ. | Outbox/inbox y RabbitMQ con reintentos y DLQ implementados. |
-| Mitigado | `backend` poseía identidad, datos académicos, asistencia, beacons, dispositivos y administración en una base. | Acoplamiento de despliegue y contención al escalar. | Identity posee cuentas y sesiones del personal; Academic posee carga/clases compartidas; Attendance posee beacons, dispositivos y telemetría BLE. Sustituciones temporales y fachadas móviles antiguas conservan compatibilidad temporal. |
+| Mitigado | `backend` poseía identidad, datos académicos, asistencia, beacons, dispositivos y administración en una base. | Acoplamiento de despliegue y contención al escalar. | Identity posee cuentas y sesiones del personal; Academic posee carga/clases compartidas; Attendance posee beacons, dispositivos y telemetría BLE. Los clientes actuales ya no consumen las fachadas móviles antiguas; resta retirar herramientas debug y lecturas internas residuales del monolito. |
 | Resuelto | `backend-apirest` mezclaba integración UAT, coordinación y reportes. | La carga externa de UAT afectaba el dashboard. | Coordination Query posee un read model reconstruible y el BFF delega las lecturas. |
 | Resuelto | La sincronización y la carga UAT dependían de llamadas HTTP entre servicios legados. | Acoplamiento temporal y fallos en cascada. | Comandos internos autenticados, outbox/inbox, RabbitMQ, reintentos y DLQ. |
 | Resuelto | No había contrato central de rutas y eventos. | Cambios incompatibles entre Flutter, web y backends. | Paquetes `contracts-http` y `contracts-events`, versionados y probados. |
 | Resuelto | La app del profesor persistía en Hive una contraseña UAT en texto plano bajo el nombre `encrypted_password`. | Exposición de la cuenta institucional si se extraía el almacenamiento del dispositivo. | Migración que elimina la clave heredada; la credencial sólo vive en memoria durante el proceso y se solicita nuevamente tras reiniciar. |
-| Resuelto | La app del profesor persistía identificadores de sesión en Hive. | Robo de sesión si se extraía el almacenamiento local de la aplicación. | Migración automática a Keychain/Keystore mediante almacenamiento seguro nativo y eliminación de las claves heredadas. |
+| Resuelto | La app del profesor persistía identificadores de sesión en Hive y mantenía una segunda sesión contra el monolito. | Robo de sesión y dos autoridades activas para una misma persona. | La sesión UAT se migra a Keychain/Keystore; el token paralelo, incluso si estaba en almacenamiento seguro, se elimina y el logout revoca Redis/Identity antes de limpiar el equipo. |
 | Mitigado | La observabilidad se limitaba a logs y `/health`. | No se conocían latencias, saturación ni fallos por dependencia. | Correlation/trace ID, readiness por dependencia, métricas Prometheus y logs estructurados; falta conectar un colector/alertas en el host. |
 | Resuelto | El arranque de producción ejecutaba migraciones y aprovisionamiento junto al servidor. | Varias réplicas podían competir durante un despliegue. | Jobs de migración/aprovisionamiento únicos antes de las réplicas HTTP. |
 
@@ -43,6 +43,7 @@ un servicio propietario.
 | Inicio de alumno sólo con cuenta UAT | Implementado; sesión cifrada en Redis e identidad emitida sólo tras validar UAT. | E2E contra entorno UAT autorizado. |
 | Perfil, carrera, horario y calificaciones del alumno | Endpoints UAT existentes; perfil/carrera/horario se proyectan en Academic. | Caché de calificaciones y backfill/reconciliación. |
 | Información del maestro desde UAT | Sesión Redis, rate limit, circuit breaker y snapshot académico diferencial implementados. | E2E contra entorno UAT autorizado. |
+| Resincronización solicitada por el maestro | La app reutiliza `X-UAT-Session-Id`; `POST /api/uat/profesor/sync` publica una nueva cosecha mediante outbox/RabbitMQ sin reenviar contraseña. | Medir el tiempo de convergencia de Academic en el host. |
 | Vincular matrícula, teléfono y UUID al iniciar sesión | Attendance es propietario; el alta sólo ocurre después de autenticar UAT y entrega token acotado. | E2E en dispositivos Android/iOS reales. |
 | UUID modificable sólo por coordinación | Comando privado auditado; el alumno sólo puede repetir el vínculo exacto y requiere desvinculación previa para cambiarlo. | Verificar el flujo con una cuenta de coordinación desplegada. |
 | Captura local aunque UAT esté fuera | La telemetría crea un borrador `DRAFT`; sólo la finalización transaccional cambia a `PENDING` y crea el outbox UAT. | Prueba de caos en el host Docker. |
@@ -57,12 +58,11 @@ un servicio propietario.
 |---|---|---|
 | `/api/uat/*` | UAT Integration | `backend-apirest` |
 | `/api/coordinacion/*` | Coordination Query / comandos a propietarios | BFF `backend-apirest`, con lecturas delegadas |
-| `/auth/*`, `/professors/login` | Identity | `backend` |
-| `/professors/*`, `/groups/*` | Academic | `backend` |
-| `/attendance/*` | Attendance | `backend` como fachada móvil; captura UAT ya delegada |
+| `/auth/*`, `/professors/*`, `/groups/*` | Retiradas para clientes actuales | Compatibilidad de versiones móviles antiguas; no existen referencias en el código Flutter vigente |
+| `/attendance/*` | Retirada para clientes actuales | Compatibilidad de versiones móviles antiguas; captura vigente usa `/api/uat/asistencia/*` y Attendance |
 | `/api/uat/profesor/presencia/*` | Attendance | BFF UAT autentica al profesor y delega entrada, salida y detecciones sin elevar autorización |
 | `/api/uat/profesor/beacons/resolve` | Attendance | BFF UAT; autorización de sustituciones pasa temporalmente por la fachada y la configuración siempre se lee de Attendance |
-| `/api/beacons/*` | Attendance | Fachada autenticada para móviles instalados; delega la resolución a Attendance sin leer configuración legada |
+| `/api/beacons/*`, `/api/student-attendance/*` | Retiradas para clientes actuales | Compatibilidad temporal de APK instalados; la app vigente usa sesión UAT y comandos de Attendance |
 | `/api/student-device-bindings/*` | Attendance | Corte completado; Gateway enruta al propietario y la lectura del profesor pasa por sesión UAT + roster |
 | `/api/superUsuario/auth/*`, `/api/superUsuario/coordinadores/*` | Identity | BFF `backend-apirest`; cuentas históricas se importan una sola vez y su tabla anterior queda sin CRUD runtime |
 | `/api/superUsuario/beacons/*`, `/api/superUsuario/alumnos-vinculados/*` | Attendance | BFF `backend-apirest` autentica con Identity y delega comandos auditados |

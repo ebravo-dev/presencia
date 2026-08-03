@@ -27,7 +27,6 @@ class AuthStorageService {
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   Box? _box;
   String? _cachedToken;
-  String? _cachedMainBackendToken;
   String? _cachedUatPassword;
 
   Future<void> init() async {
@@ -45,7 +44,7 @@ class AuthStorageService {
         await _box?.delete(_legacyPasswordKey);
         Logger.info('Credencial UAT heredada eliminada del almacenamiento');
       }
-      await _loadAndMigrateSecureSessions();
+      await _loadAndMigrateSecureSession();
       Logger.info('AuthStorageService inicializado correctamente');
     } catch (e, stackTrace) {
       Logger.error('Error al inicializar AuthStorageService', e, stackTrace);
@@ -68,25 +67,6 @@ class AuthStorageService {
       Logger.debug('Identificador de sesion recuperado');
     }
     return _cachedToken;
-  }
-
-  Future<void> saveMainBackendToken(String token) async {
-    try {
-      _cachedMainBackendToken = token;
-      await _secureStorage.write(key: _secureMainBackendTokenKey, value: token);
-      await _box?.delete(_legacyMainBackendTokenKey);
-      Logger.info('Sesion del backend principal guardada correctamente');
-    } catch (e, stackTrace) {
-      Logger.error(
-        'Error al guardar sesion del backend principal',
-        e,
-        stackTrace,
-      );
-    }
-  }
-
-  String? getMainBackendToken() {
-    return _cachedMainBackendToken;
   }
 
   Future<void> saveProfesor(Profesor profesor) async {
@@ -186,30 +166,23 @@ class AuthStorageService {
       Logger.error('Error al limpiar sesion', e, stackTrace);
     } finally {
       _cachedToken = null;
-      _cachedMainBackendToken = null;
       _cachedUatPassword = null;
     }
   }
 
-  Future<void> _loadAndMigrateSecureSessions() async {
+  Future<void> _loadAndMigrateSecureSession() async {
     _cachedToken = await _secureStorage.read(key: _secureTokenKey);
-    _cachedMainBackendToken = await _secureStorage.read(
-      key: _secureMainBackendTokenKey,
-    );
 
     final legacyToken = _box?.get(_legacyTokenKey) as String?;
-    final legacyMainToken = _box?.get(_legacyMainBackendTokenKey) as String?;
     if ((_cachedToken == null || _cachedToken!.isEmpty) &&
         legacyToken != null &&
         legacyToken.isNotEmpty) {
       await saveToken(legacyToken);
     }
-    if ((_cachedMainBackendToken == null || _cachedMainBackendToken!.isEmpty) &&
-        legacyMainToken != null &&
-        legacyMainToken.isNotEmpty) {
-      await saveMainBackendToken(legacyMainToken);
-    }
 
+    // El token paralelo del backend monolitico dejo de ser valido con el
+    // corte a Identity/UAT Integration. Se elimina en vez de migrarlo.
+    await _secureStorage.delete(key: _secureMainBackendTokenKey);
     await _box?.delete(_legacyTokenKey);
     await _box?.delete(_legacyMainBackendTokenKey);
   }

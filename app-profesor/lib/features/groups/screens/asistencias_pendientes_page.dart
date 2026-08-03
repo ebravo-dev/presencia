@@ -293,7 +293,6 @@ class _AsistenciasPendientesPageState
       period: grupo.period ?? '',
       date: registroActualizado.fecha,
       attendances: attendances,
-      encryptedPassword: _authStorage.getCachedUatPassword() ?? '',
       groupName: grupo.name,
       classroom: grupo.classroom,
       level: grupo.level,

@@ -13,8 +13,6 @@ import '../shared/models/sync_status.dart';
 
 class ApiService {
   late final Dio _presenceDio;
-  late final Dio _attendanceBackendDio;
-  late final Dio _mainBackendDio;
 
   /// Callback que se dispara cuando el servidor retorna 401.
   void Function()? onSessionExpired;
@@ -38,43 +36,6 @@ class ApiService {
         ),
       ),
     );
-    _attendanceBackendDio = Dio(
-      BaseOptions(
-        baseUrl: ApiConstants.attendanceBackendBaseUrl,
-        headers: const {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        connectTimeout: Duration(
-          milliseconds: ApiConstants.presenceTimeoutDuration,
-        ),
-        receiveTimeout: Duration(
-          milliseconds: ApiConstants.presenceTimeoutDuration,
-        ),
-        sendTimeout: Duration(
-          milliseconds: ApiConstants.presenceTimeoutDuration,
-        ),
-      ),
-    );
-    _mainBackendDio = Dio(
-      BaseOptions(
-        baseUrl: ApiConstants.mainBackendBaseUrl,
-        headers: const {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        connectTimeout: Duration(
-          milliseconds: ApiConstants.presenceTimeoutDuration,
-        ),
-        receiveTimeout: Duration(
-          milliseconds: ApiConstants.presenceTimeoutDuration,
-        ),
-        sendTimeout: Duration(
-          milliseconds: ApiConstants.presenceTimeoutDuration,
-        ),
-      ),
-    );
-
     _presenceDio.interceptors.add(
       InterceptorsWrapper(
         onError: (DioException error, ErrorInterceptorHandler handler) {
@@ -87,44 +48,10 @@ class ApiService {
     );
   }
 
-  bool get _usesBackendApiRest {
-    return ApiConstants.useBackendApiRest;
-  }
-
-  bool get usesBackendApiRest => _usesBackendApiRest;
-
-  bool get _skipApiRestAttendanceUpload {
-    // El modo debug ya no se decide en el cliente. El backend principal
-    // responde con data.debug=true cuando guarda solo para reportes.
-    return false;
-  }
-
   Future<Either<String, LoginResponse>> loginProfesor({
     required String email,
     required String password,
-  }) async {
-    if (_usesBackendApiRest) {
-      return _loginProfesorViaBackendApiRest(email: email, password: password);
-    }
-
-    try {
-      Logger.info('Intentando login contra backend principal para: $email');
-
-      final response = await _presenceDio.post(
-        ApiConstants.login,
-        data: {'institutionalEmail': email, 'encryptedPassword': password},
-      );
-
-      return Right(LoginResponse.fromJson(response.data));
-    } on DioException catch (e) {
-      final errorMessage = _handleDioError(e);
-      Logger.error('Error de conexion en login: $errorMessage', e);
-      return Left(errorMessage);
-    } catch (e, stackTrace) {
-      Logger.error('Error inesperado en login', e, stackTrace);
-      return Left(_cleanException(e));
-    }
-  }
+  }) => _loginProfesorViaBackendApiRest(email: email, password: password);
 
   Future<Either<String, LoginResponse>> _loginProfesorViaBackendApiRest({
     required String email,
@@ -149,11 +76,6 @@ class ApiService {
         return Left(message);
       }
 
-      final portalMessage = await _syncPortalHistory(
-        email: email,
-        password: password,
-      );
-
       final profesor = Profesor(
         id:
             parametros['Id_Plantilla_AdmonUAT']?.toString() ??
@@ -167,7 +89,7 @@ class ApiService {
 
       return Right(
         LoginResponse(
-          message: portalMessage,
+          message: message,
           profesor: profesor,
           token: sessionId,
           currentPeriod: ApiConstants.uatDefaultIdCiclo.toString(),
@@ -182,78 +104,6 @@ class ApiService {
       Logger.error('Error inesperado en login UAT', e, stackTrace);
       return Left(_cleanException(e));
     }
-  }
-
-  Future<Either<String, String>> syncPortalHistory({
-    required String email,
-    required String password,
-    bool force = false,
-  }) async {
-    if (!_usesBackendApiRest) {
-      return const Right(
-        'Los grupos se sincronizan desde el backend principal.',
-      );
-    }
-
-    try {
-      return Right(
-        await _syncPortalHistory(
-          email: email,
-          password: password,
-          force: force,
-        ),
-      );
-    } on DioException catch (error) {
-      final message = _handleDioError(error);
-      Logger.error(
-        'Error sincronizando historial con el portal: $message',
-        error,
-      );
-      return Left(message);
-    } catch (error, stackTrace) {
-      Logger.error(
-        'Error inesperado sincronizando historial con el portal',
-        error,
-        stackTrace,
-      );
-      return const Left(
-        'No pudimos sincronizar tus grupos con el portal. Inténtalo de nuevo.',
-      );
-    }
-  }
-
-  Future<String> _syncPortalHistory({
-    required String email,
-    required String password,
-    bool force = false,
-  }) async {
-    Logger.info('Sincronizando grupos con el backend principal: $email');
-    final loginResponse = await _mainBackendDio.post(
-      ApiConstants.login,
-      data: {'institutionalEmail': email, 'encryptedPassword': password},
-    );
-    final loginData = _asMap(loginResponse.data);
-    final mainToken = loginData['token']?.toString() ?? '';
-
-    if (mainToken.isEmpty) {
-      throw StateError('El backend principal no devolvió una sesión válida.');
-    }
-
-    await AuthStorageService().saveMainBackendToken(mainToken);
-
-    if (!force) {
-      return loginData['message']?.toString() ??
-          'Grupos sincronizados con el portal.';
-    }
-
-    final syncResponse = await _mainBackendDio.post(
-      ApiConstants.sync,
-      data: {'institutionalEmail': email, 'encryptedPassword': password},
-      options: Options(headers: {'Authorization': 'Bearer $mainToken'}),
-    );
-    final syncData = _asMap(syncResponse.data);
-    return syncData['message']?.toString() ??
-        'Grupos sincronizados con el portal.';
   }
 
   Future<String?> _refreshBackendApiRestSession() async {
@@ -294,47 +144,33 @@ class ApiService {
     return refreshedToken;
   }
 
+  Future<Either<String, bool>> logoutProfesor(String sessionId) async {
+    try {
+      final response = await _presenceDio.delete(
+        '${ApiConstants.uatSessions}/$sessionId',
+      );
+      return Right(_asMap(response.data)['deleted'] == true);
+    } on DioException catch (error) {
+      final message = _handleDioError(error);
+      Logger.error('No se pudo revocar la sesion remota: $message', error);
+      return Left(message);
+    } catch (error, stackTrace) {
+      Logger.error(
+        'Error inesperado revocando la sesion remota',
+        error,
+        stackTrace,
+      );
+      return Left(_cleanException(error));
+    }
+  }
+
   /// Obtiene las clases asignadas al profesor autenticado
-  /// Usa el backend principal como gateway hacia backend-apirest.
+  /// Usa el API Gateway como unica entrada a UAT Integration.
   /// Retorna tupla (grupos, beacons) donde beacons es la lista cruda del server
   Future<
     Either<String, ({List<Grupo> grupos, List<Map<String, dynamic>> beacons})>
   >
-  getGruposProfesor(String token) async {
-    if (_usesBackendApiRest) {
-      return _getGruposProfesorViaBackendApiRest(token);
-    }
-
-    try {
-      Logger.info('Obteniendo clases del profesor desde backend principal');
-
-      final response = await _presenceDio.get(
-        ApiConstants.classes,
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
-      );
-      final data = response.data['data'] as List<dynamic>? ?? [];
-      final beaconsData = response.data['beacons'] as List<dynamic>? ?? [];
-      final grupos = data
-          .map((item) => Grupo.fromJson(Map<String, dynamic>.from(item as Map)))
-          .toList();
-      final beacons = beaconsData
-          .map((item) => Map<String, dynamic>.from(item as Map))
-          .toList();
-
-      Logger.info(
-        'Clases obtenidas: ${grupos.length}, Beacons: ${beacons.length}',
-      );
-      final debugData = withDebugCurrentClass(grupos, beacons);
-      return Right(debugData);
-    } on DioException catch (e) {
-      final errorMessage = _handleDioError(e);
-      Logger.error('Error de conexión obteniendo clases: $errorMessage', e);
-      return Left(errorMessage);
-    } catch (e) {
-      Logger.error('Error inesperado obteniendo clases', e);
-      return Left('Error inesperado: ${e.toString()}');
-    }
-  }
+  getGruposProfesor(String token) => _getGruposProfesorViaBackendApiRest(token);
 
   Future<
     Either<String, ({List<Grupo> grupos, List<Map<String, dynamic>> beacons})>
@@ -599,50 +435,24 @@ class ApiService {
     return const [];
   }
 
-  /// Fuerza la sincronizacion de grupos desde el backend principal.
-  /// Endpoint: POST /professors/sync
-  Future<Either<String, String>> forceSync({
-    required String email,
-    required String encryptedPassword,
-    required String token,
-  }) async {
-    if (_usesBackendApiRest) {
-      final portalSync = await syncPortalHistory(
-        email: email,
-        password: encryptedPassword,
-        force: true,
+  /// Encola una nueva cosecha academica usando la sesion UAT vigente.
+  Future<Either<String, String>> forceSync({required String token}) async {
+    try {
+      final syncResponse = await _presenceDio.post(
+        ApiConstants.uatProfessorSync,
+        options: Options(headers: {'X-UAT-Session-Id': token}),
       );
-      if (portalSync.isLeft()) {
-        return Left(
-          portalSync.fold((error) => error, (_) => 'Error de sincronización'),
-        );
-      }
       final groups = await getGruposProfesor(token);
       return groups.fold(
         (error) => Left(error),
         (data) => Right(
-          '${portalSync.fold((_) => '', (message) => message)} '
+          '${_asMap(syncResponse.data)['message'] ?? 'Sincronizacion academica encolada.'} '
           '${data.grupos.length} clases cargadas.',
         ),
       );
-    }
-
-    try {
-      Logger.info('Sincronizando datos desde backend principal: $email');
-      final response = await _presenceDio.post(
-        ApiConstants.sync,
-        data: {
-          'institutionalEmail': email,
-          'encryptedPassword': encryptedPassword,
-        },
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
-      );
-      return Right(
-        response.data['message']?.toString() ?? 'Sincronización iniciada',
-      );
     } on DioException catch (e) {
       final errorMessage = _handleDioError(e);
-      Logger.error('Error de conexion en sincronizacion: $errorMessage', e);
+      Logger.error('Error encolando sincronizacion: $errorMessage', e);
       return Left(errorMessage);
     } catch (e, stackTrace) {
       Logger.error('Error inesperado en sincronizacion', e, stackTrace);
@@ -656,7 +466,7 @@ class ApiService {
         status: 'COMPLETED',
         step: 5,
         totalSteps: 5,
-        stepDescription: 'Datos disponibles desde backend principal',
+        stepDescription: 'Datos disponibles desde servicios academicos',
         percentage: 100,
         message: 'Sincronizacion completada',
         completedAt: DateTime.now(),
@@ -673,7 +483,7 @@ class ApiService {
       'step': 5,
       'totalSteps': 5,
       'percentage': 100,
-      'message': 'Datos disponibles desde backend principal',
+      'message': 'Datos disponibles desde servicios academicos',
       'retryAvailable': false,
     });
   }
@@ -685,7 +495,6 @@ class ApiService {
     required String period,
     required DateTime date,
     required List<Map<String, dynamic>> attendances,
-    required String encryptedPassword,
     String? groupName,
     String? classroom,
     String? level,
@@ -693,82 +502,22 @@ class ApiService {
     DateTime? professorEntryAt,
     DateTime? professorExitAt,
     String? groupId,
-    bool forceUpload = false,
   }) async {
-    if (_skipApiRestAttendanceUpload) {
-      return _uploadDebugAttendanceDirectlyToBackend(
-        token: token,
-        groupId: groupId,
-        code: code,
-        groupLetter: groupLetter,
-        period: period,
-        groupName: groupName,
-        classroom: classroom,
-        level: level,
-        schedule: schedule,
-        date: date,
-        attendances: attendances,
-        professorEntryAt: professorEntryAt,
-        professorExitAt: professorExitAt,
-      );
-    }
-
-    if (_usesBackendApiRest) {
-      return _uploadAttendanceViaBackendApiRest(
-        token: token,
-        groupId: groupId,
-        code: code,
-        groupLetter: groupLetter,
-        period: period,
-        groupName: groupName,
-        classroom: classroom,
-        level: level,
-        schedule: schedule,
-        date: date,
-        attendances: attendances,
-        professorEntryAt: professorEntryAt,
-        professorExitAt: professorExitAt,
-      );
-    }
-
-    try {
-      final response = await _presenceDio.post(
-        ApiConstants.attendance,
-        data: {
-          if (groupId != null && groupId.isNotEmpty) 'groupId': groupId,
-          'code': code,
-          'groupLetter': groupLetter,
-          'period': period,
-          'date':
-              '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
-          'encryptedPassword': encryptedPassword,
-          'forceUpload': forceUpload,
-          if (professorEntryAt != null)
-            'professorEntryAt': professorEntryAt.toIso8601String(),
-          if (professorExitAt != null)
-            'professorExitAt': professorExitAt.toIso8601String(),
-          'attendances': _normalizeAttendancesForBackend(attendances),
-        },
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
-      );
-
-      final responseMap = Map<String, dynamic>.from(response.data as Map);
-      final responseData = responseMap['data'];
-      if (responseData is Map && responseData['debug'] == true) {
-        responseMap['debug'] = true;
-        responseMap['skippedApiRestUpload'] = true;
-        responseMap['reportVisible'] = responseData['reportVisible'] == true;
-      }
-
-      return Right(responseMap);
-    } on DioException catch (e) {
-      final errorMessage = _handleDioError(e);
-      Logger.error('Error de conexion subiendo asistencia: $errorMessage', e);
-      return Left(errorMessage);
-    } catch (e, stackTrace) {
-      Logger.error('Error inesperado subiendo asistencia', e, stackTrace);
-      return Left(_cleanException(e));
-    }
+    return _uploadAttendanceViaBackendApiRest(
+      token: token,
+      groupId: groupId,
+      code: code,
+      groupLetter: groupLetter,
+      period: period,
+      groupName: groupName,
+      classroom: classroom,
+      level: level,
+      schedule: schedule,
+      date: date,
+      attendances: attendances,
+      professorEntryAt: professorEntryAt,
+      professorExitAt: professorExitAt,
+    );
   }
 
   /// Hands an entire set of pending attendance records to the durable server queue.
@@ -778,11 +527,6 @@ class ApiService {
     required String token,
     required List<Map<String, dynamic>> records,
   }) async {
-    if (!_usesBackendApiRest) {
-      return const Left(
-        'La cola durable requiere configurar PRESENCIA_API_BASE_URL con backend-apirest.',
-      );
-    }
     try {
       final response = await _presenceDio.post(
         ApiConstants.uatAttendanceBatches,
@@ -808,9 +552,6 @@ class ApiService {
     required String token,
     required String batchId,
   }) async {
-    if (!_usesBackendApiRest) {
-      return const Left('La cola durable no está disponible en este servidor.');
-    }
     try {
       final response = await _presenceDio.get(
         '${ApiConstants.uatAttendanceBatches}/$batchId',
@@ -820,101 +561,6 @@ class ApiService {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(_cleanException(e));
-    }
-  }
-
-  Future<Either<String, Map<String, dynamic>>>
-  _uploadDebugAttendanceDirectlyToBackend({
-    required String token,
-    String? groupId,
-    required String code,
-    String groupLetter = '',
-    String period = '',
-    String? groupName,
-    String? classroom,
-    String? level,
-    Map<String, String?>? schedule,
-    required DateTime date,
-    required List<Map<String, dynamic>> attendances,
-    DateTime? professorEntryAt,
-    DateTime? professorExitAt,
-    String? roomBeaconUuid,
-    int? roomBeaconRssi,
-    double? roomBeaconDistance,
-    String? roomBeaconAddress,
-  }) async {
-    try {
-      final profesor = AuthStorageService().getProfesor();
-      final professorEmail = profesor?.institutionalEmail ?? '';
-      if (professorEmail.isEmpty) {
-        return const Left(
-          'Modo debug: no hay profesor guardado para registrar reportes.',
-        );
-      }
-
-      final formattedDate =
-          '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-      final debugAttendances = _normalizeAttendancesForDebugBackend(
-        attendances,
-      );
-
-      Logger.info(
-        '[DEBUG] Registrando asistencia directamente en backend principal, '
-        'sin backend-apirest/UAT. groupId=$groupId, code=$code, '
-        'groupLetter=$groupLetter, period=$period, date=$formattedDate, '
-        'alumnos=${debugAttendances.length}, '
-        'professorEntryAt=${professorEntryAt?.toIso8601String()}, '
-        'professorExitAt=${professorExitAt?.toIso8601String()}',
-      );
-
-      final response = await _attendanceBackendDio.post(
-        '/internal/coordination/debug-attendance',
-        data: {
-          'professorEmail': professorEmail,
-          'professorName': profesor?.name,
-          'code': code,
-          'groupLetter': groupLetter,
-          'period': period,
-          if (groupName != null) 'groupName': groupName,
-          if (classroom != null) 'classroom': classroom,
-          if (level != null) 'level': level,
-          if (schedule != null) 'schedule': schedule,
-          'createMissingGroup': true,
-          'date': formattedDate,
-          if (professorEntryAt != null)
-            'professorEntryAt': professorEntryAt.toIso8601String(),
-          if (professorExitAt != null)
-            'professorExitAt': professorExitAt.toIso8601String(),
-          if (roomBeaconUuid != null) 'roomBeaconUuid': roomBeaconUuid,
-          if (roomBeaconRssi != null) 'roomBeaconRssi': roomBeaconRssi,
-          if (roomBeaconDistance != null)
-            'roomBeaconDistance': roomBeaconDistance,
-          if (roomBeaconAddress != null) 'roomBeaconAddress': roomBeaconAddress,
-          'attendances': debugAttendances,
-        },
-        options: Options(headers: {'X-Debug-Session-Id': token}),
-      );
-
-      final responseMap = _asMap(response.data);
-      responseMap['debug'] = true;
-      responseMap['skippedApiRestUpload'] = true;
-      responseMap['reportVisible'] = true;
-      return Right(responseMap);
-    } on DioException catch (e) {
-      final errorMessage = _handleDioError(e);
-      Logger.error(
-        'Error registrando asistencia debug en backend principal: '
-        '$errorMessage',
-        e,
-      );
-      return Left(errorMessage);
-    } catch (e, stackTrace) {
-      Logger.error(
-        'Error inesperado registrando asistencia debug en backend principal',
-        e,
-        stackTrace,
-      );
       return Left(_cleanException(e));
     }
   }
@@ -1025,9 +671,7 @@ class ApiService {
       }
       return Right(responseMap);
     } on DioException catch (e) {
-      if (e.response?.statusCode == 401 &&
-          retrySession &&
-          _usesBackendApiRest) {
+      if (e.response?.statusCode == 401 && retrySession) {
         final refreshedToken = await _refreshBackendApiRestSession();
         if (refreshedToken != null && refreshedToken.isNotEmpty) {
           Logger.info('Reintentando subida con sesion UAT renovada.');
@@ -1060,59 +704,6 @@ class ApiService {
     }
   }
 
-  List<Map<String, dynamic>> _normalizeAttendancesForBackend(
-    List<Map<String, dynamic>> attendances,
-  ) {
-    return attendances
-        .map((attendance) {
-          final rawStatus = attendance['status'];
-          final present = attendance['sn_asistencia'] == true;
-          return {
-            'studentId':
-                attendance['studentId']?.toString() ??
-                attendance['id']?.toString() ??
-                attendance['id_alumno']?.toString(),
-            'status': rawStatus?.toString() ?? (present ? 'PRESENT' : 'ABSENT'),
-          };
-        })
-        .where((attendance) {
-          final studentId = attendance['studentId']?.toString();
-          return studentId != null && studentId.isNotEmpty;
-        })
-        .toList();
-  }
-
-  List<Map<String, dynamic>> _normalizeAttendancesForDebugBackend(
-    List<Map<String, dynamic>> attendances,
-  ) {
-    const validStatuses = {'PRESENT', 'ABSENT', 'LATE', 'EXCUSED'};
-
-    return attendances
-        .map((attendance) {
-          final studentId =
-              attendance['studentId']?.toString() ??
-              attendance['id']?.toString() ??
-              attendance['matricula']?.toString() ??
-              attendance['id_alumno']?.toString() ??
-              attendance['idAlumno']?.toString();
-          if (studentId == null || studentId.isEmpty) return null;
-
-          final rawStatus = attendance['status']?.toString().toUpperCase();
-          final status = rawStatus != null && validStatuses.contains(rawStatus)
-              ? rawStatus
-              : (attendance['sn_asistencia'] == true ||
-                    attendance['snAsistencia'] == true ||
-                    attendance['present'] == true ||
-                    attendance['isPresent'] == true)
-              ? 'PRESENT'
-              : 'ABSENT';
-
-          return {'studentId': studentId, 'status': status};
-        })
-        .whereType<Map<String, dynamic>>()
-        .toList();
-  }
-
   Future<Map<String, bool>> checkSyncedRecords({
     required String token,
     required List<Map<String, String>> records,
@@ -1131,50 +722,30 @@ class ApiService {
     if (records.isEmpty) return {};
 
     try {
-      if (_usesBackendApiRest) {
-        final recordsWithIds = records
-            .where((record) => record['clientRecordId']?.isNotEmpty == true)
-            .toList();
-        if (recordsWithIds.isEmpty) return {};
-        final response = await _presenceDio.post(
-          ApiConstants.uatAttendanceRecordStatuses,
-          data: {
-            'clientRecordIds': recordsWithIds
-                .map((record) => record['clientRecordId'])
-                .toList(),
-          },
-          options: Options(headers: {'X-UAT-Session-Id': token}),
-        );
-        final data = _asMap(response.data)['data'] as List<dynamic>? ?? [];
-        final lookupKeys = {
-          for (final record in recordsWithIds)
-            record['clientRecordId']!: '${record['groupId']}_${record['date']}',
-        };
-        final statuses = <String, String>{};
-        for (final item in data) {
-          final map = Map<String, dynamic>.from(item as Map);
-          final lookupKey = lookupKeys[map['clientRecordId']?.toString()];
-          final status = map['status']?.toString();
-          if (lookupKey != null && status != null) statuses[lookupKey] = status;
-        }
-        return statuses;
-      }
-
+      final recordsWithIds = records
+          .where((record) => record['clientRecordId']?.isNotEmpty == true)
+          .toList();
+      if (recordsWithIds.isEmpty) return {};
       final response = await _presenceDio.post(
-        '/attendance/check-synced',
-        data: {'records': records},
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
+        ApiConstants.uatAttendanceRecordStatuses,
+        data: {
+          'clientRecordIds': recordsWithIds
+              .map((record) => record['clientRecordId'])
+              .toList(),
+        },
+        options: Options(headers: {'X-UAT-Session-Id': token}),
       );
-
-      final data = response.data['data'] as List<dynamic>? ?? [];
+      final data = _asMap(response.data)['data'] as List<dynamic>? ?? [];
+      final lookupKeys = {
+        for (final record in recordsWithIds)
+          record['clientRecordId']!: '${record['groupId']}_${record['date']}',
+      };
       final statuses = <String, String>{};
       for (final item in data) {
         final map = Map<String, dynamic>.from(item as Map);
-        final groupId = map['groupId']?.toString();
-        final date = map['date']?.toString();
+        final lookupKey = lookupKeys[map['clientRecordId']?.toString()];
         final status = map['status']?.toString();
-        if (groupId == null || date == null || status == null) continue;
-        statuses['${groupId}_$date'] = status;
+        if (lookupKey != null && status != null) statuses[lookupKey] = status;
       }
       return statuses;
     } catch (e, stackTrace) {
@@ -1221,7 +792,7 @@ class ApiService {
       if (normalizedClassrooms.isEmpty) return const Right([]);
 
       Logger.info(
-        'Resolviendo beacons en backend principal para ${normalizedClassrooms.length} salones',
+        'Resolviendo beacons mediante Attendance para ${normalizedClassrooms.length} salones',
       );
 
       final uatSessionId = AuthStorageService().getToken();
@@ -1335,30 +906,6 @@ class ApiService {
     String? bluetoothAddress,
   }) async {
     try {
-      if (_skipApiRestAttendanceUpload) {
-        Logger.info(
-          '[DEBUG] Registrando entrada del profesor directamente en backend principal, sin backend-apirest/UAT. '
-          'code=$code groupLetter=$groupLetter period=$period detectedAt=${detectedAt.toIso8601String()} beaconUuid=$beaconUuid',
-        );
-        return _uploadDebugAttendanceDirectlyToBackend(
-          token: token,
-          code: code,
-          groupLetter: groupLetter,
-          period: period,
-          groupName: groupName,
-          classroom: classroom,
-          level: level,
-          schedule: schedule,
-          date: detectedAt,
-          attendances: const [],
-          professorEntryAt: detectedAt,
-          roomBeaconUuid: beaconUuid,
-          roomBeaconRssi: rssi,
-          roomBeaconDistance: distance,
-          roomBeaconAddress: bluetoothAddress,
-        );
-      }
-
       final response = await _presenceDio.post(
         ApiConstants.uatPresenceEntry,
         data: {

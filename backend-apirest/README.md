@@ -185,6 +185,7 @@ Endpoints incluidos:
 GET    /health
 POST   /api/uat/sessions
 DELETE /api/uat/sessions/{sessionId}
+POST   /api/uat/profesor/sync
 GET    /api/uat/profesor/consultas/horarios
 GET    /api/uat/profesor/consultas/examenes
 POST   /api/uat/profesor/consultas/snapshot
@@ -228,10 +229,11 @@ src/presentation    Controladores, hooks Fastify, schemas Zod y rutas
 ## Cosecha incremental para coordinacion
 
 Cada `POST /api/uat/sessions` exitoso publica un evento durable de profesor
-autenticado. El consumidor idempotente reutiliza la sesión UAT, descubre
-ciclos/DES y envía snapshots diferenciales a Academic Service. Academic hace
-`upsert`, desactiva lo ausente sin borrar historial y publica los cambios por
-outbox para Attendance y Coordination Query.
+autenticado. `POST /api/uat/profesor/sync` permite volver a publicarlo con la
+sesión vigente, sin recibir de nuevo la contraseña. El consumidor idempotente
+reutiliza la sesión UAT, descubre ciclos/DES y envía snapshots diferenciales a
+Academic Service. Academic hace `upsert`, desactiva lo ausente sin borrar
+historial y publica los cambios por outbox para Attendance y Coordination Query.
 
 Configura `DATABASE_URL` con la conexion PostgreSQL. Para desarrollo, crea o
 actualiza el esquema y genera el cliente con:
