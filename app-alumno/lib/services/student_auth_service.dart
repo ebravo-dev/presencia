@@ -28,12 +28,14 @@ class StudentInfoSyncResult {
   final int partialGradesCount;
   final int finalGradesCount;
   final DateTime syncedAt;
+  final StudentAcademicProfile? profile;
 
   const StudentInfoSyncResult({
     required this.schedule,
     required this.partialGradesCount,
     required this.finalGradesCount,
     required this.syncedAt,
+    this.profile,
   });
 
   int get scheduleCount => schedule.length;
@@ -54,6 +56,23 @@ class StudentAuthService {
   static const Duration _timeout = Duration(
     milliseconds: AppEnvironment.apiTimeoutMs,
   );
+  static const Duration _onlineCheckTimeout = Duration(seconds: 5);
+
+  Future<bool> isServerOnline() async {
+    final client = HttpClient()..connectionTimeout = _onlineCheckTimeout;
+    try {
+      final uri = Uri.parse(baseUrl).resolve('/health/live');
+      final request = await client.getUrl(uri).timeout(_onlineCheckTimeout);
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      final response = await request.close().timeout(_onlineCheckTimeout);
+      await response.drain<void>().timeout(_onlineCheckTimeout);
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (_) {
+      return false;
+    } finally {
+      client.close(force: true);
+    }
+  }
 
   Future<StudentAuthResult> loginAndBind({
     required String username,
@@ -96,6 +115,7 @@ class StudentAuthService {
     String? sessionId,
   }) async {
     var activeSessionId = sessionId?.trim() ?? '';
+    StudentAcademicProfile? refreshedProfile;
     if (activeSessionId.isEmpty) {
       final credentials = await storage.readInstitutionalCredentials();
       if (credentials == null) {
@@ -116,6 +136,15 @@ class StudentAuthService {
           'No pudimos actualizar tus datos de UAT. Inténtalo de nuevo.',
         );
       }
+
+      final sessionMatricula = _extractMatricula(session);
+      refreshedProfile = StudentAcademicProfile.fromSessionResponse(
+        session,
+        matricula: sessionMatricula.isEmpty
+            ? storage.matricula
+            : sessionMatricula,
+        institutionalEmail: credentials.username,
+      );
 
       final refreshedBindingToken = session['deviceBindingToken']?.toString();
       if (refreshedBindingToken != null && refreshedBindingToken.isNotEmpty) {
@@ -141,6 +170,7 @@ class StudentAuthService {
         partialGradesCount: responses[1].length,
         finalGradesCount: responses[2].length,
         syncedAt: DateTime.now(),
+        profile: refreshedProfile,
       );
     } finally {
       await _deleteStudentSession(activeSessionId);

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/attendance_confirmation.dart';
 import '../models/student_academic_profile.dart';
 import '../models/student_schedule_entry.dart';
 import '../services/attendance_session_service.dart';
@@ -25,6 +26,7 @@ class HomeScreen extends StatefulWidget {
     required this.demoMode,
     required this.themeMode,
     required this.onThemeModeChanged,
+    this.studentAuth,
   });
 
   final LocalStorageService storage;
@@ -36,6 +38,7 @@ class HomeScreen extends StatefulWidget {
   final bool demoMode;
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
+  final StudentAuthService? studentAuth;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -45,18 +48,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   AdvertiserState _advertiserState = AdvertiserState.idle;
   AttendanceSessionState _attendanceState = AttendanceSessionState.idle;
   StreamSubscription<AdvertiserState>? _advertiserSubscription;
-  StreamSubscription<String>? _confirmationSubscription;
+  StreamSubscription<AttendanceConfirmation>? _confirmationSubscription;
   StreamSubscription<AttendanceSessionSnapshot>? _attendanceSubscription;
   int _selectedTab = 0;
   int _selectedClass = 0;
   int _historyCount = 0;
   bool _isSyncingDeviceBinding = false;
   bool _isSyncingAcademicInfo = false;
+  bool _isManualSyncing = false;
+  bool _isCheckingServer = false;
   List<StudentScheduleEntry> _schedule = const [];
   String? _academicSyncError;
   String? _pendingUatSessionId;
   String? _confirmationId;
-  final _studentAuth = StudentAuthService();
+  AttendanceConfirmation? _confirmation;
+  DateTime? _lastSuccessfulSync;
+  late StudentAcademicProfile _profile;
+  late final StudentAuthService _studentAuth;
 
   bool get _isActive => _advertiserState == AdvertiserState.advertising;
   bool get _isChecking =>
@@ -74,6 +82,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _profile = widget.profile;
+    _studentAuth = widget.studentAuth ?? StudentAuthService();
     _historyCount = widget.storage.attendanceHistoryCount;
     _pendingUatSessionId = widget.initialUatSessionId;
     _advertiserState = widget.bleService.currentState;
@@ -91,16 +101,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     });
     _confirmationSubscription = widget.bleService.confirmationStream.listen((
-      _,
+      confirmation,
     ) {
+      if (!confirmation.isConfirmed) return;
       if (!mounted) return;
       final id = DateTime.now().microsecondsSinceEpoch.toString();
-      setState(() => _confirmationId = id);
-      unawaited(_saveAttendance());
+      setState(() {
+        _confirmationId = id;
+        _confirmation = confirmation;
+      });
+      unawaited(_saveAttendance(confirmation));
       unawaited(widget.attendanceSession.stop());
       Future<void>.delayed(const Duration(seconds: 5), () {
         if (mounted && _confirmationId == id) {
-          setState(() => _confirmationId = null);
+          setState(() {
+            _confirmationId = null;
+            _confirmation = null;
+          });
         }
       });
     });
@@ -145,6 +162,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         _schedule = result.schedule;
         _selectedClass = 0;
+        _lastSuccessfulSync = result.syncedAt;
+        if (result.profile != null) _profile = result.profile!;
       });
     } on StudentAuthException catch (error) {
       if (mounted) setState(() => _academicSyncError = error.message);
@@ -161,8 +180,67 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _saveAttendance() async {
-    await widget.storage.addAttendanceHistoryEntry(DateTime.now());
+  Future<void> _syncFromServer() async {
+    if (_isManualSyncing || _isSyncingAcademicInfo) return;
+
+    setState(() {
+      _isManualSyncing = true;
+      _isCheckingServer = true;
+    });
+
+    try {
+      final online = await _studentAuth.isServerOnline();
+      if (!mounted) return;
+      setState(() => _isCheckingServer = false);
+
+      if (!online) {
+        _showSyncFeedback(
+          'Sin conexión con el servidor. Revisa tu internet e inténtalo de nuevo.',
+          isError: true,
+        );
+        return;
+      }
+
+      await _syncAcademicInfo();
+      if (!mounted) return;
+      if (_academicSyncError != null) {
+        _showSyncFeedback(_academicSyncError!, isError: true);
+        return;
+      }
+
+      await _syncDeviceBinding();
+      if (!mounted) return;
+      _showSyncFeedback('Tu perfil y horario están actualizados.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isManualSyncing = false;
+          _isCheckingServer = false;
+        });
+      }
+    }
+  }
+
+  void _showSyncFeedback(String message, {bool isError = false}) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
+      ),
+    );
+  }
+
+  Future<void> _saveAttendance(AttendanceConfirmation confirmation) async {
+    await widget.storage.addAttendanceHistoryEntry(
+      DateTime.now(),
+      classId: confirmation.classId,
+      className: confirmation.className,
+      group: confirmation.group,
+      classroom: confirmation.classroom,
+    );
     if (mounted) {
       setState(() => _historyCount = widget.storage.attendanceHistoryCount);
     }
@@ -206,6 +284,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         isActive: _isActive,
         isChecking: _isChecking,
         confirmed: _confirmed,
+        confirmedClassName: _confirmation?.classDisplayName,
         hasError: _hasError,
         onSelectClass: (index) => setState(() => _selectedClass = index),
         onRegister: _toggleAttendance,
@@ -217,10 +296,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onRetry: _syncAcademicInfo,
       ),
       _ProfilePage(
-        profile: widget.profile,
+        profile: _profile,
         themeMode: widget.themeMode,
         onThemeModeChanged: widget.onThemeModeChanged,
         onOpenHistory: _openHistory,
+        onSync: _syncFromServer,
+        isSyncing: _isManualSyncing || _isSyncingAcademicInfo,
+        isCheckingServer: _isCheckingServer,
+        lastSyncedAt: _lastSuccessfulSync,
       ),
     ];
     return Scaffold(
@@ -258,7 +341,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       bottomNavigationBar: SafeArea(
         top: false,
-        child: Center(
+        child: Align(
+          heightFactor: 1,
+          alignment: Alignment.center,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 430),
             child: _BottomNav(
@@ -281,6 +366,7 @@ class _AttendancePage extends StatelessWidget {
     required this.isActive,
     required this.isChecking,
     required this.confirmed,
+    required this.confirmedClassName,
     required this.hasError,
     required this.onSelectClass,
     required this.onRegister,
@@ -290,6 +376,7 @@ class _AttendancePage extends StatelessWidget {
   final List<StudentScheduleEntry> schedule;
   final bool scheduleLoading;
   final bool isActive, isChecking, confirmed, hasError;
+  final String? confirmedClassName;
   final ValueChanged<int> onSelectClass;
   final VoidCallback onRegister;
 
@@ -308,7 +395,7 @@ class _AttendancePage extends StatelessWidget {
         ? 'Intentar de nuevo'
         : 'Registrar asistencia';
     final buttonDetail = confirmed
-        ? 'Tu asistencia quedó confirmada'
+        ? 'Confirmada en ${confirmedClassName ?? 'tu clase'}'
         : isChecking
         ? 'Verificando disponibilidad'
         : isActive
@@ -436,6 +523,49 @@ class _AttendancePage extends StatelessWidget {
                 ),
               ),
             ),
+          if (confirmed) ...[
+            const SliverToBoxAdapter(child: SizedBox(height: 22)),
+            SliverToBoxAdapter(
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: AppColors.success.withValues(alpha: .32),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.verified_rounded,
+                      color: AppColors.success,
+                      size: 30,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Asistencia tomada correctamente',
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            confirmedClassName ?? 'Clase confirmada',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: AppColors.success),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SliverToBoxAdapter(child: SizedBox(height: 30)),
           SliverToBoxAdapter(
             child: Semantics(
@@ -586,11 +716,19 @@ class _ProfilePage extends StatelessWidget {
     required this.themeMode,
     required this.onThemeModeChanged,
     required this.onOpenHistory,
+    required this.onSync,
+    required this.isSyncing,
+    required this.isCheckingServer,
+    required this.lastSyncedAt,
   });
   final StudentAcademicProfile profile;
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
   final VoidCallback onOpenHistory;
+  final VoidCallback onSync;
+  final bool isSyncing;
+  final bool isCheckingServer;
+  final DateTime? lastSyncedAt;
   @override
   Widget build(BuildContext context) {
     final initials = profile.displayName.trim().isEmpty
@@ -613,68 +751,65 @@ class _ProfilePage extends StatelessWidget {
           ),
           const SizedBox(height: 22),
           Card(
-            child: SizedBox(
-              height: 190,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 72,
-                          height: 72,
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary,
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            initials,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 22,
-                            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          initials,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 22,
                           ),
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                profile.displayName,
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                profile.programName ??
-                                    'Programa académico no disponible',
-                                style: Theme.of(context).textTheme.bodyMedium,
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Matrícula ${profile.matricula}',
-                                style: Theme.of(context).textTheme.labelSmall,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton.icon(
-                        onPressed: onOpenHistory,
-                        icon: const Icon(Icons.history_rounded),
-                        label: const Text('Ver historial'),
                       ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              profile.displayName,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              profile.programName ??
+                                  'Programa académico no disponible',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Matrícula ${profile.matricula}',
+                              style: Theme.of(context).textTheme.labelSmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: onOpenHistory,
+                      icon: const Icon(Icons.history_rounded),
+                      label: const Text('Ver historial'),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -712,6 +847,46 @@ class _ProfilePage extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Card(
+            child: ListTile(
+              enabled: !isSyncing,
+              onTap: isSyncing ? null : onSync,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 8,
+              ),
+              leading: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.cloud_sync_outlined,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+              title: const Text('Sincronizar con el servidor'),
+              subtitle: Text(
+                isCheckingServer
+                    ? 'Verificando conexión…'
+                    : isSyncing
+                    ? 'Actualizando perfil y horario…'
+                    : _lastSyncLabel(lastSyncedAt),
+              ),
+              trailing: isSyncing
+                  ? const SizedBox.square(
+                      dimension: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2.4),
+                    )
+                  : const Icon(Icons.refresh_rounded),
             ),
           ),
           const SizedBox(height: 18),
@@ -1093,6 +1268,17 @@ String _academicSummary(StudentAcademicProfile profile) {
     details.add('${profile.approvedCredits} créditos aprobados');
   }
   return details.isEmpty ? 'No disponible en UAT' : details.join(' · ');
+}
+
+String _lastSyncLabel(DateTime? syncedAt) {
+  if (syncedAt == null) {
+    return 'Comprueba la conexión y actualiza tu perfil y horario';
+  }
+
+  final local = syncedAt.toLocal();
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return 'Última sincronización: $hour:$minute';
 }
 
 class _EmptySchedule extends StatelessWidget {

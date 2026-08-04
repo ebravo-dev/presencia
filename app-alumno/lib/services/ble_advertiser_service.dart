@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../models/attendance_confirmation.dart';
+
 /// State of the BLE advertiser
 enum AdvertiserState { idle, advertising, bluetoothOff, error }
 
@@ -15,8 +17,10 @@ class BleAdvertiserService {
   final _stateController = StreamController<AdvertiserState>.broadcast();
   Stream<AdvertiserState> get stateStream => _stateController.stream;
 
-  final _confirmController = StreamController<String>.broadcast();
-  Stream<String> get confirmationStream => _confirmController.stream;
+  final _confirmController =
+      StreamController<AttendanceConfirmation>.broadcast();
+  Stream<AttendanceConfirmation> get confirmationStream =>
+      _confirmController.stream;
 
   AdvertiserState _currentState = AdvertiserState.idle;
   AdvertiserState get currentState => _currentState;
@@ -115,7 +119,7 @@ class BleAdvertiserService {
       case 'onAttendanceConfirmed':
         final message = call.arguments as String? ?? '';
         debugPrint('[BLE] Attendance confirmed: $message');
-        _confirmController.add(message);
+        _confirmController.add(AttendanceConfirmation.fromGattMessage(message));
         break;
 
       case 'onBeaconDetected':

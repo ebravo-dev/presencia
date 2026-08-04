@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
@@ -33,6 +34,33 @@ class StudentAttendanceDetection {
   }
 }
 
+/// Context that the professor app sends back only after a student UUID has
+/// been matched against the roster of the group currently taking attendance.
+class StudentAttendanceClassContext {
+  final String classId;
+  final String className;
+  final String group;
+  final String classroom;
+
+  const StudentAttendanceClassContext({
+    required this.classId,
+    required this.className,
+    required this.group,
+    required this.classroom,
+  });
+
+  String toGattPayload() {
+    return jsonEncode({
+      'v': 1,
+      's': 'confirmed',
+      'id': classId,
+      'name': className,
+      'group': group,
+      'room': classroom,
+    });
+  }
+}
+
 class StudentAttendanceBleService {
   static const _method = MethodChannel('com.presencia/student_attendance_ble');
   static const _events = EventChannel(
@@ -52,10 +80,14 @@ class StudentAttendanceBleService {
     });
   }
 
-  Future<bool> startScanning({required List<String> uuids}) async {
+  Future<bool> startScanning({
+    required List<String> uuids,
+    required StudentAttendanceClassContext classContext,
+  }) async {
     if (uuids.isEmpty) return false;
     final result = await _method.invokeMethod<bool>('startScanning', {
       'uuids': uuids,
+      'confirmationPayload': classContext.toGattPayload(),
     });
     return result == true;
   }

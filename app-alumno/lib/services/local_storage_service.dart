@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,6 +19,12 @@ class StudentStoredCredentials {
 
 /// Local storage for student profile
 class LocalStorageService {
+  LocalStorageService();
+
+  @visibleForTesting
+  LocalStorageService.withProfileBox(Box<dynamic> profileBox)
+    : _profile = profileBox;
+
   static const String _profileBox = 'student_profile';
   static const String _attendanceHistoryKey = 'attendance_history';
   static const int _maxAttendanceHistoryEntries = 200;
@@ -81,9 +88,24 @@ class LocalStorageService {
 
   int get attendanceHistoryCount => attendanceHistory.length;
 
-  Future<void> addAttendanceHistoryEntry(DateTime recordedAt) async {
-    final entries = attendanceHistory
-      ..insert(0, AttendanceHistoryEntry(recordedAt: recordedAt));
+  Future<void> addAttendanceHistoryEntry(
+    DateTime recordedAt, {
+    String? classId,
+    String? className,
+    String? group,
+    String? classroom,
+  }) async {
+    final entries = attendanceHistory.toList()
+      ..insert(
+        0,
+        AttendanceHistoryEntry(
+          recordedAt: recordedAt,
+          classId: classId,
+          className: className,
+          group: group,
+          classroom: classroom,
+        ),
+      );
 
     await _profile.put(
       _attendanceHistoryKey,

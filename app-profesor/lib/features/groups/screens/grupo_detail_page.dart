@@ -91,6 +91,11 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   Map<String, String> _studentKeyByBeaconUuid = {};
   List<String> _studentBeaconScanUuids = [];
   final Set<String> _detectedStudentBeaconUuids = {};
+  final Set<String> _automaticallyDetectedStudentKeys = {};
+  bool _studentScanTimerEnabled = false;
+  Duration _studentScanDuration = const Duration(minutes: 5);
+  DateTime? _studentScanEndsAt;
+  Timer? _studentScanCountdownTimer;
 
   // Timer para actualizar la hora
   Timer? _timer;
@@ -243,6 +248,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     _scrollController.dispose();
     _bleBeaconService.dispose();
     _studentBeaconSubscription?.cancel();
+    _studentScanCountdownTimer?.cancel();
     _studentBeaconService.stopScanning();
     super.dispose();
   }
@@ -1277,6 +1283,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         _asistencias.addAll(
           _normalizarAsistencias(registro.asistenciasAlumnos),
         );
+        _automaticallyDetectedStudentKeys.clear();
+        _detectedStudentBeaconUuids.clear();
       });
 
       // Actualizar el nombre de la clase si está vacío (asistencias antiguas)
@@ -1291,6 +1299,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         _entradaProfesor = null;
         _salidaProfesor = null;
         _asistencias.clear();
+        _automaticallyDetectedStudentKeys.clear();
+        _detectedStudentBeaconUuids.clear();
       });
     }
   }
@@ -1750,6 +1760,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     return _esDiaDeClase();
   }
 
+  bool _puedeEscanearAlumnos() {
+    return _esFechaHoy() && _esDiaDeClase();
+  }
+
   bool _puedeSubirAsistencia() {
     final tieneAsistenciaProfesor =
         _entradaProfesor != null && _salidaProfesor != null;
@@ -1838,10 +1852,12 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   Future<void> _startStudentBeaconScan() async {
     if (_isStudentBeaconScanning || _isLoadingStudentBeaconBindings) return;
 
-    if (!_puedeMarcarAsistenciaAlumnos()) {
+    if (!_puedeEscanearAlumnos()) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No se puede pasar lista en este día.'),
+          content: Text(
+            'La detección Bluetooth solo está disponible para la clase de hoy.',
+          ),
           backgroundColor: Colors.orange,
         ),
       );
@@ -1889,7 +1905,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
     await _studentBeaconSubscription?.cancel();
     _studentKeyByBeaconUuid = bindings;
-    _detectedStudentBeaconUuids.clear();
     _studentBeaconSubscription = _studentBeaconService.detectionsStream.listen(
       _handleStudentBeaconDetections,
     );
@@ -1899,6 +1914,12 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     try {
       started = await _studentBeaconService.startScanning(
         uuids: _studentBeaconScanUuids,
+        classContext: StudentAttendanceClassContext(
+          classId: widget.grupo.id,
+          className: widget.grupo.name,
+          group: widget.grupo.groupLetter ?? widget.grupo.grupoLetra,
+          classroom: widget.grupo.classroom,
+        ),
       );
     } on PlatformException catch (error) {
       Logger.info(
@@ -1931,6 +1952,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       _isStudentBeaconScanning = started;
     });
 
+    if (started) {
+      _startStudentScanCountdownIfNeeded();
+    }
+
     if (!started) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1943,7 +1968,31 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     }
   }
 
-  Future<void> _stopStudentBeaconScan() async {
+  void _startStudentScanCountdownIfNeeded() {
+    _studentScanCountdownTimer?.cancel();
+    if (!_studentScanTimerEnabled) {
+      _studentScanEndsAt = null;
+      return;
+    }
+
+    _studentScanEndsAt = DateTime.now().add(_studentScanDuration);
+    _studentScanCountdownTimer = Timer.periodic(const Duration(seconds: 1), (
+      timer,
+    ) {
+      final endsAt = _studentScanEndsAt;
+      if (endsAt == null || !DateTime.now().isBefore(endsAt)) {
+        timer.cancel();
+        unawaited(_stopStudentBeaconScan(showTimerFeedback: true));
+        return;
+      }
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<void> _stopStudentBeaconScan({bool showTimerFeedback = false}) async {
+    _studentScanCountdownTimer?.cancel();
+    _studentScanCountdownTimer = null;
+    _studentScanEndsAt = null;
     await _studentBeaconSubscription?.cancel();
     _studentBeaconSubscription = null;
     await _studentBeaconService.stopScanning();
@@ -1957,6 +2006,15 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     } else {
       _isStudentBeaconScanning = false;
       _isLoadingStudentBeaconBindings = false;
+    }
+
+    if (showTimerFeedback && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('El tiempo de detección terminó.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -1973,6 +2031,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       if (studentKey == null) continue;
       if (!_detectedStudentBeaconUuids.add(normalized)) continue;
       updates[studentKey] = true;
+      _automaticallyDetectedStudentKeys.add(studentKey);
     }
 
     if (updates.isEmpty) return;
@@ -2215,6 +2274,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     );
 
     if (pickedDate != null) {
+      if (_isStudentBeaconScanning) {
+        await _stopStudentBeaconScan();
+        if (!mounted) return;
+      }
       // Solo actualizar la fecha, mantener la hora actual
       setState(() {
         _selectedDateTime = DateTime(
@@ -2232,13 +2295,13 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
   Widget _buildStudentBeaconScanControls() {
     final palette = context.uatPalette;
-    final detectedCount = _detectedStudentBeaconUuids.length;
+    final detectedCount = _automaticallyDetectedStudentKeys.length;
     final linkedCount = _studentKeyByBeaconUuid.isNotEmpty
         ? _studentKeyByBeaconUuid.length
         : widget.grupo.students
               .where((alumno) => alumno.beaconUuid?.isNotEmpty ?? false)
               .length;
-    final canScan = _puedeMarcarAsistenciaAlumnos();
+    final canScan = _puedeEscanearAlumnos();
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -2258,99 +2321,237 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           ),
         ],
       ),
-      child: Row(
+      child: Column(
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: widget.gradientColors[0].withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              _isStudentBeaconScanning
-                  ? Icons.bluetooth_searching_rounded
-                  : Icons.bluetooth_connected_rounded,
-              color: widget.gradientColors[0],
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _isStudentBeaconScanning
-                      ? 'Detectando alumnos'
-                      : 'Beacons de alumnos',
-                  style: TextStyle(
-                    color: palette.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  _isStudentBeaconScanning
-                      ? '$detectedCount detectados de $linkedCount vinculados'
-                      : '$linkedCount alumnos con UUID vinculado',
-                  style: TextStyle(
-                    color: palette.textSecondary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          if (_isLoadingStudentBeaconBindings)
-            SizedBox(
-              width: 34,
-              height: 34,
-              child: CircularProgressIndicator(
-                strokeWidth: 3,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  widget.gradientColors[0],
-                ),
-              ),
-            )
-          else
-            FilledButton.icon(
-              onPressed: canScan
-                  ? (_isStudentBeaconScanning
-                        ? _stopStudentBeaconScan
-                        : _startStudentBeaconScan)
-                  : null,
-              icon: Icon(
-                _isStudentBeaconScanning
-                    ? Icons.stop_rounded
-                    : Icons.sensors_rounded,
-                size: 18,
-              ),
-              label: Text(_isStudentBeaconScanning ? 'Parar' : 'Escanear'),
-              style: FilledButton.styleFrom(
-                backgroundColor: _isStudentBeaconScanning
-                    ? Colors.red.shade600
-                    : widget.gradientColors[0],
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: widget.gradientColors[0].withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(10),
                 ),
+                child: Icon(
+                  _isStudentBeaconScanning
+                      ? Icons.bluetooth_searching_rounded
+                      : Icons.bluetooth_connected_rounded,
+                  color: widget.gradientColors[0],
+                  size: 24,
+                ),
               ),
-            ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _isStudentBeaconScanning
+                          ? 'Detectando alumnos'
+                          : 'Beacons de alumnos',
+                      style: TextStyle(
+                        color: palette.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      _isStudentBeaconScanning
+                          ? '$detectedCount detectados de $linkedCount vinculados'
+                          : '$linkedCount alumnos con UUID vinculado',
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              if (_isLoadingStudentBeaconBindings)
+                SizedBox(
+                  width: 34,
+                  height: 34,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      widget.gradientColors[0],
+                    ),
+                  ),
+                )
+              else
+                FilledButton.icon(
+                  onPressed: canScan
+                      ? (_isStudentBeaconScanning
+                            ? _stopStudentBeaconScan
+                            : _startStudentBeaconScan)
+                      : null,
+                  icon: Icon(
+                    _isStudentBeaconScanning
+                        ? Icons.stop_rounded
+                        : Icons.sensors_rounded,
+                    size: 18,
+                  ),
+                  label: Text(_isStudentBeaconScanning ? 'Parar' : 'Escanear'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _isStudentBeaconScanning
+                        ? Colors.red.shade600
+                        : widget.gradientColors[0],
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Divider(height: 1, color: palette.border),
+          const SizedBox(height: 10),
+          if (_isStudentBeaconScanning)
+            _buildActiveScanTimer(palette)
+          else
+            _buildScanTimerSettings(palette),
         ],
       ),
     );
   }
 
+  Widget _buildScanTimerSettings(UATPalette palette) {
+    const minuteOptions = [1, 2, 5, 10, 15];
+    return Row(
+      children: [
+        Switch.adaptive(
+          value: _studentScanTimerEnabled,
+          activeTrackColor: widget.gradientColors[0],
+          onChanged: (value) {
+            setState(() => _studentScanTimerEnabled = value);
+          },
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Detener automáticamente',
+            style: TextStyle(
+              color: palette.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        if (_studentScanTimerEnabled)
+          DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: _studentScanDuration.inMinutes,
+              dropdownColor: palette.surfaceElevated,
+              style: TextStyle(
+                color: palette.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+              items: minuteOptions
+                  .map(
+                    (minutes) => DropdownMenuItem(
+                      value: minutes,
+                      child: Text('$minutes min'),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: (minutes) {
+                if (minutes == null) return;
+                setState(
+                  () => _studentScanDuration = Duration(minutes: minutes),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildActiveScanTimer(UATPalette palette) {
+    final endsAt = _studentScanEndsAt;
+    if (endsAt == null) {
+      return Row(
+        children: [
+          Icon(
+            Icons.timer_off_outlined,
+            size: 18,
+            color: palette.textSecondary,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Escaneo sin límite de tiempo',
+            style: TextStyle(color: palette.textSecondary, fontSize: 13),
+          ),
+        ],
+      );
+    }
+
+    final remaining = endsAt.difference(DateTime.now());
+    final seconds = remaining.isNegative ? 0 : remaining.inSeconds;
+    final progress = (seconds / _studentScanDuration.inSeconds).clamp(0.0, 1.0);
+    final minutesText = (seconds ~/ 60).toString().padLeft(2, '0');
+    final secondsText = (seconds % 60).toString().padLeft(2, '0');
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.timer_outlined,
+              size: 18,
+              color: widget.gradientColors[0],
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Tiempo restante',
+                style: TextStyle(color: palette.textSecondary, fontSize: 13),
+              ),
+            ),
+            Text(
+              '$minutesText:$secondsText',
+              style: TextStyle(
+                color: palette.textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        LinearProgressIndicator(
+          value: progress,
+          minHeight: 4,
+          borderRadius: BorderRadius.circular(4),
+          color: widget.gradientColors[0],
+          backgroundColor: palette.border,
+        ),
+      ],
+    );
+  }
+
   Widget _buildAlumnosContent() {
     final palette = context.uatPalette;
+    final automaticallyDetectedStudents = widget.grupo.students
+        .where(
+          (student) =>
+              _automaticallyDetectedStudentKeys.contains(_alumnoKey(student)),
+        )
+        .toList(growable: false);
+    final mainStudents = widget.grupo.students
+        .where(
+          (student) =>
+              !_automaticallyDetectedStudentKeys.contains(_alumnoKey(student)),
+        )
+        .toList(growable: false);
 
     return Column(
       children: [
@@ -2413,7 +2614,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                       onTap: () async {
                         HapticFeedback.lightImpact();
                         setState(() {
-                          for (final alumno in widget.grupo.students) {
+                          for (final alumno in mainStudents) {
                             final key = _alumnoKey(alumno);
                             _asistencias[key] = !(_asistencias[key] ?? false);
                           }
@@ -2462,25 +2663,98 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                   ),
                   Divider(height: 1, thickness: 1, color: palette.border),
                 ],
-                ...List.generate(
-                  widget.grupo.students.length,
-                  (index) => _buildStudentCard(
-                    widget.grupo.students[index],
-                    isLast: index == widget.grupo.students.length - 1,
+                if (mainStudents.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      'Todos los alumnos vinculados fueron detectados automáticamente.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 14,
+                      ),
+                    ),
+                  )
+                else
+                  ...List.generate(
+                    mainStudents.length,
+                    (index) => _buildStudentCard(
+                      mainStudents[index],
+                      isLast: index == mainStudents.length - 1,
+                    ),
                   ),
-                ),
               ],
             ),
           ),
         ),
+        if (automaticallyDetectedStudents.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _buildAutomaticallyDetectedStudents(
+            automaticallyDetectedStudents,
+            palette,
+          ),
+        ],
         // Espacio adicional al final para mejor visualización del último alumno
         const SizedBox(height: 100),
       ],
     );
   }
 
-  Widget _buildStudentCard(dynamic alumno, {bool isLast = false}) {
+  Widget _buildAutomaticallyDetectedStudents(
+    List<Alumno> students,
+    UATPalette palette,
+  ) {
+    return Container(
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: widget.gradientColors[0].withValues(alpha: 0.35),
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: ExpansionTile(
+          initiallyExpanded: false,
+          maintainState: true,
+          iconColor: widget.gradientColors[0],
+          collapsedIconColor: palette.textSecondary,
+          leading: Icon(
+            Icons.bluetooth_connected_rounded,
+            color: widget.gradientColors[0],
+          ),
+          title: Text(
+            'Alumnos detectados automáticamente',
+            style: TextStyle(
+              color: palette.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          subtitle: Text(
+            '${students.length} confirmados por Bluetooth',
+            style: TextStyle(color: palette.textSecondary, fontSize: 12),
+          ),
+          children: List.generate(
+            students.length,
+            (index) => _buildStudentCard(
+              students[index],
+              isLast: index == students.length - 1,
+              automaticallyDetected: true,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStudentCard(
+    Alumno alumno, {
+    bool isLast = false,
+    bool automaticallyDetected = false,
+  }) {
     final puedeMarcar = _puedeMarcarAsistenciaAlumnos();
+    final canToggle = puedeMarcar && !automaticallyDetected;
     final palette = context.uatPalette;
 
     return Container(
@@ -2488,7 +2762,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: puedeMarcar
+          onTap: canToggle
               ? () async {
                   HapticFeedback.mediumImpact();
                   setState(() {
@@ -2500,10 +2774,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                   await _guardarAsistencia();
                 }
               : null,
-          splashColor: puedeMarcar
+          splashColor: canToggle
               ? widget.gradientColors[0].withValues(alpha: 0.2)
               : Colors.transparent,
-          highlightColor: puedeMarcar
+          highlightColor: canToggle
               ? widget.gradientColors[0].withValues(alpha: 0.1)
               : Colors.transparent,
           child: Column(
@@ -2519,13 +2793,29 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                     children: [
                       // Nombre del estudiante
                       Expanded(
-                        child: Text(
-                          alumno.name,
-                          style: TextStyle(
-                            color: palette.textPrimary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              alumno.name,
+                              style: TextStyle(
+                                color: palette.textPrimary,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            if (automaticallyDetected) ...[
+                              const SizedBox(height: 3),
+                              Text(
+                                'Detectado y confirmado por Bluetooth',
+                                style: TextStyle(
+                                  color: widget.gradientColors[0],
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                       const SizedBox(width: 12),

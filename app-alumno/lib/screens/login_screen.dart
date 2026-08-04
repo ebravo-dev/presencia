@@ -302,21 +302,19 @@ class _LoginCard extends StatelessWidget {
         children: [
           _FieldLabel(text: 'Correo institucional'),
           const SizedBox(height: 6),
-          SizedBox(
-            height: 48,
-            child: TextField(
-              key: emailFieldKey,
-              controller: emailController,
-              focusNode: emailFocusNode,
-              enabled: !loading,
-              keyboardType: TextInputType.emailAddress,
-              autocorrect: false,
-              textInputAction: TextInputAction.next,
-              onSubmitted: onEmailSubmitted,
-              decoration: const InputDecoration(
-                hintText: 'matrícula@alumnos.uat.edu.mx',
-                prefixIcon: Icon(Icons.mail_outline_rounded),
-              ),
+          TextField(
+            key: emailFieldKey,
+            controller: emailController,
+            focusNode: emailFocusNode,
+            enabled: !loading,
+            keyboardType: TextInputType.emailAddress,
+            autocorrect: false,
+            textInputAction: TextInputAction.next,
+            textAlignVertical: TextAlignVertical.center,
+            onSubmitted: onEmailSubmitted,
+            decoration: const InputDecoration(
+              hintText: 'matrícula@alumnos.uat.edu.mx',
+              prefixIcon: Icon(Icons.mail_outline_rounded),
             ),
           ),
           const SizedBox(height: 12),
@@ -329,6 +327,7 @@ class _LoginCard extends StatelessWidget {
             enabled: !loading,
             obscureText: obscurePassword,
             textInputAction: TextInputAction.done,
+            textAlignVertical: TextAlignVertical.center,
             onSubmitted: (_) => loading ? null : onSubmit(),
             decoration: InputDecoration(
               hintText: '••••••••',

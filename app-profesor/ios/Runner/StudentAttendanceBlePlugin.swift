@@ -12,9 +12,13 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
   private var centralManager: CBCentralManager?
   private var eventSink: FlutterEventSink?
   private var targetUuids: Set<String> = []
+  private var confirmationPayload: Data?
   private var handledUuids: Set<String> = []
+  private var inFlightUuids: Set<String> = []
   private var peripherals: [UUID: CBPeripheral] = [:]
   private var rssiByPeripheral: [UUID: NSNumber] = [:]
+  private var pendingDetections: [UUID: [String: Any]] = [:]
+  private var pendingUuidByPeripheral: [UUID: String] = [:]
   private var pendingStartResult: FlutterResult?
 
   override init() {
@@ -53,12 +57,15 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
     case "startScanning":
       guard let args = call.arguments as? [String: Any],
             let uuids = args["uuids"] as? [String],
-            !uuids.isEmpty
+            !uuids.isEmpty,
+            let payload = args["confirmationPayload"] as? String,
+            let payloadData = payload.data(using: .utf8),
+            !payloadData.isEmpty
       else {
-        result(FlutterError(code: "INVALID_ARGUMENT", message: "Se requiere al menos un UUID", details: nil))
+        result(FlutterError(code: "INVALID_ARGUMENT", message: "Se requieren UUIDs y contexto de clase", details: nil))
         return
       }
-      startScanning(uuids: uuids, result: result)
+      startScanning(uuids: uuids, confirmationPayload: payloadData, result: result)
 
     case "stopScanning":
       stopScanning()
@@ -69,9 +76,17 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
     }
   }
 
-  private func startScanning(uuids: [String], result: @escaping FlutterResult) {
+  private func startScanning(
+    uuids: [String],
+    confirmationPayload: Data,
+    result: @escaping FlutterResult
+  ) {
     targetUuids = Set(uuids.map(normalizeUuid).filter { !$0.isEmpty })
+    self.confirmationPayload = confirmationPayload
     handledUuids.removeAll()
+    inFlightUuids.removeAll()
+    pendingDetections.removeAll()
+    pendingUuidByPeripheral.removeAll()
     guard !targetUuids.isEmpty else {
       result(FlutterError(code: "INVALID_UUID", message: "UUIDs invalidos", details: nil))
       return
@@ -101,6 +116,9 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
     }
     peripherals.removeAll()
     rssiByPeripheral.removeAll()
+    pendingDetections.removeAll()
+    pendingUuidByPeripheral.removeAll()
+    inFlightUuids.removeAll()
   }
 
   func centralManagerDidUpdateState(_ central: CBCentralManager) {
@@ -163,30 +181,70 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
     }
 
     let normalized = normalizeUuid(uuid)
-    guard targetUuids.contains(normalized), !handledUuids.contains(normalized) else {
+    guard targetUuids.contains(normalized),
+          !handledUuids.contains(normalized),
+          !inFlightUuids.contains(normalized)
+    else {
       centralManager?.cancelPeripheralConnection(peripheral)
       return
     }
-    handledUuids.insert(normalized)
+    inFlightUuids.insert(normalized)
 
     if let service = peripheral.services?.first(where: { $0.uuid == serviceUuid }),
        let confirmation = service.characteristics?.first(where: { $0.uuid == confirmationCharacteristicUuid }),
-       let data = "CONFIRMED".data(using: .utf8) {
+       let data = confirmationPayload,
+       data.count <= peripheral.maximumWriteValueLength(for: .withResponse) {
+      var payload: [String: Any] = [
+        "uuid": uuid,
+        "bluetoothAddress": peripheral.identifier.uuidString,
+      ]
+      if let rssi = rssiByPeripheral[peripheral.identifier]?.intValue {
+        payload["rssi"] = rssi
+      }
+      pendingDetections[peripheral.identifier] = payload
+      pendingUuidByPeripheral[peripheral.identifier] = normalized
       peripheral.writeValue(data, for: confirmation, type: .withResponse)
+    } else {
+      inFlightUuids.remove(normalized)
+      centralManager?.cancelPeripheralConnection(peripheral)
     }
+  }
 
-    var payload: [String: Any] = [
-      "uuid": uuid,
-      "bluetoothAddress": peripheral.identifier.uuidString,
-    ]
-    if let rssi = rssiByPeripheral[peripheral.identifier]?.intValue {
-      payload["rssi"] = rssi
+  func peripheral(
+    _ peripheral: CBPeripheral,
+    didWriteValueFor characteristic: CBCharacteristic,
+    error: Error?
+  ) {
+    guard characteristic.uuid == confirmationCharacteristicUuid else { return }
+
+    let normalized = pendingUuidByPeripheral.removeValue(forKey: peripheral.identifier)
+    let payload = pendingDetections.removeValue(forKey: peripheral.identifier)
+    if let normalized = normalized {
+      inFlightUuids.remove(normalized)
+      if error == nil {
+        handledUuids.insert(normalized)
+      }
     }
-    eventSink?([payload])
+    if error == nil, let payload = payload {
+      eventSink?([payload])
+    }
+    centralManager?.cancelPeripheralConnection(peripheral)
+  }
 
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self, weak peripheral] in
-      guard let peripheral = peripheral else { return }
-      self?.centralManager?.cancelPeripheralConnection(peripheral)
+  func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+    cleanup(peripheral)
+  }
+
+  func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+    cleanup(peripheral)
+  }
+
+  private func cleanup(_ peripheral: CBPeripheral) {
+    peripherals.removeValue(forKey: peripheral.identifier)
+    rssiByPeripheral.removeValue(forKey: peripheral.identifier)
+    pendingDetections.removeValue(forKey: peripheral.identifier)
+    if let normalized = pendingUuidByPeripheral.removeValue(forKey: peripheral.identifier) {
+      inFlightUuids.remove(normalized)
     }
   }
 

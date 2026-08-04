@@ -136,14 +136,28 @@ class _HistoryEntryCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Pase de lista confirmado',
+                Text(
+                  entry.className ?? 'Pase de lista confirmado',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
+                if (entry.group != null || entry.classroom != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    [
+                      if (entry.group != null) 'Grupo ${entry.group}',
+                      if (entry.classroom != null) 'Aula ${entry.classroom}',
+                    ].join(' · '),
+                    style: const TextStyle(
+                      color: _accent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 5),
                 Text(
                   _formatDateTime(entry.recordedAt),

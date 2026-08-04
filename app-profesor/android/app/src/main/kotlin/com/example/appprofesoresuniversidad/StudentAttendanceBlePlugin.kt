@@ -37,6 +37,7 @@ class StudentAttendanceBlePlugin(
         private const val TAG = "StudentAttendanceBLE"
         private const val METHOD_CHANNEL = "com.presencia/student_attendance_ble"
         private const val EVENT_CHANNEL = "com.presencia/student_attendance_ble_events"
+        private const val REQUESTED_MTU = 512
         private val SERVICE_UUID: UUID = UUID.fromString("9f5f7f86-8e67-4f12-a8a5-b7f6f4f7b2c1")
         private val ATTENDANCE_UUID_CHAR: UUID = UUID.fromString("9f5f7f86-8e67-4f12-a8a5-b7f6f4f7b2c2")
         private val CONFIRMATION_CHAR: UUID = UUID.fromString("9f5f7f86-8e67-4f12-a8a5-b7f6f4f7b2c3")
@@ -46,8 +47,11 @@ class StudentAttendanceBlePlugin(
     private val mainHandler = Handler(Looper.getMainLooper())
     private var eventSink: EventChannel.EventSink? = null
     private var targetUuids: Set<String> = emptySet()
+    private var confirmationPayload: String = ""
     private val handledUuids = mutableSetOf<String>()
+    private val inFlightUuids = mutableSetOf<String>()
     private val activeGatts = mutableMapOf<String, BluetoothGatt>()
+    private val mtuByAddress = mutableMapOf<String, Int>()
     private val pendingDetections = mutableMapOf<String, PendingDetection>()
     @Volatile
     private var isActivityInForeground = true
@@ -56,6 +60,7 @@ class StudentAttendanceBlePlugin(
         val uuid: String,
         val bluetoothAddress: String,
         val rssi: Int,
+        val normalizedUuid: String,
     )
 
     private val bluetoothAdapter: BluetoothAdapter?
@@ -107,12 +112,13 @@ class StudentAttendanceBlePlugin(
         when (call.method) {
             "startScanning" -> {
                 val uuids = call.argument<List<String>>("uuids") ?: emptyList()
-                if (uuids.isEmpty()) {
-                    result.error("INVALID_ARGUMENT", "Se requiere al menos un UUID", null)
+                val payload = call.argument<String>("confirmationPayload").orEmpty()
+                if (uuids.isEmpty() || payload.isBlank()) {
+                    result.error("INVALID_ARGUMENT", "Se requieren UUIDs y contexto de clase", null)
                     return
                 }
                 try {
-                    startScanning(uuids)
+                    startScanning(uuids, payload)
                     result.success(true)
                 } catch (error: Exception) {
                     Log.e(TAG, "Error starting student BLE scan", error)
@@ -127,14 +133,16 @@ class StudentAttendanceBlePlugin(
         }
     }
 
-    private fun startScanning(uuids: List<String>) {
+    private fun startScanning(uuids: List<String>, payload: String) {
         if (!isActivityInForeground) {
             throw IllegalStateException("La detección BLE solo está disponible con la app en primer plano")
         }
         ensureRuntimePermissions()
         stopScanning()
         targetUuids = uuids.map { normalizeUuid(it) }.filter { it.isNotEmpty() }.toSet()
+        confirmationPayload = payload
         handledUuids.clear()
+        inFlightUuids.clear()
 
         val scanner = bluetoothAdapter?.bluetoothLeScanner
             ?: throw IllegalStateException("Bluetooth no disponible")
@@ -163,6 +171,8 @@ class StudentAttendanceBlePlugin(
         }
         activeGatts.clear()
         pendingDetections.clear()
+        mtuByAddress.clear()
+        inFlightUuids.clear()
     }
 
     private fun connectToCandidate(result: ScanResult) {
@@ -180,12 +190,21 @@ class StudentAttendanceBlePlugin(
                     return
                 }
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    Log.i(TAG, "Connected to student candidate $address; discovering services")
-                    if (!gatt.discoverServices()) {
+                    Log.i(TAG, "Connected to student candidate $address; requesting MTU")
+                    mtuByAddress[address] = 23
+                    if (!gatt.requestMtu(REQUESTED_MTU) && !gatt.discoverServices()) {
                         Log.w(TAG, "Could not start service discovery for $address")
                         closeGatt(address, gatt)
                     }
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    closeGatt(address, gatt)
+                }
+            }
+
+            override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+                mtuByAddress[address] = if (status == BluetoothGatt.GATT_SUCCESS) mtu else 23
+                if (!gatt.discoverServices()) {
+                    Log.w(TAG, "Could not start service discovery after MTU negotiation for $address")
                     closeGatt(address, gatt)
                 }
             }
@@ -246,6 +265,9 @@ class StudentAttendanceBlePlugin(
                     status == BluetoothGatt.GATT_SUCCESS) {
                     emitConfirmedDetection(address)
                 } else {
+                    pendingDetections[address]?.let { pending ->
+                        inFlightUuids.remove(pending.normalizedUuid)
+                    }
                     Log.w(
                         TAG,
                         "Attendance confirmation failed for $address with status=$status",
@@ -282,7 +304,10 @@ class StudentAttendanceBlePlugin(
         }
         val uuid = value.toString(Charset.forName("UTF-8")).trim()
         val normalized = normalizeUuid(uuid)
-        if (normalized.isEmpty() || !targetUuids.contains(normalized) || !handledUuids.add(normalized)) {
+        if (normalized.isEmpty() ||
+            !targetUuids.contains(normalized) ||
+            handledUuids.contains(normalized) ||
+            !inFlightUuids.add(normalized)) {
             Log.i(TAG, "Ignoring non-target student UUID from $address: $uuid")
             closeGatt(address, gatt)
             return
@@ -293,6 +318,18 @@ class StudentAttendanceBlePlugin(
         val confirmation = gatt.getService(SERVICE_UUID)?.getCharacteristic(CONFIRMATION_CHAR)
         if (confirmation == null) {
             Log.w(TAG, "Confirmation characteristic not found for $address")
+            inFlightUuids.remove(normalized)
+            closeGatt(address, gatt)
+            return
+        }
+        val confirmationBytes = confirmationPayload.toByteArray(Charsets.UTF_8)
+        val maximumPayloadSize = (mtuByAddress[address] ?: 23) - 3
+        if (confirmationBytes.size > maximumPayloadSize) {
+            Log.w(
+                TAG,
+                "Class confirmation is too large for $address: ${confirmationBytes.size}/$maximumPayloadSize bytes",
+            )
+            inFlightUuids.remove(normalized)
             closeGatt(address, gatt)
             return
         }
@@ -300,17 +337,21 @@ class StudentAttendanceBlePlugin(
             uuid = uuid,
             bluetoothAddress = address,
             rssi = rssi,
+            normalizedUuid = normalized,
         )
-        confirmation.value = "CONFIRMED".toByteArray(Charsets.UTF_8)
+        confirmation.value = confirmationBytes
         if (!gatt.writeCharacteristic(confirmation)) {
             Log.w(TAG, "Could not write confirmation to $address")
             pendingDetections.remove(address)
+            inFlightUuids.remove(normalized)
             closeGatt(address, gatt)
         }
     }
 
     private fun emitConfirmedDetection(address: String) {
         val detection = pendingDetections.remove(address) ?: return
+        inFlightUuids.remove(detection.normalizedUuid)
+        handledUuids.add(detection.normalizedUuid)
         mainHandler.post {
             if (isActivityInForeground) {
                 eventSink?.success(
@@ -328,7 +369,10 @@ class StudentAttendanceBlePlugin(
 
     private fun closeGatt(address: String, gatt: BluetoothGatt) {
         activeGatts.remove(address)
-        pendingDetections.remove(address)
+        pendingDetections.remove(address)?.let { pending ->
+            inFlightUuids.remove(pending.normalizedUuid)
+        }
+        mtuByAddress.remove(address)
         try {
             gatt.disconnect()
             gatt.close()

@@ -76,7 +76,8 @@ ThemeData buildAppTheme(Brightness brightness) {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: dark ? const Color(0xFF303031) : const Color(0xFFF0F0F0),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      constraints: const BoxConstraints(minHeight: 52),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: BorderSide.none,
