@@ -77,7 +77,7 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "stopAdvertising" -> {
-                    startAdvertiserService(BleAdvertiserService.ACTION_STOP)
+                    stopAdvertiserService()
                     result.success(true)
                 }
                 "isAdvertising" -> {
@@ -131,6 +131,17 @@ class MainActivity : FlutterActivity() {
         } else {
             startService(intent)
         }
+    }
+
+    /**
+     * Stopping must never use startForegroundService. The BLE service can
+     * already be shutting itself down after a GATT confirmation; starting a
+     * new instance with ACTION_STOP would make Android wait for a
+     * startForeground() call that a stop-only instance intentionally never
+     * performs, causing RemoteServiceException.
+     */
+    private fun stopAdvertiserService() {
+        stopService(Intent(this, BleAdvertiserService::class.java))
     }
 
     private fun hasBlePermissions(): Boolean {
