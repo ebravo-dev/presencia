@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto';
-import type { FastifyPluginAsync, FastifyReply } from 'fastify';
+import { createHash } from 'node:crypto';
+import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { SuperUserAuthService } from '../../../application/services/super-user-auth.service.js';
 import type { AcademicServiceClient } from '../../../infrastructure/http/client/academic-service.client.js';
@@ -196,20 +196,26 @@ export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async
   fastify.post('/api/superUsuario/debug/teachers', async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
     const result = await demoPortal.createTeacher(debugTeacherCreateSchema.parse(request.body));
-    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
-    return reply.code(201).send(result);
+    const sync = await synchronizeAfterDemoMutation(
+      { demoPortal, academicService, attendanceService }, request.superUser?.id, request.id, request.log,
+    );
+    return reply.code(201).send(withSynchronizationMeta(result, sync));
   });
   fastify.put<{ Params: { id: string } }>('/api/superUsuario/debug/teachers/:id', async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
     const result = await demoPortal.updateTeacher(request.params.id, debugTeacherUpdateSchema.parse(request.body));
-    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
-    return result;
+    const sync = await synchronizeAfterDemoMutation(
+      { demoPortal, academicService, attendanceService }, request.superUser?.id, request.id, request.log,
+    );
+    return withSynchronizationMeta(result, sync);
   });
   fastify.delete<{ Params: { id: string } }>('/api/superUsuario/debug/teachers/:id', async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
     await demoPortal.deleteTeacher(request.params.id);
-    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
-    return reply.code(204).send();
+    const sync = await synchronizeAfterDemoMutation(
+      { demoPortal, academicService, attendanceService }, request.superUser?.id, request.id, request.log,
+    );
+    return sendDemoDeletion(reply, sync);
   });
   fastify.get('/api/superUsuario/debug/students', async (_request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
@@ -218,20 +224,26 @@ export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async
   fastify.post('/api/superUsuario/debug/students', async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
     const result = await demoPortal.createStudent(debugStudentCreateSchema.parse(request.body));
-    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
-    return reply.code(201).send(result);
+    const sync = await synchronizeAfterDemoMutation(
+      { demoPortal, academicService, attendanceService }, request.superUser?.id, request.id, request.log,
+    );
+    return reply.code(201).send(withSynchronizationMeta(result, sync));
   });
   fastify.put<{ Params: { id: string } }>('/api/superUsuario/debug/students/:id', async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
     const result = await demoPortal.updateStudent(request.params.id, debugStudentUpdateSchema.parse(request.body));
-    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
-    return result;
+    const sync = await synchronizeAfterDemoMutation(
+      { demoPortal, academicService, attendanceService }, request.superUser?.id, request.id, request.log,
+    );
+    return withSynchronizationMeta(result, sync);
   });
   fastify.delete<{ Params: { id: string } }>('/api/superUsuario/debug/students/:id', async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
     await demoPortal.deleteStudent(request.params.id);
-    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
-    return reply.code(204).send();
+    const sync = await synchronizeAfterDemoMutation(
+      { demoPortal, academicService, attendanceService }, request.superUser?.id, request.id, request.log,
+    );
+    return sendDemoDeletion(reply, sync);
   });
   fastify.get('/api/superUsuario/debug/classes', async (_request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return { data: [], meta: { generatedAt: new Date().toISOString() } };
@@ -243,41 +255,54 @@ export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async
     const parsed = debugClassCreateSchema.parse(request.body);
     const period = parsed.period || (await demoPortal.status()).data.cycleName;
     const result = await demoPortal.createClass({ ...parsed, period });
-    const status = await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
-    return reply.code(201).send({ data: mapDebugClass(result.data, status) });
+    const sync = await synchronizeAfterDemoMutation(
+      { demoPortal, academicService, attendanceService }, request.superUser?.id, request.id, request.log,
+    );
+    return reply.code(201).send(withSynchronizationMeta({ data: mapDebugClass(result.data, sync.catalog) }, sync));
   });
   fastify.put<{ Params: { id: string } }>('/api/superUsuario/debug/classes/:id', async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
     const parsed = debugClassUpdateSchema.parse(request.body);
     const result = await demoPortal.updateClass(request.params.id, parsed);
-    const status = await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
-    return { data: mapDebugClass(result.data, status) };
+    const sync = await synchronizeAfterDemoMutation(
+      { demoPortal, academicService, attendanceService }, request.superUser?.id, request.id, request.log,
+    );
+    return withSynchronizationMeta({ data: mapDebugClass(result.data, sync.catalog) }, sync);
   });
   fastify.delete<{ Params: { id: string } }>('/api/superUsuario/debug/classes/:id', async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
     await demoPortal.deleteClass(request.params.id);
-    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
-    return reply.code(204).send();
+    const sync = await synchronizeAfterDemoMutation(
+      { demoPortal, academicService, attendanceService }, request.superUser?.id, request.id, request.log,
+    );
+    return sendDemoDeletion(reply, sync);
   });
   fastify.post<{ Params: { id: string } }>('/api/superUsuario/debug/classes/:id/students', async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
     const { studentId } = debugMembershipSchema.parse(request.body);
     const result = await demoPortal.addStudentToClass(request.params.id, studentId);
-    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
-    return reply.code(201).send(result);
+    const sync = await synchronizeAfterDemoMutation(
+      { demoPortal, academicService, attendanceService }, request.superUser?.id, request.id, request.log,
+    );
+    return reply.code(201).send(withSynchronizationMeta(result, sync));
   });
   fastify.delete<{ Params: { id: string; studentId: string } }>('/api/superUsuario/debug/classes/:id/students/:studentId', async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
     await demoPortal.removeStudentFromClass(request.params.id, request.params.studentId);
-    await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
-    return reply.code(204).send();
+    const sync = await synchronizeAfterDemoMutation(
+      { demoPortal, academicService, attendanceService }, request.superUser?.id, request.id, request.log,
+    );
+    return sendDemoDeletion(reply, sync);
   });
   fastify.post('/api/superUsuario/debug/synchronize', async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
-    const status = await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
+    const synchronized = await synchronizeDemoCatalogWithRetry(
+      { demoPortal, academicService, attendanceService }, request.superUser?.id, request.id,
+    );
+    const status = synchronized.catalog;
     return {
       data: { teachers: status.teachers.length, students: status.students.length, classes: status.classes.length },
-      meta: { synchronizedAt: new Date().toISOString() },
+      meta: { synchronizedAt: new Date().toISOString(), attempts: synchronized.attempts },
     };
   });
   fastify.delete('/api/superUsuario/debug/data', {
@@ -301,7 +326,10 @@ export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async
   fastify.post<{ Params: { id: string } }>('/api/superUsuario/debug/classes/:id/simulate-attendance', async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
     const input = debugAttendanceSimulationSchema.parse(request.body);
-    const status = await synchronizeDemoCatalog({ demoPortal, academicService, attendanceService }, request.superUser?.id, request.id);
+    const synchronized = await synchronizeDemoCatalogWithRetry(
+      { demoPortal, academicService, attendanceService }, request.superUser?.id, request.id,
+    );
+    const status = synchronized.catalog;
     const item = status.classes.find(({ id }) => id === request.params.id);
     if (!item || !item.professor) return reply.code(404).send({ error: 'DEMO_CLASS_NOT_FOUND', message: 'Materia demo no encontrada.' });
     const students = new Map(item.students.map((student) => [student.id, student]));
@@ -509,12 +537,64 @@ function attendanceWriteDate(write: DemoPortalAttendanceWrite): string {
   return parsed.toISOString();
 }
 
-async function synchronizeDemoCatalog(
-  services: {
-    demoPortal: DemoPortalClient;
-    academicService: AcademicServiceClient;
-    attendanceService: AttendanceServiceCommandClient;
-  },
+interface DemoSynchronizationServices {
+  demoPortal: DemoPortalClient;
+  academicService: AcademicServiceClient;
+  attendanceService: AttendanceServiceCommandClient;
+}
+
+interface DemoSynchronizationResult {
+  catalog: DemoPortalStatus;
+  synchronization: {
+    status: 'COMPLETED' | 'PENDING';
+    attempts: number;
+    error: string | null;
+  };
+}
+
+export async function synchronizeAfterDemoMutation(
+  services: DemoSynchronizationServices,
+  identityId: string | undefined,
+  correlationId: string,
+  logger: Pick<FastifyBaseLogger, 'error'>,
+): Promise<DemoSynchronizationResult> {
+  try {
+    const synchronized = await synchronizeDemoCatalogWithRetry(services, identityId, correlationId);
+    return {
+      catalog: synchronized.catalog,
+      synchronization: { status: 'COMPLETED', attempts: synchronized.attempts, error: null },
+    };
+  } catch (error) {
+    const errorCode = synchronizationErrorCode(error);
+    logger.error({ err: error, correlationId, errorCode }, 'Demo catalog was saved but downstream synchronization is pending');
+    const catalog = (await services.demoPortal.status()).data;
+    return {
+      catalog,
+      synchronization: { status: 'PENDING', attempts: synchronizationAttemptCount(error), error: errorCode },
+    };
+  }
+}
+
+export async function synchronizeDemoCatalogWithRetry(
+  services: DemoSynchronizationServices,
+  identityId: string | undefined,
+  correlationId: string,
+  maxAttempts = 3,
+): Promise<{ catalog: DemoPortalStatus; attempts: number }> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return { catalog: await synchronizeDemoCatalog(services, identityId, correlationId), attempts: attempt };
+    } catch (error) {
+      lastError = attachSynchronizationAttempt(error, attempt);
+      if (!isRetryableSynchronizationError(error) || attempt === maxAttempts) throw lastError;
+    }
+  }
+  throw lastError;
+}
+
+export async function synchronizeDemoCatalog(
+  services: DemoSynchronizationServices,
   identityId: string | undefined,
   correlationId: string,
 ): Promise<DemoPortalStatus> {
@@ -548,9 +628,9 @@ async function synchronizeDemoCatalog(
     await ensureDemoBeacon(services.attendanceService, beacon.classroom, beacon.uuid, identityId, correlationId);
   }
 
-  await Promise.all([
-    ...status.teachers.map((teacher) => services.academicService.publishProfessorSnapshot({
-      snapshotId: randomUUID(),
+  for (const teacher of status.teachers) {
+    await services.academicService.publishProfessorSnapshot({
+      snapshotId: demoSnapshotId('teacher', teacher.id, status.updatedAt),
       correlationId,
       causationId: correlationId,
       teacher: {
@@ -580,9 +660,12 @@ async function synchronizeDemoCatalog(
           listNumber: index + 1,
         })),
       })),
-    })),
-    ...status.students.map((student) => services.academicService.publishStudentSnapshot({
-      snapshotId: randomUUID(),
+    });
+  }
+
+  for (const student of status.students) {
+    await services.academicService.publishStudentSnapshot({
+      snapshotId: demoSnapshotId('student', student.id, status.updatedAt),
       correlationId,
       causationId: correlationId,
       synchronizedAt,
@@ -603,8 +686,11 @@ async function synchronizeDemoCatalog(
         credits: 5,
         schedule: item.schedule,
       })),
-    })),
-    ...status.classes.map((item) => services.attendanceService.applyRoster({
+    });
+  }
+
+  for (const item of status.classes) {
+    await services.attendanceService.applyRoster({
       externalGroupId: String(item.groupId),
       uatGroupId: item.groupId,
       name: item.name,
@@ -624,8 +710,47 @@ async function synchronizeDemoCatalog(
         uatStudentId: student.uatStudentId,
         listNumber: index + 1,
       })),
-    })),
-  ]);
+    });
+  }
 
   return status;
+}
+
+function withSynchronizationMeta<T extends object>(payload: T, result: DemoSynchronizationResult) {
+  return { ...payload, meta: { synchronization: result.synchronization } };
+}
+
+function sendDemoDeletion(reply: FastifyReply, result: DemoSynchronizationResult) {
+  if (result.synchronization.status === 'COMPLETED') return reply.code(204).send();
+  return reply.code(202).send(withSynchronizationMeta({ data: { deleted: true } }, result));
+}
+
+function demoSnapshotId(kind: 'teacher' | 'student', entityId: string, revision: string): string {
+  const bytes = Buffer.from(createHash('sha256').update(`presencia:demo:${kind}:${entityId}:${revision}`).digest().subarray(0, 16));
+  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function isRetryableSynchronizationError(error: unknown): boolean {
+  if (error instanceof ApiError) return error.statusCode >= 500 || error.statusCode === 429;
+  return false;
+}
+
+function synchronizationErrorCode(error: unknown): string {
+  return error instanceof ApiError ? error.code : 'DEMO_SYNCHRONIZATION_FAILED';
+}
+
+function attachSynchronizationAttempt(error: unknown, attempt: number): unknown {
+  if (error && typeof error === 'object') {
+    Object.defineProperty(error, 'demoSynchronizationAttempt', { value: attempt, configurable: true });
+  }
+  return error;
+}
+
+function synchronizationAttemptCount(error: unknown): number {
+  if (!error || typeof error !== 'object') return 1;
+  const attempt = Reflect.get(error, 'demoSynchronizationAttempt');
+  return typeof attempt === 'number' ? attempt : 1;
 }

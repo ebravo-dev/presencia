@@ -180,6 +180,19 @@ export interface DebugCatalogResponse {
 export type DebugScheduleSlotInput = { startTime: string; endTime: string };
 export type DebugScheduleInput = Partial<Record<ScheduleDay, DebugScheduleSlotInput[]>>;
 
+export interface DebugSynchronizationMeta {
+  synchronization: {
+    status: 'COMPLETED' | 'PENDING';
+    attempts: number;
+    error: string | null;
+  };
+}
+
+export interface DebugMutationResponse<T> {
+  data: T;
+  meta?: DebugSynchronizationMeta;
+}
+
 export interface DebugClassResponse {
   data: Array<{
     id: string;

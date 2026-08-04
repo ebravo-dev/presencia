@@ -8,7 +8,7 @@ export class PrismaAcademicRepository implements AcademicRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async applySnapshot(snapshot: ProfessorAcademicSnapshot): Promise<AppliedAcademicSnapshot> {
-    return this.prisma.$transaction(async (transaction) => {
+    return this.withTransactionRetry(() => this.prisma.$transaction(async (transaction) => {
       const processed = await transaction.processedAcademicSnapshot.findUnique({ where: { snapshotId: snapshot.snapshotId } });
       if (processed) return this.snapshotResult(transaction, snapshot, true, 0);
 
@@ -195,7 +195,7 @@ export class PrismaAcademicRepository implements AcademicRepository {
       }
       await transaction.processedAcademicSnapshot.create({ data: { snapshotId: snapshot.snapshotId } });
       return this.snapshotResult(transaction, snapshot, false, staleGroups.length);
-    }, { isolationLevel: 'Serializable' });
+    }, { isolationLevel: 'Serializable' }));
   }
 
   async groupsForTeacher(externalTeacherId: string, cycleExternalId?: string): Promise<unknown[]> {
@@ -252,7 +252,7 @@ export class PrismaAcademicRepository implements AcademicRepository {
   }
 
   async applyStudentSnapshot(snapshot: StudentAcademicSnapshot): Promise<AppliedStudentAcademicSnapshot> {
-    return this.prisma.$transaction(async (transaction) => {
+    return this.withTransactionRetry(() => this.prisma.$transaction(async (transaction) => {
       const processed = await transaction.processedAcademicSnapshot.findUnique({ where: { snapshotId: snapshot.snapshotId } });
       if (processed) return this.studentSnapshotResult(transaction, snapshot, true);
 
@@ -340,7 +340,7 @@ export class PrismaAcademicRepository implements AcademicRepository {
       });
       await transaction.processedAcademicSnapshot.create({ data: { snapshotId: snapshot.snapshotId } });
       return this.studentSnapshotResult(transaction, snapshot, false);
-    }, { isolationLevel: 'Serializable' });
+    }, { isolationLevel: 'Serializable' }));
   }
 
   groupByExternalId(externalGroupId: string): Promise<unknown | null> {
@@ -412,6 +412,19 @@ export class PrismaAcademicRepository implements AcademicRepository {
       },
     }) : 0;
     return { snapshotId: snapshot.snapshotId, duplicate, activeScheduleEntries };
+  }
+
+  private async withTransactionRetry<TResult>(operation: () => Promise<TResult>): Promise<TResult> {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        const retryable = error instanceof Prisma.PrismaClientKnownRequestError
+          && (error.code === 'P2002' || error.code === 'P2034');
+        if (!retryable || attempt === 3) throw error;
+      }
+    }
+    throw new Error('Unreachable transaction retry state');
   }
 }
 

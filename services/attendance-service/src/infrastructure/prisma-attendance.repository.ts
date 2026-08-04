@@ -39,7 +39,7 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async applyRoster(snapshot: AttendanceRosterSnapshot): Promise<void> {
-    await this.prisma.$transaction(async (transaction) => {
+    await this.withTransactionRetry(() => this.prisma.$transaction(async (transaction) => {
       const current = await transaction.attendanceRosterGroup.findUnique({
         where: { externalGroupId: snapshot.externalGroupId },
         select: { rosterVersion: true, rosterObservedAt: true },
@@ -101,7 +101,7 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
           },
         });
       }
-    }, { isolationLevel: 'Serializable' });
+    }, { isolationLevel: 'Serializable' }));
   }
 
   async deactivateRoster(externalGroupId: string, rosterObservedAt: Date): Promise<void> {

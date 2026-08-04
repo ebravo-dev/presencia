@@ -1,7 +1,14 @@
 import cookie from '@fastify/cookie';
 import Fastify from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
-import { resetDemoEnvironment, superUserRoutes } from './super-user.routes.js';
+import type { DemoPortalStatus } from '../../../infrastructure/http/client/demo-portal.client.js';
+import { ApiError } from '../../../errors/api-error.js';
+import {
+  resetDemoEnvironment,
+  superUserRoutes,
+  synchronizeAfterDemoMutation,
+  synchronizeDemoCatalog,
+} from './super-user.routes.js';
 
 describe('superUserRoutes', () => {
   it('keeps the public contract while delegating beacon writes with the Identity actor', async () => {
@@ -99,4 +106,84 @@ describe('superUserRoutes', () => {
     expect(attendanceService.resetDemoData).toHaveBeenCalledOnce();
     expect(coordinationQuery.resetDemoData).toHaveBeenCalledOnce();
   });
+
+  it('synchronizes demo snapshots sequentially and reuses stable snapshot ids', async () => {
+    const status = demoStatus();
+    let activeAcademicWrites = 0;
+    let maxConcurrentAcademicWrites = 0;
+    const snapshotIds: string[] = [];
+    const recordSnapshot = async (snapshot: { snapshotId: string }) => {
+      activeAcademicWrites += 1;
+      maxConcurrentAcademicWrites = Math.max(maxConcurrentAcademicWrites, activeAcademicWrites);
+      snapshotIds.push(snapshot.snapshotId);
+      await Promise.resolve();
+      activeAcademicWrites -= 1;
+    };
+    const services = {
+      demoPortal: { status: vi.fn(async () => ({ data: status })) },
+      academicService: {
+        publishProfessorSnapshot: vi.fn(recordSnapshot),
+        publishStudentSnapshot: vi.fn(recordSnapshot),
+      },
+      attendanceService: {
+        listClassroomBeacons: vi.fn(async () => ({ data: [] })),
+        applyRoster: vi.fn(async () => undefined),
+      },
+    };
+
+    await synchronizeDemoCatalog(services as never, 'super-user-id', 'correlation-1');
+    await synchronizeDemoCatalog(services as never, 'super-user-id', 'correlation-2');
+
+    expect(maxConcurrentAcademicWrites).toBe(1);
+    expect(snapshotIds).toHaveLength(4);
+    expect(snapshotIds[0]).toBe(snapshotIds[2]);
+    expect(snapshotIds[1]).toBe(snapshotIds[3]);
+    expect(snapshotIds[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+
+  it('reports a saved demo mutation as pending instead of throwing a false 500', async () => {
+    const status = demoStatus();
+    const publishProfessorSnapshot = vi.fn(async () => {
+      throw new ApiError(503, 'ACADEMIC_SERVICE_UNAVAILABLE', 'Academic Service no está disponible.');
+    });
+    const logger = { error: vi.fn() };
+
+    const result = await synchronizeAfterDemoMutation({
+      demoPortal: { status: vi.fn(async () => ({ data: status })) } as never,
+      academicService: { publishProfessorSnapshot, publishStudentSnapshot: vi.fn() } as never,
+      attendanceService: { listClassroomBeacons: vi.fn(async () => ({ data: [] })), applyRoster: vi.fn() } as never,
+    }, 'super-user-id', 'correlation-1', logger as never);
+
+    expect(publishProfessorSnapshot).toHaveBeenCalledTimes(3);
+    expect(result).toMatchObject({
+      catalog: status,
+      synchronization: { status: 'PENDING', attempts: 3, error: 'ACADEMIC_SERVICE_UNAVAILABLE' },
+    });
+    expect(logger.error).toHaveBeenCalledOnce();
+  });
 });
+
+function demoStatus(): DemoPortalStatus {
+  const updatedAt = '2026-08-03T22:00:00.000Z';
+  return {
+    enabled: true,
+    cycleId: 20263,
+    cycleName: '2026-3',
+    coordinationId: 99,
+    coordinationName: 'Coordinación demo',
+    settings: { teacherAttendanceToleranceMinutes: 10 },
+    updatedAt,
+    attendanceWrites: [],
+    classes: [],
+    teachers: [{
+      id: '4b97db38-dbb4-466f-9633-9c8a3a53deaa', externalId: 'demo-teacher-1',
+      email: 'teacher@demo.local', name: 'Profesora Demo', createdAt: updatedAt, updatedAt,
+    }],
+    students: [{
+      id: '9e008c58-e4a3-4a79-9fd2-ad46f70b4692', uatStudentId: 990001,
+      matricula: '990001', email: 'student@demo.local', name: 'Alumno Demo',
+      attendanceUuid: '3c9f5afd-a116-44a7-8dc5-9b6e33900001', careerName: 'Carrera demo',
+      createdAt: updatedAt, updatedAt,
+    }],
+  };
+}

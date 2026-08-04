@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Activity, Bluetooth, Bug, Copy, Database, KeyRound, Link2, Lock, LogOut, Pencil, Play, PlusCircle, RefreshCw, ShieldCheck, Trash2, UserCog, Users } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
 import { superUserApi } from '@/core/api/coordination.api';
-import type { Beacon, CoordinatorAccount, DebugClassResponse, DebugScheduleInput, ScheduleDay } from '@/core/api/types';
+import type { Beacon, CoordinatorAccount, DebugClassResponse, DebugMutationResponse, DebugScheduleInput, ScheduleDay } from '@/core/api/types';
 import { Button, Card, EmptyState, Skeleton, cn } from '@/shared/components/ui';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 
@@ -299,6 +299,7 @@ function DebugAdmin() {
   const [simulationStatus, setSimulationStatus] = useState<'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED'>('PRESENT');
   const [showResetConfirmation, setShowResetConfirmation] = useState(false);
   const [resetConfirmation, setResetConfirmation] = useState('');
+  const [synchronizationNotice, setSynchronizationNotice] = useState<string | null>(null);
   const status = useQuery({ queryKey: ['super-user', 'debug', 'status'], queryFn: superUserApi.debugStatus, refetchInterval: REFRESH_INTERVAL_MS });
   const debugEnabled = status.data?.data.enabled === true;
   const catalog = useQuery({ queryKey: ['super-user', 'debug', 'catalog'], queryFn: superUserApi.debugCatalog, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
@@ -308,26 +309,39 @@ function DebugAdmin() {
   const logs = useQuery({ queryKey: ['super-user', 'debug', 'logs'], queryFn: superUserApi.debugFlowLogs, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
 
   const refreshDebug = () => queryClient.invalidateQueries({ queryKey: ['super-user', 'debug'] });
+  const refreshAfterMutation = async (response?: Pick<DebugMutationResponse<unknown>, 'meta'>) => {
+    if (response?.meta?.synchronization.status === 'PENDING') {
+      setSynchronizationNotice(
+        `El cambio sí se guardó, pero falta propagarlo a los demás servicios (${response.meta.synchronization.error ?? 'error temporal'}). No repitas el alta; usa “Sincronizar datos”.`,
+      );
+    } else {
+      setSynchronizationNotice(null);
+    }
+    await refreshDebug();
+  };
   const createTeacher = useMutation({
     mutationFn: () => superUserApi.createDebugTeacher(teacherForm),
-    onSuccess: async () => { setTeacherForm((current) => ({ ...current, password: '' })); await refreshDebug(); },
+    onSuccess: async (response) => { setTeacherForm((current) => ({ ...current, password: '' })); await refreshAfterMutation(response); },
   });
-  const deleteTeacher = useMutation({ mutationFn: superUserApi.deleteDebugTeacher, onSuccess: refreshDebug });
+  const deleteTeacher = useMutation({ mutationFn: superUserApi.deleteDebugTeacher, onSuccess: refreshAfterMutation });
   const createStudent = useMutation({
     mutationFn: () => superUserApi.createDebugStudent(studentForm),
-    onSuccess: async () => { setStudentForm((current) => ({ ...current, password: '' })); await refreshDebug(); },
+    onSuccess: async (response) => { setStudentForm((current) => ({ ...current, password: '' })); await refreshAfterMutation(response); },
   });
-  const deleteStudent = useMutation({ mutationFn: superUserApi.deleteDebugStudent, onSuccess: refreshDebug });
+  const deleteStudent = useMutation({ mutationFn: superUserApi.deleteDebugStudent, onSuccess: refreshAfterMutation });
   const addStudent = useMutation({
     mutationFn: ({ classId, studentId }: { classId: string; studentId: string }) => superUserApi.addDebugStudentToClass(classId, studentId),
-    onSuccess: refreshDebug,
+    onSuccess: refreshAfterMutation,
   });
   const removeStudent = useMutation({
     mutationFn: ({ classId, studentId }: { classId: string; studentId: string }) => superUserApi.removeDebugStudentFromClass(classId, studentId),
-    onSuccess: refreshDebug,
+    onSuccess: refreshAfterMutation,
   });
-  const deleteClass = useMutation({ mutationFn: superUserApi.deleteDebugClass, onSuccess: refreshDebug });
-  const synchronize = useMutation({ mutationFn: superUserApi.synchronizeDebugCatalog, onSuccess: refreshDebug });
+  const deleteClass = useMutation({ mutationFn: superUserApi.deleteDebugClass, onSuccess: refreshAfterMutation });
+  const synchronize = useMutation({
+    mutationFn: superUserApi.synchronizeDebugCatalog,
+    onSuccess: async () => { setSynchronizationNotice(null); await refreshDebug(); },
+  });
   const resetDemoData = useMutation({
     mutationFn: superUserApi.resetDebugData,
     onSuccess: async () => {
@@ -378,8 +392,15 @@ function DebugAdmin() {
         schedule: payload.schedule,
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (response) => {
       if (editingDebugClass) resetClassEditor();
+      if (response?.meta?.synchronization.status === 'PENDING') {
+        setSynchronizationNotice(
+          `La clase sí se guardó, pero falta propagarla a los demás servicios (${response.meta.synchronization.error ?? 'error temporal'}). No repitas el guardado; usa “Sincronizar datos”.`,
+        );
+      } else {
+        setSynchronizationNotice(null);
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['super-user', 'debug'] }),
         queryClient.invalidateQueries({ queryKey: ['super-user', 'beacons'] }),
@@ -534,6 +555,16 @@ function DebugAdmin() {
             Los datos demo fueron eliminados correctamente. La cuenta de superusuario y las migraciones se conservaron.
           </p>
         )}
+        {synchronizationNotice && (
+          <p role="status" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+            {synchronizationNotice}
+          </p>
+        )}
+        {synchronize.isError && (
+          <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+            {apiErrorMessage(synchronize.error, 'No se pudo completar la sincronización. Revisa la salud de Academic y Attendance Service.')}
+          </p>
+        )}
       </Card>
 
       {showResetConfirmation && (
@@ -579,7 +610,7 @@ function DebugAdmin() {
             <label className="text-sm font-semibold sm:col-span-2">Contraseña demo<input type="password" minLength={8} className="field mt-1" value={teacherForm.password} onChange={(event) => setTeacherForm((current) => ({ ...current, password: event.target.value }))} autoComplete="new-password" required /></label>
             <Button type="submit" disabled={createTeacher.isPending}><PlusCircle size={16} />Agregar profesor</Button>
           </form>
-          {createTeacher.isError && <p className="mt-3 text-sm font-semibold text-red-600">No se pudo crear el profesor; revisa que el correo no exista.</p>}
+          {createTeacher.isError && <p className="mt-3 text-sm font-semibold text-red-600">{apiErrorMessage(createTeacher.error, 'No se pudo crear el profesor; revisa que el correo no exista.')}</p>}
           <div className="mt-4 space-y-2">
             {catalog.data?.data.teachers.map((teacher) => (
               <div key={teacher.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-[#2e3138]">
@@ -603,7 +634,7 @@ function DebugAdmin() {
             <label className="text-sm font-semibold sm:col-span-2">Contraseña demo<input type="password" minLength={8} className="field mt-1" value={studentForm.password} onChange={(event) => setStudentForm((current) => ({ ...current, password: event.target.value }))} autoComplete="new-password" required /></label>
             <Button type="submit" disabled={createStudent.isPending}><PlusCircle size={16} />Agregar alumno</Button>
           </form>
-          {createStudent.isError && <p className="mt-3 text-sm font-semibold text-red-600">No se pudo crear el alumno; revisa correo y matrícula.</p>}
+          {createStudent.isError && <p className="mt-3 text-sm font-semibold text-red-600">{apiErrorMessage(createStudent.error, 'No se pudo crear el alumno; revisa correo y matrícula.')}</p>}
           <div className="mt-4 space-y-2">
             {catalog.data?.data.students.map((student) => (
               <div key={student.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-[#2e3138]">
@@ -665,7 +696,7 @@ function DebugAdmin() {
               {editingDebugClass && <Button type="button" variant="secondary" onClick={resetClassEditor}>Cancelar edición</Button>}
             </div>
           </form>
-          {saveClass.isError && <p className="mt-3 text-sm font-semibold text-red-600">No se pudo guardar la clase debug.</p>}
+          {saveClass.isError && <p className="mt-3 text-sm font-semibold text-red-600">{apiErrorMessage(saveClass.error, 'No se pudo guardar la clase debug.')}</p>}
           <form className="mt-5 border-t border-slate-200 pt-4 dark:border-[#2e3138]" onSubmit={(event) => { event.preventDefault(); updateSettings.mutate(); }}>
             <label className="block text-sm font-semibold">Tolerancia de profesor en minutos<input type="number" min={0} max={120} className="field mt-1" value={toleranceMinutes} onChange={(event) => setToleranceMinutes(event.target.value)} /></label>
             <Button type="submit" className="mt-3" variant="secondary" disabled={updateSettings.isPending}>
@@ -716,6 +747,7 @@ function DebugAdmin() {
           {!classes.data?.data.length && <EmptyState icon={<Users />} title="Sin materias" description="Crea una materia antes de configurar su padrón." />}
         </div>
         {simulateAttendance.isError && <p className="mt-3 text-sm font-semibold text-red-600">No se pudo simular la asistencia. Revisa el padrón y vuelve a sincronizar.</p>}
+        {addStudent.isError && <p className="mt-3 text-sm font-semibold text-red-600">{apiErrorMessage(addStudent.error, 'No se pudo asignar el alumno a la materia.')}</p>}
       </Card>
 
       <div className="grid gap-4 xl:grid-cols-2">
@@ -832,4 +864,14 @@ function InfoBox({ label, value }: { label: string; value: string }) {
 
 function formatDateTime(value: string | null) {
   return value ? new Date(value).toLocaleString('es-MX') : '-';
+}
+
+function apiErrorMessage(error: unknown, fallback: string): string {
+  if (!error || typeof error !== 'object') return fallback;
+  const response = Reflect.get(error, 'response');
+  if (!response || typeof response !== 'object') return fallback;
+  const data = Reflect.get(response, 'data');
+  if (!data || typeof data !== 'object') return fallback;
+  const message = Reflect.get(data, 'message');
+  return typeof message === 'string' && message.trim() ? message : fallback;
 }
