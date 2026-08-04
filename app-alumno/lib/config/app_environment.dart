@@ -3,7 +3,7 @@ class AppEnvironment {
 
   static const String presenceApiBaseUrl = String.fromEnvironment(
     'PRESENCIA_API_BASE_URL',
-    defaultValue: 'https://debugasistencia.duckdns.org',
+    defaultValue: 'https://administracionuat.149828.xyz',
   );
 
   // Toda llamada pública entra por el Gateway; Attendance no se expone

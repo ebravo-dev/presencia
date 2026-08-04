@@ -1,16 +1,32 @@
-# app_alumno
+# App de alumnos
 
-A new Flutter project.
+Aplicación Flutter de Presencia para Android e iOS.
 
-## Getting Started
+## Configuración del backend
 
-This project is a starting point for a Flutter application.
+La app usa `https://administracionuat.149828.xyz` de forma predeterminada. La
+configuración de producción también está disponible en `env.production.json`:
 
-A few resources to get you started if this is your first Flutter project:
+```bash
+flutter run --dart-define-from-file=env.production.json
+flutter build apk --release --dart-define-from-file=env.production.json
+```
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+Para apuntar a otro entorno, copia el ejemplo (el archivo local está ignorado
+por Git), cambia `PRESENCIA_API_BASE_URL` y compila con ese archivo:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```bash
+cp env.example.json env.local.json
+flutter run --dart-define-from-file=env.local.json
+```
+
+No guardes contraseñas ni tokens en estos archivos: las variables Dart quedan
+incluidas en el binario de la aplicación.
+
+## Desarrollo
+
+```bash
+flutter pub get
+flutter analyze
+flutter test
+```

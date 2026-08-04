@@ -119,12 +119,33 @@ cd appprofesoresuniversidad
 flutter pub get
 ```
 
-3. **Generar código (si es necesario)**
+3. **Configurar el backend**
+
+La app usa `https://administracionuat.149828.xyz` de forma predeterminada. Para
+compilar con la configuración de producción versionada:
+
+```bash
+flutter run --dart-define-from-file=env.production.json
+```
+
+Para otro entorno, copia el ejemplo (el archivo local está ignorado por Git),
+modifica `API_BASE_URL` y úsalo al ejecutar o compilar:
+
+```bash
+cp env.example.json env.local.json
+flutter run --dart-define-from-file=env.local.json
+flutter build apk --release --dart-define-from-file=env.local.json
+```
+
+No guardes contraseñas ni tokens en estos archivos: las variables Dart quedan
+incluidas en el binario de la aplicación.
+
+4. **Generar código (si es necesario)**
 ```bash
 flutter packages pub run build_runner build
 ```
 
-4. **Ejecutar la aplicación**
+5. **Ejecutar la aplicación**
 ```bash
 flutter run
 ```

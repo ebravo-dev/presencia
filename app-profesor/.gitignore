@@ -29,6 +29,8 @@
 .pub-cache/
 .pub/
 /build/
+env.local.json
+env.*.local.json
 
 # Web related
 lib/generated_plugin_registrant.dart
