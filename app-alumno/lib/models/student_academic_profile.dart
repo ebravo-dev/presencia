@@ -17,6 +17,32 @@ class StudentAcademicProfile {
     this.approvedCredits,
   });
 
+  factory StudentAcademicProfile.fromStorage(Map<String, dynamic> json) {
+    final matricula = json['matricula']?.toString().trim() ?? '';
+    final email = json['institutionalEmail']?.toString().trim() ?? '';
+    return StudentAcademicProfile(
+      matricula: matricula,
+      institutionalEmail: email,
+      displayName: json['displayName']?.toString().trim().isNotEmpty == true
+          ? json['displayName'].toString().trim()
+          : email,
+      programName: _storedOptionalString(json['programName']),
+      cycleName: _storedOptionalString(json['cycleName']),
+      average: _storedOptionalString(json['average']),
+      approvedCredits: _storedOptionalString(json['approvedCredits']),
+    );
+  }
+
+  Map<String, dynamic> toStorage() => {
+    'matricula': matricula,
+    'institutionalEmail': institutionalEmail,
+    'displayName': displayName,
+    'programName': programName,
+    'cycleName': cycleName,
+    'average': average,
+    'approvedCredits': approvedCredits,
+  };
+
   factory StudentAcademicProfile.fromSessionResponse(
     Map<String, dynamic> response, {
     required String matricula,
@@ -73,6 +99,11 @@ class StudentAcademicProfile {
       ]),
     );
   }
+}
+
+String? _storedOptionalString(Object? value) {
+  final normalized = value?.toString().trim();
+  return normalized == null || normalized.isEmpty ? null : normalized;
 }
 
 Map<String, dynamic>? _map(Object? value) {

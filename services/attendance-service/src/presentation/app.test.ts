@@ -166,6 +166,34 @@ describe('Attendance HTTP API', () => {
     await app.close();
   });
 
+  it('persists the coordinator attendance tolerance behind the internal API', async () => {
+    const app = await testApp();
+    expect((await app.inject({
+      method: 'GET', url: '/internal/v1/attendance/settings',
+    })).statusCode).toBe(404);
+
+    const update = await app.inject({
+      method: 'PUT',
+      url: '/internal/v1/attendance/settings',
+      headers: { 'x-internal-service-token': token },
+      payload: {
+        teacherAttendanceToleranceMinutes: 18,
+        actorIdentityId: 'coord-1',
+        actorRole: 'COORDINATOR',
+      },
+    });
+    expect(update.statusCode).toBe(200);
+    expect(update.json().data.teacherAttendanceToleranceMinutes).toBe(18);
+
+    const read = await app.inject({
+      method: 'GET',
+      url: '/internal/v1/attendance/settings',
+      headers: { 'x-internal-service-token': token },
+    });
+    expect(read.json().data.teacherAttendanceToleranceMinutes).toBe(18);
+    await app.close();
+  });
+
   it('keeps the authoritative binding list private', async () => {
     const app = await testApp();
     expect((await app.inject({ method: 'GET', url: '/internal/v1/attendance/device-bindings' })).statusCode).toBe(404);
@@ -277,6 +305,7 @@ async function testApp(options: {
   resetDemoData?: () => Promise<void>;
 } = {}) {
   const now = new Date('2026-08-02T12:00:00.000Z');
+  let teacherAttendanceToleranceMinutes = 10;
   const binding = {
     id: 'binding-1', matricula: '9900000001',
     attendanceUuid: '12345678-1234-4234-9234-123456789abc',
@@ -285,6 +314,17 @@ async function testApp(options: {
   };
   const repository = {
     applyRoster: async () => {}, coordinationProjectionSnapshot: async () => [],
+    attendanceSettings: async () => ({
+      teacherAttendanceToleranceMinutes,
+      updatedAt: null,
+    }),
+    updateAttendanceSettings: async (input: {
+      teacherAttendanceToleranceMinutes: number;
+    }) => {
+      teacherAttendanceToleranceMinutes =
+        input.teacherAttendanceToleranceMinutes;
+      return { teacherAttendanceToleranceMinutes, updatedAt: now };
+    },
     resetDemoData: options.resetDemoData ?? (async () => undefined),
     listDeviceBindings: async () => [], bindingInfrastructureSummary: async () => ({ count: 0, recentBindings: [] }),
     infrastructureSummary: async () => ({

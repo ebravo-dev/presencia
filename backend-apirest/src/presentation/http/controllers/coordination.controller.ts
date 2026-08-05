@@ -4,6 +4,7 @@ import type { AcademicServiceClient } from '../../../infrastructure/http/client/
 import type { CoordinationQueryClient } from '../../../infrastructure/http/client/coordination-query.client.js';
 import { ApiError } from '../../../errors/api-error.js';
 import {
+  attendanceSettingsSchema,
   parseCoordinationPayload,
   rangeReportQuerySchema,
   sharedClassBodySchema,
@@ -47,6 +48,20 @@ export class CoordinationController {
   rangeReport = async (request: FastifyRequest, reply: FastifyReply) => {
     const query = parseCoordinationPayload(rangeReportQuerySchema, request.query);
     return reply.send(await this.coordinationQuery.rangeReport(query));
+  };
+
+  attendanceSettings = async (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.send(await this.attendanceServiceCommands.attendanceSettings());
+  };
+
+  updateAttendanceSettings = async (request: FastifyRequest, reply: FastifyReply) => {
+    const input = parseCoordinationPayload(attendanceSettingsSchema, request.body);
+    const coordinator = requireCoordinator(request);
+    return reply.send(await this.attendanceServiceCommands.updateAttendanceSettings({
+      ...input,
+      actorIdentityId: coordinator.id,
+      actorRole: 'COORDINATOR',
+    }));
   };
 
   beacons = async (_request: FastifyRequest, reply: FastifyReply) => {

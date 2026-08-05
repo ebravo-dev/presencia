@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../core/constants/api_constants.dart';
 import '../core/utils/utils.dart';
 import '../shared/models/grupo.dart';
 import '../shared/models/profesor.dart';
@@ -18,13 +19,21 @@ class AuthStorageService {
   static const String _secureTokenKey = 'professor_session_token';
   static const String _secureMainBackendTokenKey =
       'professor_main_backend_token';
+  static const String _secureUatPasswordKey = 'professor_uat_password';
   static const String _profesorKey = 'profesor_data';
   static const String _gruposKey = 'grupos_data';
   static const String _syncInProgressKey = 'sync_in_progress';
   static const String _legacyPasswordKey = 'encrypted_password';
   static const String _beaconsKey = 'beacons_data';
+  static const String _attendanceToleranceKey =
+      'teacher_attendance_tolerance_minutes';
 
-  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
+  );
   Box? _box;
   String? _cachedToken;
   String? _cachedUatPassword;
@@ -36,15 +45,17 @@ class AuthStorageService {
       } else {
         _box = Hive.box(_authBox);
       }
-      // Versiones anteriores escribían la contraseña UAT en Hive. Nunca se
-      // conserva una credencial institucional en almacenamiento persistente.
-      // Se elimina antes de acceder al almacén seguro para que una falla del
-      // Keychain/Keystore no deje la contraseña heredada en disco.
+      // Versiones anteriores escribían la contraseña UAT en Hive. Se elimina
+      // antes de migrar al almacén cifrado de Keychain/Keystore.
       if (_box?.containsKey(_legacyPasswordKey) == true) {
         await _box?.delete(_legacyPasswordKey);
         Logger.info('Credencial UAT heredada eliminada del almacenamiento');
       }
       await _loadAndMigrateSecureSession();
+      _cachedUatPassword = await _secureStorage.read(
+        key: _secureUatPasswordKey,
+      );
+      ApiConstants.configureAttendanceTolerance(getAttendanceTolerance());
       Logger.info('AuthStorageService inicializado correctamente');
     } catch (e, stackTrace) {
       Logger.error('Error al inicializar AuthStorageService', e, stackTrace);
@@ -154,6 +165,7 @@ class AuthStorageService {
     try {
       await _secureStorage.delete(key: _secureTokenKey);
       await _secureStorage.delete(key: _secureMainBackendTokenKey);
+      await _secureStorage.delete(key: _secureUatPasswordKey);
       await _box?.delete(_legacyTokenKey);
       await _box?.delete(_legacyMainBackendTokenKey);
       await _box?.delete(_profesorKey);
@@ -240,10 +252,24 @@ class AuthStorageService {
     }
   }
 
+  Future<void> saveAttendanceTolerance(int value) async {
+    final normalized = value.clamp(0, 120).toInt();
+    await _box?.put(_attendanceToleranceKey, normalized);
+    ApiConstants.configureAttendanceTolerance(normalized);
+  }
+
+  int getAttendanceTolerance() {
+    final stored = _box?.get(_attendanceToleranceKey);
+    return stored is int
+        ? stored.clamp(0, 120).toInt()
+        : ApiConstants.defaultTeacherAttendanceToleranceMinutes;
+  }
+
   Future<void> cacheUatPasswordForProcess(String password) async {
     _cachedUatPassword = password;
+    await _secureStorage.write(key: _secureUatPasswordKey, value: password);
     // Defensa adicional para instalaciones actualizadas desde una versión
-    // que persistía esta credencial.
+    // que persistía esta credencial sin protección en Hive.
     try {
       await _box?.delete(_legacyPasswordKey);
     } catch (error, stackTrace) {
@@ -253,13 +279,14 @@ class AuthStorageService {
         stackTrace,
       );
     }
-    Logger.info('Credencial UAT disponible solo durante este proceso');
+    Logger.info('Credencial UAT protegida por Keychain/Keystore');
   }
 
   String? getCachedUatPassword() => _cachedUatPassword;
 
   Future<void> clearCachedUatPassword() async {
     _cachedUatPassword = null;
+    await _secureStorage.delete(key: _secureUatPasswordKey);
     try {
       await _box?.delete(_legacyPasswordKey);
     } catch (error, stackTrace) {
@@ -269,7 +296,7 @@ class AuthStorageService {
         stackTrace,
       );
     }
-    Logger.info('Credencial UAT eliminada de memoria');
+    Logger.info('Credencial UAT eliminada del almacenamiento seguro');
   }
 
   Future<void> saveLastEmail(String email) async {

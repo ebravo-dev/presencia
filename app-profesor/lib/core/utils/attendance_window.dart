@@ -9,24 +9,42 @@ class AttendanceWindow {
     return _parse(schedule, reference)?.end;
   }
 
-  static bool canMarkEntry(String schedule, DateTime now) {
+  static bool canMarkEntry(
+    String schedule,
+    DateTime now, {
+    int toleranceMinutes = 10,
+  }) {
     final start = classStart(schedule, now);
-    if (start == null) return true;
+    final end = classEnd(schedule, now);
+    if (start == null || end == null) return true;
     return _within(
       now,
-      start.subtract(const Duration(minutes: 10)),
-      start.add(const Duration(minutes: 30)),
+      start.subtract(Duration(minutes: toleranceMinutes)),
+      end.add(Duration(minutes: toleranceMinutes)),
     );
   }
 
-  static bool canMarkExit(String schedule, DateTime now) {
+  static bool canMarkExit(
+    String schedule,
+    DateTime now, {
+    int toleranceMinutes = 10,
+  }) {
+    final start = classStart(schedule, now);
     final end = classEnd(schedule, now);
-    if (end == null) return true;
+    if (start == null || end == null) return true;
     return _within(
       now,
-      end.subtract(const Duration(minutes: 30)),
-      end.add(const Duration(minutes: 30)),
+      start.subtract(Duration(minutes: toleranceMinutes)),
+      end.add(Duration(minutes: toleranceMinutes)),
     );
+  }
+
+  static bool canTakeAttendance(
+    String schedule,
+    DateTime now, {
+    int toleranceMinutes = 10,
+  }) {
+    return canMarkEntry(schedule, now, toleranceMinutes: toleranceMinutes);
   }
 
   static bool _within(DateTime value, DateTime start, DateTime end) {

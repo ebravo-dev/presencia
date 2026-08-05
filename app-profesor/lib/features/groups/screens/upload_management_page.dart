@@ -1690,7 +1690,10 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
               grupo: grupo,
               gradientColors: gradientColors,
               accentColor: Colors.white,
-              horario: grupo.horarioValido ?? '00:00-00:00',
+              horario:
+                  grupo.horarioParaDia(registro.fecha.weekday) ??
+                  grupo.horarioValido ??
+                  '00:00-00:00',
               dias: grupo.diasClaseAgrupados ?? 'N/A',
               todosLosGrupos: widget.todosLosGrupos,
               initialDate: registro.fecha,

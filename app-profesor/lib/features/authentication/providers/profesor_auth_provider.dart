@@ -18,6 +18,8 @@ enum ProfesorAuthStatus {
 
 /// Estado del profesor autenticado
 class ProfesorAuthState {
+  static const Object _notProvided = Object();
+
   final ProfesorAuthStatus status;
   final Profesor? profesor;
   final List<Grupo> grupos;
@@ -38,16 +40,18 @@ class ProfesorAuthState {
     ProfesorAuthStatus? status,
     Profesor? profesor,
     List<Grupo>? grupos,
-    String? token,
-    String? errorMessage,
+    Object? token = _notProvided,
+    Object? errorMessage = _notProvided,
     bool? isLoadingGroups,
   }) {
     return ProfesorAuthState(
       status: status ?? this.status,
       profesor: profesor ?? this.profesor,
       grupos: grupos ?? this.grupos,
-      token: token ?? this.token,
-      errorMessage: errorMessage ?? this.errorMessage,
+      token: identical(token, _notProvided) ? this.token : token as String?,
+      errorMessage: identical(errorMessage, _notProvided)
+          ? this.errorMessage
+          : errorMessage as String?,
       isLoadingGroups: isLoadingGroups ?? this.isLoadingGroups,
     );
   }
@@ -110,7 +114,8 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
             profesor: loginResponse.profesor,
           );
 
-          // La credencial UAT se conserva solo en memoria durante este proceso.
+          // La credencial UAT queda cifrada por Keychain/Keystore y se usa
+          // únicamente para operaciones de sincronización.
           await _authStorage.cacheUatPasswordForProcess(password);
 
           if (loginResponse.needsSync == true) {
@@ -189,6 +194,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
             await _authStorage.saveBeacons(debugData.beacons);
             state = state.copyWith(
               grupos: debugData.grupos,
+              token: _authStorage.getToken() ?? state.token,
               isLoadingGroups: false,
             );
           } else {
@@ -200,6 +206,10 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
             '✅ ${data.grupos.length} clases descargadas del servidor',
           );
           state = state.copyWith(grupos: data.grupos, isLoadingGroups: false);
+          final refreshedToken = _authStorage.getToken();
+          if (refreshedToken != null && refreshedToken.isNotEmpty) {
+            state = state.copyWith(token: refreshedToken);
+          }
           // Guardar en cache para futuras sesiones
           await _authStorage.saveGrupos(data.grupos);
           // Guardar beacons
@@ -256,11 +266,8 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     // Set sync in progress flag for app redirect on reopen
     await _authStorage.setSyncInProgress(true);
 
-    // Permite reintentos dentro del proceso sin escribir la credencial a disco.
+    // Mantiene disponible la credencial cifrada para reintentos automáticos.
     await _authStorage.cacheUatPasswordForProcess(password);
-
-    // Clear local groups before syncing to avoid showing stale data
-    await clearGrupos();
 
     final result = await _apiService.forceSync(token: state.token!);
 
@@ -283,11 +290,12 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     try {
       Logger.info('Verificando sesión almacenada');
 
-      if (_authStorage.hasActiveSession()) {
-        final token = _authStorage.getToken();
-        final profesor = _authStorage.getProfesor();
+      final token = _authStorage.getToken();
+      final profesor = _authStorage.getProfesor();
+      final cachedGrupos = _authStorage.getGrupos() ?? const <Grupo>[];
 
-        if (token != null && token.isNotEmpty && profesor != null) {
+      if (profesor != null) {
+        if (token != null && token.isNotEmpty) {
           // Validar si el JWT no ha expirado localmente
           final tokenValido = _authStorage.isTokenValid();
 
@@ -300,11 +308,12 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
             state = ProfesorAuthState(
               status: ProfesorAuthStatus.sessionExpired,
               profesor: profesor,
+              grupos: cachedGrupos,
               token: null,
               errorMessage:
                   'Tu sesión expiró. Ingresa tu contraseña para continuar.',
             );
-            // Reintentar solo si la credencial sigue en memoria del proceso.
+            // Reintentar automáticamente con la credencial cifrada.
             await relogin();
             return;
           }
@@ -320,11 +329,14 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
           // Cargar grupos del profesor
           await _loadGrupos();
         } else {
-          Logger.info('Sesión inválida — limpiando');
-          await _authStorage.clearSession();
-          state = const ProfesorAuthState(
-            status: ProfesorAuthStatus.unauthenticated,
+          Logger.info('Identidad local disponible; renovando la sesión UAT');
+          state = ProfesorAuthState(
+            status: ProfesorAuthStatus.sessionExpired,
+            profesor: profesor,
+            grupos: cachedGrupos,
+            errorMessage: 'Renovando la sesión para sincronizar.',
           );
+          await relogin();
         }
       } else {
         Logger.info('No hay sesión almacenada');
@@ -334,9 +346,20 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
       }
     } catch (e, stackTrace) {
       Logger.error('Error verificando sesión almacenada', e, stackTrace);
-      await _authStorage.clearSession();
-      state = const ProfesorAuthState(
-        status: ProfesorAuthStatus.unauthenticated,
+      final profesor = _authStorage.getProfesor();
+      if (profesor == null) {
+        state = const ProfesorAuthState(
+          status: ProfesorAuthStatus.unauthenticated,
+        );
+        return;
+      }
+      state = ProfesorAuthState(
+        status: ProfesorAuthStatus.authenticated,
+        profesor: profesor,
+        grupos: _authStorage.getGrupos() ?? const <Grupo>[],
+        token: _authStorage.getToken(),
+        errorMessage:
+            'No se pudo actualizar la sesión; continúas con los datos locales.',
       );
     }
   }
@@ -373,7 +396,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     );
   }
 
-  /// Re-autenticación ligera con la credencial efímera del proceso o con
+  /// Re-autenticación ligera con la credencial cifrada o con
   /// una contraseña nueva ingresada por la persona usuaria.
   Future<void> relogin({String? plainPassword}) async {
     final profesor = state.profesor ?? _authStorage.getProfesor();
@@ -398,7 +421,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
         password: plainPassword,
       );
     } else {
-      // Reusar solo la credencial efímera del proceso actual.
+      // Reusar la credencial protegida por Keychain/Keystore.
       final cachedPassword = _authStorage.getCachedUatPassword();
       if (cachedPassword == null || cachedPassword.isEmpty) {
         state = state.copyWith(
@@ -413,9 +436,18 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
       );
     }
 
-    result.fold(
-      (error) {
+    await result.fold(
+      (error) async {
         Logger.error('Error en re-login: $error');
+        if (!_apiService.lastLoginCredentialsRejected) {
+          state = state.copyWith(
+            status: ProfesorAuthStatus.authenticated,
+            token: _authStorage.getToken(),
+            errorMessage:
+                'No se pudo sincronizar; continúas con los datos locales.',
+          );
+          return;
+        }
         state = state.copyWith(
           status: ProfesorAuthStatus.sessionExpired,
           errorMessage: error,
@@ -429,7 +461,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
           token: loginResponse.token,
           profesor: loginResponse.profesor,
         );
-        // Mantener la credencial solo para reintentos de esta ejecución.
+        // Sustituir la credencial cifrada después de un re-login correcto.
         if (plainPassword != null && plainPassword.isNotEmpty) {
           await _authStorage.cacheUatPasswordForProcess(plainPassword);
         }

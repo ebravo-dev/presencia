@@ -12,12 +12,26 @@ import '../shared/models/profesor.dart';
 import '../shared/models/sync_status.dart';
 
 class ApiService {
+  static void Function()? _globalSessionExpiredHandler;
   late final Dio _presenceDio;
+  Future<String?>? _refreshInFlight;
+  bool _lastLoginCredentialsRejected = false;
+  bool _lastRefreshNeedsPassword = false;
+
+  bool get lastLoginCredentialsRejected => _lastLoginCredentialsRejected;
 
   /// Callback que se dispara cuando el servidor retorna 401.
-  void Function()? onSessionExpired;
+  void Function()? _onSessionExpired;
 
-  ApiService({this.onSessionExpired}) {
+  void Function()? get onSessionExpired => _onSessionExpired;
+
+  set onSessionExpired(void Function()? callback) {
+    _onSessionExpired = callback;
+    if (callback != null) _globalSessionExpiredHandler = callback;
+  }
+
+  ApiService({void Function()? onSessionExpired}) {
+    this.onSessionExpired = onSessionExpired;
     _presenceDio = Dio(
       BaseOptions(
         baseUrl: ApiConstants.baseUrl,
@@ -38,9 +52,29 @@ class ApiService {
     );
     _presenceDio.interceptors.add(
       InterceptorsWrapper(
-        onError: (DioException error, ErrorInterceptorHandler handler) {
-          if (error.response?.statusCode == 401) {
-            onSessionExpired?.call();
+        onError: (DioException error, ErrorInterceptorHandler handler) async {
+          final options = error.requestOptions;
+          final canRefresh =
+              error.response?.statusCode == 401 &&
+              options.extra['skipAutoUatRefresh'] != true &&
+              options.extra['uatSessionRetried'] != true;
+          if (canRefresh) {
+            final refreshedToken = await _refreshSessionOnce();
+            if (refreshedToken != null && refreshedToken.isNotEmpty) {
+              try {
+                options.headers['X-UAT-Session-Id'] = refreshedToken;
+                options.extra['uatSessionRetried'] = true;
+                final response = await _presenceDio.fetch(options);
+                handler.resolve(response);
+                return;
+              } on DioException catch (retryError) {
+                handler.next(retryError);
+                return;
+              }
+            }
+            if (_lastRefreshNeedsPassword) {
+              (_onSessionExpired ?? _globalSessionExpiredHandler)?.call();
+            }
           }
           handler.next(error);
         },
@@ -57,12 +91,14 @@ class ApiService {
     required String email,
     required String password,
   }) async {
+    _lastLoginCredentialsRejected = false;
     try {
       Logger.info('Intentando login UAT contra backend-apirest para: $email');
 
       final response = await _presenceDio.post(
         ApiConstants.uatSessions,
         data: {'username': email, 'password': password},
+        options: Options(extra: {'skipAutoUatRefresh': true}),
       );
       final data = _asMap(response.data);
       final login = _asMap(data['login']);
@@ -102,6 +138,7 @@ class ApiService {
         ),
       );
     } on DioException catch (e) {
+      _lastLoginCredentialsRejected = e.response?.statusCode == 401;
       final errorMessage = _handleDioError(e);
       Logger.error('Error de conexion en login UAT: $errorMessage', e);
       return Left(errorMessage);
@@ -112,6 +149,7 @@ class ApiService {
   }
 
   Future<String?> _refreshBackendApiRestSession() async {
+    _lastRefreshNeedsPassword = false;
     final authStorage = AuthStorageService();
     final profesor = authStorage.getProfesor();
     final password = authStorage.getCachedUatPassword();
@@ -120,6 +158,7 @@ class ApiService {
         profesor.institutionalEmail.isEmpty ||
         password == null ||
         password.isEmpty) {
+      _lastRefreshNeedsPassword = true;
       Logger.error(
         'No se pudo renovar sesion UAT: falta profesor o credencial efimera.',
       );
@@ -137,6 +176,7 @@ class ApiService {
     String? refreshedToken;
     await result.fold(
       (error) async {
+        _lastRefreshNeedsPassword = _lastLoginCredentialsRejected;
         Logger.error('No se pudo renovar sesion UAT: $error');
       },
       (login) async {
@@ -147,6 +187,17 @@ class ApiService {
     );
 
     return refreshedToken;
+  }
+
+  Future<String?> _refreshSessionOnce() {
+    final active = _refreshInFlight;
+    if (active != null) return active;
+    final refresh = _refreshBackendApiRestSession();
+    _refreshInFlight = refresh;
+    refresh.whenComplete(() {
+      if (identical(_refreshInFlight, refresh)) _refreshInFlight = null;
+    });
+    return refresh;
   }
 
   Future<Either<String, bool>> logoutProfesor(String sessionId) async {
@@ -213,9 +264,14 @@ class ApiService {
           .map((item) => UatHorarioModel.fromJson(_asMap(item)))
           .where((item) => item.idGrupo > 0)
           .toList();
-      final horariosByGrupo = {
-        for (final horario in horarios) horario.idGrupo: horario,
-      };
+      final horariosByGrupo = <int, UatHorarioModel>{};
+      for (final horario in horarios) {
+        horariosByGrupo.update(
+          horario.idGrupo,
+          (current) => current.merge(horario),
+          ifAbsent: () => horario,
+        );
+      }
       final gruposPortal = _dataList(gruposResponse.data)
           .map((item) => UatGrupoModel.fromJson(_asMap(item)))
           .where((item) => item.idGrupo > 0)
@@ -268,6 +324,9 @@ class ApiService {
       }
 
       var beacons = await _resolveBeaconsForGroups(grupos);
+      await _loadAttendanceSettings(
+        AuthStorageService().getToken() ?? sessionId,
+      );
       final debugData = withDebugCurrentClass(grupos, beacons);
       Logger.info(
         'Clases obtenidas: ${gruposPortal.length} oficiales, ${sharedGroups.length} compartidas, beacons: ${debugData.beacons.length}',
@@ -280,6 +339,27 @@ class ApiService {
     } catch (e, stackTrace) {
       Logger.error('Error inesperado obteniendo clases UAT', e, stackTrace);
       return Left(_cleanException(e));
+    }
+  }
+
+  Future<void> _loadAttendanceSettings(String sessionId) async {
+    try {
+      final response = await _presenceDio.get(
+        ApiConstants.uatAttendanceSettings,
+        options: Options(headers: {'X-UAT-Session-Id': sessionId}),
+      );
+      final data = _asMap(_asMap(response.data)['data']);
+      final tolerance = int.tryParse(
+        data['teacherAttendanceToleranceMinutes']?.toString() ?? '',
+      );
+      if (tolerance != null) {
+        await AuthStorageService().saveAttendanceTolerance(tolerance);
+      }
+    } on DioException catch (error) {
+      Logger.error(
+        'No se pudo actualizar la tolerancia; se conserva la local',
+        error,
+      );
     }
   }
 

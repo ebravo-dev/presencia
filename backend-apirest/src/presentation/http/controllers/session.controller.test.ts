@@ -51,3 +51,34 @@ describe('SessionController.sync', () => {
     );
   });
 });
+
+describe('SessionController.settings', () => {
+  it('expone la tolerancia persistida que deben usar las apps', async () => {
+    const controller = new SessionController(
+      {} as never,
+      {} as never,
+      {
+        attendanceSettings: async () => ({
+          data: {
+            teacherAttendanceToleranceMinutes: 18,
+            updatedAt: '2026-08-04T12:00:00.000Z',
+          },
+        }),
+      },
+    );
+    const send = vi.fn((payload: unknown) => payload);
+
+    const response = await controller.settings(
+      { log: { warn: vi.fn() } } as never,
+      { send } as never,
+    );
+
+    expect(response).toEqual({
+      data: {
+        teacherAttendanceToleranceMinutes: 18,
+        updatedAt: '2026-08-04T12:00:00.000Z',
+      },
+      meta: { generatedAt: expect.any(String) },
+    });
+  });
+});

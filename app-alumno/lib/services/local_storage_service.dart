@@ -6,6 +6,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/attendance_history_entry.dart';
+import '../models/student_academic_profile.dart';
+import '../models/student_schedule_entry.dart';
 
 class StudentStoredCredentials {
   final String username;
@@ -27,6 +29,11 @@ class LocalStorageService {
 
   static const String _profileBox = 'student_profile';
   static const String _attendanceHistoryKey = 'attendance_history';
+  static const String _academicProfileKey = 'academic_profile';
+  static const String _scheduleKey = 'student_schedule';
+  static const String _attendanceToleranceKey =
+      'teacher_attendance_tolerance_minutes';
+  static const int defaultAttendanceToleranceMinutes = 10;
   static const int _maxAttendanceHistoryEntries = 200;
   static const String _secureUsernameKey = 'uat_student_username';
   static const String _securePasswordKey = 'uat_student_password';
@@ -63,6 +70,51 @@ class LocalStorageService {
 
   String get institutionalEmail =>
       _profile.get('institutional_email', defaultValue: '');
+
+  StudentAcademicProfile? get academicProfile {
+    final stored = _profile.get(_academicProfileKey);
+    if (stored is Map) {
+      return StudentAcademicProfile.fromStorage(
+        Map<String, dynamic>.from(stored),
+      );
+    }
+    if (!isProfileSet) return null;
+    return StudentAcademicProfile(
+      matricula: matricula,
+      institutionalEmail: institutionalEmail,
+      displayName: institutionalEmail.isEmpty ? matricula : institutionalEmail,
+    );
+  }
+
+  List<StudentScheduleEntry> get studentSchedule {
+    dynamic stored;
+    try {
+      stored = _profile.get(_scheduleKey);
+    } catch (_) {
+      // Lightweight test doubles and pre-initialization callers have no box.
+      return const [];
+    }
+    if (stored is! List) return const [];
+    return stored
+        .whereType<Map>()
+        .map(
+          (entry) => StudentScheduleEntry.fromStorage(
+            Map<String, dynamic>.from(entry),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  int get attendanceToleranceMinutes {
+    dynamic stored;
+    try {
+      stored = _profile.get(_attendanceToleranceKey);
+    } catch (_) {
+      return defaultAttendanceToleranceMinutes;
+    }
+    if (stored is! int) return defaultAttendanceToleranceMinutes;
+    return stored.clamp(0, 120).toInt();
+  }
 
   String get classroomBeaconUuid =>
       _profile.get('classroom_beacon_uuid', defaultValue: '');
@@ -151,6 +203,25 @@ class LocalStorageService {
       attendanceUuid: attendanceUuid,
       deviceBindingId: deviceBindingId,
     );
+  }
+
+  Future<void> saveAcademicProfile(StudentAcademicProfile profile) async {
+    await _profile.put(_academicProfileKey, profile.toStorage());
+    await saveProfile(
+      profile.matricula,
+      institutionalEmail: profile.institutionalEmail,
+    );
+  }
+
+  Future<void> saveStudentSchedule(List<StudentScheduleEntry> schedule) async {
+    await _profile.put(
+      _scheduleKey,
+      schedule.map((entry) => entry.toStorage()).toList(growable: false),
+    );
+  }
+
+  Future<void> saveAttendanceTolerance(int minutes) async {
+    await _profile.put(_attendanceToleranceKey, minutes.clamp(0, 120).toInt());
   }
 
   Future<void> saveInstitutionalCredentials({

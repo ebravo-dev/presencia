@@ -38,6 +38,45 @@ import type {
 export class PrismaAttendanceRepository implements AttendanceRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
+  async attendanceSettings() {
+    const current = await this.prisma.attendanceConfiguration.findUnique({
+      where: { id: 'global' },
+    });
+    return {
+      teacherAttendanceToleranceMinutes:
+        current?.teacherAttendanceToleranceMinutes ?? 10,
+      updatedAt: current?.updatedAt ?? null,
+    };
+  }
+
+  async updateAttendanceSettings(input: {
+    teacherAttendanceToleranceMinutes: number;
+    actorIdentityId: string;
+    actorRole: 'COORDINATOR' | 'SUPER_USER';
+  }) {
+    const updated = await this.prisma.attendanceConfiguration.upsert({
+      where: { id: 'global' },
+      create: {
+        id: 'global',
+        teacherAttendanceToleranceMinutes:
+          input.teacherAttendanceToleranceMinutes,
+        updatedByIdentityId: input.actorIdentityId,
+        updatedByRole: input.actorRole,
+      },
+      update: {
+        teacherAttendanceToleranceMinutes:
+          input.teacherAttendanceToleranceMinutes,
+        updatedByIdentityId: input.actorIdentityId,
+        updatedByRole: input.actorRole,
+      },
+    });
+    return {
+      teacherAttendanceToleranceMinutes:
+        updated.teacherAttendanceToleranceMinutes,
+      updatedAt: updated.updatedAt,
+    };
+  }
+
   async applyRoster(snapshot: AttendanceRosterSnapshot): Promise<void> {
     await this.withTransactionRetry(() => this.prisma.$transaction(async (transaction) => {
       const current = await transaction.attendanceRosterGroup.findUnique({

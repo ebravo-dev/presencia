@@ -332,7 +332,10 @@ function DocumentPreview({ report, fallbackTeacher }: { report: AttendanceReport
           <span>◷ Clase futura</span>
           </div>
         )}
-        <span>Zona horaria: {report.meta.timezone}</span>
+        <span>
+          Tolerancia: {report.meta.teacherAttendanceToleranceMinutes ?? 10} min
+          {' · '}Zona horaria: {report.meta.timezone}
+        </span>
       </footer>
     </article>
   );
@@ -459,8 +462,16 @@ function attendanceTitle(cell?: ReportCell, hourSlot?: ReportHourSlot, label = '
   if (cell?.professorEntryAt) pieces.push(`Entrada: ${formatTimeOnly(cell.professorEntryAt)}`);
   if (cell?.professorExitAt) pieces.push(`Salida: ${formatTimeOnly(cell.professorExitAt)}`);
   if (cell && cell.scheduledHours > 0) pieces.push(`Cobertura: ${cell.attendedHours}/${cell.scheduledHours} h`);
+  if (cell?.workedMinutes != null) pieces.push(`Permanencia real: ${formatWorkedTime(cell.workedMinutes)}`);
   if (cell?.portalSyncError) pieces.push(cell.portalSyncError);
   return pieces.join(' | ');
+}
+
+function formatWorkedTime(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  if (hours === 0) return `${remainder} min`;
+  return remainder === 0 ? `${hours} h` : `${hours} h ${remainder} min`;
 }
 
 function SummaryValue({ label, value, tone }: { label: string; value: string | number; tone?: 'green' | 'red' | 'brand' }) {

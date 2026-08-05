@@ -50,15 +50,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   StreamSubscription<AdvertiserState>? _advertiserSubscription;
   StreamSubscription<AttendanceConfirmation>? _confirmationSubscription;
   StreamSubscription<AttendanceSessionSnapshot>? _attendanceSubscription;
+  Timer? _scheduleClock;
   int _selectedTab = 0;
   int _selectedClass = 0;
   int _historyCount = 0;
+  int _attendanceToleranceMinutes =
+      LocalStorageService.defaultAttendanceToleranceMinutes;
   bool _isSyncingDeviceBinding = false;
   bool _isSyncingAcademicInfo = false;
   bool _isManualSyncing = false;
   bool _isCheckingServer = false;
   List<StudentScheduleEntry> _schedule = const [];
   String? _academicSyncError;
+  bool _passwordDialogOpen = false;
   String? _pendingUatSessionId;
   String? _confirmationId;
   AttendanceConfirmation? _confirmation;
@@ -84,6 +88,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _profile = widget.profile;
     _studentAuth = widget.studentAuth ?? StudentAuthService();
+    _schedule = widget.storage.studentSchedule;
+    _attendanceToleranceMinutes = widget.storage.attendanceToleranceMinutes;
     _historyCount = widget.storage.attendanceHistoryCount;
     _pendingUatSessionId = widget.initialUatSessionId;
     _advertiserState = widget.bleService.currentState;
@@ -121,8 +127,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
       });
     });
+    _startScheduleClock();
     unawaited(_syncDeviceBinding());
     unawaited(_syncAcademicInfo());
+  }
+
+  void _startScheduleClock() {
+    final now = DateTime.now();
+    final millisecondsToNextMinute =
+        const Duration(minutes: 1).inMilliseconds -
+        (now.second * 1000 + now.millisecond);
+    _scheduleClock = Timer(
+      Duration(milliseconds: millisecondsToNextMinute),
+      () {
+        if (!mounted) return;
+        if (_selectedTab == 0) setState(() {});
+        _scheduleClock = Timer.periodic(const Duration(minutes: 1), (_) {
+          if (mounted && _selectedTab == 0) setState(() {});
+        });
+      },
+    );
   }
 
   @override
@@ -151,6 +175,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_isSyncingAcademicInfo || !widget.storage.isProfileSet) return;
     _isSyncingAcademicInfo = true;
     if (mounted) setState(() => _academicSyncError = null);
+    var requestPassword = false;
     try {
       final sessionId = _pendingUatSessionId;
       _pendingUatSessionId = null;
@@ -162,10 +187,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         _schedule = result.schedule;
         _selectedClass = 0;
+        _attendanceToleranceMinutes = result.attendanceToleranceMinutes;
         _lastSuccessfulSync = result.syncedAt;
         if (result.profile != null) _profile = result.profile!;
       });
     } on StudentAuthException catch (error) {
+      requestPassword = error.authenticationFailed;
       if (mounted) setState(() => _academicSyncError = error.message);
     } catch (_) {
       if (mounted) {
@@ -177,6 +204,116 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } finally {
       _isSyncingAcademicInfo = false;
       if (mounted) setState(() {});
+    }
+    if (requestPassword && mounted) {
+      unawaited(_requestUatPassword());
+    }
+  }
+
+  Future<void> _requestUatPassword() async {
+    if (_passwordDialogOpen || !mounted) return;
+    _passwordDialogOpen = true;
+    final passwordController = TextEditingController();
+    String? dialogError;
+    var loading = false;
+
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> submit() async {
+              final password = passwordController.text;
+              if (password.isEmpty || loading) return;
+              setDialogState(() {
+                loading = true;
+                dialogError = null;
+              });
+              try {
+                final email = widget.storage.institutionalEmail.isNotEmpty
+                    ? widget.storage.institutionalEmail
+                    : _profile.institutionalEmail;
+                final result = await _studentAuth.loginAndBind(
+                  username: email,
+                  password: password,
+                  storage: widget.storage,
+                );
+                await widget.storage.saveInstitutionalCredentials(
+                  username: email,
+                  password: password,
+                );
+                await widget.storage.saveDeviceBindingToken(
+                  result.deviceBindingToken,
+                );
+                await widget.storage.saveAcademicProfile(result.profile);
+                _pendingUatSessionId = result.sessionId;
+                _profile = result.profile;
+                if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+              } on StudentAuthException catch (error) {
+                if (dialogContext.mounted) {
+                  setDialogState(() {
+                    loading = false;
+                    dialogError = error.message;
+                  });
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Actualiza tu contraseña UAT'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.storage.institutionalEmail.isNotEmpty
+                        ? widget.storage.institutionalEmail
+                        : _profile.institutionalEmail,
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: passwordController,
+                    obscureText: true,
+                    autofocus: true,
+                    enabled: !loading,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => submit(),
+                    decoration: InputDecoration(
+                      labelText: 'Contraseña',
+                      errorText: dialogError,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: loading
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Ahora no'),
+                ),
+                FilledButton(
+                  onPressed: loading ? null : submit,
+                  child: loading
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Continuar'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    } finally {
+      passwordController.dispose();
+      _passwordDialogOpen = false;
+    }
+
+    if (_pendingUatSessionId != null && mounted) {
+      await _syncAcademicInfo();
     }
   }
 
@@ -270,6 +407,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _advertiserSubscription?.cancel();
     _confirmationSubscription?.cancel();
     _attendanceSubscription?.cancel();
+    _scheduleClock?.cancel();
     super.dispose();
   }
 
@@ -280,6 +418,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         historyCount: _historyCount,
         selectedClass: _selectedClass,
         schedule: _schedule,
+        attendanceToleranceMinutes: _attendanceToleranceMinutes,
         scheduleLoading: _isSyncingAcademicInfo,
         isActive: _isActive,
         isChecking: _isChecking,
@@ -362,6 +501,7 @@ class _AttendancePage extends StatelessWidget {
     required this.historyCount,
     required this.selectedClass,
     required this.schedule,
+    required this.attendanceToleranceMinutes,
     required this.scheduleLoading,
     required this.isActive,
     required this.isChecking,
@@ -374,6 +514,7 @@ class _AttendancePage extends StatelessWidget {
   final int historyCount;
   final int selectedClass;
   final List<StudentScheduleEntry> schedule;
+  final int attendanceToleranceMinutes;
   final bool scheduleLoading;
   final bool isActive, isChecking, confirmed, hasError;
   final String? confirmedClassName;
@@ -383,12 +524,33 @@ class _AttendancePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final now = DateTime.now();
     final todayClasses = scheduleForWeekday(schedule, DateTime.now().weekday);
+    final firstAvailable = todayClasses.indexWhere(
+      (occurrence) => scheduleIsAvailable(
+        occurrence,
+        now,
+        toleranceMinutes: attendanceToleranceMinutes,
+      ),
+    );
     final safeSelectedClass = todayClasses.isEmpty
         ? 0
-        : selectedClass.clamp(0, todayClasses.length - 1);
+        : (selectedClass.clamp(0, todayClasses.length - 1));
+    final selectedIsAvailable =
+        todayClasses.isNotEmpty &&
+        scheduleIsAvailable(
+          todayClasses[safeSelectedClass],
+          now,
+          toleranceMinutes: attendanceToleranceMinutes,
+        );
+    final dayFinished = todayClasses.isNotEmpty && firstAvailable == -1;
+    final effectiveSelectedClass = !dayFinished && !selectedIsAvailable
+        ? firstAvailable
+        : safeSelectedClass;
     final buttonTitle = confirmed
         ? 'Asistencia registrada'
+        : dayFinished
+        ? 'Jornada terminada'
         : isActive || isChecking
         ? 'Cancelando registro'
         : hasError
@@ -396,6 +558,8 @@ class _AttendancePage extends StatelessWidget {
         : 'Registrar asistencia';
     final buttonDetail = confirmed
         ? 'Confirmada en ${confirmedClassName ?? 'tu clase'}'
+        : dayFinished
+        ? 'No hay más materias disponibles hoy'
         : isChecking
         ? 'Verificando disponibilidad'
         : isActive
@@ -403,207 +567,222 @@ class _AttendancePage extends StatelessWidget {
         : hasError
         ? 'Revisa tu celular y vuelve a intentarlo'
         : 'Disponible cuando el profesor inicie el pase';
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: CustomScrollView(
-        slivers: [
-          const SliverToBoxAdapter(child: SizedBox(height: 18)),
-          SliverToBoxAdapter(
-            child: _PageHeader(title: 'Asistencia', subtitle: 'Periodo actual'),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 22)),
-          SliverToBoxAdapter(
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '$historyCount',
-                            style: Theme.of(
-                              context,
-                            ).textTheme.headlineSmall?.copyWith(fontSize: 42),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            historyCount == 1
-                                ? 'asistencia confirmada'
-                                : 'asistencias confirmadas',
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ],
-                      ),
-                    ),
-                    SizedBox(
-                      width: 142,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.verified_outlined,
-                            size: 18,
-                            color: scheme.primary,
-                          ),
-                          const SizedBox(width: 7),
-                          Expanded(
-                            child: Text(
-                              'Registros confirmados en este celular',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxHeight < 610;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(20, compact ? 10 : 16, 20, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _PageHeader(
+                title: 'Asistencia',
+                subtitle: 'Materias de hoy',
               ),
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 26)),
-          SliverToBoxAdapter(
-            child: Text(
-              'Clase a registrar',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 4)),
-          SliverToBoxAdapter(
-            child: Text(
-              'Desliza para elegir una clase reciente',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 14)),
-          SliverToBoxAdapter(
-            child: scheduleLoading && schedule.isEmpty
-                ? const _AcademicLoadingCard()
-                : todayClasses.isEmpty
-                ? const _NoClassesTodayCard()
-                : SizedBox(
-                    height: 154,
-                    child: PageView.builder(
-                      controller: PageController(
-                        viewportFraction: .74,
-                        initialPage: safeSelectedClass,
-                      ),
-                      itemCount: todayClasses.length,
-                      onPageChanged: onSelectClass,
-                      itemBuilder: (context, index) => _ClassCard(
-                        occurrence: todayClasses[index],
-                        selected: index == safeSelectedClass,
-                      ),
-                    ),
+              SizedBox(height: compact ? 8 : 14),
+              Card(
+                margin: EdgeInsets.zero,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: compact ? 12 : 16,
                   ),
-          ),
-          if (todayClasses.isNotEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 14),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(
-                    todayClasses.length,
-                    (index) => AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      margin: const EdgeInsets.symmetric(horizontal: 5),
-                      width: index == safeSelectedClass ? 18 : 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: index == safeSelectedClass
-                            ? scheme.primary
-                            : appMuted(context).withValues(alpha: .4),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          if (confirmed) ...[
-            const SliverToBoxAdapter(child: SizedBox(height: 22)),
-            SliverToBoxAdapter(
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: AppColors.success.withValues(alpha: .32),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.verified_rounded,
-                      color: AppColors.success,
-                      size: 30,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Asistencia tomada correctamente',
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w800),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            confirmedClassName ?? 'Clase confirmada',
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(color: AppColors.success),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-          const SliverToBoxAdapter(child: SizedBox(height: 30)),
-          SliverToBoxAdapter(
-            child: Semantics(
-              button: true,
-              label: buttonTitle,
-              child: SizedBox(
-                height: 88,
-                child: FilledButton(
-                  onPressed: confirmed ? null : onRegister,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: confirmed
-                        ? AppColors.success
-                        : scheme.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  child: Row(
                     children: [
-                      Text(
-                        buttonTitle,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 19,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '$historyCount',
+                              style: Theme.of(context).textTheme.headlineSmall
+                                  ?.copyWith(fontSize: compact ? 30 : 36),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              historyCount == 1
+                                  ? 'asistencia confirmada'
+                                  : 'asistencias confirmadas',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(buttonDetail, style: const TextStyle(fontSize: 11)),
+                      SizedBox(
+                        width: 142,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.verified_outlined,
+                              size: 18,
+                              color: scheme.primary,
+                            ),
+                            const SizedBox(width: 7),
+                            Expanded(
+                              child: Text(
+                                'Registros confirmados en este celular',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
-            ),
+              SizedBox(height: compact ? 9 : 14),
+              Text(
+                'Clase a registrar',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                dayFinished
+                    ? 'Tu horario de hoy ya terminó'
+                    : 'Desliza para elegir una materia disponible',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              SizedBox(height: compact ? 7 : 10),
+              SizedBox(
+                height: compact ? 126 : 146,
+                child: scheduleLoading && schedule.isEmpty
+                    ? const _AcademicLoadingCard()
+                    : todayClasses.isEmpty
+                    ? const _NoClassesTodayCard()
+                    : dayFinished
+                    ? _FinishedClassesPanel(classes: todayClasses)
+                    : SizedBox.expand(
+                        child: PageView.builder(
+                          controller: PageController(
+                            viewportFraction: .74,
+                            initialPage: selectedIsAvailable
+                                ? safeSelectedClass
+                                : firstAvailable,
+                          ),
+                          itemCount: todayClasses.length,
+                          onPageChanged: onSelectClass,
+                          itemBuilder: (context, index) => _ClassCard(
+                            occurrence: todayClasses[index],
+                            selected: index == effectiveSelectedClass,
+                            locked: scheduleHasEnded(
+                              todayClasses[index],
+                              now,
+                              toleranceMinutes: attendanceToleranceMinutes,
+                            ),
+                          ),
+                        ),
+                      ),
+              ),
+              if (todayClasses.isNotEmpty && !dayFinished)
+                Padding(
+                  padding: EdgeInsets.only(top: compact ? 6 : 9),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(
+                      todayClasses.length,
+                      (index) => AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        margin: const EdgeInsets.symmetric(horizontal: 5),
+                        width: index == effectiveSelectedClass ? 18 : 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: index == effectiveSelectedClass
+                              ? scheme.primary
+                              : appMuted(context).withValues(alpha: .4),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              if (confirmed) ...[
+                SizedBox(height: compact ? 6 : 10),
+                Container(
+                  padding: EdgeInsets.all(compact ? 10 : 13),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: AppColors.success.withValues(alpha: .32),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.verified_rounded,
+                        color: AppColors.success,
+                        size: compact ? 24 : 28,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Asistencia tomada correctamente',
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              confirmedClassName ?? 'Clase confirmada',
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: AppColors.success),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const Spacer(),
+              Semantics(
+                button: true,
+                label: buttonTitle,
+                child: SizedBox(
+                  height: compact ? 66 : 76,
+                  child: FilledButton(
+                    onPressed: confirmed || dayFinished ? null : onRegister,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: confirmed
+                          ? AppColors.success
+                          : scheme.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      padding: EdgeInsets.zero,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          buttonTitle,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: compact ? 16 : 18,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          buttonDetail,
+                          style: const TextStyle(fontSize: 11),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -925,16 +1104,21 @@ class _PageHeader extends StatelessWidget {
 }
 
 class _ClassCard extends StatelessWidget {
-  const _ClassCard({required this.occurrence, required this.selected});
+  const _ClassCard({
+    required this.occurrence,
+    required this.selected,
+    this.locked = false,
+  });
   final StudentScheduleOccurrence occurrence;
   final bool selected;
+  final bool locked;
 
   @override
   Widget build(BuildContext context) => AnimatedScale(
     scale: selected ? 1 : .92,
     duration: const Duration(milliseconds: 220),
     child: AnimatedOpacity(
-      opacity: selected ? 1 : .58,
+      opacity: locked ? .42 : (selected ? 1 : .58),
       duration: const Duration(milliseconds: 220),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -946,18 +1130,46 @@ class _ClassCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(22),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   occurrence.entry.subject,
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: selected ? Colors.white : null,
                   ),
                 ),
+                if (occurrence.entry.group != null ||
+                    occurrence.entry.professor != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    [
+                      if (occurrence.entry.group != null)
+                        'Grupo ${occurrence.entry.group}',
+                      if (occurrence.entry.professor != null)
+                        occurrence.entry.professor!,
+                    ].join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: selected ? Colors.white70 : appMuted(context),
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+                if (locked) ...[
+                  const SizedBox(height: 4),
+                  const Row(
+                    children: [
+                      Icon(Icons.lock_clock_rounded, size: 14),
+                      SizedBox(width: 4),
+                      Text('Clase finalizada', style: TextStyle(fontSize: 10)),
+                    ],
+                  ),
+                ],
                 const Spacer(),
                 Row(
                   children: [
@@ -967,11 +1179,15 @@ class _ClassCard extends StatelessWidget {
                       color: selected ? Colors.white70 : appMuted(context),
                     ),
                     const SizedBox(width: 5),
-                    Text(
-                      occurrence.entry.classroom ?? 'Aula por confirmar',
-                      style: TextStyle(
-                        color: selected ? Colors.white70 : appMuted(context),
-                        fontSize: 12,
+                    Expanded(
+                      child: Text(
+                        occurrence.entry.classroom ?? 'Aula por confirmar',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: selected ? Colors.white70 : appMuted(context),
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ],
@@ -989,6 +1205,73 @@ class _ClassCard extends StatelessWidget {
           ),
         ),
       ),
+    ),
+  );
+}
+
+class _FinishedClassesPanel extends StatelessWidget {
+  const _FinishedClassesPanel({required this.classes});
+
+  final List<StudentScheduleOccurrence> classes;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    margin: EdgeInsets.zero,
+    child: Stack(
+      children: [
+        for (var index = 0; index < classes.length.clamp(0, 3); index++)
+          Positioned(
+            left: 12.0 + index * 17,
+            top: 18.0 + index * 10,
+            bottom: 18.0 - index * 4,
+            child: Container(
+              width: 54,
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.secondary.withValues(alpha: .18 + index * .08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.secondary.withValues(alpha: .3),
+                ),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(Icons.lock_clock_rounded, size: 18),
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(105, 8, 14, 8),
+          child: Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: SizedBox(
+                width: 200,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.nightlight_round,
+                      size: 19,
+                      color: appMuted(context),
+                    ),
+                    const SizedBox(height: 5),
+                    const Text(
+                      'Ya no hay más materias disponibles el día de hoy',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     ),
   );
 }
@@ -1100,9 +1383,9 @@ class _ScheduleItem extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 62,
+          width: 102,
           child: Text(
-            occurrence.slot.startTime ?? occurrence.slot.raw,
+            occurrence.slot.displayTime,
             style: Theme.of(
               context,
             ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),

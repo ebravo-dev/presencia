@@ -140,4 +140,34 @@ describe('AttendanceServiceCommandClient', () => {
       'http://attendance-service:3400/internal/v1/attendance/infrastructure/summary',
     );
   });
+
+  it('reads and updates the persistent attendance configuration', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: {
+        teacherAttendanceToleranceMinutes: 18,
+        updatedAt: '2026-08-04T12:00:00.000Z',
+      },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    const client = new AttendanceServiceCommandClient('http://attendance-service:3400', 'x'.repeat(32));
+
+    await expect(client.attendanceSettings()).resolves.toMatchObject({
+      data: { teacherAttendanceToleranceMinutes: 18 },
+    });
+    await client.updateAttendanceSettings({
+      teacherAttendanceToleranceMinutes: 18,
+      actorIdentityId: 'coord-1',
+      actorRole: 'COORDINATOR',
+    });
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      'http://attendance-service:3400/internal/v1/attendance/settings',
+    );
+    const updateRequest = fetchMock.mock.calls[1]?.[1];
+    expect(updateRequest?.method).toBe('PUT');
+    expect(JSON.parse(String(updateRequest?.body))).toEqual({
+      teacherAttendanceToleranceMinutes: 18,
+      actorIdentityId: 'coord-1',
+      actorRole: 'COORDINATOR',
+    });
+  });
 });

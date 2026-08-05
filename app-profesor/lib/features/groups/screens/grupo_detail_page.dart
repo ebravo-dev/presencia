@@ -11,6 +11,7 @@ import '../../../services/asistencia_local_service.dart';
 import '../../../services/api_service.dart';
 import '../../../services/ble_beacon_verification_service.dart';
 import '../../../services/student_attendance_ble_service.dart';
+import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/uat_colors.dart';
 import '../../../core/permissions/permission_service.dart';
 import '../../../core/utils/attendance_window.dart';
@@ -1761,7 +1762,13 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   }
 
   bool _puedeEscanearAlumnos() {
-    return _esFechaHoy() && _esDiaDeClase();
+    return _esFechaHoy() &&
+        _esDiaDeClase() &&
+        AttendanceWindow.canTakeAttendance(
+          widget.horario,
+          DateTime.now(),
+          toleranceMinutes: ApiConstants.teacherAttendanceToleranceMinutes,
+        );
   }
 
   bool _puedeSubirAsistencia() {
@@ -2133,19 +2140,29 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   }
 
   bool _puedeMarcarEntrada() {
-    return AttendanceWindow.canMarkEntry(widget.horario, DateTime.now());
+    return AttendanceWindow.canMarkEntry(
+      widget.horario,
+      DateTime.now(),
+      toleranceMinutes: ApiConstants.teacherAttendanceToleranceMinutes,
+    );
   }
 
   bool _puedeMarcarSalida() {
-    return AttendanceWindow.canMarkExit(widget.horario, DateTime.now());
+    return AttendanceWindow.canMarkExit(
+      widget.horario,
+      DateTime.now(),
+      toleranceMinutes: ApiConstants.teacherAttendanceToleranceMinutes,
+    );
   }
 
   String _getMensajeVentanaEntrada() {
     final inicioClase = _parseHorarioInicio();
-    if (inicioClase == null) return '';
+    final finClase = _parseHorarioFin();
+    if (inicioClase == null || finClase == null) return '';
 
-    final ventanaInicio = inicioClase.subtract(const Duration(minutes: 10));
-    final ventanaFin = inicioClase.add(const Duration(minutes: 30));
+    final tolerance = ApiConstants.teacherAttendanceToleranceMinutes;
+    final ventanaInicio = inicioClase.subtract(Duration(minutes: tolerance));
+    final ventanaFin = finClase.add(Duration(minutes: tolerance));
 
     final horaInicio = _formatTime(ventanaInicio);
     final horaFin = _formatTime(ventanaFin);
@@ -2154,11 +2171,13 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   }
 
   String _getMensajeVentanaSalida() {
+    final inicioClase = _parseHorarioInicio();
     final finClase = _parseHorarioFin();
-    if (finClase == null) return '';
+    if (inicioClase == null || finClase == null) return '';
 
-    final ventanaInicio = finClase.subtract(const Duration(minutes: 30));
-    final ventanaFin = finClase.add(const Duration(minutes: 30));
+    final tolerance = ApiConstants.teacherAttendanceToleranceMinutes;
+    final ventanaInicio = inicioClase.subtract(Duration(minutes: tolerance));
+    final ventanaFin = finClase.add(Duration(minutes: tolerance));
 
     final horaInicio = _formatTime(ventanaInicio);
     final horaFin = _formatTime(ventanaFin);

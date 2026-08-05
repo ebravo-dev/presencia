@@ -83,6 +83,36 @@ describe('CoordinationController beacon cutover', () => {
     expect(reply.statusCode).toBe(204);
   });
 
+  it('updates attendance tolerance with coordinator audit metadata', async () => {
+    let received: unknown;
+    const controller = new CoordinationController(
+      {} as never,
+      {
+        updateAttendanceSettings: async (input: unknown) => {
+          received = input;
+          return {
+            data: {
+              teacherAttendanceToleranceMinutes: 18,
+              updatedAt: '2026-08-04T12:00:00.000Z',
+            },
+          };
+        },
+      } as never,
+      {} as never,
+    );
+    const response = await controller.updateAttendanceSettings({
+      coordinator: { id: 'coord-18', role: 'COORDINATOR' },
+      body: { teacherAttendanceToleranceMinutes: 18 },
+    } as never, replyStub() as never) as { data: { teacherAttendanceToleranceMinutes: number } };
+
+    expect(received).toEqual({
+      teacherAttendanceToleranceMinutes: 18,
+      actorIdentityId: 'coord-18',
+      actorRole: 'COORDINATOR',
+    });
+    expect(response.data.teacherAttendanceToleranceMinutes).toBe(18);
+  });
+
   it('projects active shared classes into the dashboard instead of legacy substitutions', async () => {
     const controller = new CoordinationController(
       {

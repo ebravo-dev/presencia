@@ -29,6 +29,11 @@ export interface AttendanceCoordinationProjectionSnapshot {
   observedAt: Date;
 }
 
+export interface AttendanceSettings {
+  teacherAttendanceToleranceMinutes: number;
+  updatedAt: Date | null;
+}
+
 export interface AttendanceRepository {
   applyRoster(snapshot: AttendanceRosterSnapshot): Promise<void>;
   deactivateRoster(externalGroupId: string, rosterObservedAt: Date): Promise<void>;
@@ -56,6 +61,12 @@ export interface AttendanceRepository {
     recentBeacons: ClassroomBeaconValue[];
   }>;
   coordinationProjectionSnapshot(): Promise<AttendanceCoordinationProjectionSnapshot[]>;
+  attendanceSettings(): Promise<AttendanceSettings>;
+  updateAttendanceSettings(input: {
+    teacherAttendanceToleranceMinutes: number;
+    actorIdentityId: string;
+    actorRole: 'COORDINATOR' | 'SUPER_USER';
+  }): Promise<AttendanceSettings>;
   resetDemoData(): Promise<void>;
   listClassroomBeacons(): Promise<ClassroomBeaconValue[]>;
   createClassroomBeacon(command: SaveClassroomBeaconCommand): Promise<ClassroomBeaconValue>;

@@ -48,6 +48,12 @@ export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> =
     { schema: coordinationRouteSchemas.rangeReport },
     controller.rangeReport,
   );
+  fastify.get('/api/coordinacion/configuracion/asistencia', controller.attendanceSettings);
+  fastify.put(
+    '/api/coordinacion/configuracion/asistencia',
+    { preHandler: requireWriteCoordinator },
+    controller.updateAttendanceSettings,
+  );
 
   // El BFF autentica y delega; los datos pertenecen a sus servicios de dominio.
   fastify.get('/api/coordinacion/infraestructura/resumen', controller.infrastructureSummary);

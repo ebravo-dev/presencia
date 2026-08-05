@@ -55,6 +55,85 @@ void main() {
       expect(scheduleForWeekday(schedule, DateTime.sunday), isEmpty);
     });
 
+    test('merges consecutive hours from repeated UAT rows', () {
+      final schedule = parseStudentSchedule([
+        {
+          'Id_Grupo': 'same-group',
+          'Txt_Materia': 'Programación móvil',
+          'Txt_Espacio_Fisico': 'LAB 2',
+          'Txt_Lunes': '08:00 - 09:00',
+        },
+        {
+          'Id_Grupo': 'same-group',
+          'Txt_Materia': 'Programación móvil',
+          'Txt_Espacio_Fisico': 'LAB 2',
+          'Txt_Lunes': '09:00 - 10:00; 10:00 - 11:00',
+        },
+      ]);
+
+      expect(schedule, hasLength(1));
+      final monday = scheduleForWeekday(schedule, DateTime.monday);
+      expect(monday, hasLength(1));
+      expect(monday.single.slot.displayTime, '08:00 - 11:00');
+    });
+
+    test('knows when all classes for today have ended', () {
+      final occurrence = scheduleForWeekday(
+        parseStudentSchedule([
+          {
+            'Id_Grupo': 'group-1',
+            'Txt_Materia': 'Redes',
+            'Txt_Martes': '08:00 - 10:00',
+          },
+        ]),
+        DateTime.tuesday,
+      ).single;
+
+      expect(scheduleHasEnded(occurrence, DateTime(2026, 8, 4, 10)), isTrue);
+      expect(
+        scheduleIsAvailable(occurrence, DateTime(2026, 8, 4, 9, 59)),
+        isTrue,
+      );
+    });
+
+    test('locks a finished class only after coordinator tolerance', () {
+      final occurrence = scheduleForWeekday(
+        parseStudentSchedule([
+          {
+            'Id_Grupo': 'group-1',
+            'Txt_Materia': 'Redes',
+            'Txt_Martes': '12:00 - 13:00',
+          },
+        ]),
+        DateTime.tuesday,
+      ).single;
+
+      expect(
+        scheduleIsAvailable(
+          occurrence,
+          DateTime(2026, 8, 4, 13, 9),
+          toleranceMinutes: 10,
+        ),
+        isTrue,
+      );
+      expect(
+        scheduleHasEnded(
+          occurrence,
+          DateTime(2026, 8, 4, 13, 10),
+          toleranceMinutes: 10,
+        ),
+        isTrue,
+      );
+      expect(
+        scheduleIsAvailable(
+          occurrence,
+          DateTime(2026, 8, 4, 13, 10),
+          toleranceMinutes: 15,
+        ),
+        isTrue,
+      );
+    });
+
     test('ignores explicit empty UAT markers without inventing classes', () {
       final entry = StudentScheduleEntry.fromUatJson({
         'Id_Grupo': 1,

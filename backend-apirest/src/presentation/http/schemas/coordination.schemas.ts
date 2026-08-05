@@ -43,6 +43,9 @@ export const sharedClassBodySchema = z.object({
 
 export const sharedClassUpdateBodySchema = sharedClassBodySchema.partial();
 export const sharedClassParamsSchema = z.object({ id: z.string().trim().min(1) }).strict();
+export const attendanceSettingsSchema = z.object({
+  teacherAttendanceToleranceMinutes: z.coerce.number().int().min(0).max(120),
+}).strict();
 
 export function parseCoordinationPayload<TSchema extends z.ZodTypeAny>(
   schema: TSchema,

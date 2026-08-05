@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/constants/api_constants.dart';
 import '../../../../core/theme/uat_colors.dart';
 import '../../../../core/theme/theme_controller.dart';
 import '../../../../shared/models/grupo.dart';
@@ -32,6 +33,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
   late AnimationController _pulseController;
   int? _selectedCardIndex; // Índice de la tarjeta seleccionada para navegación
   Timer? _titleVisibilityTimer; // Controla el retraso para esconder el título
+  Timer? _scheduleRefreshTimer;
 
   static const List<List<Color>> _cardGradients = [
     [Color(0xFF8B5CF6), Color(0xFF7C3AED)],
@@ -64,6 +66,9 @@ class _GruposPageState extends ConsumerState<GruposPage>
 
     // Listener para animar el título basado en scroll
     _scrollController.addListener(_handleScroll);
+    _scheduleRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
 
     // Configurar status bar transparente; el brillo se controla desde el tema.
     SystemChrome.setSystemUIOverlayStyle(
@@ -80,6 +85,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _titleVisibilityTimer?.cancel();
+    _scheduleRefreshTimer?.cancel();
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     _pulseController.dispose();
@@ -212,6 +218,23 @@ class _GruposPageState extends ConsumerState<GruposPage>
     }
   }
 
+  bool _isCurrentClass(Grupo grupo) {
+    final now = DateTime.now();
+    final todaySchedule = grupo.horarioParaDia(now.weekday);
+    if (todaySchedule == null) return false;
+    for (final range in todaySchedule.split('·')) {
+      final start = _parseHorarioInicio(range.trim());
+      final end = _parseHorarioFin(range.trim());
+      if (start == null || end == null) continue;
+      final tolerance = ApiConstants.teacherAttendanceToleranceMinutes;
+      if (!now.isBefore(start.subtract(Duration(minutes: tolerance))) &&
+          !now.isAfter(end.add(Duration(minutes: tolerance)))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   // Obtener el próximo DateTime de inicio para un conjunto de weekdays y horario
   DateTime _getNextStartForSchedule(
     DateTime now,
@@ -239,7 +262,9 @@ class _GruposPageState extends ConsumerState<GruposPage>
           finHour,
           finMinute,
         );
-        final ventanaFin = candidateEnd.add(const Duration(minutes: 10));
+        final ventanaFin = candidateEnd.add(
+          Duration(minutes: ApiConstants.teacherAttendanceToleranceMinutes),
+        );
 
         // Si el inicio está en el futuro, lo retornamos
         if (candidateStart.isAfter(now)) return candidateStart;
@@ -284,8 +309,14 @@ class _GruposPageState extends ConsumerState<GruposPage>
       final grupoB = b.key;
 
       // Obtener horarios y días desde el schedule real del grupo
-      final horarioA = grupoA.horarioValido ?? '00:00-00:00';
-      final horarioB = grupoB.horarioValido ?? '00:00-00:00';
+      final horarioA =
+          grupoA.horarioParaDia(now.weekday) ??
+          grupoA.horarioValido ??
+          '00:00-00:00';
+      final horarioB =
+          grupoB.horarioParaDia(now.weekday) ??
+          grupoB.horarioValido ??
+          '00:00-00:00';
       final weekdaysA = grupoA.weekdaysConHorarioValido;
       final weekdaysB = grupoB.weekdaysConHorarioValido;
 
@@ -1015,9 +1046,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                   final grupo = grupoEntry.key;
                   final originalIndex =
                       grupoEntry.value; // Índice original para horarios
-                  // La última tarjeta (la que está al frente) es la clase actual
-                  final isCurrentClass =
-                      stackIndex == gruposWithIndex.length - 1;
+                  final isCurrentClass = _isCurrentClass(grupo);
 
                   // Calcular posición: si hay una tarjeta seleccionada y esta está debajo,
                   // desplazarla hacia abajo
@@ -1148,7 +1177,11 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                     gradientColors: gradientColors,
                                     accentColor: accentColor,
                                     horario:
-                                        grupo.horarioValido ?? '00:00-00:00',
+                                        grupo.horarioParaDia(
+                                          DateTime.now().weekday,
+                                        ) ??
+                                        grupo.horarioValido ??
+                                        '00:00-00:00',
                                     dias: grupo.diasClaseAgrupados ?? 'N/A',
                                     todosLosGrupos: todosLosGrupos,
                                   ),
@@ -1294,7 +1327,10 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                       maxWidth: 150,
                                     ),
                                     child: Text(
-                                      grupo.horarioResumen ?? 'Sin horario',
+                                      grupo.horarioParaDia(
+                                            DateTime.now().weekday,
+                                          ) ??
+                                          'Sin clase hoy',
                                       textAlign: TextAlign.right,
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,

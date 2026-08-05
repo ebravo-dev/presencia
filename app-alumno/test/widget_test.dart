@@ -1,4 +1,5 @@
 import 'package:app_alumno/models/student_academic_profile.dart';
+import 'package:app_alumno/models/student_schedule_entry.dart';
 import 'package:app_alumno/screens/home_screen.dart';
 import 'package:app_alumno/screens/login_screen.dart';
 import 'package:app_alumno/services/attendance_session_service.dart';
@@ -27,6 +28,15 @@ class _SyncStorage extends _EmptyStorage {
 
   @override
   Future<void> setDeviceBindingSyncPending(bool pending) async {}
+}
+
+class _ScheduleStorage extends _EmptyStorage {
+  _ScheduleStorage(this.schedule);
+
+  final List<StudentScheduleEntry> schedule;
+
+  @override
+  List<StudentScheduleEntry> get studentSchedule => schedule;
 }
 
 class _RecordingAuth extends StudentAuthService {
@@ -140,7 +150,7 @@ void main() {
     );
 
     expect(tester.getSize(find.byType(IndexedStack)).height, greaterThan(300));
-    expect(find.text('Periodo actual'), findsOneWidget);
+    expect(find.text('Materias de hoy'), findsOneWidget);
 
     await tester.tap(find.text('Horario'));
     await tester.pump();
@@ -149,6 +159,66 @@ void main() {
     await tester.tap(find.text('Perfil'));
     await tester.pump();
     expect(find.text('Tu información estudiantil'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('attendance fits a compact screen and locks a finished day', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final advertiser = BleAdvertiserService();
+    final storage = _ScheduleStorage([
+      StudentScheduleEntry(
+        externalGroupId: 'today-1',
+        subject: 'Arquitectura móvil',
+        classroom: 'LAB 1',
+        group: 'A',
+        slots: [
+          StudentScheduleSlot(
+            weekday: DateTime.now().weekday,
+            raw: '00:00 - 00:00',
+            startTime: '00:00',
+            endTime: '00:00',
+          ),
+        ],
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(Brightness.light),
+        home: HomeScreen(
+          storage: storage,
+          bleService: advertiser,
+          attendanceSession: AttendanceSessionService(
+            storage: storage,
+            advertiser: advertiser,
+          ),
+          deviceBindingService: StudentDeviceBindingService(),
+          profile: const StudentAcademicProfile(
+            matricula: '123456',
+            institutionalEmail: 'alumno@alumnos.uat.edu.mx',
+            displayName: 'Alumno Prueba',
+          ),
+          initialUatSessionId: null,
+          demoMode: false,
+          themeMode: ThemeMode.light,
+          onThemeModeChanged: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(CustomScrollView), findsNothing);
+    expect(
+      find.text('Ya no hay más materias disponibles el día de hoy'),
+      findsOneWidget,
+    );
+    expect(find.text('Jornada terminada'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

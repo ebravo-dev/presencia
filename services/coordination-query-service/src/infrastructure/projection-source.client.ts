@@ -1,4 +1,4 @@
-import type { z } from 'zod';
+import { z } from 'zod';
 import {
   academicProjectionResponseSchema,
   attendanceProjectionResponseSchema,
@@ -27,6 +27,24 @@ export class ProjectionSourceClient implements ProjectionSources {
     return this.get(`${this.attendanceServiceUrl}/internal/v1/attendance/coordination-projection`, attendanceProjectionResponseSchema);
   }
 
+  async attendanceToleranceMinutes(): Promise<number> {
+    const response = await this.request(
+      `${this.attendanceServiceUrl}/internal/v1/attendance/settings`,
+      {
+        headers: {
+          'x-internal-service-token': this.internalToken,
+          accept: 'application/json',
+        },
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Attendance settings returned HTTP ${response.status}.`);
+    }
+    return attendanceSettingsResponseSchema.parse(await response.json()).data
+      .teacherAttendanceToleranceMinutes;
+  }
+
   private async get<TSchema extends z.ZodType<{ data: unknown[] }>>(
     url: string,
     schema: TSchema,
@@ -39,3 +57,9 @@ export class ProjectionSourceClient implements ProjectionSources {
     return schema.parse(await response.json()).data;
   }
 }
+
+const attendanceSettingsResponseSchema = z.object({
+  data: z.object({
+    teacherAttendanceToleranceMinutes: z.number().int().min(0).max(120),
+  }),
+});

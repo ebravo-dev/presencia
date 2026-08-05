@@ -137,6 +137,21 @@ export class AttendanceServiceCommandClient implements AttendanceBindingClient {
     return this.request('/internal/v1/attendance/infrastructure/summary', { method: 'GET' });
   }
 
+  attendanceSettings(): Promise<{ data: AttendanceSettingsResponse }> {
+    return this.request('/internal/v1/attendance/settings', { method: 'GET' });
+  }
+
+  updateAttendanceSettings(input: {
+    teacherAttendanceToleranceMinutes: number;
+    actorIdentityId: string;
+    actorRole: 'COORDINATOR' | 'SUPER_USER';
+  }): Promise<{ data: AttendanceSettingsResponse }> {
+    return this.request('/internal/v1/attendance/settings', {
+      method: 'PUT',
+      body: input,
+    });
+  }
+
   async resetDemoData(): Promise<void> {
     await this.request('/internal/v1/attendance/demo-data', { method: 'DELETE' });
   }
@@ -188,6 +203,11 @@ export interface ClassroomBeaconResponse {
   classroomKey: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AttendanceSettingsResponse {
+  teacherAttendanceToleranceMinutes: number;
+  updatedAt: string | null;
 }
 
 interface ClassroomBeaconInput {

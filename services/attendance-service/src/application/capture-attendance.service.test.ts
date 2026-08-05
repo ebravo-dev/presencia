@@ -97,6 +97,8 @@ function repositoryStub(): AttendanceRepository {
     async bindingInfrastructureSummary() { return { count: 0, recentBindings: [] }; },
     async infrastructureSummary() { return { counts: { beacons: 0, studentDeviceBindings: 0, studentBleAttendances: 0 }, recentBindings: [], recentBeacons: [] }; },
     async coordinationProjectionSnapshot() { return []; },
+    async attendanceSettings() { return { teacherAttendanceToleranceMinutes: 10, updatedAt: null }; },
+    async updateAttendanceSettings(input) { return { teacherAttendanceToleranceMinutes: input.teacherAttendanceToleranceMinutes, updatedAt: new Date() }; },
     async resetDemoData() {},
     async listClassroomBeacons() { return []; },
     async createClassroomBeacon() { throw new Error('unexpected'); },

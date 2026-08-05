@@ -27,6 +27,7 @@ class StudentInfoSyncResult {
   final List<StudentScheduleEntry> schedule;
   final int partialGradesCount;
   final int finalGradesCount;
+  final int attendanceToleranceMinutes;
   final DateTime syncedAt;
   final StudentAcademicProfile? profile;
 
@@ -34,6 +35,8 @@ class StudentInfoSyncResult {
     required this.schedule,
     required this.partialGradesCount,
     required this.finalGradesCount,
+    this.attendanceToleranceMinutes =
+        LocalStorageService.defaultAttendanceToleranceMinutes,
     required this.syncedAt,
     this.profile,
   });
@@ -115,6 +118,8 @@ class StudentAuthService {
     String? sessionId,
   }) async {
     var activeSessionId = sessionId?.trim() ?? '';
+    final shouldRetryExpiredSession = activeSessionId.isNotEmpty;
+    var credentialsWereAccepted = false;
     StudentAcademicProfile? refreshedProfile;
     if (activeSessionId.isEmpty) {
       final credentials = await storage.readInstitutionalCredentials();
@@ -130,6 +135,7 @@ class StudentAuthService {
         password: credentials.password,
         storage: storage,
       );
+      credentialsWereAccepted = true;
       activeSessionId = session['sessionId']?.toString() ?? '';
       if (activeSessionId.isEmpty) {
         throw const StudentAuthException(
@@ -164,14 +170,35 @@ class StudentAuthService {
           activeSessionId,
         ),
       ]);
+      final attendanceToleranceMinutes = await _getStudentAttendanceTolerance(
+        activeSessionId,
+        fallback: storage.attendanceToleranceMinutes,
+      );
 
-      return StudentInfoSyncResult(
+      final result = StudentInfoSyncResult(
         schedule: parseStudentSchedule(responses[0]),
         partialGradesCount: responses[1].length,
         finalGradesCount: responses[2].length,
+        attendanceToleranceMinutes: attendanceToleranceMinutes,
         syncedAt: DateTime.now(),
         profile: refreshedProfile,
       );
+      await storage.saveStudentSchedule(result.schedule);
+      await storage.saveAttendanceTolerance(attendanceToleranceMinutes);
+      if (refreshedProfile != null) {
+        await storage.saveAcademicProfile(refreshedProfile);
+      }
+      return result;
+    } on StudentAuthException catch (error) {
+      if (error.authenticationFailed && shouldRetryExpiredSession) {
+        return syncAcademicInfo(storage);
+      }
+      if (error.authenticationFailed && credentialsWereAccepted) {
+        throw const StudentAuthException(
+          'La sesión temporal de UAT expiró. Inténtalo de nuevo.',
+        );
+      }
+      rethrow;
     } finally {
       await _deleteStudentSession(activeSessionId);
     }
@@ -311,6 +338,47 @@ class StudentAuthService {
     } on StudentAuthException catch (error) {
       if (error.authenticationFailed) rethrow;
       return const [];
+    }
+  }
+
+  Future<int> _getStudentAttendanceTolerance(
+    String sessionId, {
+    required int fallback,
+  }) async {
+    final client = HttpClient()..connectionTimeout = _timeout;
+    try {
+      final uri = Uri.parse(
+        baseUrl,
+      ).resolve('/api/uat/alumnos/asistencia/configuracion');
+      final request = await client.getUrl(uri).timeout(_timeout);
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      request.headers.set('X-UAT-Student-Session-Id', sessionId);
+
+      final response = await request.close().timeout(_timeout);
+      final body = await utf8.decodeStream(response);
+      if (response.statusCode == 401) {
+        throw const StudentAuthException(
+          'No pudimos actualizar tus datos de UAT. Inicia sesión de nuevo.',
+          authenticationFailed: true,
+        );
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return fallback;
+      }
+
+      final decoded = body.trim().isEmpty ? null : jsonDecode(body);
+      final data = decoded is Map ? decoded['data'] : null;
+      final rawTolerance = data is Map
+          ? data['teacherAttendanceToleranceMinutes']
+          : null;
+      final tolerance = int.tryParse(rawTolerance?.toString() ?? '');
+      return tolerance == null ? fallback : tolerance.clamp(0, 120).toInt();
+    } on StudentAuthException {
+      rethrow;
+    } catch (_) {
+      return fallback;
+    } finally {
+      client.close(force: true);
     }
   }
 

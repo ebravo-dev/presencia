@@ -414,8 +414,9 @@ class TeacherBeaconAttendanceService {
       final range = _scheduleRange(grupo);
       if (range == null) continue;
 
-      final startWindow = range.start.subtract(const Duration(minutes: 10));
-      final endWindow = range.end.add(const Duration(minutes: 10));
+      final tolerance = ApiConstants.teacherAttendanceToleranceMinutes;
+      final startWindow = range.start.subtract(Duration(minutes: tolerance));
+      final endWindow = range.end.add(Duration(minutes: tolerance));
       if (!now.isBefore(startWindow) && !now.isAfter(endWindow)) {
         return grupo;
       }
@@ -424,35 +425,40 @@ class TeacherBeaconAttendanceService {
   }
 
   ({DateTime start, DateTime end})? _scheduleRange(Grupo grupo) {
-    final horario = grupo.horario;
+    final now = DateTime.now();
+    final horario = grupo.horarioParaDia(now.weekday);
     if (horario == null) return null;
 
-    final parts = horario.split('-');
-    if (parts.length != 2) return null;
-
-    final startParts = parts[0].trim().split(':');
-    final endParts = parts[1].trim().split(':');
-    if (startParts.length != 2 || endParts.length != 2) return null;
-
-    final now = DateTime.now();
-    final start = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      int.parse(startParts[0]),
-      int.parse(startParts[1]),
-    );
-    var end = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      int.parse(endParts[0]),
-      int.parse(endParts[1]),
-    );
-    if (end.isBefore(start)) {
-      end = end.add(const Duration(days: 1));
+    for (final range in horario.split('·')) {
+      final parts = range.trim().split('-');
+      if (parts.length != 2) continue;
+      final startParts = parts[0].trim().split(':');
+      final endParts = parts[1].trim().split(':');
+      if (startParts.length != 2 || endParts.length != 2) continue;
+      final startHour = int.tryParse(startParts[0]);
+      final startMinute = int.tryParse(startParts[1]);
+      final endHour = int.tryParse(endParts[0]);
+      final endMinute = int.tryParse(endParts[1]);
+      if ([startHour, startMinute, endHour, endMinute].contains(null)) {
+        continue;
+      }
+      final start = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        startHour!,
+        startMinute!,
+      );
+      var end = DateTime(now.year, now.month, now.day, endHour!, endMinute!);
+      if (end.isBefore(start)) end = end.add(const Duration(days: 1));
+      final tolerance = ApiConstants.teacherAttendanceToleranceMinutes;
+      final startWindow = start.subtract(Duration(minutes: tolerance));
+      final endWindow = end.add(Duration(minutes: tolerance));
+      if (!now.isBefore(startWindow) && !now.isAfter(endWindow)) {
+        return (start: start, end: end);
+      }
     }
-    return (start: start, end: end);
+    return null;
   }
 
   String _recordId(Grupo grupo, DateTime date) {

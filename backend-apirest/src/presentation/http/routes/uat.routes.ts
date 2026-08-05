@@ -36,7 +36,7 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
 ) => {
   const authUat = buildAuthUatHook(uatService);
   const authUatStudent = buildAuthUatStudentHook(uatStudentService);
-  const sessionController = new SessionController(uatService, eventBus);
+  const sessionController = new SessionController(uatService, eventBus, attendanceServiceCommands);
   const studentSessionController = new StudentSessionController(uatStudentService);
   const consultaController = new ConsultaController(uatService);
   const catalogoController = new CatalogoController(uatService);
@@ -62,10 +62,12 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   fastify.get('/api/uat/alumnos/horario', { preHandler: authUatStudent }, studentSessionController.schedule);
   fastify.get('/api/uat/alumnos/calificaciones/parciales', { preHandler: authUatStudent }, studentSessionController.partialGrades);
   fastify.get('/api/uat/alumnos/calificaciones/finales', { preHandler: authUatStudent }, studentSessionController.finalGrades);
+  fastify.get('/api/uat/alumnos/asistencia/configuracion', { preHandler: authUatStudent }, sessionController.settings);
 
   fastify.get('/api/uat/profesor/consultas/horarios', { preHandler: authUat }, consultaController.horarios);
   fastify.get('/api/uat/profesor/consultas/examenes', { preHandler: authUat }, consultaController.examenes);
   fastify.post('/api/uat/profesor/sync', { preHandler: authUat }, sessionController.sync);
+  fastify.get('/api/uat/profesor/asistencia/configuracion', { preHandler: authUat }, sessionController.settings);
   fastify.post('/api/uat/profesor/consultas/snapshot', consultaController.snapshot);
 
   fastify.get('/api/uat/catalogos/niveles-educativos', { preHandler: authUat }, catalogoController.nivelesEducativos);

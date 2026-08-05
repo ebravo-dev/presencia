@@ -9,10 +9,11 @@ describe('CoordinationReportService', () => {
 
     expect(report?.data).toMatchObject({
       availability: 'READY',
-      summary: { scheduled: 2, taken: 2, missing: 0, completionRate: 100 },
+      summary: { scheduled: 4, taken: 4, missing: 0, completionRate: 100 },
       rows: [{
         subject: 'Arquitectura',
-        cells: { monday: { status: 'TAKEN', attendedHours: 2, portalSyncStatus: 'COMPLETED' } },
+        startTime: '08:00', endTime: '12:00',
+        cells: { monday: { status: 'TAKEN', scheduledHours: 4, attendedHours: 4, workedMinutes: 240, workedHours: 4, portalSyncStatus: 'COMPLETED' } },
       }],
     });
   });
@@ -21,8 +22,20 @@ describe('CoordinationReportService', () => {
     const service = new CoordinationReportService(repository(), () => new Date('2026-08-03T12:00:00.000Z'));
     const report = await service.range('teacher-1', '2026-07-27', '2026-07-31');
     expect(report?.data).toMatchObject({
-      mode: 'range', summary: { scheduledClassDays: 2, reportedClassDays: 2, attendanceRate: 100 },
+      mode: 'range', summary: { scheduledClassDays: 4, reportedClassDays: 4, attendanceRate: 100 },
     });
+  });
+
+  it('reads the coordinator tolerance for every generated report', async () => {
+    const service = new CoordinationReportService(
+      repository(),
+      () => new Date('2026-08-03T12:00:00.000Z'),
+      async () => 20,
+    );
+
+    const report = await service.weekly('teacher-1', '2026-07-27');
+
+    expect(report?.meta.teacherAttendanceToleranceMinutes).toBe(20);
   });
 });
 
@@ -37,11 +50,16 @@ function repository(): CoordinationQueryRepository {
         groups: [{
           id: 'group-1', externalGroupId: '947699', groupCode: '1-A', schoolCycleExternalId: '151',
           schoolCycleName: '2026 - 2 VERANO', classroom: 'A1', educationLevel: 'LIC', period: '2026 - 2 VERANO',
-          schedule: { monday: [{ raw: '08:00-10:00', startTime: '08:00', endTime: '10:00' }] },
+          schedule: { monday: [
+            { raw: '08:00-09:00', startTime: '08:00', endTime: '09:00' },
+            { raw: '09:00-10:00', startTime: '09:00', endTime: '10:00' },
+            { raw: '10:00-11:00', startTime: '10:00', endTime: '11:00' },
+            { raw: '11:00-12:00', startTime: '11:00', endTime: '12:00' },
+          ] },
           subject: { name: 'Arquitectura' },
           attendanceRecords: [{
             attendanceSessionId: 'attendance-1', date: new Date('2026-07-27T00:00:00.000Z'),
-            professorEntryAt: new Date('2026-07-27T14:00:00.000Z'), professorExitAt: new Date('2026-07-27T16:00:00.000Z'),
+            professorEntryAt: new Date('2026-07-27T14:00:00.000Z'), professorExitAt: new Date('2026-07-27T18:00:00.000Z'),
             uploadStatus: 'COMPLETED', uploadError: null,
           }],
         }],

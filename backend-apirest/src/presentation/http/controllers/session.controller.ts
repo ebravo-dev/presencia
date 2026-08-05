@@ -5,10 +5,20 @@ import { createTeacherAuthenticatedEvent } from '../../../domain/events/teacher-
 import { credentialsSchema, parsePayload, sessionParamsSchema } from '../schemas/uat.schemas.js';
 import { env } from '../../../config/env.js';
 
+interface AttendanceSettingsSource {
+  attendanceSettings(): Promise<{
+    data: {
+      teacherAttendanceToleranceMinutes: number;
+      updatedAt: string | null;
+    };
+  }>;
+}
+
 export class SessionController {
   constructor(
     private readonly uatService: UatService,
     private readonly eventBus: IDomainEventBus,
+    private readonly attendanceSettings?: AttendanceSettingsSource,
   ) {}
 
   create = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -57,6 +67,27 @@ export class SessionController {
       accepted: true,
       sessionId: session.id,
       message: 'Sincronizacion academica encolada.',
+    });
+  };
+
+  settings = async (request: FastifyRequest, reply: FastifyReply) => {
+    let data = {
+      teacherAttendanceToleranceMinutes: 10,
+      updatedAt: null as string | null,
+    };
+    try {
+      if (this.attendanceSettings) {
+        data = (await this.attendanceSettings.attendanceSettings()).data;
+      }
+    } catch (error) {
+      request.log.warn(
+        { err: error },
+        'No fue posible consultar la configuracion de asistencia; se usara el valor inicial seguro.',
+      );
+    }
+    return reply.send({
+      data,
+      meta: { generatedAt: new Date().toISOString() },
     });
   };
 

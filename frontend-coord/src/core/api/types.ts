@@ -28,6 +28,12 @@ export interface Assignment {
   coordination: { id: string; externalId: string; name: string };
 }
 export interface OverviewResponse { data: { counts: { teachers: number; subjects: number; coordinations: number; assignments: number }; coordinations: CoordinationSummary[] }; meta: { generatedAt: string } }
+export interface AttendanceSettingsResponse {
+  data: {
+    teacherAttendanceToleranceMinutes: number;
+    updatedAt: string | null;
+  };
+}
 export interface TeachersResponse { data: TeacherSummary[]; meta: { page: number; pageSize: number; total: number; totalPages: number } }
 export interface TeacherAssignmentsResponse { data: { teacher: TeacherSummary; assignments: Assignment[] }; meta: { generatedAt: string } }
 export type ReportCellStatus = 'TAKEN' | 'LATE' | 'MISSING' | 'FUTURE' | 'NOT_SCHEDULED' | 'UNKNOWN_SCHEDULE' | 'SOURCE_UNAVAILABLE';
@@ -39,6 +45,8 @@ export interface ReportCell {
   professorExitAt: string | null;
   scheduledHours: number;
   attendedHours: number;
+  workedMinutes?: number;
+  workedHours?: number;
   coverageRate: number | null;
   hourSlots: ReportHourSlot[];
   portalSyncStatus: string | null;
@@ -77,7 +85,7 @@ export interface WeeklyReportResponse {
     summary: { scheduled: number; taken: number; missing: number; future: number; unknownSchedule: number; sourceUnavailable?: number; completionRate: number };
     rows: ReportRow[];
   };
-  meta: { generatedAt: string; timezone: string };
+  meta: { generatedAt: string; timezone: string; teacherAttendanceToleranceMinutes?: number };
 }
 export interface RangeReportResponse {
   data: {
@@ -88,7 +96,7 @@ export interface RangeReportResponse {
     summary: { scheduledClassDays: number; reportedClassDays: number; missingClassDays: number; attendanceRate: number };
     rows: RangeReportRow[];
   };
-  meta: { generatedAt: string; timezone: string };
+  meta: { generatedAt: string; timezone: string; teacherAttendanceToleranceMinutes?: number };
 }
 export type AttendanceReportResponse = WeeklyReportResponse | RangeReportResponse;
 

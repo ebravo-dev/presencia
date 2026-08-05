@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowRight,
   BarChart3,
@@ -7,17 +7,20 @@ import {
   Building2,
   CalendarCheck2,
   CheckCircle2,
+  Clock3,
   GraduationCap,
   RefreshCw,
+  Save,
   ShieldCheck,
   Smartphone,
   Users,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { coordinationApi } from '@/core/api/coordination.api';
+import { useAuthStore } from '@/core/auth/auth.store';
 import type { InfrastructureSummaryResponse, OverviewResponse, SharedClassAssignment } from '@/core/api/types';
-import { Badge, Card, EmptyState, Skeleton, cn } from '@/shared/components/ui';
+import { Badge, Button, Card, EmptyState, Skeleton, cn } from '@/shared/components/ui';
 
 export function DashboardPage() {
   const overview = useQuery({
@@ -123,6 +126,8 @@ function DashboardContent({
         />
       </section>
 
+      <AttendanceSettingsCard />
+
       <section className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
         <Card className="overflow-hidden">
           <SectionHeading
@@ -216,6 +221,95 @@ function DashboardContent({
         </Card>
       </section>
     </div>
+  );
+}
+
+function AttendanceSettingsCard() {
+  const queryClient = useQueryClient();
+  const user = useAuthStore((state) => state.user);
+  const canEdit = user?.role === 'COORDINATOR';
+  const [minutes, setMinutes] = useState('');
+  const settings = useQuery({
+    queryKey: ['coordination', 'attendance-settings'],
+    queryFn: coordinationApi.attendanceSettings,
+    refetchOnWindowFocus: false,
+  });
+  const updateSettings = useMutation({
+    mutationFn: coordinationApi.updateAttendanceSettings,
+    onSuccess: async (response) => {
+      queryClient.setQueryData(['coordination', 'attendance-settings'], response);
+      setMinutes(String(response.data.teacherAttendanceToleranceMinutes));
+      await queryClient.invalidateQueries({ queryKey: ['coordination', 'attendance-settings'] });
+    },
+  });
+
+  useEffect(() => {
+    const current = settings.data?.data.teacherAttendanceToleranceMinutes;
+    if (current !== undefined) setMinutes(String(current));
+  }, [settings.data?.data.teacherAttendanceToleranceMinutes]);
+
+  const parsedMinutes = Number(minutes);
+  const valid = Number.isInteger(parsedMinutes) && parsedMinutes >= 0 && parsedMinutes <= 120;
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (canEdit && valid) {
+      updateSettings.mutate({ teacherAttendanceToleranceMinutes: parsedMinutes });
+    }
+  };
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="grid gap-5 p-5 md:grid-cols-[1fr_auto] md:items-end sm:p-6">
+        <div>
+          <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[#C8102E]">
+            <Clock3 size={15} /> Configuración de asistencia
+          </p>
+          <h2 className="mt-2 font-bold">Tolerancia para cerrar una clase</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400">
+            Se aplica a la asistencia del profesor y al bloqueo de las tarjetas del alumno. Por ejemplo, una clase que termina a las 13:00 con 10 minutos de tolerancia permanece disponible hasta las 13:10.
+          </p>
+          {!canEdit && (
+            <p className="mt-2 text-xs font-semibold text-amber-700 dark:text-amber-400">
+              Tu cuenta es de sólo lectura; puedes consultar el valor, pero no modificarlo.
+            </p>
+          )}
+        </div>
+        <form className="flex items-end gap-3" onSubmit={submit}>
+          <label className="block min-w-40 text-sm font-semibold">
+            Minutos
+            <input
+              aria-label="Minutos de tolerancia"
+              type="number"
+              min={0}
+              max={120}
+              step={1}
+              className="field mt-1"
+              value={minutes}
+              onChange={(event) => setMinutes(event.target.value)}
+              disabled={settings.isLoading || settings.isError || !canEdit}
+            />
+          </label>
+          <Button type="submit" disabled={!canEdit || !valid || settings.isLoading || settings.isError || updateSettings.isPending}>
+            <Save size={16} /> {updateSettings.isPending ? 'Guardando...' : 'Guardar'}
+          </Button>
+        </form>
+      </div>
+      {settings.isError && (
+        <p role="alert" className="border-t border-red-100 bg-red-50 px-5 py-3 text-sm text-red-700 dark:border-red-950 dark:bg-red-950/20 dark:text-red-400">
+          No se pudo consultar la configuración persistida de asistencia.
+        </p>
+      )}
+      {updateSettings.isSuccess && (
+        <p role="status" className="border-t border-emerald-100 bg-emerald-50 px-5 py-3 text-sm text-emerald-700 dark:border-emerald-950 dark:bg-emerald-950/20 dark:text-emerald-400">
+          Tolerancia actualizada. Las apps recibirán el nuevo valor en su siguiente sincronización.
+        </p>
+      )}
+      {updateSettings.isError && (
+        <p role="alert" className="border-t border-red-100 bg-red-50 px-5 py-3 text-sm text-red-700 dark:border-red-950 dark:bg-red-950/20 dark:text-red-400">
+          No se pudo guardar la tolerancia. Inténtalo de nuevo.
+        </p>
+      )}
+    </Card>
   );
 }
 

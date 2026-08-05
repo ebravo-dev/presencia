@@ -13,9 +13,14 @@ await prisma.$connect();
 const repository = new PrismaCoordinationQueryRepository(prisma);
 const consumer = new ProjectionEventConsumer(repository, env.RABBITMQ_URL, console);
 await consumer.start();
+const projectionSources = new ProjectionSourceClient(
+  env.ACADEMIC_SERVICE_URL,
+  env.ATTENDANCE_SERVICE_URL,
+  env.INTERNAL_API_TOKEN,
+);
 const reconciler = new ProjectionReconciler(
   repository,
-  new ProjectionSourceClient(env.ACADEMIC_SERVICE_URL, env.ATTENDANCE_SERVICE_URL, env.INTERNAL_API_TOKEN),
+  projectionSources,
   env.RECONCILE_INTERVAL_MS,
   console,
 );
@@ -23,7 +28,11 @@ await reconciler.start();
 const app = await buildCoordinationQueryApp({
   env,
   repository,
-  reports: new CoordinationReportService(repository),
+  reports: new CoordinationReportService(
+    repository,
+    () => new Date(),
+    () => projectionSources.attendanceToleranceMinutes(),
+  ),
   ready: async () => {
     const database = await prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false);
     return { database, rabbitmq: consumer.isReady(), reconciliation: reconciler.isReady() };

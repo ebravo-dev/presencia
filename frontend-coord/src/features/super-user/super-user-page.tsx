@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Activity, Bluetooth, Bug, Copy, Database, KeyRound, Link2, Lock, LogOut, Pencil, Play, PlusCircle, RefreshCw, ShieldCheck, Trash2, UserCog, Users } from 'lucide-react';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { superUserApi } from '@/core/api/coordination.api';
 import type { Beacon, CoordinatorAccount, DebugClassResponse, DebugMutationResponse, DebugScheduleInput, ScheduleDay } from '@/core/api/types';
 import { Button, Card, EmptyState, Skeleton, cn } from '@/shared/components/ui';
@@ -291,7 +291,6 @@ function DebugAdmin() {
     beaconUuid: '11111111-2222-4333-8444-555555555555',
   });
   const [schedule, setSchedule] = useState<Record<DebugDay, DebugScheduleSlot[]>>(defaultDebugSchedule);
-  const [toleranceMinutes, setToleranceMinutes] = useState('10');
   const [teacherForm, setTeacherForm] = useState({ email: 'nuevo.profesor.demo@uat.edu.mx', name: 'Nuevo Profesor Demo', password: '' });
   const [studentForm, setStudentForm] = useState({ matricula: 'DEMO0002', email: 'nuevo.alumno.demo@alumnos.uat.edu.mx', name: 'Nuevo Alumno Demo', password: '', careerName: 'Ingeniería Demo' });
   const [selectedStudents, setSelectedStudents] = useState<Record<string, string>>({});
@@ -303,7 +302,6 @@ function DebugAdmin() {
   const status = useQuery({ queryKey: ['super-user', 'debug', 'status'], queryFn: superUserApi.debugStatus, refetchInterval: REFRESH_INTERVAL_MS });
   const debugEnabled = status.data?.data.enabled === true;
   const catalog = useQuery({ queryKey: ['super-user', 'debug', 'catalog'], queryFn: superUserApi.debugCatalog, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
-  const settings = useQuery({ queryKey: ['super-user', 'debug', 'settings'], queryFn: superUserApi.debugSettings, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
   const classes = useQuery({ queryKey: ['super-user', 'debug', 'classes'], queryFn: superUserApi.debugClasses, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
   const attendance = useQuery({ queryKey: ['super-user', 'debug', 'attendance'], queryFn: superUserApi.debugStudentAttendance, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
   const logs = useQuery({ queryKey: ['super-user', 'debug', 'logs'], queryFn: superUserApi.debugFlowLogs, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
@@ -364,11 +362,6 @@ function DebugAdmin() {
     onSuccess: refreshDebug,
   });
 
-  useEffect(() => {
-    const current = settings.data?.data.teacherAttendanceToleranceMinutes ?? status.data?.data.settings.teacherAttendanceToleranceMinutes;
-    if (current !== undefined) setToleranceMinutes(String(current));
-  }, [settings.data?.data.teacherAttendanceToleranceMinutes, status.data?.data.settings.teacherAttendanceToleranceMinutes]);
-
   const saveClass = useMutation({
     mutationFn: () => {
       const payload = {
@@ -405,17 +398,6 @@ function DebugAdmin() {
         queryClient.invalidateQueries({ queryKey: ['super-user', 'debug'] }),
         queryClient.invalidateQueries({ queryKey: ['super-user', 'beacons'] }),
         queryClient.invalidateQueries({ queryKey: ['super-user', 'bindings'] }),
-      ]);
-    },
-  });
-  const updateSettings = useMutation({
-    mutationFn: () => superUserApi.updateDebugSettings({
-      teacherAttendanceToleranceMinutes: Math.max(0, Math.min(120, Number(toleranceMinutes) || 0)),
-    }),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['super-user', 'debug', 'status'] }),
-        queryClient.invalidateQueries({ queryKey: ['super-user', 'debug', 'settings'] }),
       ]);
     },
   });
@@ -545,9 +527,8 @@ function DebugAdmin() {
             </span>
           </div>
         </div>
-        <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+        <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <InfoBox label="Periodo" value={status.data?.data.period ?? '-'} />
-          <InfoBox label="Tolerancia profesor" value={`${status.data?.data.settings.teacherAttendanceToleranceMinutes ?? settings.data?.data.teacherAttendanceToleranceMinutes ?? '-'} min`} />
           <InfoBox label="Actualizado" value={status.data?.meta.generatedAt ? new Date(status.data.meta.generatedAt).toLocaleTimeString('es-MX') : '-'} />
         </div>
         {resetDemoData.isSuccess && (
@@ -697,13 +678,6 @@ function DebugAdmin() {
             </div>
           </form>
           {saveClass.isError && <p className="mt-3 text-sm font-semibold text-red-600">{apiErrorMessage(saveClass.error, 'No se pudo guardar la clase debug.')}</p>}
-          <form className="mt-5 border-t border-slate-200 pt-4 dark:border-[#2e3138]" onSubmit={(event) => { event.preventDefault(); updateSettings.mutate(); }}>
-            <label className="block text-sm font-semibold">Tolerancia de profesor en minutos<input type="number" min={0} max={120} className="field mt-1" value={toleranceMinutes} onChange={(event) => setToleranceMinutes(event.target.value)} /></label>
-            <Button type="submit" className="mt-3" variant="secondary" disabled={updateSettings.isPending}>
-              {updateSettings.isPending ? 'Guardando...' : 'Guardar tolerancia'}
-            </Button>
-            {updateSettings.isError && <p className="mt-2 text-sm font-semibold text-red-600">No se pudo guardar la tolerancia.</p>}
-          </form>
         </Card>
 
         <Card className="overflow-hidden">

@@ -21,4 +21,26 @@ describe('ProjectionSourceClient', () => {
     const client = new ProjectionSourceClient('http://academic:3300', 'http://attendance:3400', 'internal-token', request);
     await expect(client.attendance()).rejects.toThrow();
   });
+
+  it('reads the persisted attendance tolerance from Attendance Service', async () => {
+    const request = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      data: { teacherAttendanceToleranceMinutes: 18, updatedAt: null },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    const client = new ProjectionSourceClient(
+      'http://academic:3300',
+      'http://attendance:3400',
+      'internal-token',
+      request,
+    );
+
+    await expect(client.attendanceToleranceMinutes()).resolves.toBe(18);
+    expect(request).toHaveBeenCalledWith(
+      'http://attendance:3400/internal/v1/attendance/settings',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'x-internal-service-token': 'internal-token',
+        }),
+      }),
+    );
+  });
 });

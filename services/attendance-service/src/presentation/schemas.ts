@@ -42,6 +42,11 @@ export const coordinatorUnbindSchema = z.object({
   actorIdentityId: z.string().trim().min(1).max(160), actorRole: z.enum(['COORDINATOR', 'SUPER_USER']),
   reason: z.string().trim().min(8).max(500),
 });
+export const attendanceSettingsUpdateSchema = z.object({
+  teacherAttendanceToleranceMinutes: z.number().int().min(0).max(120),
+  actorIdentityId: z.string().trim().min(1).max(160),
+  actorRole: z.enum(['COORDINATOR', 'SUPER_USER']),
+}).strict();
 
 const beaconValueSchema = z.object({
   uuid: z.uuid(),

@@ -125,25 +125,6 @@ class Grupo extends Equatable {
     return '${classroomNormalizado}_${subjectNormalizado}_$group';
   }
 
-  /// Días en español e inglés (API puede devolver en cualquiera de los dos)
-  static const List<String> _diasEspanol = [
-    'lunes',
-    'martes',
-    'miercoles',
-    'jueves',
-    'viernes',
-    'sabado',
-    'domingo',
-  ];
-  static const List<String> _diasIngles = [
-    'monday',
-    'tuesday',
-    'wednesday',
-    'thursday',
-    'friday',
-    'saturday',
-    'sunday',
-  ];
   static const Map<String, String> _diasAbreviados = {
     'lunes': 'Lun',
     'monday': 'Lun',
@@ -197,21 +178,7 @@ class Grupo extends Equatable {
 
   /// Obtiene el horario (ej: "13:00-14:00") desde el schedule
   /// Usa el primer día que tenga horario disponible
-  String? get horario {
-    if (schedule == null) {
-      return null;
-    }
-
-    // Buscar en días español e inglés
-    final todosLosDias = [..._diasEspanol, ..._diasIngles];
-    for (final dia in todosLosDias) {
-      final horarioDia = schedule![dia];
-      if (horarioDia != null && horarioDia.isNotEmpty) {
-        return horarioDia;
-      }
-    }
-    return null;
-  }
+  String? get horario => horarioValido;
 
   /// Obtiene el rango de días (ej: "L-J", "L-V", "Ma,J")
   String? get diasClase {
@@ -294,8 +261,18 @@ class Grupo extends Equatable {
 
   String? get horarioValido {
     final slots = _scheduleSlotsByWeekday();
-    return slots.isEmpty ? null : slots.values.first.time;
+    if (slots.isEmpty) return null;
+    return _displayRanges(slots.values.first);
   }
+
+  /// Horario real para un día específico. Las horas contiguas o traslapadas
+  /// se muestran como un solo bloque (08:00-12:00).
+  String? horarioParaDia(int weekday) {
+    final slots = _scheduleSlotsByWeekday()[weekday];
+    return slots == null || slots.isEmpty ? null : _displayRanges(slots);
+  }
+
+  String? get horarioHoy => horarioParaDia(DateTime.now().weekday);
 
   String? get horarioResumen {
     final slots = _scheduleSlotsByWeekday();
@@ -303,7 +280,8 @@ class Grupo extends Equatable {
 
     final byTime = <String, List<int>>{};
     for (final entry in slots.entries) {
-      byTime.putIfAbsent(entry.value.time, () => []).add(entry.key);
+      final display = _displayRanges(entry.value);
+      byTime.putIfAbsent(display, () => []).add(entry.key);
     }
 
     final parts = byTime.entries.map((entry) {
@@ -323,17 +301,23 @@ class Grupo extends Equatable {
     return _scheduleSlotsByWeekday().keys.toList()..sort();
   }
 
-  Map<int, _ScheduleDaySlot> _scheduleSlotsByWeekday() {
+  Map<int, List<_ScheduleDaySlot>> _scheduleSlotsByWeekday() {
     if (schedule == null) return {};
 
-    final slots = <int, _ScheduleDaySlot>{};
+    final slots = <int, List<_ScheduleDaySlot>>{};
     schedule!.forEach((dia, horarioVal) {
       final weekday = _diasToWeekday[dia.toLowerCase()];
-      final time = _normalizeScheduleTime(horarioVal);
-      if (weekday != null && time != null) {
-        slots[weekday] = _ScheduleDaySlot(weekday, time);
+      final times = _normalizeScheduleTimes(horarioVal);
+      if (weekday != null && times.isNotEmpty) {
+        slots
+            .putIfAbsent(weekday, () => [])
+            .addAll(times.map((time) => _ScheduleDaySlot(weekday, time)));
       }
     });
+
+    for (final entry in slots.entries) {
+      slots[entry.key] = _mergeConsecutiveSlots(entry.value);
+    }
 
     return Map.fromEntries(
       slots.entries.toList()..sort((a, b) => a.key.compareTo(b.key)),
@@ -367,27 +351,76 @@ class Grupo extends Equatable {
     return groups.join(', ');
   }
 
-  static String? _normalizeScheduleTime(String? rawValue) {
+  static List<String> _normalizeScheduleTimes(String? rawValue) {
     final raw = rawValue?.trim();
     if (raw == null || raw.isEmpty || _isEmptyScheduleMarker(raw)) {
-      return null;
+      return const [];
     }
 
-    final firstSlot = raw
+    final parts = raw
         .split(RegExp(r'[;\n]+'))
         .map((value) => value.trim())
-        .firstWhere(
-          (value) => value.isNotEmpty && !_isEmptyScheduleMarker(value),
-          orElse: () => '',
-        );
-    if (firstSlot.isEmpty) return null;
+        .where((value) => value.isNotEmpty && !_isEmptyScheduleMarker(value));
 
-    final match = RegExp(
-      r'(\d{1,2}:\d{2})\s*(?:-|a)\s*(\d{1,2}:\d{2})',
+    final pattern = RegExp(
+      r'(\d{1,2}:\d{2})\s*(?:-|–|—|a)\s*(\d{1,2}:\d{2})',
       caseSensitive: false,
-    ).firstMatch(firstSlot);
-    if (match == null) return firstSlot;
-    return '${_padTime(match.group(1)!)}-${_padTime(match.group(2)!)}';
+    );
+    final slots = <String>[];
+    for (final part in parts) {
+      final matches = pattern.allMatches(part).toList(growable: false);
+      if (matches.isEmpty) {
+        slots.add(part);
+        continue;
+      }
+      slots.addAll(
+        matches.map(
+          (match) =>
+              '${_padTime(match.group(1)!)}-${_padTime(match.group(2)!)}',
+        ),
+      );
+    }
+    return slots;
+  }
+
+  static List<_ScheduleDaySlot> _mergeConsecutiveSlots(
+    List<_ScheduleDaySlot> slots,
+  ) {
+    final valid = slots.where((slot) => slot.hasTimeRange).toList()
+      ..sort(
+        (left, right) => left.startMinutes!.compareTo(right.startMinutes!),
+      );
+    final unknown = slots.where((slot) => !slot.hasTimeRange).toList();
+    final merged = <_ScheduleDaySlot>[];
+    for (final slot in valid) {
+      if (merged.isEmpty || slot.startMinutes! > merged.last.endMinutes!) {
+        merged.add(slot);
+        continue;
+      }
+      final previous = merged.removeLast();
+      final end = slot.endMinutes! > previous.endMinutes!
+          ? slot.endMinutes!
+          : previous.endMinutes!;
+      merged.add(
+        _ScheduleDaySlot(
+          previous.weekday,
+          '${_formatMinutes(previous.startMinutes!)}-${_formatMinutes(end)}',
+        ),
+      );
+    }
+    return [...merged, ...unknown];
+  }
+
+  static String _displayRanges(List<_ScheduleDaySlot> slots) {
+    final valid = slots.where((slot) => slot.hasTimeRange).toList();
+    final display = valid.isNotEmpty ? valid : slots;
+    return display.map((slot) => slot.time).join(' · ');
+  }
+
+  static String _formatMinutes(int value) {
+    final hour = value ~/ 60;
+    final minute = value % 60;
+    return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
   }
 
   static bool _isEmptyScheduleMarker(String value) {
@@ -408,6 +441,23 @@ class _ScheduleDaySlot {
   final String time;
 
   const _ScheduleDaySlot(this.weekday, this.time);
+
+  RegExpMatch? get _match =>
+      RegExp(r'^(\d{2}):(\d{2})-(\d{2}):(\d{2})$').firstMatch(time);
+
+  bool get hasTimeRange => _match != null;
+
+  int? get startMinutes {
+    final match = _match;
+    if (match == null) return null;
+    return int.parse(match.group(1)!) * 60 + int.parse(match.group(2)!);
+  }
+
+  int? get endMinutes {
+    final match = _match;
+    if (match == null) return null;
+    return int.parse(match.group(3)!) * 60 + int.parse(match.group(4)!);
+  }
 }
 
 Map<String, String?>? _scheduleFromJson(Object? value) {

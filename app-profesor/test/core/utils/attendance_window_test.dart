@@ -3,49 +3,70 @@ import 'package:appprofesoresuniversidad/core/utils/attendance_window.dart';
 
 void main() {
   group('AttendanceWindow', () {
-    test('allows professor entry from 10 minutes before to 30 after start', () {
+    test('allows one professor entry throughout a multi-hour class', () {
       expect(
         AttendanceWindow.canMarkEntry(
-          '08:00-09:00',
+          '08:00-12:00',
           DateTime(2026, 8, 3, 7, 50),
         ),
         isTrue,
       );
       expect(
         AttendanceWindow.canMarkEntry(
-          '08:00-09:00',
-          DateTime(2026, 8, 3, 8, 30),
+          '08:00-12:00',
+          DateTime(2026, 8, 3, 10, 30),
         ),
         isTrue,
       );
       expect(
         AttendanceWindow.canMarkEntry(
-          '08:00-09:00',
-          DateTime(2026, 8, 3, 8, 31),
+          '08:00-12:00',
+          DateTime(2026, 8, 3, 12, 11),
         ),
         isFalse,
       );
     });
 
-    test('allows professor exit within 30 minutes of class end', () {
+    test('allows the single exit throughout the configured class window', () {
       expect(
         AttendanceWindow.canMarkExit(
-          '08:00 - 09:00',
+          '08:00 - 12:00',
           DateTime(2026, 8, 3, 8, 30),
         ),
         isTrue,
       );
       expect(
         AttendanceWindow.canMarkExit(
-          '08:00 - 09:00',
-          DateTime(2026, 8, 3, 9, 30),
+          '08:00 - 12:00',
+          DateTime(2026, 8, 3, 12, 10),
         ),
         isTrue,
       );
       expect(
         AttendanceWindow.canMarkExit(
-          '08:00 - 09:00',
-          DateTime(2026, 8, 3, 9, 31),
+          '08:00 - 12:00',
+          DateTime(2026, 8, 3, 12, 11),
+        ),
+        isFalse,
+      );
+    });
+
+    test('uses the tolerance supplied by the coordinator', () {
+      final beforeDefaultWindow = DateTime(2026, 8, 3, 7, 45);
+
+      expect(
+        AttendanceWindow.canTakeAttendance(
+          '08:00-12:00',
+          beforeDefaultWindow,
+          toleranceMinutes: 20,
+        ),
+        isTrue,
+      );
+      expect(
+        AttendanceWindow.canTakeAttendance(
+          '08:00-12:00',
+          beforeDefaultWindow,
+          toleranceMinutes: 10,
         ),
         isFalse,
       );

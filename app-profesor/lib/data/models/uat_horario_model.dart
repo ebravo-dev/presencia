@@ -112,6 +112,30 @@ class UatHorarioModel {
     );
   }
 
+  UatHorarioModel merge(UatHorarioModel other) {
+    if (idGrupo != other.idGrupo) return this;
+    final mergedSchedule = <String, String?>{};
+    for (final day in {...schedule.keys, ...other.schedule.keys}) {
+      mergedSchedule[day] = _mergeScheduleValues(
+        schedule[day],
+        other.schedule[day],
+      );
+    }
+    return UatHorarioModel(
+      raw: {...raw, ...other.raw},
+      idGrupo: idGrupo,
+      des: des ?? other.des,
+      nivel: nivel ?? other.nivel,
+      ciclo: ciclo ?? other.ciclo,
+      letra: letra ?? other.letra,
+      materia: materia ?? other.materia,
+      profesor: profesor ?? other.profesor,
+      periodo: periodo ?? other.periodo,
+      espacioFisico: espacioFisico ?? other.espacioFisico,
+      schedule: mergedSchedule,
+    );
+  }
+
   Grupo toGrupo({List<Alumno> students = const [], String? professorId}) {
     final code = _extractCode(materia);
     final letter = letra;
@@ -130,6 +154,17 @@ class UatHorarioModel {
       studentsCount: students.length,
     );
   }
+}
+
+String? _mergeScheduleValues(String? left, String? right) {
+  final values = [left, right]
+      .whereType<String>()
+      .expand((value) => value.split(RegExp(r'[;\n]+')))
+      .map((value) => value.trim())
+      .where((value) => value.isNotEmpty)
+      .toSet()
+      .toList(growable: false);
+  return values.isEmpty ? null : values.join('; ');
 }
 
 class UatGrupoModel {

@@ -23,11 +23,26 @@ class ApiConstants {
   );
   static bool runtimeDemoMode = false;
   static bool runtimeSimulateRoomBeacon = false;
+  // Respaldo local hasta que la sincronizacion obtenga el valor persistido
+  // configurado por el coordinador.
+  static const int defaultTeacherAttendanceToleranceMinutes = 10;
+  static int _teacherAttendanceToleranceMinutes =
+      defaultTeacherAttendanceToleranceMinutes;
 
   static bool get isDemoMode => presenciaDebugMode || runtimeDemoMode;
   static bool get shouldSimulateRoomBeacon =>
       runtimeSimulateRoomBeacon ||
       (presenciaDebugMode && debugSimulateRoomBeacon);
+  static int get teacherAttendanceToleranceMinutes =>
+      _teacherAttendanceToleranceMinutes;
+
+  static void configureAttendanceTolerance(int value) {
+    _teacherAttendanceToleranceMinutes = value.clamp(0, 120).toInt();
+    Logger.info(
+      'Tolerancia de asistencia del profesor: '
+      '$_teacherAttendanceToleranceMinutes min',
+    );
+  }
 
   static void configureRuntimeMode({
     required bool demoMode,
@@ -110,6 +125,8 @@ class ApiConstants {
   // UAT Integration/BFF, siempre atravesando el API Gateway.
   static const String uatSessions = '/api/uat/sessions';
   static const String uatProfessorSync = '/api/uat/profesor/sync';
+  static const String uatAttendanceSettings =
+      '/api/uat/profesor/asistencia/configuracion';
   static const String uatHorarios = '/api/uat/profesor/consultas/horarios';
   static const String uatExamenes = '/api/uat/profesor/consultas/examenes';
   static const String uatCatalogoNiveles =

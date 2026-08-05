@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:appprofesoresuniversidad/features/authentication/providers/profesor_auth_provider.dart';
 import 'package:appprofesoresuniversidad/shared/models/profesor.dart';
 
 void main() {
@@ -43,6 +44,30 @@ void main() {
       expect(profesor.email, "test@uat.edu.mx");
       expect(profesor.institutionalEmail, "test@uat.edu.mx");
       expect(profesor.nombreCompleto, "Test Profesor");
+    });
+
+    test('el estado puede invalidar solo el token sin borrar al profesor', () {
+      final profesor = Profesor(
+        id: 'test-id',
+        name: 'Test Profesor',
+        institutionalEmail: 'test@uat.edu.mx',
+      );
+      final state = ProfesorAuthState(
+        status: ProfesorAuthStatus.authenticated,
+        profesor: profesor,
+        token: 'uat-session',
+        errorMessage: 'anterior',
+      );
+
+      final expired = state.copyWith(
+        status: ProfesorAuthStatus.sessionExpired,
+        token: null,
+        errorMessage: null,
+      );
+
+      expect(expired.profesor, same(profesor));
+      expect(expired.token, isNull);
+      expect(expired.errorMessage, isNull);
     });
   });
 }

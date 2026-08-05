@@ -249,6 +249,16 @@ model ProcessedAttendanceEvent {
   @@map("processed_attendance_events")
 }
 
+model AttendanceConfiguration {
+  id                                String   @id @default("global")
+  teacherAttendanceToleranceMinutes Int      @default(10) @map("teacher_attendance_tolerance_minutes")
+  updatedByIdentityId               String?  @map("updated_by_identity_id")
+  updatedByRole                     String?  @map("updated_by_role")
+  updatedAt                         DateTime @updatedAt @map("updated_at")
+
+  @@map("attendance_configuration")
+}
+
 enum AttendanceStatus {
   PRESENT
   ABSENT

@@ -16,6 +16,7 @@ import {
   deleteClassroomBeaconSchema, deviceBindingSchema, importClassroomBeaconsSchema, resolveClassroomBeaconsSchema,
   resolveAuthorizedClassroomBeaconsSchema, resolveDeviceBindingsSchema, rosterSnapshotSchema, updateClassroomBeaconSchema,
   professorEntryObservationSchema, professorExitObservationSchema, studentPresenceObservationSchema,
+  attendanceSettingsUpdateSchema,
 } from './schemas.js';
 
 export async function buildAttendanceApp(options: {
@@ -217,6 +218,13 @@ export async function buildAttendanceApp(options: {
   app.get('/internal/v1/attendance/coordination-projection', { preHandler: internal }, async () => ({
     data: await options.repository.coordinationProjectionSnapshot(),
   }));
+  app.get('/internal/v1/attendance/settings', { preHandler: internal }, async () => ({
+    data: await options.repository.attendanceSettings(),
+  }));
+  app.put('/internal/v1/attendance/settings', { preHandler: internal }, async (request) => {
+    const input = attendanceSettingsUpdateSchema.parse(request.body);
+    return { data: await options.repository.updateAttendanceSettings(input) };
+  });
   app.delete('/internal/v1/attendance/demo-data', { preHandler: internal }, async (_request, reply) => {
     if (!options.env.PRESENCIA_DEBUG_MODE) return reply.code(404).send({ error: 'DEMO_MODE_DISABLED' });
     await options.repository.resetDemoData();

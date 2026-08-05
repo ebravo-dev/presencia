@@ -1,8 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { useAuthStore } from '@/core/auth/auth.store';
 import { server } from '@/test/server';
 import { DashboardPage } from './dashboard-page';
 
@@ -17,6 +19,17 @@ function renderDashboard() {
 }
 
 describe('DashboardPage', () => {
+  beforeEach(() => {
+    useAuthStore.getState().setUser({
+      id: 'coord-1',
+      email: 'coord@example.test',
+      name: 'Coordinación',
+      role: 'COORDINATOR',
+    });
+  });
+
+  afterEach(() => useAuthStore.getState().setUser(null));
+
   it('muestra los conteos recibidos del backend', async () => {
     server.use(
       http.get('/api/coordinacion/resumen', () => HttpResponse.json({
@@ -31,6 +44,7 @@ describe('DashboardPage', () => {
         meta: { generatedAt: '2026-07-02T12:00:00.000Z' },
       })),
       http.get('/api/coordinacion/clases-compartidas', () => HttpResponse.json({ data: [sharedClassFixture()] })),
+      attendanceSettingsHandler(),
     );
 
     renderDashboard();
@@ -56,6 +70,7 @@ describe('DashboardPage', () => {
       })),
       http.get('/api/coordinacion/infraestructura/resumen', () => HttpResponse.json({ error: 'ATTENDANCE_BACKEND_UNAVAILABLE' }, { status: 502 })),
       http.get('/api/coordinacion/clases-compartidas', () => HttpResponse.json({ data: [] })),
+      attendanceSettingsHandler(),
     );
 
     renderDashboard();
@@ -64,7 +79,46 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Grupos').previousElementSibling).toHaveTextContent('29');
     expect(screen.queryByText('Infraestructura temporalmente no disponible')).not.toBeInTheDocument();
   });
+
+  it('permite al coordinador guardar la tolerancia persistida', async () => {
+    let received: unknown;
+    server.use(
+      http.get('/api/coordinacion/resumen', () => HttpResponse.json({
+        data: { counts: { teachers: 1, subjects: 1, assignments: 1, coordinations: 1 }, coordinations: [] },
+        meta: { generatedAt: '2026-08-04T12:00:00.000Z' },
+      })),
+      http.get('/api/coordinacion/infraestructura/resumen', () => HttpResponse.json({
+        data: { counts: { beacons: 0, studentDeviceBindings: 0, studentBleAttendances: 0, activeSubstitutions: 0 }, recentBindings: [], recentBeacons: [], recentSubstitutions: [] },
+        meta: { generatedAt: '2026-08-04T12:00:00.000Z' },
+      })),
+      http.get('/api/coordinacion/clases-compartidas', () => HttpResponse.json({ data: [] })),
+      attendanceSettingsHandler(),
+      http.put('/api/coordinacion/configuracion/asistencia', async ({ request }) => {
+        received = await request.json();
+        return HttpResponse.json({
+          data: { teacherAttendanceToleranceMinutes: 18, updatedAt: '2026-08-04T12:05:00.000Z' },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderDashboard();
+
+    const input = await screen.findByRole('spinbutton', { name: 'Minutos de tolerancia' });
+    await waitFor(() => expect(input).toHaveValue(10));
+    await user.clear(input);
+    await user.type(input, '18');
+    await user.click(screen.getByRole('button', { name: /guardar/i }));
+
+    expect(await screen.findByText(/Tolerancia actualizada/)).toBeInTheDocument();
+    expect(received).toEqual({ teacherAttendanceToleranceMinutes: 18 });
+  });
 });
+
+function attendanceSettingsHandler() {
+  return http.get('/api/coordinacion/configuracion/asistencia', () => HttpResponse.json({
+    data: { teacherAttendanceToleranceMinutes: 10, updatedAt: null },
+  }));
+}
 
 function sharedClassFixture() {
   return {

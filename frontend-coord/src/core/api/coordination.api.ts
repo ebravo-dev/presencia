@@ -1,11 +1,13 @@
 import { api, superApi } from './client';
-import type { Assignment, Beacon, CoordinatorAccount, CoordinatorUser, DebugCatalogResponse, DebugClassResponse, DebugFlowLogsResponse, DebugMutationResponse, DebugScheduleInput, DebugSettingsResponse, DebugStatusResponse, DebugStudent, DebugStudentAttendanceResponse, DebugTeacher, InfrastructureSummaryResponse, OverviewResponse, ProfessorOption, RangeReportResponse, SharedClassAssignment, StudentDeviceBinding, SuperUser, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
+import type { Assignment, AttendanceSettingsResponse, Beacon, CoordinatorAccount, CoordinatorUser, DebugCatalogResponse, DebugClassResponse, DebugFlowLogsResponse, DebugMutationResponse, DebugScheduleInput, DebugSettingsResponse, DebugStatusResponse, DebugStudent, DebugStudentAttendanceResponse, DebugTeacher, InfrastructureSummaryResponse, OverviewResponse, ProfessorOption, RangeReportResponse, SharedClassAssignment, StudentDeviceBinding, SuperUser, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
 
 export const coordinationApi = {
   login: async (input: { email: string; password: string }) => (await api.post<{ data: { user: CoordinatorUser; expiresAt: string } }>('/coordinacion/auth/login', input)).data,
   me: async () => (await api.get<{ data: { user: CoordinatorUser } }>('/coordinacion/auth/me')).data,
   logout: async () => { await api.post('/coordinacion/auth/logout'); },
   overview: async () => (await api.get<OverviewResponse>('/coordinacion/resumen')).data,
+  attendanceSettings: async () => (await api.get<AttendanceSettingsResponse>('/coordinacion/configuracion/asistencia')).data,
+  updateAttendanceSettings: async (input: { teacherAttendanceToleranceMinutes: number }) => (await api.put<AttendanceSettingsResponse>('/coordinacion/configuracion/asistencia', input)).data,
   infrastructureSummary: async () => (await api.get<InfrastructureSummaryResponse>('/coordinacion/infraestructura/resumen')).data,
   studentDeviceBindings: async (params: { q?: string }) => (await api.get<{ data: StudentDeviceBinding[] }>('/coordinacion/infraestructura/alumnos-vinculados', { params })).data,
   authorizeStudentDeviceChange: async (matricula: string) => { await api.delete(`/coordinacion/infraestructura/alumnos-vinculados/${encodeURIComponent(matricula)}`); },

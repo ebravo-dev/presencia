@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:appprofesoresuniversidad/shared/models/grupo.dart';
+import 'package:appprofesoresuniversidad/data/models/uat_horario_model.dart';
 
 void main() {
   test('normaliza una clase compartida con horarios estructurados', () {
@@ -15,6 +16,7 @@ void main() {
       'schedule': {
         'monday': [
           {'raw': '10:00-11:00', 'startTime': '10:00', 'endTime': '11:00'},
+          {'raw': '11:00-12:00', 'startTime': '11:00', 'endTime': '12:00'},
         ],
         'tuesday': <Object>[],
       },
@@ -27,7 +29,27 @@ void main() {
 
     expect(grupo.esCompartida, isTrue);
     expect(grupo.profesorTitular, 'Profesor Titular');
-    expect(grupo.schedule?['monday'], '10:00-11:00');
-    expect(grupo.horario, '10:00-11:00');
+    expect(grupo.schedule?['monday'], '10:00-11:00; 11:00-12:00');
+    expect(grupo.horario, '10:00-12:00');
+    expect(grupo.horarioParaDia(DateTime.monday), '10:00-12:00');
+    expect(grupo.horarioParaDia(DateTime.tuesday), isNull);
+  });
+
+  test('combina filas UAT consecutivas del mismo grupo', () {
+    final first = UatHorarioModel.fromJson({
+      'Id_Grupo': 947699,
+      'Txt_Materia': '(MOV-01) Desarrollo móvil',
+      'Txt_Lunes': '08:00-09:00',
+    });
+    final second = UatHorarioModel.fromJson({
+      'Id_Grupo': 947699,
+      'Txt_Materia': '(MOV-01) Desarrollo móvil',
+      'Txt_Lunes': '09:00-10:00',
+    });
+
+    final grupo = first.merge(second).toGrupo();
+
+    expect(grupo.subject, 'Desarrollo móvil');
+    expect(grupo.horarioParaDia(DateTime.monday), '08:00-10:00');
   });
 }
