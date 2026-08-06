@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, Bluetooth, Bug, Copy, Database, KeyRound, Link2, Lock, LogOut, Pencil, Play, PlusCircle, RefreshCw, ShieldCheck, Trash2, UserCog, Users } from 'lucide-react';
+import { Activity, Bluetooth, Bug, CalendarRange, Copy, Database, KeyRound, Link2, Lock, LogOut, Pencil, Play, PlusCircle, RefreshCw, ShieldCheck, Trash2, UserCog, Users } from 'lucide-react';
 import { FormEvent, useState } from 'react';
 import { superUserApi } from '@/core/api/coordination.api';
 import type { Beacon, CoordinatorAccount, DebugClassResponse, DebugMutationResponse, DebugScheduleInput, ScheduleDay } from '@/core/api/types';
@@ -7,7 +7,7 @@ import { Button, Card, EmptyState, Skeleton, cn } from '@/shared/components/ui';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 
 const REFRESH_INTERVAL_MS = 10_000;
-type Section = 'coordinators' | 'beacons' | 'students' | 'debug';
+type Section = 'cycle' | 'coordinators' | 'beacons' | 'students' | 'debug';
 
 export function SuperUserPage() {
   const session = useQuery({ queryKey: ['super-user', 'me'], queryFn: superUserApi.me, retry: false });
@@ -97,12 +97,14 @@ function SuperUserConsole() {
 
       <div className="mx-auto max-w-7xl p-5 sm:p-8">
         <div className="mb-6 flex flex-wrap gap-2">
+          <SectionButton current={section} value="cycle" onClick={setSection} icon={<CalendarRange size={17} />} label="Ciclo escolar" />
           <SectionButton current={section} value="coordinators" onClick={setSection} icon={<UserCog size={17} />} label="Coordinadores" />
           <SectionButton current={section} value="beacons" onClick={setSection} icon={<Bluetooth size={17} />} label="Beacons" />
           <SectionButton current={section} value="students" onClick={setSection} icon={<Link2 size={17} />} label="Alumnos vinculados" />
           <SectionButton current={section} value="debug" onClick={setSection} icon={<Bug size={17} />} label="Debug" />
         </div>
 
+        {section === 'cycle' && <AcademicCycleAdmin />}
         {section === 'coordinators' && <CoordinatorAdmin />}
         {section === 'beacons' && <BeaconAdmin />}
         {section === 'students' && <StudentBindingAdmin />}
@@ -127,6 +129,95 @@ function SectionButton({ current, value, onClick, icon, label }: { current: Sect
     >
       {icon}{label}
     </button>
+  );
+}
+
+function AcademicCycleAdmin() {
+  const queryClient = useQueryClient();
+  const [selectedCycleId, setSelectedCycleId] = useState<number | null>(null);
+  const cycle = useQuery({
+    queryKey: ['super-user', 'academic-cycle'],
+    queryFn: superUserApi.activeAcademicCycle,
+    refetchInterval: REFRESH_INTERVAL_MS,
+  });
+  const active = cycle.data?.data.active;
+  const selected = selectedCycleId ?? active?.externalId ?? null;
+  const changeCycle = useMutation({
+    mutationFn: () => {
+      if (selected === null) throw new Error('ACADEMIC_CYCLE_REQUIRED');
+      return superUserApi.changeActiveAcademicCycle(selected);
+    },
+    onSuccess: async () => {
+      setSelectedCycleId(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['super-user', 'academic-cycle'] }),
+        queryClient.invalidateQueries({ queryKey: ['coordination'] }),
+      ]);
+    },
+  });
+
+  if (cycle.isLoading) return <Card className="p-5"><Skeleton className="h-40" /></Card>;
+  if (cycle.isError || !cycle.data) {
+    return <Card className="p-5"><EmptyState icon={<CalendarRange />} title="Ciclo no disponible" description="No se pudo consultar Academic Service." /></Card>;
+  }
+
+  const production = cycle.data.meta.mode === 'PRODUCTION';
+  const selectedOption = cycle.data.data.availableCycles.find(({ externalId }) => externalId === selected);
+  return (
+    <div className="grid gap-4 xl:grid-cols-[430px_1fr]">
+      <Card className="p-5">
+        <div className="mb-5 flex items-center gap-3">
+          <div className="rounded-xl bg-red-50 p-2.5 text-[#C8102E]"><CalendarRange size={22} /></div>
+          <div><h2 className="font-bold">Ciclo escolar activo</h2><p className="text-sm text-slate-500">Fuente única para sincronización de profesores y UAT.</p></div>
+        </div>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/20">
+          <p className="text-xs font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Activo actualmente</p>
+          <p className="mt-1 text-2xl font-black text-emerald-950 dark:text-emerald-100">{active?.name}</p>
+          <p className="mt-1 font-mono text-xs text-emerald-800/70 dark:text-emerald-300/70">ID UAT: {active?.externalId} · revisión {active?.revision}</p>
+        </div>
+        <label className="mt-5 block text-sm font-bold">
+          Cambiar a
+          <select className="field mt-1" value={selected ?? ''} disabled={!production || changeCycle.isPending} onChange={(event) => setSelectedCycleId(Number(event.target.value))}>
+            {cycle.data.data.availableCycles.map((item) => <option key={item.externalId} value={item.externalId}>{item.name} · ID {item.externalId}</option>)}
+          </select>
+        </label>
+        <p className="mt-3 text-xs leading-relaxed text-slate-500">
+          El cambio conserva el historial y desactiva las materias del ciclo anterior. Cada profesor descargará el nuevo ciclo al volver a iniciar sesión o pulsar sincronizar.
+        </p>
+        {!production && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-800">Esta selección está protegida mientras el despliegue se encuentre en modo demo.</p>}
+        {changeCycle.isError && <p role="alert" className="mt-3 text-sm font-semibold text-red-600">{apiErrorMessage(changeCycle.error, 'No se pudo cambiar el ciclo escolar.')}</p>}
+        {changeCycle.isSuccess && <p role="status" className="mt-3 text-sm font-semibold text-emerald-700">El ciclo activo se actualizó correctamente.</p>}
+        <Button
+          className="mt-4"
+          disabled={!production || selectedOption?.externalId === active?.externalId || changeCycle.isPending}
+          onClick={() => {
+            if (selectedOption && window.confirm(`¿Activar ${selectedOption.name}? Las materias del ciclo anterior se desactivarán.`)) changeCycle.mutate();
+          }}
+        >
+          <RefreshCw size={16} />{changeCycle.isPending ? 'Actualizando...' : `Activar ${selectedOption?.name ?? 'ciclo'}`}
+        </Button>
+      </Card>
+
+      <Card className="p-5">
+        <h2 className="font-bold">Disponibilidad automática por año</h2>
+        <p className="mt-1 text-sm text-slate-500">Los ciclos futuros no pueden seleccionarse antes de que comience su año.</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {cycle.data.data.availableCycles.map((item) => (
+            <div key={item.externalId} className={cn('rounded-xl border p-4', item.externalId === active?.externalId ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/20' : 'border-slate-200 dark:border-[#2e3138]')}>
+              <p className="font-black">{item.year}-{item.term}</p><p className="text-sm text-slate-500">ID UAT {item.externalId}</p>
+            </div>
+          ))}
+          {cycle.data.data.lockedCycles.map((item) => (
+            <div key={item.externalId} className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 opacity-65 dark:border-[#2e3138] dark:bg-[#15181d]">
+              <p className="font-black">{item.year}-{item.term}</p><p className="text-sm text-slate-500">ID UAT {item.externalId} · Bloqueado</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-4 rounded-lg bg-blue-50 p-3 text-sm font-semibold text-blue-800 dark:bg-blue-950/20 dark:text-blue-200">
+          Los ciclos {cycle.data.data.lockedCycles.map(({ externalId }) => externalId).join(', ')} se habilitarán el 1 de enero de {cycle.data.data.lockedCycles[0]?.year} ({cycle.data.data.timeZone}).
+        </p>
+      </Card>
+    </div>
   );
 }
 

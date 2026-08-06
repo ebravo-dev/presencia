@@ -37,9 +37,20 @@ describe('CoordinationReportService', () => {
 
     expect(report?.meta.teacherAttendanceToleranceMinutes).toBe(20);
   });
+
+  it('treats August as the third school cycle consistently with production selection', async () => {
+    const service = new CoordinationReportService(
+      repository({ externalId: '152', name: '2026 - 3 OTOÑO' }),
+      () => new Date('2026-08-05T12:00:00.000Z'),
+    );
+
+    const report = await service.weekly('teacher-1', '2026-08-03');
+
+    expect(report?.data.rows).toHaveLength(1);
+  });
 });
 
-function repository(): CoordinationQueryRepository {
+function repository(cycle = { externalId: '151', name: '2026 - 2 VERANO' }): CoordinationQueryRepository {
   return {
     async project() { return true; }, async overview() { return {}; }, async coordinations() { return {}; },
     async teachers() { return {}; }, async teacherAssignments() { return null; },
@@ -48,8 +59,8 @@ function repository(): CoordinationQueryRepository {
       return {
         teacher: { id: 'teacher-1', name: 'Profesor', email: 'profesor@uat.edu.mx', institutionalCode: '308127', coordinations: [] },
         groups: [{
-          id: 'group-1', externalGroupId: '947699', groupCode: '1-A', schoolCycleExternalId: '151',
-          schoolCycleName: '2026 - 2 VERANO', classroom: 'A1', educationLevel: 'LIC', period: '2026 - 2 VERANO',
+          id: 'group-1', externalGroupId: '947699', groupCode: '1-A', schoolCycleExternalId: cycle.externalId,
+          schoolCycleName: cycle.name, classroom: 'A1', educationLevel: 'LIC', period: cycle.name,
           schedule: { monday: [
             { raw: '08:00-09:00', startTime: '08:00', endTime: '09:00' },
             { raw: '09:00-10:00', startTime: '09:00', endTime: '10:00' },

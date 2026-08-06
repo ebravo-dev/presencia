@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { UatService } from '../../../application/services/uat.service.js';
 import type { UatStudentService } from '../../../application/services/uat-student.service.js';
 import type { IDomainEventBus } from '../../../domain/events/domain-event-bus.js';
@@ -18,6 +18,7 @@ import { ProfessorDeviceBindingController } from '../controllers/professor-devic
 import { ProfessorPresenceController } from '../controllers/professor-presence.controller.js';
 import { buildAuthUatHook } from '../hooks/auth-uat.hook.js';
 import { buildAuthUatStudentHook } from '../hooks/auth-uat-student.hook.js';
+import { env } from '../../../config/env.js';
 
 export interface UatRoutesOptions {
   uatService: UatService;
@@ -36,6 +37,11 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
 ) => {
   const authUat = buildAuthUatHook(uatService);
   const authUatStudent = buildAuthUatStudentHook(uatStudentService);
+  const internal = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.headers['x-internal-service-token'] !== env.INTERNAL_API_TOKEN) {
+      return reply.code(404).send({ error: 'NOT_FOUND' });
+    }
+  };
   const sessionController = new SessionController(uatService, eventBus, attendanceServiceCommands);
   const studentSessionController = new StudentSessionController(uatStudentService);
   const consultaController = new ConsultaController(uatService);
@@ -51,6 +57,7 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   fastify.post('/api/uat/sessions', {
     config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
   }, sessionController.create);
+  fastify.get('/internal/v1/config/academic-cycle', { preHandler: internal }, () => academicServiceClient.activeAcademicCycle());
   fastify.delete('/api/uat/sessions/:sessionId', sessionController.delete);
 
   fastify.post('/api/uat/alumnos/sessions', {

@@ -149,7 +149,11 @@ export async function buildApp() {
   const harvestTeacherData = new HarvestTeacherDataUseCase(
     uatService,
     academicServiceClient,
-    { preferredCycleId: env.UAT_ID_CICLO_ESCOLAR },
+    {
+      preferredCycleId: env.PRESENCIA_DEBUG_MODE
+        ? env.UAT_ID_CICLO_ESCOLAR
+        : async () => (await academicServiceClient.activeAcademicCycle()).data.active.externalId,
+    },
     undefined,
     fastify.log,
   );

@@ -79,6 +79,20 @@ export interface UatAsistenciaGrupoResponse {
     data?: UatAsistenciaAlumnoItem[];
 }
 
+export interface ActiveAcademicCycleResponse {
+    data: {
+        active: {
+            externalId: number;
+            year: number;
+            term: 1 | 2 | 3;
+            name: string;
+            revision: number;
+            updatedAt: string;
+            updatedByIdentityId: string | null;
+        };
+    };
+}
+
 export interface UatAsistenciaAlumnoInput {
     id_alumno: number;
     num_pase_lista: number;
@@ -95,6 +109,12 @@ class UatRestClient {
 
     async deleteSession(sessionId: string): Promise<void> {
         await this.request(`/api/uat/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+    }
+
+    getActiveAcademicCycle(): Promise<ActiveAcademicCycleResponse> {
+        return this.request('/internal/v1/config/academic-cycle', {
+            headers: { 'x-internal-service-token': env.INTERNAL_API_TOKEN },
+        });
     }
 
     async getHorarios(sessionId: string, input: { Id_Ciclo_Escolar: number; Id_DES: number }) {

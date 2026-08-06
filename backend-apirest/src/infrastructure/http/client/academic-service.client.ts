@@ -25,6 +25,22 @@ export class AcademicServiceClient implements AcademicSnapshotPublisher, Student
     return this.publish('/internal/v1/academic/snapshots/students', snapshot);
   }
 
+  activeAcademicCycle(): Promise<ActiveAcademicCycleResponse> {
+    return this.request('/internal/v1/academic/cycles/active', { method: 'GET' });
+  }
+
+  changeActiveAcademicCycle(input: {
+    cycleExternalId: number;
+    actorIdentityId: string;
+    actorRole: 'SUPER_USER';
+    reason: string;
+    correlationId: string;
+  }): Promise<ActiveAcademicCycleResponse> {
+    return this.request('/internal/v1/academic/cycles/active', {
+      method: 'PUT', body: withoutCorrelationId(input), correlationId: input.correlationId,
+    });
+  }
+
   listSharedClassOptions(): Promise<unknown> {
     return this.request('/internal/v1/academic/shared-classes/options', { method: 'GET' });
   }
@@ -163,6 +179,27 @@ export interface SharedClassListResponse {
     assignedTeacher: { name: string };
   }>;
   meta: { generatedAt: string };
+}
+
+export interface AcademicCycleOption {
+  externalId: number;
+  year: number;
+  term: 1 | 2 | 3;
+  name: string;
+}
+
+export interface ActiveAcademicCycleResponse {
+  data: {
+    active: AcademicCycleOption & {
+      revision: number;
+      updatedAt: string;
+      updatedByIdentityId: string | null;
+    };
+    availableCycles: AcademicCycleOption[];
+    lockedCycles: AcademicCycleOption[];
+    nextUnlockAt: string;
+    timeZone: string;
+  };
 }
 
 interface LegacySharedClassTeacher {

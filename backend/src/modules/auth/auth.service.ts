@@ -33,9 +33,10 @@ export class AuthService {
         const decryptedPassword = rsaService.decryptPasswordOrPlain(data.encryptedPassword);
 
         // Calculate current period
-        const currentPeriod = env.PRESENCIA_DEBUG_MODE
-            ? env.PRESENCIA_DEBUG_PERIOD
-            : calculateCurrentPeriod();
+        const activeCycle = env.PRESENCIA_DEBUG_MODE
+            ? { externalId: env.UAT_ID_CICLO_ESCOLAR, name: env.PRESENCIA_DEBUG_PERIOD }
+            : (await uatRestClient.getActiveAcademicCycle()).data.active;
+        const currentPeriod = activeCycle.name;
 
         const debugLogin = env.PRESENCIA_DEBUG_MODE
             ? await this.validateLoginOnly(data.institutionalEmail, decryptedPassword)
@@ -112,6 +113,7 @@ export class AuthService {
                 email: data.institutionalEmail,
                 password: decryptedPassword,
                 currentPeriod,
+                cycleExternalId: activeCycle.externalId,
             });
         }
 
@@ -149,9 +151,10 @@ export class AuthService {
     ): Promise<{ message: string; currentPeriod: string }> {
         console.log(`🔄 forceSync called for professor ${professorId}`);
         const decryptedPassword = rsaService.decryptPasswordOrPlain(encryptedPassword);
-        const currentPeriod = env.PRESENCIA_DEBUG_MODE
-            ? env.PRESENCIA_DEBUG_PERIOD
-            : calculateCurrentPeriod();
+        const activeCycle = env.PRESENCIA_DEBUG_MODE
+            ? { externalId: env.UAT_ID_CICLO_ESCOLAR, name: env.PRESENCIA_DEBUG_PERIOD }
+            : (await uatRestClient.getActiveAcademicCycle()).data.active;
+        const currentPeriod = activeCycle.name;
 
         if (env.PRESENCIA_DEBUG_MODE) {
             const seed = await this.ensureDebugProfessorData(professorId, currentPeriod);
@@ -223,6 +226,7 @@ export class AuthService {
             email,
             password: decryptedPassword,
             currentPeriod,
+            cycleExternalId: activeCycle.externalId,
         });
 
         return {

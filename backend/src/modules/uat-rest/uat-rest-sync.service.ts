@@ -18,8 +18,13 @@ class UatRestSyncService {
         email: string;
         password: string;
         currentPeriod?: string;
+        cycleExternalId?: number;
     }): Promise<{ groupsCount: number; studentsCount: number }> {
-        const currentPeriod = input.currentPeriod ?? calculateCurrentPeriod();
+        const configuredCycle = input.currentPeriod && input.cycleExternalId
+            ? { name: input.currentPeriod, externalId: input.cycleExternalId }
+            : (await uatRestClient.getActiveAcademicCycle()).data.active;
+        const currentPeriod = configuredCycle.name;
+        const cycleExternalId = configuredCycle.externalId;
         const syncJob = await prisma.syncJob.create({
             data: {
                 professorId: input.professorId,
@@ -64,12 +69,12 @@ class UatRestSyncService {
             await updateStep(2, 'Obteniendo horarios y grupos desde backend-apirest...');
             const [horarios, controlGroups] = await Promise.all([
                 uatRestClient.getHorarios(sessionId, {
-                    Id_Ciclo_Escolar: env.UAT_ID_CICLO_ESCOLAR,
+                    Id_Ciclo_Escolar: cycleExternalId,
                     Id_DES: env.UAT_ID_DES,
                 }),
                 uatRestClient.getGruposProfesor(sessionId, {
                     Id_Des: env.UAT_ID_DES,
-                    Id_Ciclo: env.UAT_ID_CICLO_ESCOLAR,
+                    Id_Ciclo: cycleExternalId,
                     Id_Plantilla: idPlantilla,
                 }),
             ]);
@@ -433,15 +438,6 @@ function normalizeName(value: unknown) {
         .replace(/\s+/g, ' ')
         .trim()
         .toUpperCase();
-}
-
-function calculateCurrentPeriod(date: Date = new Date()): string {
-    const month = date.getMonth() + 1;
-    const year = date.getFullYear();
-
-    if (month >= 1 && month <= 5) return `${year} - 1 PRIMAVERA`;
-    if (month >= 6 && month <= 7) return `${year} - 2 VERANO`;
-    return `${year} - 3 OTOÑO`;
 }
 
 export const uatRestSyncService = new UatRestSyncService();

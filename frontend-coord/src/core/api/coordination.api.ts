@@ -1,5 +1,5 @@
 import { api, superApi } from './client';
-import type { Assignment, AttendanceSettingsResponse, Beacon, CoordinatorAccount, CoordinatorUser, DebugCatalogResponse, DebugClassResponse, DebugFlowLogsResponse, DebugMutationResponse, DebugScheduleInput, DebugSettingsResponse, DebugStatusResponse, DebugStudent, DebugStudentAttendanceResponse, DebugTeacher, InfrastructureSummaryResponse, OverviewResponse, ProfessorOption, RangeReportResponse, SharedClassAssignment, StudentDeviceBinding, SuperUser, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
+import type { ActiveAcademicCycleResponse, Assignment, AttendanceSettingsResponse, Beacon, CoordinatorAccount, CoordinatorUser, DebugCatalogResponse, DebugClassResponse, DebugFlowLogsResponse, DebugMutationResponse, DebugScheduleInput, DebugSettingsResponse, DebugStatusResponse, DebugStudent, DebugStudentAttendanceResponse, DebugTeacher, InfrastructureSummaryResponse, OverviewResponse, ProfessorOption, RangeReportResponse, SharedClassAssignment, StudentDeviceBinding, SuperUser, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
 
 export const coordinationApi = {
   login: async (input: { email: string; password: string }) => (await api.post<{ data: { user: CoordinatorUser; expiresAt: string } }>('/coordinacion/auth/login', input)).data,
@@ -26,6 +26,10 @@ export const superUserApi = {
   login: async (input: { password: string }) => (await superApi.post<{ data: { user: SuperUser; expiresAt: string } }>('/superUsuario/auth/login', input)).data,
   me: async () => (await superApi.get<{ data: { user: SuperUser } }>('/superUsuario/auth/me')).data,
   logout: async () => { await superApi.post('/superUsuario/auth/logout'); },
+  activeAcademicCycle: async () => (await superApi.get<ActiveAcademicCycleResponse>('/superUsuario/ciclo-escolar')).data,
+  changeActiveAcademicCycle: async (cycleExternalId: number) => (
+    await superApi.put<ActiveAcademicCycleResponse>('/superUsuario/ciclo-escolar', { cycleExternalId })
+  ).data,
   coordinators: async () => (await superApi.get<{ data: CoordinatorAccount[]; meta: { generatedAt: string } }>('/superUsuario/coordinadores')).data,
   createCoordinator: async (input: { email: string; name: string; password: string; role: string }) => (await superApi.post<{ data: CoordinatorAccount }>('/superUsuario/coordinadores', input)).data,
   updateCoordinator: async (id: string, input: Partial<{ email: string; name: string; password: string; role: string; disabled: boolean }>) => (await superApi.put<{ data: CoordinatorAccount }>(`/superUsuario/coordinadores/${id}`, input)).data,

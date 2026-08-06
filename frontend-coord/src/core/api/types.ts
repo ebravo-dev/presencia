@@ -1,5 +1,25 @@
 export interface CoordinatorUser { id: string; email: string; name: string; role: string }
 export interface SuperUser { role: 'SUPER_USER' }
+export interface AcademicCycleOption {
+  externalId: number;
+  year: number;
+  term: 1 | 2 | 3;
+  name: string;
+}
+export interface ActiveAcademicCycleResponse {
+  data: {
+    active: AcademicCycleOption & {
+      revision: number;
+      updatedAt: string;
+      updatedByIdentityId: string | null;
+    };
+    availableCycles: AcademicCycleOption[];
+    lockedCycles: AcademicCycleOption[];
+    nextUnlockAt: string;
+    timeZone: string;
+  };
+  meta: { mode: 'PRODUCTION' | 'DEMO' };
+}
 export interface CoordinatorAccount {
   id: string;
   email: string;

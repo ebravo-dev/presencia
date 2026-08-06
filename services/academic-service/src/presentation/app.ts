@@ -4,12 +4,14 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { Registry, collectDefaultMetrics } from 'prom-client';
 import type { ApplyAcademicSnapshotService } from '../application/apply-academic-snapshot.service.js';
 import type { ApplyStudentAcademicSnapshotService } from '../application/apply-student-academic-snapshot.service.js';
+import { AcademicCycleError, type AcademicCycleService } from '../application/academic-cycle.service.js';
 import type { SharedClassService } from '../application/shared-class.service.js';
 import type { AcademicRepository } from '../domain/academic.repository.js';
 import { SharedClassDomainError } from '../domain/shared-class.js';
 import type { AcademicEnv } from '../infrastructure/config.js';
 import {
   academicSnapshotSchema,
+  changeActiveAcademicCycleSchema,
   createSharedClassSchema,
   deleteSharedClassSchema,
   legacySharedClassImportSchema,
@@ -20,6 +22,7 @@ import {
 
 export async function buildAcademicApp(options: {
   env: AcademicEnv;
+  cycles: AcademicCycleService;
   snapshots: ApplyAcademicSnapshotService;
   studentSnapshots: ApplyStudentAcademicSnapshotService;
   sharedClasses: SharedClassService;
@@ -46,6 +49,20 @@ export async function buildAcademicApp(options: {
   app.get('/metrics', async (request, reply) => {
     if (request.headers.authorization !== `Bearer ${options.env.METRICS_TOKEN}`) return reply.code(401).send({ error: 'UNAUTHORIZED' });
     return reply.type(registry.contentType).send(await registry.metrics());
+  });
+  app.get('/internal/v1/academic/cycles/active', { preHandler: internal }, async () => ({
+    data: await options.cycles.status(),
+  }));
+  app.put('/internal/v1/academic/cycles/active', { preHandler: internal }, async (request) => {
+    const parsed = changeActiveAcademicCycleSchema.parse(request.body);
+    return {
+      data: await options.cycles.changeActiveCycle(parsed.cycleExternalId, {
+        actorIdentityId: parsed.actorIdentityId,
+        actorRole: parsed.actorRole,
+        reason: parsed.reason,
+        correlationId: correlationId(request),
+      }),
+    };
   });
   app.post('/internal/v1/academic/snapshots/professors', { preHandler: internal }, async (request, reply) => {
     const parsed = academicSnapshotSchema.parse(request.body);
@@ -138,6 +155,9 @@ export async function buildAcademicApp(options: {
   });
   app.setErrorHandler((error, request, reply) => {
     request.log.error({ err: error }, 'Academic request failed.');
+    if (error instanceof AcademicCycleError) {
+      return reply.code(error.code === 'ACADEMIC_CYCLE_LOCKED' ? 409 : 400).send({ error: error.code, message: error.message });
+    }
     if (error instanceof SharedClassDomainError) {
       const notFound = ['SOURCE_ASSIGNMENT_NOT_FOUND', 'ASSIGNED_TEACHER_NOT_FOUND', 'SHARED_CLASS_NOT_FOUND', 'SHARED_CLASS_REFERENCE_NOT_FOUND'].includes(error.code);
       const conflict = ['INVALID_SHARED_CLASS', 'SHARED_CLASS_EXISTS'].includes(error.code);

@@ -75,6 +75,27 @@ describe('AcademicServiceClient', () => {
     expect(String(request?.body)).not.toContain('correlationId');
   });
 
+  it('reads and changes the centralized active cycle with an audit correlation id', async () => {
+    const response = { data: { active: { externalId: 152, year: 2026, term: 3, name: '2026 - 3 OTOÑO' } } };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(response), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }));
+    const client = new AcademicServiceClient('http://academic-service:3300', 'x'.repeat(32));
+
+    await client.activeAcademicCycle();
+    await client.changeActiveAcademicCycle({
+      cycleExternalId: 152, actorIdentityId: 'super-user-1', actorRole: 'SUPER_USER',
+      reason: 'Cambio del ciclo escolar activo.', correlationId: 'request-cycle-1',
+    });
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe('http://academic-service:3300/internal/v1/academic/cycles/active');
+    const [, updateRequest] = fetchMock.mock.calls[1] ?? [];
+    expect(updateRequest?.method).toBe('PUT');
+    expect(updateRequest?.headers).toMatchObject({ 'x-correlation-id': 'request-cycle-1' });
+    expect(JSON.parse(String(updateRequest?.body))).toMatchObject({ cycleExternalId: 152, actorIdentityId: 'super-user-1' });
+    expect(String(updateRequest?.body)).not.toContain('correlationId');
+  });
+
   it('fails visibly when Academic Service is unavailable', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('connection refused'));
     const client = new AcademicServiceClient('http://academic-service:3300', 'x'.repeat(32));

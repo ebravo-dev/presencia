@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+export const changeActiveAcademicCycleSchema = z.object({
+  cycleExternalId: z.number().int().positive(),
+  actorIdentityId: z.string().trim().min(1).max(160),
+  actorRole: z.literal('SUPER_USER'),
+  reason: z.string().trim().min(8).max(500),
+});
+
 const studentSchema = z.object({
   matricula: z.string().trim().min(1).max(40), name: z.string().trim().min(1).max(240),
   uatStudentId: z.number().int().positive().nullable().optional(),

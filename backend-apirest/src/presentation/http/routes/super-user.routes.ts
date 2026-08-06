@@ -29,6 +29,7 @@ interface SuperUserRoutesOptions {
 }
 
 const loginSchema = z.object({ password: z.string().min(1).max(256) });
+const activeAcademicCycleSchema = z.object({ cycleExternalId: z.number().int().positive() });
 const coordinatorCreateSchema = z.object({
   email: z.string().email(), name: z.string().trim().min(1), password: z.string().min(8),
   role: z.enum(['COORDINATOR', 'READ_ONLY']).default('COORDINATOR'),
@@ -111,6 +112,24 @@ export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async
   });
 
   fastify.get('/api/superUsuario/auth/me', async (request) => ({ data: { user: { role: request.superUser?.role } } }));
+  fastify.get('/api/superUsuario/ciclo-escolar', async () => {
+    const result = await academicService.activeAcademicCycle();
+    return { ...result, meta: { mode: env.PRESENCIA_DEBUG_MODE ? 'DEMO' : 'PRODUCTION' } };
+  });
+  fastify.put('/api/superUsuario/ciclo-escolar', async (request, reply) => {
+    if (env.PRESENCIA_DEBUG_MODE) {
+      return reply.code(409).send({
+        error: 'ACADEMIC_CYCLE_PRODUCTION_ONLY',
+        message: 'El ciclo académico de producción no se modifica mientras el entorno está en modo demo.',
+      });
+    }
+    const input = activeAcademicCycleSchema.parse(request.body);
+    const result = await academicService.changeActiveAcademicCycle({
+      cycleExternalId: input.cycleExternalId,
+      ...actor(request.superUser?.id, request.id, 'Cambio del ciclo escolar activo desde super usuario.'),
+    });
+    return { ...result, meta: { mode: 'PRODUCTION' } };
+  });
   fastify.get('/api/superUsuario/coordinadores', async () => identityService.listStaffAccounts());
   fastify.post('/api/superUsuario/coordinadores', async (request, reply) => {
     const input = coordinatorCreateSchema.parse(request.body);

@@ -38,6 +38,43 @@ model AcademicCycle {
   @@map("academic_cycles")
 }
 
+model AcademicCycleConfiguration {
+  key                 String   @id
+  cycleExternalId     Int      @map("cycle_external_id")
+  cycleYear           Int      @map("cycle_year")
+  cycleTerm           Int      @map("cycle_term")
+  cycleName           String   @map("cycle_name")
+  revision            Int      @default(1)
+  updatedByIdentityId String?  @map("updated_by_identity_id")
+  correlationId       String?  @map("correlation_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  auditEvents AcademicCycleConfigurationAudit[]
+
+  @@map("academic_cycle_configuration")
+}
+
+model AcademicCycleConfigurationAudit {
+  id                      String   @id @default(cuid())
+  configurationKey        String   @map("configuration_key")
+  previousCycleExternalId Int      @map("previous_cycle_external_id")
+  nextCycleExternalId     Int      @map("next_cycle_external_id")
+  previousCycleName       String   @map("previous_cycle_name")
+  nextCycleName           String   @map("next_cycle_name")
+  actorIdentityId         String   @map("actor_identity_id")
+  actorRole               String   @map("actor_role")
+  reason                  String
+  correlationId           String   @map("correlation_id")
+  createdAt               DateTime @default(now()) @map("created_at")
+
+  configuration AcademicCycleConfiguration @relation(fields: [configurationKey], references: [key], onDelete: Restrict)
+
+  @@index([createdAt])
+  @@index([actorIdentityId, createdAt])
+  @@map("academic_cycle_configuration_audit")
+}
+
 model AcademicCoordination {
   id         String   @id @default(cuid())
   externalId String   @unique @map("external_id")

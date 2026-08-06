@@ -5,6 +5,18 @@ import { buildAcademicApp } from './app.js';
 const token = 'test-internal-service-token-with-at-least-32-characters';
 
 describe('Academic HTTP API', () => {
+  it('protects and exposes the active academic-cycle configuration internally', async () => {
+    const app = await testApp();
+    expect((await app.inject({ method: 'GET', url: '/internal/v1/academic/cycles/active' })).statusCode).toBe(404);
+    const response = await app.inject({
+      method: 'GET', url: '/internal/v1/academic/cycles/active',
+      headers: { 'x-internal-service-token': token },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.active).toMatchObject({ externalId: 152, year: 2026, term: 3 });
+    await app.close();
+  });
+
   it('hides snapshot mutation from public traffic', async () => {
     const app = await testApp();
     const response = await app.inject({ method: 'POST', url: '/internal/v1/academic/snapshots/professors', payload: {} });
@@ -107,6 +119,16 @@ describe('Academic HTTP API', () => {
 async function testApp(options: { debugMode?: boolean; resetDemoData?: () => Promise<void> } = {}) {
   return buildAcademicApp({
     env: academicEnvSchema.parse({ NODE_ENV: 'test', INTERNAL_API_TOKEN: token, PRESENCIA_DEBUG_MODE: options.debugMode ?? false }),
+    cycles: {
+      status: async () => ({
+        active: { externalId: 152, year: 2026, term: 3, name: '2026 - 3 OTOÑO', revision: 1, updatedAt: new Date(), updatedByIdentityId: null },
+        availableCycles: [], lockedCycles: [], nextUnlockAt: '2027-01-01T00:00:00', timeZone: 'America/Monterrey',
+      }),
+      changeActiveCycle: async () => ({
+        active: { externalId: 152, year: 2026, term: 3, name: '2026 - 3 OTOÑO', revision: 1, updatedAt: new Date(), updatedByIdentityId: null },
+        availableCycles: [], lockedCycles: [], nextUnlockAt: '2027-01-01T00:00:00', timeZone: 'America/Monterrey',
+      }),
+    } as never,
     snapshots: { apply: async (snapshot: { snapshotId: string }) => ({
       snapshotId: snapshot.snapshotId, duplicate: false, activeGroups: 0, activeEnrollments: 0, deactivatedGroups: 0,
     }) } as never,

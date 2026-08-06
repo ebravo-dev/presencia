@@ -3,6 +3,7 @@ import { prisma } from '../../core/database/prisma.js';
 import { jwtService, sessionService } from '../../core/security/index.js';
 import { normalizeClassroomKey, serializeBeacon } from '../beacons/beacons.service.js';
 import { env } from '../../core/config/env.js';
+import { uatRestClient } from '../uat-rest/index.js';
 
 const studentDeviceBinding = (prisma as any).studentDeviceBinding;
 const substituteAssignment = (prisma as any).substituteAssignment;
@@ -203,6 +204,9 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
     fastify.get(
         '/professors/classes',
         async (request: AuthenticatedRequest, reply: FastifyReply) => {
+            const activePeriod = env.PRESENCIA_DEBUG_MODE
+                ? env.PRESENCIA_DEBUG_PERIOD
+                : (await uatRestClient.getActiveAcademicCycle()).data.active.name;
             // Check if there's a sync in progress - don't return incomplete data
             const activeSyncJob = await prisma.syncJob.findFirst({
                 where: {
@@ -240,7 +244,7 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
             }
 
             const groups = await prisma.group.findMany({
-                where: { professorId: request.professorId },
+                where: { professorId: request.professorId, period: activePeriod },
                 select: groupSelect,
                 orderBy: { name: 'asc' },
             }) as GroupRow[];
@@ -261,6 +265,7 @@ export async function professorsRoutes(fastify: FastifyInstance): Promise<void> 
                 where: {
                     substituteProfessorId: request.professorId,
                     active: true,
+                    group: { period: activePeriod },
                     AND: [
                         { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
                         { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },

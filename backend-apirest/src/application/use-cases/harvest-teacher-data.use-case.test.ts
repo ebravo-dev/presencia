@@ -73,7 +73,7 @@ describe('HarvestTeacherDataUseCase', () => {
     const result = await new HarvestTeacherDataUseCase(
       uatService,
       capture.publisher,
-      { preferredCycleId: 150 },
+      { preferredCycleId: async () => 150 },
     ).execute(makeEvent());
 
     expect(result.groupCount).toBe(1);

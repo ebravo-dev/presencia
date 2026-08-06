@@ -15,7 +15,7 @@ export const demoPortalEnvSchema = z.object({
   DEMO_SESSION_SECRET: z.string().min(32).default('development-demo-session-secret-change-me'),
   PRESENCIA_DEMO_DEFAULT_PASSWORD: z.string().min(8).max(128).default('presencia-demo-local'),
   PRESENCIA_DEMO_SEED: booleanValue.default(true),
-  PRESENCIA_DEMO_CYCLE_ID: z.coerce.number().int().positive().default(150),
+  PRESENCIA_DEMO_CYCLE_ID: z.coerce.number().int().positive().default(152),
   PRESENCIA_DEMO_CYCLE_NAME: z.string().trim().min(1).max(120).default('2026-3'),
   PRESENCIA_DEMO_COORDINATION_ID: z.coerce.number().int().positive().default(12),
   PRESENCIA_DEMO_COORDINATION_NAME: z.string().trim().min(1).max(160).default('Coordinación Demo'),

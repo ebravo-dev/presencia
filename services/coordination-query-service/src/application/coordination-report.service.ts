@@ -261,7 +261,7 @@ function matchesCycle(group: GroupSource, cycles: Set<string>) {
   return normalized ? cycles.has(normalized) : true;
 }
 function normalizeCycle(value?: string | null) { const match = value?.match(/\b(20\d{2})\s*[-,]\s*([123])\b/); return match ? `${match[1]}-${match[2]}` : null; }
-function cycleForDate(value: string) { const dateValue = new Date(`${value}T12:00:00Z`); const month = dateValue.getUTCMonth() + 1; const term = month <= 5 ? 1 : month <= 7 || (month === 8 && dateValue.getUTCDate() <= 7) ? 2 : 3; return `${dateValue.getUTCFullYear()}-${term}`; }
+function cycleForDate(value: string) { const dateValue = new Date(`${value}T12:00:00Z`); const month = dateValue.getUTCMonth() + 1; const term = month <= 5 ? 1 : month <= 7 ? 2 : 3; return `${dateValue.getUTCFullYear()}-${term}`; }
 function datesForRange(start: string, end: string) { const values: Array<{ day: Day; date: string }> = []; for (let value = start; value <= end; value = addDays(value, 1)) { const day = DAYS[new Date(`${value}T12:00:00Z`).getUTCDay() - 1]; if (day) values.push({ day, date: value }); } return values; }
 function addDays(value: string, amount: number) { const dateValue = new Date(`${value}T12:00:00Z`); dateValue.setUTCDate(dateValue.getUTCDate() + amount); return dateValue.toISOString().slice(0, 10); }
 function localDateTime(dateValue: string, time: string) { return new Date(`${dateValue}T${time}:00.000-06:00`); }

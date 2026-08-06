@@ -345,7 +345,7 @@ Para probar desde terminal sin levantar el servidor:
 ```bash
 UAT_USER="CORREO_USUARIO" \
 UAT_PASS="PASSWORD_USUARIO" \
-UAT_ID_CICLO_ESCOLAR=150 \
+UAT_ID_CICLO_ESCOLAR=152 \
 UAT_ID_DES=12 \
 npm run fetch:horarios
 ```
@@ -362,7 +362,7 @@ En PowerShell:
 ```powershell
 $env:UAT_USER="CORREO_USUARIO"
 $env:UAT_PASS="PASSWORD_USUARIO"
-$env:UAT_ID_CICLO_ESCOLAR="150"
+$env:UAT_ID_CICLO_ESCOLAR="152"
 $env:UAT_ID_DES="12"
 npm run fetch:horarios
 ```

@@ -19,7 +19,7 @@ export interface HarvestTeacherDataResult {
 }
 
 export interface HarvestTeacherDataOptions {
-  preferredCycleId?: number;
+  preferredCycleId?: number | (() => Promise<number | undefined>);
 }
 
 export interface HarvestLogger {
@@ -47,7 +47,10 @@ export class HarvestTeacherDataUseCase {
     }
 
     const cyclesResponse = await this.uatService.getCiclosEscolaresPorSesion(event.sessionId);
-    const cycles = selectHarvestCycles(cyclesResponse.data, this.options.preferredCycleId);
+    const preferredCycleId = typeof this.options.preferredCycleId === 'function'
+      ? await this.options.preferredCycleId()
+      : this.options.preferredCycleId;
+    const cycles = selectHarvestCycles(cyclesResponse.data, preferredCycleId);
     const desItems = await this.discoverCoordinations(event.sessionId);
     let groupCount = 0;
     const academicGroups: Array<{

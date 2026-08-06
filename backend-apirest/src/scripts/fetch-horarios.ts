@@ -31,7 +31,7 @@ async function main(): Promise<void> {
   const username = requiredEnv('UAT_USER');
   const password = requiredEnv('UAT_PASS');
   const query: UatProfesorConsultaParams = {
-    Id_Ciclo_Escolar: numberEnv('UAT_ID_CICLO_ESCOLAR', 150),
+    Id_Ciclo_Escolar: numberEnv('UAT_ID_CICLO_ESCOLAR', 152),
     Id_DES: numberEnv('UAT_ID_DES', 12),
   };
 

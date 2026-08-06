@@ -14,6 +14,11 @@ describe('superUserRoutes', () => {
   it('keeps the public contract while delegating beacon writes with the Identity actor', async () => {
     const createBeacon = vi.fn(async () => ({ data: { id: 'beacon-1', classroom: 'AULA 1', uuid: '12345678' } }));
     const createStaffAccount = vi.fn(async () => ({ data: { id: 'staff-1' } }));
+    const cycleStatus = { data: {
+      active: { externalId: 152, year: 2026, term: 3, name: '2026 - 3 OTOÑO', revision: 1, updatedAt: '2026-08-05T00:00:00.000Z', updatedByIdentityId: null },
+      availableCycles: [], lockedCycles: [], nextUnlockAt: '2027-01-01T00:00:00', timeZone: 'America/Monterrey',
+    } };
+    const changeActiveAcademicCycle = vi.fn(async () => cycleStatus);
     const app = Fastify({ logger: false });
     await app.register(cookie);
     await app.register(superUserRoutes, {
@@ -25,7 +30,7 @@ describe('superUserRoutes', () => {
       identityService: { createStaffAccount } as never,
       attendanceService: { createClassroomBeacon: createBeacon } as never,
       attendanceCapture: {} as never,
-      academicService: {} as never,
+      academicService: { activeAcademicCycle: vi.fn(async () => cycleStatus), changeActiveAcademicCycle } as never,
       coordinationQuery: {} as never,
       demoPortal: {} as never,
       resetLocalDemoData: async () => ({ teacherSessions: 0, studentSessions: 0 }),
@@ -54,6 +59,16 @@ describe('superUserRoutes', () => {
     expect(staffResponse.statusCode).toBe(201);
     expect(createStaffAccount).toHaveBeenCalledWith(expect.objectContaining({
       actorIdentityId: 'identity-super', reason: 'Alta de cuenta coordinadora.',
+    }));
+
+    const cycleResponse = await app.inject({
+      method: 'PUT', url: '/api/superUsuario/ciclo-escolar',
+      headers: { cookie: 'super_user_session=identity-token' }, payload: { cycleExternalId: 152 },
+    });
+    expect(cycleResponse.statusCode).toBe(200);
+    expect(changeActiveAcademicCycle).toHaveBeenCalledWith(expect.objectContaining({
+      cycleExternalId: 152, actorIdentityId: 'identity-super', actorRole: 'SUPER_USER',
+      reason: 'Cambio del ciclo escolar activo desde super usuario.',
     }));
 
     const debugStatus = await app.inject({

@@ -40,13 +40,13 @@ export const envSchema = z.object({
         (value) => value === undefined || value === '' ? undefined : value === true || value === 'true',
         z.boolean().default(false),
     ),
-    PRESENCIA_DEBUG_PERIOD: z.string().default('2026 - 2 VERANO'),
+    PRESENCIA_DEBUG_PERIOD: z.string().default('2026 - 3 OTOÑO'),
     PRESENCIA_DEBUG_CLASS_HOURS: z.coerce.number().int().positive().default(4),
     DEBUG_EXTRA_CLASS_HOURS: z.coerce.number().int().positive().default(4),
 
     // UAT Portal
     UAT_PORTAL_URL: z.string().url().default('https://administracionescolar.uat.edu.mx'),
-    UAT_ID_CICLO_ESCOLAR: z.coerce.number().int().positive().default(150),
+    UAT_ID_CICLO_ESCOLAR: z.coerce.number().int().positive().default(152),
     UAT_ID_DES: z.coerce.number().int().positive().default(12),
 
     // Internal backend-apirest bridge
