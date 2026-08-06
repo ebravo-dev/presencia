@@ -11,6 +11,7 @@ import { AllocationPage } from '@/features/allocation/allocation-page';
 import { ReportsPage } from '@/features/reports/reports-page';
 import { SuperUserPage } from '@/features/super-user/super-user-page';
 import { DeviceBindingsPage } from '@/features/device-bindings/device-bindings-page';
+import { RouteErrorPage } from './route-error-page';
 
 function ProtectedApp() {
   const setUser = useAuthStore((state) => state.setUser);
@@ -22,13 +23,13 @@ function ProtectedApp() {
 }
 
 export const router = createBrowserRouter([
-  { path: '/login', element: <LoginPage /> },
-  { path: '/superUsuario', element: <SuperUserPage /> },
-  { element: <ProtectedApp />, children: [
+  { path: '/login', element: <LoginPage />, errorElement: <RouteErrorPage /> },
+  { path: '/superUsuario', element: <SuperUserPage />, errorElement: <RouteErrorPage /> },
+  { element: <ProtectedApp />, errorElement: <RouteErrorPage />, children: [
     { path: '/', element: <DashboardPage /> },
     { path: '/carga-academica', element: <AllocationPage /> },
     { path: '/reportes/asistencia', element: <ReportsPage /> },
     { path: '/dispositivos', element: <DeviceBindingsPage /> },
   ] },
-  { path: '*', element: <Navigate to="/" replace /> },
+  { path: '*', element: <Navigate to="/" replace />, errorElement: <RouteErrorPage /> },
 ], { basename: '/coordinacion' });

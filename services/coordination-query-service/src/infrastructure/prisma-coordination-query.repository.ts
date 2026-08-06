@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '../generated/prisma/index.js';
+import { normalizeAcademicSchedule } from '../domain/academic-schedule.js';
 import type { CoordinationQueryRepository, TeacherListQuery } from '../domain/query.repository.js';
 import type { ProjectionEvent } from '../domain/projection-event.js';
 
@@ -284,7 +285,8 @@ function assignmentView(group: GroupWithRelations) {
   return {
     id: group.id, externalGroupId: group.externalGroupId, groupCode: group.groupLetter || group.code || null,
     schoolCycleExternalId: group.cycleExternalId, schoolCycleName: group.cycleName,
-    classroom: group.classroom, educationLevel: group.level, period: group.period, schedule: group.schedule,
+    classroom: group.classroom, educationLevel: group.level, period: group.period,
+    schedule: normalizeAcademicSchedule(group.schedule),
     firstSeenAt: group.firstSeenAt.toISOString(), lastSeenAt: group.lastSeenAt.toISOString(),
     teacher: { id: group.teacher.id, externalId: group.teacher.externalId, name: group.teacher.name },
     subject: { id: group.subject.id, externalId: group.subject.externalId, code: group.subject.code, name: group.subject.name },

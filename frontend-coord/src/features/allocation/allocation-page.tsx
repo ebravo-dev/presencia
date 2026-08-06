@@ -123,7 +123,7 @@ export function AllocationPage() {
             aria-label="Filtrar por coordinacion"
           >
             <option value="">Todas las coordinaciones</option>
-            {overview.data?.data.coordinations.map((item) => (
+            {(overview.data?.data.coordinations ?? []).map((item) => (
               <option key={item.id} value={item.id}>
                 {item.shortName || item.name}
               </option>
@@ -307,7 +307,7 @@ export function AllocationPage() {
 function AssignmentCard({ assignment }: { assignment: Assignment }) {
   const subject = cleanSubjectName(assignment.subject);
   const scheduleRows = visibleScheduleDays.map((day) => {
-    const text = formatSlots(assignment.schedule[day]);
+    const text = formatSlots(scheduleForDay(assignment.schedule, day));
     return { day, text, hasClass: text !== 'Sin clase' };
   });
   const scheduledCount = scheduleRows.filter((row) => row.hasClass).length;
@@ -416,9 +416,26 @@ function academicCycleValue(value: string) {
   return Number(match[1]) * 10 + Number(match[2]);
 }
 
-function formatSlots(slots: ScheduleSlot[]): string {
-  const values = slots
-    .map((slot) => (slot.startTime && slot.endTime ? `${slot.startTime}-${slot.endTime}` : slot.raw))
+function scheduleForDay(schedule: unknown, day: ScheduleDay): unknown {
+  if (!schedule || typeof schedule !== 'object' || Array.isArray(schedule)) return undefined;
+  const source = schedule as Record<string, unknown>;
+  const aliases: Record<ScheduleDay, readonly string[]> = {
+    monday: ['monday', 'lunes'], tuesday: ['tuesday', 'martes'],
+    wednesday: ['wednesday', 'miercoles', 'miércoles'], thursday: ['thursday', 'jueves'],
+    friday: ['friday', 'viernes'], saturday: ['saturday', 'sabado', 'sábado'], sunday: ['sunday', 'domingo'],
+  };
+  return aliases[day].map((key) => source[key]).find((value) => value !== undefined);
+}
+
+function formatSlots(slots: unknown): string {
+  const items = Array.isArray(slots) ? slots : typeof slots === 'string' ? slots.split(/[;\n]+/) : [];
+  const values = items
+    .flatMap((slot) => {
+      if (typeof slot === 'string') return [slot];
+      if (!slot || typeof slot !== 'object') return [];
+      const value = slot as Partial<ScheduleSlot>;
+      return [value.startTime && value.endTime ? `${value.startTime}-${value.endTime}` : value.raw ?? ''];
+    })
     .map((value) => value.trim())
     .filter(Boolean)
     .filter((value) => !isEmptyScheduleValue(value));

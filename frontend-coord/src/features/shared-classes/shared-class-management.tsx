@@ -12,8 +12,7 @@ type SortDirection = 'asc' | 'desc';
 
 function currentAcademicCycle(date = new Date()): { year: number; term: 1 | 2 | 3 } {
   const month = date.getMonth() + 1;
-  const day = date.getDate();
-  const term = month <= 5 ? 1 : month <= 7 || (month === 8 && day <= 7) ? 2 : 3;
+  const term = month <= 5 ? 1 : month <= 7 ? 2 : 3;
   return { year: date.getFullYear(), term };
 }
 
