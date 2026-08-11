@@ -7,7 +7,7 @@ class ApiConstants {
   // --dart-define=API_BASE_URL=http://10.0.2.2:3000
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://administracionuat.149828.xyz/',
+    defaultValue: 'https://www.452111.xyz/',
   );
   static const bool presenciaDebugMode = bool.fromEnvironment(
     'PRESENCIA_DEBUG_MODE',
