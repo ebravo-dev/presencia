@@ -121,7 +121,7 @@ flutter pub get
 
 3. **Configurar el backend**
 
-La app usa `https://administracionuat.149828.xyz` de forma predeterminada. Para
+La app usa `https://dashboarduat.452111.xyz` de forma predeterminada. Para
 compilar con la configuración de producción versionada:
 
 ```bash

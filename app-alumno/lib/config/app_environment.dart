@@ -3,7 +3,7 @@ class AppEnvironment {
 
   static const String presenceApiBaseUrl = String.fromEnvironment(
     'PRESENCIA_API_BASE_URL',
-    defaultValue: 'https://www.452111.xyz/',
+    defaultValue: 'https://dashboarduat.452111.xyz',
   );
 
   // Toda llamada pública entra por el Gateway; Attendance no se expone
