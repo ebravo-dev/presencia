@@ -74,6 +74,7 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   fastify.get('/api/uat/profesor/consultas/horarios', { preHandler: authUat }, consultaController.horarios);
   fastify.get('/api/uat/profesor/consultas/examenes', { preHandler: authUat }, consultaController.examenes);
   fastify.post('/api/uat/profesor/sync', { preHandler: authUat }, sessionController.sync);
+  fastify.get('/api/uat/profesor/ciclo-escolar', { preHandler: authUat }, () => academicServiceClient.activeAcademicCycle());
   fastify.get('/api/uat/profesor/asistencia/configuracion', { preHandler: authUat }, sessionController.settings);
   fastify.post('/api/uat/profesor/consultas/snapshot', consultaController.snapshot);
 

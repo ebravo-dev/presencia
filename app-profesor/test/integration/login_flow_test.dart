@@ -234,8 +234,18 @@ void main() {
 
       final apiService = MockApiService();
       when(() => apiService.getGruposProfesor(validToken)).thenAnswer(
-        (_) async =>
-            const Right((grupos: <Grupo>[], beacons: <Map<String, dynamic>>[])),
+        (_) async => const Right(
+          ProfesorGroupsData(
+            grupos: <Grupo>[],
+            beacons: <Map<String, dynamic>>[],
+            cycle: AcademicCycleContext(
+              externalId: 152,
+              year: 2026,
+              term: 3,
+              name: '2026 - 3 OTOÑO',
+            ),
+          ),
+        ),
       );
 
       final container = ProviderContainer(
@@ -266,8 +276,18 @@ void main() {
 
       final apiService = MockApiService();
       when(() => apiService.getGruposProfesor(validToken)).thenAnswer(
-        (_) async =>
-            const Right((grupos: <Grupo>[], beacons: <Map<String, dynamic>>[])),
+        (_) async => const Right(
+          ProfesorGroupsData(
+            grupos: <Grupo>[],
+            beacons: <Map<String, dynamic>>[],
+            cycle: AcademicCycleContext(
+              externalId: 152,
+              year: 2026,
+              term: 3,
+              name: '2026 - 3 OTOÑO',
+            ),
+          ),
+        ),
       );
       when(
         () => apiService.logoutProfesor(validToken),
@@ -281,5 +301,56 @@ void main() {
       expect(notifier.state.status, ProfesorAuthStatus.unauthenticated);
       expect(authStorage.hasActiveSession(), isFalse);
     });
+
+    test(
+      'login nuevo no rescata clases antiguas si falla el ciclo actual',
+      () async {
+        const cachedGroup = Grupo(
+          id: 'old-group',
+          code: 'old-group',
+          period: '2026-1',
+          group: 'A',
+          classroom: 'A1',
+          name: 'Clase del ciclo anterior',
+          students: [],
+        );
+        await authStorage.saveGrupos(const [cachedGroup]);
+
+        final profesor = Profesor(
+          id: '123',
+          name: 'Test Profesor',
+          institutionalEmail: 'test@uat.edu.mx',
+        );
+        final apiService = MockApiService();
+        when(
+          () => apiService.loginProfesor(
+            email: 'test@uat.edu.mx',
+            password: 'password-seguro',
+          ),
+        ).thenAnswer(
+          (_) async => Right(
+            LoginResponse(
+              message: 'OK',
+              profesor: profesor,
+              token: 'uat-session',
+            ),
+          ),
+        );
+        when(
+          () => apiService.getGruposProfesor('uat-session'),
+        ).thenAnswer((_) async => const Left('Portal no disponible'));
+        final notifier = ProfesorAuthNotifier(apiService, authStorage);
+
+        await notifier.login('test@uat.edu.mx', 'password-seguro');
+
+        expect(notifier.state.status, ProfesorAuthStatus.authenticated);
+        expect(notifier.state.grupos, isEmpty);
+        expect(authStorage.getGrupos(), isNull);
+        expect(
+          notifier.state.groupsNotice,
+          contains('No se mostrarán datos guardados de ciclos anteriores'),
+        );
+      },
+    );
   });
 }

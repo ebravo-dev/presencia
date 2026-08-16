@@ -125,6 +125,8 @@ class ApiConstants {
   // UAT Integration/BFF, siempre atravesando el API Gateway.
   static const String uatSessions = '/api/uat/sessions';
   static const String uatProfessorSync = '/api/uat/profesor/sync';
+  static const String uatActiveAcademicCycle =
+      '/api/uat/profesor/ciclo-escolar';
   static const String uatAttendanceSettings =
       '/api/uat/profesor/asistencia/configuracion';
   static const String uatHorarios = '/api/uat/profesor/consultas/horarios';

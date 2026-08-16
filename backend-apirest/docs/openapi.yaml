@@ -210,6 +210,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UatDataResponse"
+  /api/uat/profesor/ciclo-escolar:
+    get:
+      summary: Obtiene el ciclo escolar activo configurado para la aplicación
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      responses:
+        "200":
+          description: Ciclo escolar activo y periodos disponibles
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [active]
+                    properties:
+                      active:
+                        type: object
+                        required: [externalId, year, term, name]
+                        properties:
+                          externalId: { type: integer }
+                          year: { type: integer }
+                          term: { type: integer, minimum: 1, maximum: 3 }
+                          name: { type: string }
+        "401":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Error"
   /api/uat/profesor/control-asistencia/grupos:
     get:
       summary: Consulta grupos del profesor para un ciclo y DES

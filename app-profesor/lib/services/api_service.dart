@@ -11,6 +11,123 @@ import '../shared/models/grupo.dart';
 import '../shared/models/profesor.dart';
 import '../shared/models/sync_status.dart';
 
+class AcademicCycleContext {
+  final int externalId;
+  final int year;
+  final int term;
+  final String name;
+
+  const AcademicCycleContext({
+    required this.externalId,
+    required this.year,
+    required this.term,
+    required this.name,
+  });
+
+  factory AcademicCycleContext.fromActiveResponse(
+    Map<String, dynamic> response,
+  ) {
+    final data = _mapValue(response['data']);
+    final active = _mapValue(data['active']);
+    final externalId = _intValue(active['externalId']);
+    final year = _intValue(active['year']);
+    final term = _intValue(active['term']);
+    final name = active['name']?.toString().trim() ?? '';
+
+    if (externalId == null ||
+        externalId <= 0 ||
+        year == null ||
+        term == null ||
+        term < 1 ||
+        term > 3 ||
+        name.isEmpty) {
+      throw const FormatException(
+        'El servidor no devolvio un ciclo escolar activo valido.',
+      );
+    }
+
+    return AcademicCycleContext(
+      externalId: externalId,
+      year: year,
+      term: term,
+      name: name,
+    );
+  }
+
+  factory AcademicCycleContext.fromUatCatalog(List<dynamic> catalog) {
+    final activeCycles =
+        catalog
+            .map(_mapValue)
+            .where((item) => _truthyFlag(item['Sn_Activo']))
+            .toList()
+          ..sort((left, right) {
+            final leftId = _intValue(left['Id_Ciclo_Escolar']) ?? 0;
+            final rightId = _intValue(right['Id_Ciclo_Escolar']) ?? 0;
+            return rightId.compareTo(leftId);
+          });
+
+    if (activeCycles.isEmpty) {
+      throw const FormatException(
+        'El portal UAT no reporto un ciclo escolar activo.',
+      );
+    }
+
+    final active = activeCycles.first;
+    final externalId = _intValue(active['Id_Ciclo_Escolar']);
+    final name =
+        [
+              active['Ciclo'],
+              active['Txt_Ciclo_Escolar'],
+              active['Txt_Nombre_Corto'],
+            ]
+            .map((value) => value?.toString().trim() ?? '')
+            .firstWhere((value) => value.isNotEmpty, orElse: () => '');
+    final nameMatch = RegExp(r'(\d{4})\D+([123])').firstMatch(name);
+    final offset = externalId == null ? -1 : externalId - 150;
+    final year =
+        int.tryParse(nameMatch?.group(1) ?? '') ??
+        (offset >= 0 ? 2026 + (offset ~/ 3) : null);
+    final term =
+        int.tryParse(nameMatch?.group(2) ?? '') ??
+        (offset >= 0 ? (offset % 3) + 1 : null);
+
+    if (externalId == null ||
+        externalId <= 0 ||
+        year == null ||
+        term == null ||
+        term < 1 ||
+        term > 3) {
+      throw const FormatException(
+        'El portal UAT devolvio un ciclo escolar activo invalido.',
+      );
+    }
+
+    return AcademicCycleContext(
+      externalId: externalId,
+      year: year,
+      term: term,
+      name: name.isEmpty ? '$year-$term' : name,
+    );
+  }
+}
+
+class ProfesorGroupsData {
+  final List<Grupo> grupos;
+  final List<Map<String, dynamic>> beacons;
+  final AcademicCycleContext cycle;
+  final int unavailableRosterCount;
+
+  const ProfesorGroupsData({
+    required this.grupos,
+    required this.beacons,
+    required this.cycle,
+    this.unavailableRosterCount = 0,
+  });
+
+  bool get classesPending => grupos.isEmpty;
+  bool get rostersPending => unavailableRosterCount > 0;
+}
+
 class ApiService {
   static void Function()? _globalSessionExpiredHandler;
   late final Dio _presenceDio;
@@ -133,7 +250,6 @@ class ApiService {
           message: message,
           profesor: profesor,
           token: sessionId,
-          currentPeriod: ApiConstants.uatDefaultIdCiclo.toString(),
           needsSync: true,
         ),
       );
@@ -222,15 +338,11 @@ class ApiService {
 
   /// Obtiene las clases asignadas al profesor autenticado
   /// Usa el API Gateway como unica entrada a UAT Integration.
-  /// Retorna tupla (grupos, beacons) donde beacons es la lista cruda del server
-  Future<
-    Either<String, ({List<Grupo> grupos, List<Map<String, dynamic>> beacons})>
-  >
-  getGruposProfesor(String token) => _getGruposProfesorViaBackendApiRest(token);
+  /// Retorna clases, beacons y disponibilidad de listas para el ciclo activo.
+  Future<Either<String, ProfesorGroupsData>> getGruposProfesor(String token) =>
+      _getGruposProfesorViaBackendApiRest(token);
 
-  Future<
-    Either<String, ({List<Grupo> grupos, List<Map<String, dynamic>> beacons})>
-  >
+  Future<Either<String, ProfesorGroupsData>>
   _getGruposProfesorViaBackendApiRest(String sessionId) async {
     try {
       Logger.info('Obteniendo clases UAT desde backend-apirest');
@@ -242,10 +354,11 @@ class ApiService {
       }
 
       final requestOptions = Options(headers: {'X-UAT-Session-Id': sessionId});
+      final cycle = await _loadActiveAcademicCycle(requestOptions);
       final horariosResponse = await _presenceDio.get(
         ApiConstants.uatHorarios,
         queryParameters: {
-          'Id_Ciclo_Escolar': ApiConstants.uatDefaultIdCiclo,
+          'Id_Ciclo_Escolar': cycle.externalId,
           'Id_DES': ApiConstants.uatDefaultIdDes,
         },
         options: requestOptions,
@@ -254,7 +367,7 @@ class ApiService {
         ApiConstants.uatControlGrupos,
         queryParameters: {
           'Id_Des': ApiConstants.uatDefaultIdDes,
-          'Id_Ciclo': ApiConstants.uatDefaultIdCiclo,
+          'Id_Ciclo': cycle.externalId,
           'Id_Plantilla': idPlantilla,
         },
         options: requestOptions,
@@ -278,14 +391,16 @@ class ApiService {
           .toList();
 
       final grupos = <Grupo>[];
+      var unavailableRosterCount = 0;
       for (final grupoPortal in gruposPortal) {
-        final students = await _loadAlumnosForGroup(
+        final roster = await _loadAlumnosForGroup(
           sessionId: sessionId,
           idGrupo: grupoPortal.idGrupo,
         );
+        if (!roster.available) unavailableRosterCount += 1;
         grupos.add(
           grupoPortal.toGrupo(
-            students: students,
+            students: roster.students,
             horario: horariosByGrupo[grupoPortal.idGrupo],
           ),
         );
@@ -295,10 +410,7 @@ class ApiService {
       try {
         final sharedResponse = await _presenceDio.get(
           ApiConstants.uatSharedClasses,
-          queryParameters: {
-            'year': ApiConstants.uatAcademicYear,
-            'term': ApiConstants.uatAcademicTerm,
-          },
+          queryParameters: {'year': cycle.year, 'term': cycle.term},
           options: requestOptions,
         );
         sharedGroups = _dataList(
@@ -309,16 +421,17 @@ class ApiService {
       }
       for (final sharedGroup in sharedGroups) {
         final idGrupo = int.tryParse(sharedGroup.id);
-        final students = idGrupo == null
-            ? const <Alumno>[]
+        final roster = idGrupo == null
+            ? (students: const <Alumno>[], available: false)
             : await _loadAlumnosForGroup(
                 sessionId: sessionId,
                 idGrupo: idGrupo,
               );
+        if (!roster.available) unavailableRosterCount += 1;
         grupos.add(
           sharedGroup.copyWith(
-            students: students,
-            studentsCount: students.length,
+            students: roster.students,
+            studentsCount: roster.students.length,
           ),
         );
       }
@@ -329,9 +442,18 @@ class ApiService {
       );
       final debugData = withDebugCurrentClass(grupos, beacons);
       Logger.info(
-        'Clases obtenidas: ${gruposPortal.length} oficiales, ${sharedGroups.length} compartidas, beacons: ${debugData.beacons.length}',
+        'Clases del ciclo ${cycle.name}: ${gruposPortal.length} oficiales, '
+        '${sharedGroups.length} compartidas, $unavailableRosterCount listas '
+        'pendientes, beacons: ${debugData.beacons.length}',
       );
-      return Right(debugData);
+      return Right(
+        ProfesorGroupsData(
+          grupos: debugData.grupos,
+          beacons: debugData.beacons,
+          cycle: cycle,
+          unavailableRosterCount: unavailableRosterCount,
+        ),
+      );
     } on DioException catch (e) {
       final errorMessage = _handleDioError(e);
       Logger.error('Error de conexion obteniendo clases UAT: $errorMessage', e);
@@ -339,6 +461,28 @@ class ApiService {
     } catch (e, stackTrace) {
       Logger.error('Error inesperado obteniendo clases UAT', e, stackTrace);
       return Left(_cleanException(e));
+    }
+  }
+
+  Future<AcademicCycleContext> _loadActiveAcademicCycle(
+    Options requestOptions,
+  ) async {
+    try {
+      final response = await _presenceDio.get(
+        ApiConstants.uatActiveAcademicCycle,
+        options: requestOptions,
+      );
+      return AcademicCycleContext.fromActiveResponse(_asMap(response.data));
+    } on DioException catch (error) {
+      // Compatibilidad durante un despliegue gradual: versiones anteriores del
+      // BFF no exponen el ciclo centralizado, pero el catalogo UAT si indica el
+      // ciclo activo. Nunca se vuelve al ID fijo de un ciclo anterior.
+      if (error.response?.statusCode != 404) rethrow;
+      final response = await _presenceDio.get(
+        ApiConstants.uatCatalogoCiclos,
+        options: requestOptions,
+      );
+      return AcademicCycleContext.fromUatCatalog(_dataList(response.data));
     }
   }
 
@@ -473,7 +617,7 @@ class ApiService {
     return '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
   }
 
-  Future<List<Alumno>> _loadAlumnosForGroup({
+  Future<({List<Alumno> students, bool available})> _loadAlumnosForGroup({
     required String sessionId,
     required int idGrupo,
   }) async {
@@ -505,7 +649,12 @@ class ApiService {
           data.isNotEmpty ? data : envelope,
         );
         if (asistencia.alumnos.isNotEmpty) {
-          return asistencia.alumnos.map((alumno) => alumno.toAlumno()).toList();
+          return (
+            students: asistencia.alumnos
+                .map((alumno) => alumno.toAlumno())
+                .toList(),
+            available: true,
+          );
         }
       }
     } catch (e, stackTrace) {
@@ -516,7 +665,7 @@ class ApiService {
       );
     }
 
-    return const [];
+    return (students: const <Alumno>[], available: false);
   }
 
   /// Encola una nueva cosecha academica usando la sesion UAT vigente.
@@ -1082,4 +1231,28 @@ class ApiService {
         return 'Ocurrio un problema de conexion. Verifica tu internet e intenta de nuevo.';
     }
   }
+}
+
+Map<String, dynamic> _mapValue(Object? value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) return Map<String, dynamic>.from(value);
+  return <String, dynamic>{};
+}
+
+int? _intValue(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString().trim() ?? '');
+}
+
+bool _truthyFlag(Object? value) {
+  if (value == true || value == 1) return true;
+  if (value is! String) return false;
+  return const {
+    '1',
+    'true',
+    'si',
+    'sí',
+    'activo',
+  }.contains(value.trim().toLowerCase());
 }

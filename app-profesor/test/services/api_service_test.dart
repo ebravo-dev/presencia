@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:appprofesoresuniversidad/features/authentication/providers/profesor_auth_provider.dart';
+import 'package:appprofesoresuniversidad/services/api_service.dart';
 import 'package:appprofesoresuniversidad/shared/models/profesor.dart';
 
 void main() {
@@ -68,6 +69,39 @@ void main() {
       expect(expired.profesor, same(profesor));
       expect(expired.token, isNull);
       expect(expired.errorMessage, isNull);
+    });
+
+    test('interpreta el ciclo activo centralizado', () {
+      final cycle = AcademicCycleContext.fromActiveResponse({
+        'data': {
+          'active': {
+            'externalId': 152,
+            'year': 2026,
+            'term': 3,
+            'name': '2026 - 3 OTOÑO',
+          },
+        },
+      });
+
+      expect(cycle.externalId, 152);
+      expect(cycle.year, 2026);
+      expect(cycle.term, 3);
+      expect(cycle.name, '2026 - 3 OTOÑO');
+    });
+
+    test('el fallback de catalogo elige el ciclo activo mas reciente', () {
+      final cycle = AcademicCycleContext.fromUatCatalog([
+        {
+          'Id_Ciclo_Escolar': 150,
+          'Ciclo': '2026 - 1 PRIMAVERA',
+          'Sn_Activo': false,
+        },
+        {'Id_Ciclo_Escolar': 152, 'Ciclo': '2026 - 3 OTOÑO', 'Sn_Activo': true},
+      ]);
+
+      expect(cycle.externalId, 152);
+      expect(cycle.year, 2026);
+      expect(cycle.term, 3);
     });
   });
 }

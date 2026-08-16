@@ -366,6 +366,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
     final isLoading =
         ref.watch(profesorAuthLoadingProvider) ||
         ref.watch(profesorGroupsLoadingProvider);
+    final groupsNotice = ref.watch(profesorGroupsNoticeProvider);
     final palette = context.uatPalette;
     final isLightMode = context.isUatLightMode;
     final overlayStyle = SystemUiOverlayStyle(
@@ -391,13 +392,20 @@ class _GruposPageState extends ConsumerState<GruposPage>
             isLoading && sortedGruposWithIndex.isEmpty
                 ? _buildLoadingState()
                 : sortedGruposWithIndex.isEmpty
-                ? _buildEmptyState()
+                ? _buildEmptyState(groupsNotice)
                 : RefreshIndicator(
                     onRefresh: _handleRefresh,
                     color: UATColors.primary,
                     backgroundColor: palette.surfaceElevated,
                     child: _buildWalletCards(sortedGruposWithIndex, grupos),
                   ),
+            if (groupsNotice != null && sortedGruposWithIndex.isNotEmpty)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: MediaQuery.of(context).padding.bottom + 16,
+                child: _buildGroupsNotice(groupsNotice),
+              ),
             // Floating title
             Positioned(
               top: MediaQuery.of(context).padding.top + 8,
@@ -916,7 +924,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(String? groupsNotice) {
     final palette = context.uatPalette;
 
     return Center(
@@ -941,7 +949,9 @@ class _GruposPageState extends ConsumerState<GruposPage>
             ),
             const SizedBox(height: 24),
             Text(
-              'No tienes clases asignadas',
+              groupsNotice == null
+                  ? 'No tienes clases asignadas'
+                  : 'Listas aún no disponibles',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
@@ -951,7 +961,8 @@ class _GruposPageState extends ConsumerState<GruposPage>
             ),
             const SizedBox(height: 12),
             Text(
-              'Si iniciaste sincronización, revisa el progreso abajo.',
+              groupsNotice ??
+                  'Si iniciaste sincronización, revisa el progreso abajo.',
               style: TextStyle(fontSize: 16, color: palette.textSecondary),
               textAlign: TextAlign.center,
             ),
@@ -975,6 +986,45 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 padding: const EdgeInsets.symmetric(
                   horizontal: 24,
                   vertical: 14,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGroupsNotice(String message) {
+    final palette = context.uatPalette;
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: palette.surfaceElevated,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: UATColors.warning.withValues(alpha: 0.45)),
+          boxShadow: [
+            BoxShadow(
+              color: palette.shadow,
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.info_outline, color: UATColors.warning),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: TextStyle(
+                  color: palette.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),

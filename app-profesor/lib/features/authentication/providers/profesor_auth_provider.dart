@@ -25,6 +25,7 @@ class ProfesorAuthState {
   final List<Grupo> grupos;
   final String? token;
   final String? errorMessage;
+  final String? groupsNotice;
   final bool isLoadingGroups;
 
   const ProfesorAuthState({
@@ -33,6 +34,7 @@ class ProfesorAuthState {
     this.grupos = const [],
     this.token,
     this.errorMessage,
+    this.groupsNotice,
     this.isLoadingGroups = false,
   });
 
@@ -42,6 +44,7 @@ class ProfesorAuthState {
     List<Grupo>? grupos,
     Object? token = _notProvided,
     Object? errorMessage = _notProvided,
+    Object? groupsNotice = _notProvided,
     bool? isLoadingGroups,
   }) {
     return ProfesorAuthState(
@@ -52,6 +55,9 @@ class ProfesorAuthState {
       errorMessage: identical(errorMessage, _notProvided)
           ? this.errorMessage
           : errorMessage as String?,
+      groupsNotice: identical(groupsNotice, _notProvided)
+          ? this.groupsNotice
+          : groupsNotice as String?,
       isLoadingGroups: isLoadingGroups ?? this.isLoadingGroups,
     );
   }
@@ -126,6 +132,8 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
             status: ProfesorAuthStatus.authenticated,
             profesor: loginResponse.profesor,
             token: loginResponse.token,
+            grupos: [],
+            groupsNotice: null,
           );
 
           // Cargar grupos y configuración de aulas desde el servidor
@@ -181,7 +189,23 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
       await result.fold(
         (error) async {
           Logger.error('Error cargando clases: $error');
-          // Si falla, intentar usar cache como fallback
+          // Un login o una sincronizacion explicita nunca deben rescatar
+          // silenciosamente clases de un ciclo anterior.
+          if (forceRefresh) {
+            await _authStorage.clearGrupos();
+            await _authStorage.saveBeacons(const []);
+            state = state.copyWith(
+              grupos: [],
+              isLoadingGroups: false,
+              groupsNotice:
+                  'No se pudieron consultar las clases del ciclo actual. '
+                  'No se mostrarán datos guardados de ciclos anteriores.',
+            );
+            return;
+          }
+
+          // Al restaurar una sesion se permite continuar sin conexion con la
+          // ultima cache conocida, dejando claro que no fue actualizada.
           final cachedGrupos = _authStorage.getGrupos();
           if (cachedGrupos != null && cachedGrupos.isNotEmpty) {
             final debugData = _apiService.withDebugCurrentClass(
@@ -196,16 +220,36 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
               grupos: debugData.grupos,
               token: _authStorage.getToken() ?? state.token,
               isLoadingGroups: false,
+              groupsNotice:
+                  'No se pudo verificar el ciclo actual. Estas son las '
+                  'últimas clases guardadas en el dispositivo.',
             );
           } else {
-            state = state.copyWith(isLoadingGroups: false);
+            state = state.copyWith(
+              isLoadingGroups: false,
+              groupsNotice:
+                  'No se pudieron consultar las clases del ciclo actual.',
+            );
           }
         },
         (data) async {
           Logger.info(
             '✅ ${data.grupos.length} clases descargadas del servidor',
           );
-          state = state.copyWith(grupos: data.grupos, isLoadingGroups: false);
+          final groupsNotice = data.classesPending
+              ? 'Las clases y listas del ciclo ${data.cycle.name} aún no '
+                    'están disponibles. No se mostrarán clases de ciclos '
+                    'anteriores.'
+              : data.rostersPending
+              ? 'Las listas de alumnos del ciclo ${data.cycle.name} aún no '
+                    'están disponibles para ${data.unavailableRosterCount} '
+                    '${data.unavailableRosterCount == 1 ? 'clase' : 'clases'}.'
+              : null;
+          state = state.copyWith(
+            grupos: data.grupos,
+            isLoadingGroups: false,
+            groupsNotice: groupsNotice,
+          );
           final refreshedToken = _authStorage.getToken();
           if (refreshedToken != null && refreshedToken.isNotEmpty) {
             state = state.copyWith(token: refreshedToken);
@@ -221,7 +265,20 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
       );
     } catch (e, stackTrace) {
       Logger.error('Error inesperado cargando clases', e, stackTrace);
-      // Intentar usar cache como fallback en caso de error
+      if (forceRefresh) {
+        await _authStorage.clearGrupos();
+        await _authStorage.saveBeacons(const []);
+        state = state.copyWith(
+          grupos: [],
+          isLoadingGroups: false,
+          groupsNotice:
+              'No se pudieron consultar las clases del ciclo actual. '
+              'No se mostrarán datos guardados de ciclos anteriores.',
+        );
+        return;
+      }
+
+      // Intentar usar cache como fallback al restaurar una sesion.
       final cachedGrupos = _authStorage.getGrupos();
       if (cachedGrupos != null && cachedGrupos.isNotEmpty) {
         final debugData = _apiService.withDebugCurrentClass(
@@ -235,9 +292,15 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
         state = state.copyWith(
           grupos: debugData.grupos,
           isLoadingGroups: false,
+          groupsNotice:
+              'No se pudo verificar el ciclo actual. Estas son las últimas '
+              'clases guardadas en el dispositivo.',
         );
       } else {
-        state = state.copyWith(isLoadingGroups: false);
+        state = state.copyWith(
+          isLoadingGroups: false,
+          groupsNotice: 'No se pudieron consultar las clases del ciclo actual.',
+        );
       }
     }
   }
@@ -251,7 +314,11 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
 
   /// Limpiar grupos locales (usado al iniciar nueva sincronización)
   Future<void> clearGrupos() async {
-    state = state.copyWith(grupos: [], isLoadingGroups: false);
+    state = state.copyWith(
+      grupos: [],
+      isLoadingGroups: false,
+      groupsNotice: null,
+    );
     await _authStorage.clearGrupos();
   }
 
@@ -471,8 +538,9 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
           token: loginResponse.token,
           errorMessage: null,
         );
-        // Recargar grupos si no hay cache
-        await _loadGrupos();
+        // La sesion se renovo en linea: validar siempre el ciclo actual y no
+        // rescatar clases de otro periodo.
+        await _loadGrupos(forceRefresh: true);
       },
     );
   }
@@ -530,6 +598,11 @@ final profesorAuthLoadingProvider = Provider<bool>((ref) {
 final profesorGroupsLoadingProvider = Provider<bool>((ref) {
   final state = ref.watch(profesorAuthProvider);
   return state.isLoadingGroups;
+});
+
+/// Aviso contextual sobre disponibilidad o vigencia de las listas.
+final profesorGroupsNoticeProvider = Provider<String?>((ref) {
+  return ref.watch(profesorAuthProvider).groupsNotice;
 });
 
 /// Provider para obtener el error actual
