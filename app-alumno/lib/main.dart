@@ -128,6 +128,23 @@ class _AppRouterState extends State<_AppRouter> {
   String? _initialUatSessionId;
   bool _demoMode = false;
 
+  Future<void> _logout() async {
+    await widget.attendanceSession.stop();
+    await widget.storage.clearStudentSession();
+    await widget.bleService.setStudentIdentity(
+      matricula: '',
+      attendanceUuid: '',
+      deviceBindingId: '',
+    );
+    if (!mounted) return;
+    setState(() {
+      _profileSet = false;
+      _academicProfile = null;
+      _initialUatSessionId = null;
+      _demoMode = false;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -190,6 +207,7 @@ class _AppRouterState extends State<_AppRouter> {
       themeMode: widget.themeMode,
       onThemeModeChanged: widget.onThemeModeChanged,
       studentAuth: StudentAuthService(),
+      onLogout: _logout,
     );
   }
 }

@@ -1,7 +1,9 @@
 import 'package:app_alumno/services/local_storage_service.dart';
 import 'package:app_alumno/models/student_schedule_entry.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _MemoryBox extends Fake implements Box<dynamic> {
   final Map<dynamic, dynamic> contents = {};
@@ -15,9 +17,31 @@ class _MemoryBox extends Fake implements Box<dynamic> {
   Future<void> put(dynamic key, dynamic value) async {
     contents[key] = value;
   }
+
+  @override
+  Future<int> clear() async {
+    final count = contents.length;
+    contents.clear();
+    return count;
+  }
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const secureStorageChannel = MethodChannel(
+    'plugins.it_nomads.com/flutter_secure_storage',
+  );
+
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(secureStorageChannel, (_) async => null);
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(secureStorageChannel, null);
+  });
+
   test('stores the first attendance entry when history is empty', () async {
     final box = _MemoryBox();
     final storage = LocalStorageService.withProfileBox(box);
@@ -79,4 +103,42 @@ void main() {
 
     expect(storage.attendanceToleranceMinutes, 25);
   });
+
+  test(
+    'logout clears student data but keeps the stable device identity',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'student_matricula': '123456',
+        'student_attendance_uuid': 'attendance-uuid',
+        'student_device_binding_id': 'binding-id',
+        'classroom_beacon_uuid': 'classroom-uuid',
+      });
+      final box = _MemoryBox();
+      box.contents.addAll({
+        'matricula': '123456',
+        'attendance_uuid': 'attendance-uuid',
+        'device_binding_id': 'binding-id',
+        'institutional_email': 'alumno@alumnos.uat.edu.mx',
+        'classroom_beacon_uuid': 'classroom-uuid',
+        'academic_profile': <String, dynamic>{'matricula': '123456'},
+        'student_schedule': <dynamic>[],
+        'attendance_history': <dynamic>[],
+      });
+      final storage = LocalStorageService.withProfileBox(box);
+
+      await storage.clearStudentSession();
+
+      expect(storage.isProfileSet, isFalse);
+      expect(storage.academicProfile, isNull);
+      expect(storage.studentSchedule, isEmpty);
+      expect(storage.attendanceHistory, isEmpty);
+      expect(storage.attendanceUuid, 'attendance-uuid');
+      expect(storage.deviceBindingId, 'binding-id');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('student_matricula'), isNull);
+      expect(prefs.getString('student_attendance_uuid'), isNull);
+      expect(prefs.getString('student_device_binding_id'), isNull);
+      expect(prefs.getString('classroom_beacon_uuid'), isNull);
+    },
+  );
 }

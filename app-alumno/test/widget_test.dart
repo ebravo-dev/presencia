@@ -145,6 +145,7 @@ void main() {
           demoMode: false,
           themeMode: ThemeMode.light,
           onThemeModeChanged: (_) {},
+          onLogout: () async {},
         ),
       ),
     );
@@ -208,6 +209,7 @@ void main() {
             demoMode: false,
             themeMode: ThemeMode.light,
             onThemeModeChanged: (_) {},
+            onLogout: () async {},
           ),
         ),
       );
@@ -278,6 +280,7 @@ void main() {
           demoMode: false,
           themeMode: ThemeMode.light,
           onThemeModeChanged: (_) {},
+          onLogout: () async {},
         ),
       ),
     );
@@ -320,6 +323,7 @@ void main() {
           demoMode: false,
           themeMode: ThemeMode.light,
           onThemeModeChanged: (_) {},
+          onLogout: () async {},
           studentAuth: auth,
         ),
       ),
@@ -371,6 +375,7 @@ void main() {
           demoMode: false,
           themeMode: ThemeMode.light,
           onThemeModeChanged: (_) {},
+          onLogout: () async {},
           studentAuth: auth,
         ),
       ),
@@ -392,5 +397,53 @@ void main() {
       findsOneWidget,
     );
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('profile confirms before closing the student session', (
+    WidgetTester tester,
+  ) async {
+    var logoutCount = 0;
+    final storage = _EmptyStorage();
+    final advertiser = BleAdvertiserService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(Brightness.light),
+        home: HomeScreen(
+          storage: storage,
+          bleService: advertiser,
+          attendanceSession: AttendanceSessionService(
+            storage: storage,
+            advertiser: advertiser,
+          ),
+          deviceBindingService: StudentDeviceBindingService(),
+          profile: const StudentAcademicProfile(
+            matricula: '123456',
+            institutionalEmail: 'alumno@alumnos.uat.edu.mx',
+            displayName: 'Alumno Prueba',
+          ),
+          initialUatSessionId: null,
+          demoMode: false,
+          themeMode: ThemeMode.light,
+          onThemeModeChanged: (_) {},
+          onLogout: () async => logoutCount++,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('Abrir perfil'));
+    await tester.pump();
+    await tester.ensureVisible(find.text('Cerrar sesión'));
+    await tester.tap(find.text('Cerrar sesión'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('¿Cerrar sesión?'), findsOneWidget);
+    expect(logoutCount, 0);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Cerrar sesión'));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(logoutCount, 1);
+    expect(tester.takeException(), isNull);
   });
 }

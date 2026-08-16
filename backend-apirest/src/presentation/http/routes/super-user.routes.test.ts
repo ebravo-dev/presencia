@@ -122,6 +122,37 @@ describe('superUserRoutes', () => {
     expect(coordinationQuery.resetDemoData).toHaveBeenCalledOnce();
   });
 
+  it('attempts every demo cleanup and identifies the failing component', async () => {
+    const demoPortal = { resetData: vi.fn(async () => ({
+      data: { deleted: { teachers: 0, students: 0, classes: 0, attendanceWrites: 0 } },
+    })) };
+    const identityService = { resetDemoData: vi.fn(async () => ({ data: { identities: 0 } })) };
+    const academicService = { resetDemoData: vi.fn(async () => {
+      throw new ApiError(500, 'INTERNAL_SERVER_ERROR', 'Error interno del servidor.');
+    }) };
+    const attendanceService = { resetDemoData: vi.fn(async () => undefined) };
+    const coordinationQuery = { resetDemoData: vi.fn(async () => undefined) };
+    const resetLocalDemoData = vi.fn(async () => ({ teacherSessions: 0, studentSessions: 0 }));
+
+    await expect(resetDemoEnvironment({
+      demoPortal: demoPortal as never,
+      identityService: identityService as never,
+      academicService: academicService as never,
+      attendanceService: attendanceService as never,
+      coordinationQuery: coordinationQuery as never,
+      resetLocalDemoData,
+    })).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'DEMO_RESET_FAILED',
+      details: { failed: [{ component: 'Academic Service', code: 'INTERNAL_SERVER_ERROR', statusCode: 500 }] },
+    });
+    expect(demoPortal.resetData).toHaveBeenCalledOnce();
+    expect(identityService.resetDemoData).toHaveBeenCalledOnce();
+    expect(resetLocalDemoData).toHaveBeenCalledOnce();
+    expect(attendanceService.resetDemoData).toHaveBeenCalledOnce();
+    expect(coordinationQuery.resetDemoData).toHaveBeenCalledOnce();
+  });
+
   it('synchronizes demo snapshots sequentially and reuses stable snapshot ids', async () => {
     const status = demoStatus();
     let activeAcademicWrites = 0;

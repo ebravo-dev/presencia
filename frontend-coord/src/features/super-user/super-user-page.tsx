@@ -658,7 +658,11 @@ function DebugAdmin() {
                   autoFocus
                 />
               </label>
-              {resetDemoData.isError && <p role="alert" className="mt-3 text-sm font-semibold text-red-700 dark:text-red-300">No se pudo completar el borrado. Los servicios conservaron sus protecciones; vuelve a intentarlo.</p>}
+              {resetDemoData.isError && (
+                <p role="alert" className="mt-3 text-sm font-semibold text-red-700 dark:text-red-300">
+                  {apiErrorMessage(resetDemoData.error, 'No se pudo completar el borrado. Vuelve a intentarlo.')}
+                </p>
+              )}
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button variant="danger" disabled={resetConfirmation !== 'BORRAR DEMO' || resetDemoData.isPending} onClick={() => resetDemoData.mutate()}>
                   <Trash2 size={16} />{resetDemoData.isPending ? 'Borrando...' : 'Borrar definitivamente'}

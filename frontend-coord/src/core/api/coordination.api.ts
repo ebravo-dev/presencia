@@ -81,7 +81,7 @@ export const superUserApi = {
     reset: boolean;
     deleted: { teachers: number; students: number; classes: number; attendanceWrites: number; identities: number; teacherSessions: number; studentSessions: number };
     resetAt: string;
-  } }>('/superUsuario/debug/data', { data: { confirmation: 'BORRAR DEMO' } })).data,
+  } }>('/superUsuario/debug/data', { data: { confirmation: 'BORRAR DEMO' }, timeout: 60_000 })).data,
   simulateDebugAttendance: async (classId: string, input: {
     date: string;
     entries: Array<{ studentId: string; status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' }>;

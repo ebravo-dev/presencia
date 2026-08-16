@@ -328,7 +328,13 @@ export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async
     config: { rateLimit: { max: 2, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
-    debugResetSchema.parse(request.body);
+    const confirmation = debugResetSchema.safeParse(request.body);
+    if (!confirmation.success) {
+      return reply.code(400).send({
+        error: 'INVALID_DEMO_RESET_CONFIRMATION',
+        message: 'Escribe BORRAR DEMO para confirmar el borrado.',
+      });
+    }
 
     const deleted = await resetDemoEnvironment({
       demoPortal, identityService, academicService, attendanceService, coordinationQuery, resetLocalDemoData,
@@ -400,22 +406,54 @@ export async function resetDemoEnvironment(services: {
   coordinationQuery: CoordinationQueryClient;
   resetLocalDemoData: () => Promise<{ teacherSessions: number; studentSessions: number }>;
 }) {
-  const portal = await services.demoPortal.resetData();
-  const [identity, local] = await Promise.all([
+  const components = [
+    'Portal demo',
+    'Identity Service',
+    'sesiones y datos locales',
+    'Academic Service',
+    'Attendance Service',
+  ] as const;
+  const results = await Promise.allSettled([
+    services.demoPortal.resetData(),
     services.identityService.resetDemoData(),
     services.resetLocalDemoData(),
-  ]);
-  await Promise.all([
     services.academicService.resetDemoData(),
     services.attendanceService.resetDemoData(),
   ]);
-  await services.coordinationQuery.resetDemoData();
+  const projection = await Promise.allSettled([services.coordinationQuery.resetDemoData()]);
+  const allResults = [...results, ...projection];
+  const failed = allResults.flatMap((result, index) => {
+    if (result.status === 'fulfilled') return [];
+    const error = result.reason;
+    return [{
+      component: components[index] ?? 'Coordination Query Service',
+      code: error instanceof ApiError ? error.code : 'UNEXPECTED_ERROR',
+      statusCode: error instanceof ApiError ? error.statusCode : 500,
+    }];
+  });
+  if (failed.length > 0) {
+    throw new ApiError(
+      503,
+      'DEMO_RESET_FAILED',
+      `No se pudo completar el borrado demo. Falló: ${failed.map(({ component }) => component).join(', ')}. Puedes volver a intentarlo.`,
+      { failed },
+    );
+  }
+
+  const portal = settledValue(results[0]);
+  const identity = settledValue(results[1]);
+  const local = settledValue(results[2]);
   return {
     ...portal.data.deleted,
     identities: identity.data.identities,
     teacherSessions: local.teacherSessions,
     studentSessions: local.studentSessions,
   };
+}
+
+function settledValue<T>(result: PromiseSettledResult<T>): T {
+  if (result.status === 'rejected') throw result.reason;
+  return result.value;
 }
 
 function debugDisabled(reply: FastifyReply) {

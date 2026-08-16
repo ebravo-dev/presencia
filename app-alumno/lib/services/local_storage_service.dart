@@ -257,6 +257,33 @@ class LocalStorageService {
     await _secureStorage.delete(key: _securePasswordKey);
   }
 
+  Future<void> clearStudentSession() async {
+    final stableAttendanceUuid = attendanceUuid;
+    final stableDeviceBindingId = deviceBindingId;
+
+    await Future.wait<void>([
+      _secureStorage.delete(key: _secureUsernameKey),
+      _secureStorage.delete(key: _securePasswordKey),
+      _secureStorage.delete(key: _secureDeviceBindingTokenKey),
+    ]);
+
+    final prefs = await SharedPreferences.getInstance();
+    await Future.wait<bool>([
+      prefs.remove('student_matricula'),
+      prefs.remove('student_attendance_uuid'),
+      prefs.remove('student_device_binding_id'),
+      prefs.remove('classroom_beacon_uuid'),
+    ]);
+
+    await _profile.clear();
+    if (stableAttendanceUuid.isNotEmpty) {
+      await _profile.put('attendance_uuid', stableAttendanceUuid);
+    }
+    if (stableDeviceBindingId.isNotEmpty) {
+      await _profile.put('device_binding_id', stableDeviceBindingId);
+    }
+  }
+
   Future<void> saveDeviceBindingToken(String token) async {
     await _secureStorage.write(key: _secureDeviceBindingTokenKey, value: token);
   }

@@ -12,6 +12,7 @@ import '../services/local_storage_service.dart';
 import '../services/student_auth_service.dart';
 import '../services/student_device_binding_service.dart';
 import '../theme/app_theme.dart';
+import 'attendance_bottom_sheet.dart';
 import 'history_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -26,6 +27,7 @@ class HomeScreen extends StatefulWidget {
     required this.demoMode,
     required this.themeMode,
     required this.onThemeModeChanged,
+    required this.onLogout,
     this.studentAuth,
   });
 
@@ -38,6 +40,7 @@ class HomeScreen extends StatefulWidget {
   final bool demoMode;
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
+  final Future<void> Function() onLogout;
   final StudentAuthService? studentAuth;
 
   @override
@@ -62,6 +65,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<StudentScheduleEntry> _schedule = const [];
   String? _academicSyncError;
   bool _passwordDialogOpen = false;
+  bool _isLoggingOut = false;
+  Completer<void>? _academicSyncCompletion;
   String? _pendingUatSessionId;
   String? _confirmationId;
   AttendanceConfirmation? _confirmation;
@@ -173,8 +178,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _syncAcademicInfo() async {
-    if (_isSyncingAcademicInfo || !widget.storage.isProfileSet) return;
+    if (_isLoggingOut ||
+        _isSyncingAcademicInfo ||
+        !widget.storage.isProfileSet) {
+      return;
+    }
     _isSyncingAcademicInfo = true;
+    final completion = Completer<void>();
+    _academicSyncCompletion = completion;
     if (mounted) setState(() => _academicSyncError = null);
     var requestPassword = false;
     try {
@@ -204,9 +215,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     } finally {
       _isSyncingAcademicInfo = false;
+      completion.complete();
+      if (identical(_academicSyncCompletion, completion)) {
+        _academicSyncCompletion = null;
+      }
       if (mounted) setState(() {});
     }
-    if (requestPassword && mounted) {
+    if (requestPassword && mounted && !_isLoggingOut) {
       unawaited(_requestUatPassword());
     }
   }
@@ -382,19 +397,72 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _toggleAttendance() async {
+  Future<void> _openAttendanceSheet() async {
     HapticFeedback.mediumImpact();
-    if (_isActive || _isChecking) {
-      await widget.attendanceSession.stop();
-    } else {
-      await widget.attendanceSession.start();
-    }
+    final todayClasses = scheduleForWeekday(_schedule, DateTime.now().weekday);
+    final safeSelectedClass = todayClasses.isEmpty
+        ? 0
+        : (_selectedClass.clamp(0, todayClasses.length - 1));
+    final currentOccurrence = todayClasses.isNotEmpty
+        ? todayClasses[safeSelectedClass]
+        : null;
+
+    await AttendanceBottomSheet.show(
+      context,
+      attendanceSession: widget.attendanceSession,
+      bleService: widget.bleService,
+      storage: widget.storage,
+      currentOccurrence: currentOccurrence,
+    );
   }
 
   Future<void> _openHistory() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => HistoryScreen(storage: widget.storage)),
     );
+  }
+
+  Future<void> _confirmLogout() async {
+    if (_isLoggingOut || !mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.logout_rounded),
+        title: const Text('¿Cerrar sesión?'),
+        content: const Text(
+          'Se eliminarán de este equipo tus credenciales, perfil, horario e historial local.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Cerrar sesión'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isLoggingOut = true);
+    try {
+      await _academicSyncCompletion?.future;
+      final pendingSessionId = _pendingUatSessionId;
+      _pendingUatSessionId = null;
+      if (pendingSessionId != null) {
+        await _studentAuth.discardSession(pendingSessionId);
+      }
+      await widget.onLogout();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoggingOut = false);
+      _showSyncFeedback(
+        'No pudimos cerrar la sesión. Inténtalo de nuevo.',
+        isError: true,
+      );
+    }
   }
 
   @override
@@ -422,7 +490,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         confirmedClassName: _confirmation?.classDisplayName,
         hasError: _hasError,
         onSelectClass: (index) => setState(() => _selectedClass = index),
-        onRegister: _toggleAttendance,
+        onRegister: _openAttendanceSheet,
         onOpenSchedule: () => setState(() => _selectedTab = 1),
         onOpenProfile: () => setState(() => _selectedTab = 2),
       ),
@@ -441,6 +509,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         isSyncing: _isManualSyncing || _isSyncingAcademicInfo,
         isCheckingServer: _isCheckingServer,
         lastSyncedAt: _lastSuccessfulSync,
+        onLogout: _confirmLogout,
+        isLoggingOut: _isLoggingOut,
       ),
     ];
     return Scaffold(
@@ -926,6 +996,8 @@ class _ProfilePage extends StatelessWidget {
     required this.isSyncing,
     required this.isCheckingServer,
     required this.lastSyncedAt,
+    required this.onLogout,
+    required this.isLoggingOut,
   });
   final StudentAcademicProfile profile;
   final ThemeMode themeMode;
@@ -935,6 +1007,8 @@ class _ProfilePage extends StatelessWidget {
   final bool isSyncing;
   final bool isCheckingServer;
   final DateTime? lastSyncedAt;
+  final VoidCallback onLogout;
+  final bool isLoggingOut;
   @override
   Widget build(BuildContext context) {
     final initials = profile.displayName.trim().isEmpty
@@ -1108,6 +1182,32 @@ class _ProfilePage extends StatelessWidget {
               onChanged: (enabled) => onThemeModeChanged(
                 enabled ? ThemeMode.dark : ThemeMode.light,
               ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Card(
+            child: ListTile(
+              enabled: !isLoggingOut,
+              onTap: isLoggingOut ? null : onLogout,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 8,
+              ),
+              leading: Icon(
+                Icons.logout_rounded,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              title: Text(
+                'Cerrar sesión',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+              subtitle: const Text('Salir de esta cuenta en este dispositivo'),
+              trailing: isLoggingOut
+                  ? const SizedBox.square(
+                      dimension: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2.4),
+                    )
+                  : const Icon(Icons.chevron_right_rounded),
             ),
           ),
         ],
@@ -1300,6 +1400,7 @@ class _ClassCard extends StatelessWidget {
                       occurrence.slot.startTime != null &&
                           occurrence.slot.endTime != null
                       ? Column(
+                          mainAxisSize: MainAxisSize.min,
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
