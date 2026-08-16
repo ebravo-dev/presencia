@@ -113,7 +113,7 @@ export class DemoPortalClient {
         signal: AbortSignal.timeout(this.timeoutMs),
         headers: {
           accept: 'application/json',
-          'content-type': 'application/json',
+          ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
           ...(options.authenticate === false ? {} : { 'x-internal-service-token': this.internalToken }),
         },
         ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
