@@ -237,6 +237,7 @@ export async function buildAttendanceApp(options: {
       const conflict = [
         'IDEMPOTENCY_KEY_REUSED', 'ATTENDANCE_UPLOAD_IN_PROGRESS', 'DEVICE_BINDING_CHANGE_REQUIRES_COORDINATOR',
         'DEVICE_IDENTIFIER_ALREADY_BOUND', 'CLASSROOM_BEACON_NOT_CONFIGURED', 'ROOM_BEACON_MISMATCH',
+        'PROFESSOR_ENTRY_OUTSIDE_WINDOW',
       ];
       const forbidden = ['PROFESSOR_GROUP_FORBIDDEN', 'DEVICE_BINDING_TOKEN_MISMATCH'].includes(error.code);
       const notFound = error.code === 'ATTENDANCE_GROUP_NOT_FOUND';

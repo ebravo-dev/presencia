@@ -34,30 +34,32 @@ class StudentAttendanceDetection {
   }
 }
 
-/// Context that the professor app sends back only after a student UUID has
-/// been matched against the roster of the group currently taking attendance.
-class StudentAttendanceClassContext {
-  final String classId;
-  final String className;
-  final String group;
-  final String classroom;
+/// Student-specific confirmation written only after the advertised UUID has
+/// been matched to that matricula in the active class roster.
+class StudentAttendanceGattConfirmation {
+  final String matricula;
+  final String materia;
+  final DateTime dia;
 
-  const StudentAttendanceClassContext({
-    required this.classId,
-    required this.className,
-    required this.group,
-    required this.classroom,
+  const StudentAttendanceGattConfirmation({
+    required this.matricula,
+    required this.materia,
+    required this.dia,
   });
 
   String toGattPayload() {
     return jsonEncode({
-      'v': 1,
-      's': 'confirmed',
-      'id': classId,
-      'name': className,
-      'group': group,
-      'room': classroom,
+      'id': matricula.trim().toUpperCase(),
+      'materia': materia.trim(),
+      'dia': _formatGattDay(dia),
     });
+  }
+
+  static String _formatGattDay(DateTime value) {
+    final year = value.year.toString().padLeft(4, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
   }
 }
 
@@ -81,18 +83,41 @@ class StudentAttendanceBleService {
   }
 
   Future<bool> startScanning({
-    required List<String> uuids,
-    required StudentAttendanceClassContext classContext,
+    required Map<String, StudentAttendanceGattConfirmation> confirmationsByUuid,
   }) async {
-    if (uuids.isEmpty) return false;
+    final confirmationPayloads = <String, String>{};
+    for (final entry in confirmationsByUuid.entries) {
+      final uuid = _normalizeUuid(entry.key);
+      final matricula = entry.value.matricula.trim();
+      final materia = entry.value.materia.trim();
+      if (uuid.isEmpty || matricula.isEmpty || materia.isEmpty) continue;
+      confirmationPayloads[uuid] = entry.value.toGattPayload();
+    }
+    if (confirmationPayloads.isEmpty) return false;
+
     final result = await _method.invokeMethod<bool>('startScanning', {
-      'uuids': uuids,
-      'confirmationPayload': classContext.toGattPayload(),
+      'confirmationPayloads': confirmationPayloads,
+    });
+    return result == true;
+  }
+
+  /// Allows the native layer to send feedback to the student only after the
+  /// teacher app has accepted and persisted this UUID as present.
+  Future<bool> confirmAttendance(String uuid) async {
+    final normalizedUuid = _normalizeUuid(uuid);
+    if (normalizedUuid.isEmpty) return false;
+
+    final result = await _method.invokeMethod<bool>('confirmAttendance', {
+      'uuid': normalizedUuid,
     });
     return result == true;
   }
 
   Future<void> stopScanning() async {
     await _method.invokeMethod('stopScanning');
+  }
+
+  String _normalizeUuid(String uuid) {
+    return uuid.replaceAll('-', '').trim().toLowerCase();
   }
 }

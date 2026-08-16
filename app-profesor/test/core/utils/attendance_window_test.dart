@@ -72,6 +72,118 @@ void main() {
       );
     });
 
+    test('allows a past class day for a retroactive student correction', () {
+      expect(
+        AttendanceWindow.canTakeStudentAttendanceForDate(
+          '08:00-10:00',
+          selectedDate: DateTime(2026, 8, 14),
+          now: DateTime(2026, 8, 16, 18),
+          isClassDay: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('rejects future dates and dates without class', () {
+      expect(
+        AttendanceWindow.canTakeStudentAttendanceForDate(
+          '08:00-10:00',
+          selectedDate: DateTime(2026, 8, 17),
+          now: DateTime(2026, 8, 16, 9),
+          isClassDay: true,
+        ),
+        isFalse,
+      );
+      expect(
+        AttendanceWindow.canTakeStudentAttendanceForDate(
+          '08:00-10:00',
+          selectedDate: DateTime(2026, 8, 14),
+          now: DateTime(2026, 8, 16, 9),
+          isClassDay: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test(
+      'keeps the schedule window restriction when selected day is today',
+      () {
+        expect(
+          AttendanceWindow.canTakeStudentAttendanceForDate(
+            '08:00-10:00',
+            selectedDate: DateTime(2026, 8, 16),
+            now: DateTime(2026, 8, 16, 9),
+            isClassDay: true,
+          ),
+          isTrue,
+        );
+        expect(
+          AttendanceWindow.canTakeStudentAttendanceForDate(
+            '08:00-10:00',
+            selectedDate: DateTime(2026, 8, 16),
+            now: DateTime(2026, 8, 16, 18),
+            isClassDay: true,
+          ),
+          isFalse,
+        );
+      },
+    );
+
+    test('classifies the complete 07:00-08:00 window with 10 minutes', () {
+      const schedule = '07:00-08:00';
+
+      expect(
+        AttendanceWindow.arrivalStatus(
+          schedule,
+          DateTime(2026, 8, 3, 6, 49, 59),
+        ),
+        ProfessorArrivalStatus.outsideWindow,
+      );
+      expect(
+        AttendanceWindow.arrivalStatus(schedule, DateTime(2026, 8, 3, 6, 50)),
+        ProfessorArrivalStatus.onTime,
+      );
+      expect(
+        AttendanceWindow.arrivalStatus(
+          schedule,
+          DateTime(2026, 8, 3, 7, 10, 59),
+        ),
+        ProfessorArrivalStatus.onTime,
+      );
+      expect(
+        AttendanceWindow.arrivalStatus(schedule, DateTime(2026, 8, 3, 7, 11)),
+        ProfessorArrivalStatus.late,
+      );
+      expect(
+        AttendanceWindow.arrivalStatus(
+          schedule,
+          DateTime(2026, 8, 3, 8, 10, 59),
+        ),
+        ProfessorArrivalStatus.late,
+      );
+      expect(
+        AttendanceWindow.arrivalStatus(schedule, DateTime(2026, 8, 3, 8, 11)),
+        ProfessorArrivalStatus.outsideWindow,
+      );
+    });
+
+    test('selects the nearest class when a day has separate ranges', () {
+      const schedule = '07:00-08:00 · 15:00-16:00';
+
+      expect(
+        AttendanceWindow.arrivalStatus(schedule, DateTime(2026, 8, 3, 8, 5)),
+        ProfessorArrivalStatus.late,
+      );
+      expect(
+        AttendanceWindow.arrivalStatus(schedule, DateTime(2026, 8, 3, 14, 55)),
+        ProfessorArrivalStatus.onTime,
+      );
+      expect(
+        AttendanceWindow.canMarkEntry(schedule, DateTime(2026, 8, 3, 12)),
+        isFalse,
+      );
+    });
+
     test('fails open when UAT returns an unknown schedule format', () {
       final now = DateTime(2026, 8, 3, 3);
       expect(AttendanceWindow.canMarkEntry('Sin horario', now), isTrue);

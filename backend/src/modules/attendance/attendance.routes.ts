@@ -4,9 +4,11 @@ import { jwtService, rsaService, sessionService } from '../../core/security/inde
 import { AttendanceStatus, PortalSyncStatus, SyncStatus } from '@prisma/client';
 import { uatRestSyncService } from '../uat-rest/index.js';
 import { findBeaconByClassroom } from '../beacons/beacons.service.js';
-import { attendanceDateFromServerNow, serverNow } from '../../core/time/server-time.js';
+import { attendanceDateFromServerNow, SERVER_TIME_ZONE, serverNow } from '../../core/time/server-time.js';
 import { env } from '../../core/config/env.js';
 import { AttendanceServiceCommandClient } from '../super-user/attendance-service-command.client.js';
+import { getAttendanceSettings } from '../settings/attendance-settings.service.js';
+import { classifyProfessorArrival } from './professor-attendance-window.js';
 import {
     registerAttendanceSchema,
     attendanceHistoryQuerySchema,
@@ -68,6 +70,7 @@ type ResolvedAttendanceGroup = {
         name: string;
         classroom: string;
         professorId: string;
+        schedule: unknown;
     };
     attendanceProfessorId: string;
     isSubstitute: boolean;
@@ -108,6 +111,7 @@ async function resolveProfessorGroup(params: {
                 name: true,
                 classroom: true,
                 professorId: true,
+                schedule: true,
             },
         });
 
@@ -135,6 +139,7 @@ async function resolveProfessorGroup(params: {
             name: true,
             classroom: true,
             professorId: true,
+            schedule: true,
         },
     });
 
@@ -162,6 +167,7 @@ async function resolveProfessorGroup(params: {
                 name: true,
                 classroom: true,
                 professorId: true,
+                schedule: true,
             },
             orderBy: { updatedAt: 'desc' },
         });
@@ -195,6 +201,7 @@ async function resolveProfessorGroup(params: {
                     name: true,
                     classroom: true,
                     professorId: true,
+                    schedule: true,
                 },
             },
         },
@@ -592,6 +599,23 @@ export async function attendanceRoutes(fastify: FastifyInstance): Promise<void> 
                 const professorEntryUpdate = existingRecord?.professorEntryAt
                     ? {}
                     : { professorEntryAt: detectedAt };
+
+                if (!existingRecord?.professorEntryAt) {
+                    const settings = await getAttendanceSettings();
+                    const arrivalStatus = classifyProfessorArrival({
+                        schedule: group.schedule,
+                        observedAt: detectedAt,
+                        timeZone: SERVER_TIME_ZONE,
+                        toleranceMinutes: settings.teacherAttendanceToleranceMinutes,
+                    });
+                    if (arrivalStatus === 'OUTSIDE_WINDOW') {
+                        return reply.code(409).send({
+                            statusCode: 409,
+                            error: 'PROFESSOR_ENTRY_OUTSIDE_WINDOW',
+                            message: 'La ventana para registrar la entrada de esta clase ya terminó o todavía no inicia.',
+                        });
+                    }
+                }
 
                 const attendanceRecord = await prisma.attendanceRecord.upsert({
                     where: {

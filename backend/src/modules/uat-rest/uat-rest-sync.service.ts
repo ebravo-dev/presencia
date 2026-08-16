@@ -3,12 +3,12 @@ import { prisma } from '../../core/database/prisma.js';
 import { env } from '../../core/config/env.js';
 import {
     uatRestClient,
-    type UatAsistenciaAlumnoInput,
     type UatAsistenciaAlumnoItem,
     type UatHorarioItem,
     type UatProfesorGrupoItem,
     type UatSemanaItem,
 } from './uat-rest.client.js';
+import { buildUatAttendancePayload } from './uat-attendance-matcher.js';
 
 type AttendanceInput = Array<{ studentId: string; status: AttendanceStatus }>;
 
@@ -139,8 +139,11 @@ class UatRestSyncService {
                     if (!dbGroup) continue;
 
                     for (const student of students) {
-                        const matricula = normalizeMatricula(student.Num_Matricula ?? student.Id_Alumno);
+                        const matricula = normalizeMatricula(student.Num_Matricula);
+                        if (!matricula) continue;
                         const name = clean(student.Txt_Alumno) ?? `Alumno ${matricula}`;
+                        const uatStudentId = positiveInteger(student.Id_Alumno);
+                        const listNumber = positiveInteger(student.Num_Lista);
                         await prisma.student.upsert({
                             where: {
                                 matricula_groupId: {
@@ -148,8 +151,8 @@ class UatRestSyncService {
                                     groupId: dbGroup.id,
                                 },
                             },
-                            create: { matricula, name, groupId: dbGroup.id },
-                            update: { name },
+                            create: { matricula, name, uatStudentId, listNumber, groupId: dbGroup.id },
+                            update: { name, uatStudentId, listNumber },
                         });
                         studentsCount++;
                     }
@@ -240,32 +243,21 @@ class UatRestSyncService {
             const portalList = normalizePortalStudents(portalStudents);
             const dbStudents = await prisma.student.findMany({
                 where: { id: { in: input.attendances.map((item) => item.studentId) }, groupId: input.groupId },
-                select: { id: true, matricula: true, name: true },
+                select: {
+                    id: true,
+                    matricula: true,
+                    name: true,
+                    uatStudentId: true,
+                    listNumber: true,
+                },
             });
-            const dbById = new Map(dbStudents.map((student) => [student.id, student]));
-            const portalByMatricula = new Map(
-                portalList.map((student) => [normalizeMatricula(student.Num_Matricula ?? student.Id_Alumno), student]),
-            );
-            const portalByName = new Map(
-                portalList.map((student) => [normalizeName(student.Txt_Alumno), student]),
-            );
             const dia = dayNumber(input.date);
-            const payload: UatAsistenciaAlumnoInput[] = [];
-            for (const [index, attendance] of input.attendances.entries()) {
-                const dbStudent = dbById.get(attendance.studentId);
-                if (!dbStudent) continue;
-                const portalStudent = portalByMatricula.get(normalizeMatricula(dbStudent.matricula))
-                    ?? portalByName.get(normalizeName(dbStudent.name));
-                if (!portalStudent?.Id_Alumno) continue;
-                payload.push({
-                    id_alumno: portalStudent.Id_Alumno,
-                    num_pase_lista: portalStudent.Num_Lista ?? index + 1,
-                    num_dia: dia,
-                    sn_asistencia: attendance.status === AttendanceStatus.PRESENT || attendance.status === AttendanceStatus.LATE,
-                });
-            }
-
-            if (payload.length === 0) throw new Error('No se encontraron alumnos coincidentes en backend-apirest/UAT.');
+            const payload = buildUatAttendancePayload({
+                attendances: input.attendances,
+                students: dbStudents,
+                portalStudents: portalList,
+                day: dia,
+            });
 
             await prisma.syncJob.update({
                 where: { id: input.syncJobId },
@@ -431,13 +423,9 @@ function normalizeMatricula(value: unknown) {
     return raw.toUpperCase();
 }
 
-function normalizeName(value: unknown) {
-    return (clean(value) ?? '')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toUpperCase();
+function positiveInteger(value: unknown): number | null {
+    const parsed = typeof value === 'number' ? value : Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 export const uatRestSyncService = new UatRestSyncService();

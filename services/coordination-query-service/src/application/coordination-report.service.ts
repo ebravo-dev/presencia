@@ -129,7 +129,13 @@ export class CoordinationReportService {
         status: this.blockStatus(block, record, toleranceMinutes),
       }));
       const attended = hourSlots.filter(({ status }) => status === 'TAKEN' || status === 'LATE').length;
-      const status: CellStatus = attended > 0 ? 'TAKEN' : hourSlots.some((slot) => slot.status === 'FUTURE') ? 'FUTURE' : 'MISSING';
+      const status: CellStatus = hourSlots.some((slot) => slot.status === 'TAKEN')
+        ? 'TAKEN'
+        : hourSlots.some((slot) => slot.status === 'LATE')
+          ? 'LATE'
+          : hourSlots.some((slot) => slot.status === 'FUTURE')
+            ? 'FUTURE'
+            : 'MISSING';
       return [day, {
         date, status, professorEntryAt: record?.professorEntryAt?.toISOString() ?? null,
         professorExitAt: record?.professorExitAt?.toISOString() ?? null,
@@ -158,13 +164,19 @@ export class CoordinationReportService {
     record: AttendanceRecord | undefined,
     toleranceMinutes: number,
   ): CellStatus {
-    if (!record?.professorEntryAt) return block.end < this.now() ? 'MISSING' : 'FUTURE';
-    const exit = record.professorExitAt ?? this.now();
-    if (exit <= record.professorEntryAt) return block.end < this.now() ? 'MISSING' : 'FUTURE';
-    const overlaps = exit > block.start && record.professorEntryAt < block.end;
-    if (!overlaps) return block.end < this.now() ? 'MISSING' : 'FUTURE';
-    const onTime = record.professorEntryAt.getTime() <= block.start.getTime() + toleranceMinutes * 60_000;
-    return onTime && exit >= block.end ? 'TAKEN' : 'LATE';
+    const toleranceMilliseconds = toleranceMinutes * 60_000;
+    const windowStart = new Date(block.classStart.getTime() - toleranceMilliseconds);
+    const onTimeEnd = new Date(block.classStart.getTime() + toleranceMilliseconds);
+    const windowEnd = new Date(block.classEnd.getTime() + toleranceMilliseconds);
+    const nowMinute = minuteFloor(this.now());
+
+    if (!record?.professorEntryAt) {
+      return nowMinute > windowEnd ? 'MISSING' : 'FUTURE';
+    }
+
+    const entryMinute = minuteFloor(record.professorEntryAt);
+    if (entryMinute < windowStart || entryMinute > windowEnd) return 'MISSING';
+    return entryMinute > onTimeEnd ? 'LATE' : 'TAKEN';
   }
 
   private async currentToleranceMinutes() {
@@ -179,7 +191,15 @@ export class CoordinationReportService {
   }
 }
 
-interface HourBlock { date: string; start: Date; end: Date; startTime: string; endTime: string }
+interface HourBlock {
+  date: string;
+  start: Date;
+  end: Date;
+  classStart: Date;
+  classEnd: Date;
+  startTime: string;
+  endTime: string;
+}
 function normalizeSchedule(value: unknown): Record<Day, Slot[]> {
   const source = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const aliases: Record<Day, string[]> = {
@@ -227,7 +247,15 @@ function hourlyBlocks(dateValue: string, slots: Slot[]): HourBlock[] {
     const blocks: HourBlock[] = [];
     for (let cursor = start; cursor < end;) {
       const blockEnd = new Date(Math.min(end.getTime(), cursor.getTime() + 3_600_000));
-      blocks.push({ date: dateValue, start: cursor, end: blockEnd, startTime: mexicoTime(cursor), endTime: mexicoTime(blockEnd) });
+      blocks.push({
+        date: dateValue,
+        start: cursor,
+        end: blockEnd,
+        classStart: start,
+        classEnd: end,
+        startTime: mexicoTime(cursor),
+        endTime: mexicoTime(blockEnd),
+      });
       cursor = blockEnd;
     }
     return blocks;
@@ -265,6 +293,7 @@ function cycleForDate(value: string) { const dateValue = new Date(`${value}T12:0
 function datesForRange(start: string, end: string) { const values: Array<{ day: Day; date: string }> = []; for (let value = start; value <= end; value = addDays(value, 1)) { const day = DAYS[new Date(`${value}T12:00:00Z`).getUTCDay() - 1]; if (day) values.push({ day, date: value }); } return values; }
 function addDays(value: string, amount: number) { const dateValue = new Date(`${value}T12:00:00Z`); dateValue.setUTCDate(dateValue.getUTCDate() + amount); return dateValue.toISOString().slice(0, 10); }
 function localDateTime(dateValue: string, time: string) { return new Date(`${dateValue}T${time}:00.000-06:00`); }
+function minuteFloor(value: Date) { return new Date(Math.floor(value.getTime() / 60_000) * 60_000); }
 function mexicoTime(value: Date) { return new Intl.DateTimeFormat('es-MX', { timeZone: 'America/Mexico_City', hour: '2-digit', minute: '2-digit', hour12: false }).format(value); }
 function padTime(value: string) { const [hour, minute] = value.split(':'); return `${hour?.padStart(2, '0')}:${minute}`; }
 function percentage(value: number, total: number) { return total === 0 ? 0 : Math.round((value / total) * 10_000) / 100; }

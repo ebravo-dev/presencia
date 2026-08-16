@@ -459,11 +459,50 @@ extension AppDelegate: CBPeripheralManagerDelegate {
         peripheral.respond(to: request, withResult: .attributeNotFound)
         continue
       }
-      let message = request.value.flatMap { String(data: $0, encoding: .utf8) } ?? "CONFIRMED"
+      guard let value = request.value,
+            let message = String(data: value, encoding: .utf8),
+            isConfirmationForCurrentStudent(value)
+      else {
+        peripheral.respond(to: request, withResult: .unlikelyError)
+        continue
+      }
       advertiserChannel?.invokeMethod("onAttendanceConfirmed", arguments: message)
       peripheral.respond(to: request, withResult: .success)
       stopBeacon()
     }
+  }
+
+  private func isConfirmationForCurrentStudent(_ data: Data) -> Bool {
+    guard let expected = UserDefaults.standard.string(forKey: "student_matricula")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased(),
+          !expected.isEmpty,
+          let jsonObject = try? JSONSerialization.jsonObject(with: data),
+          let payload = jsonObject as? [String: Any],
+          let matricula = payload["id"] as? String,
+          let materia = payload["materia"] as? String
+    else {
+      return false
+    }
+
+    let validShape = payload.count == 2 ||
+      (payload.count == 3 && isValidGattDay(payload["dia"] as? String))
+
+    return validShape &&
+      matricula.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() == expected &&
+      !materia.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+
+  private func isValidGattDay(_ value: String?) -> Bool {
+    guard let value = value else { return false }
+    let formatter = DateFormatter()
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "yyyy-MM-dd"
+    formatter.isLenient = false
+    guard let parsed = formatter.date(from: value) else { return false }
+    return formatter.string(from: parsed) == value
   }
 }
 

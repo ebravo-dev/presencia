@@ -25,6 +25,9 @@ import android.os.IBinder
 import android.os.ParcelUuid
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Locale
 import java.util.UUID
 
 class BleAdvertiserService : Service() {
@@ -130,7 +133,20 @@ class BleAdvertiserService : Service() {
             value: ByteArray,
         ) {
             if (characteristic.uuid == CONFIRMATION_CHAR) {
-                val message = value.toString(Charsets.UTF_8).ifBlank { "CONFIRMED" }
+                val message = value.toString(Charsets.UTF_8).trim()
+                if (!isConfirmationForThisStudent(message)) {
+                    Log.w(TAG, "Rejected GATT confirmation for a different matricula")
+                    if (responseNeeded) {
+                        gattServer?.sendResponse(
+                            device,
+                            requestId,
+                            BluetoothGatt.GATT_FAILURE,
+                            offset,
+                            null,
+                        )
+                    }
+                    return
+                }
                 Log.i(TAG, "Attendance confirmed by professor: $message")
                 onAttendanceConfirmed?.invoke(message)
                 updateNotification("Asistencia recibida")
@@ -144,6 +160,42 @@ class BleAdvertiserService : Service() {
             if (responseNeeded) {
                 gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, offset, null)
             }
+        }
+    }
+
+    private fun isConfirmationForThisStudent(message: String): Boolean {
+        val expectedMatricula = prefs
+            ?.getString("student_matricula", null)
+            ?.trim()
+            ?.uppercase()
+            .orEmpty()
+        if (expectedMatricula.isEmpty() || message.isEmpty()) return false
+
+        return try {
+            val payload = JSONObject(message)
+            val matricula = payload.optString("id").trim().uppercase()
+            val materia = payload.optString("materia").trim()
+            val dia = payload.optString("dia").trim()
+            val validShape = payload.length() == 2 ||
+                (payload.length() == 3 && payload.has("dia") && isValidGattDay(dia))
+            validShape &&
+                matricula == expectedMatricula &&
+                materia.isNotEmpty()
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun isValidGattDay(value: String): Boolean {
+        if (!Regex("""\d{4}-\d{2}-\d{2}""").matches(value)) return false
+        return try {
+            val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                isLenient = false
+            }
+            val parsed = formatter.parse(value) ?: return false
+            formatter.format(parsed) == value
+        } catch (_: Exception) {
+            false
         }
     }
 

@@ -150,9 +150,10 @@ void main() {
     );
 
     expect(tester.getSize(find.byType(IndexedStack)).height, greaterThan(300));
-    expect(find.text('Materias de hoy'), findsOneWidget);
+    expect(find.text('Hola, Alumno'), findsOneWidget);
+    expect(find.text('Tu día'), findsOneWidget);
 
-    await tester.tap(find.text('Horario'));
+    await tester.tap(find.text('Ver horario completo'));
     await tester.pump();
     expect(find.text('Datos de UAT'), findsOneWidget);
 
@@ -161,6 +162,75 @@ void main() {
     expect(find.text('Tu información estudiantil'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'attendance classes use a vertical carousel and update its dots',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(390, 780);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final weekday = DateTime.now().weekday;
+      final storage = _ScheduleStorage([
+        for (var index = 0; index < 3; index++)
+          StudentScheduleEntry(
+            externalGroupId: 'today-$index',
+            subject: 'Materia ${index + 1}',
+            classroom: 'Aula ${index + 1}',
+            slots: [
+              StudentScheduleSlot(
+                weekday: weekday,
+                raw: 'Horario ${index + 1}',
+              ),
+            ],
+          ),
+      ]);
+      final advertiser = BleAdvertiserService();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(Brightness.light),
+          home: HomeScreen(
+            storage: storage,
+            bleService: advertiser,
+            attendanceSession: AttendanceSessionService(
+              storage: storage,
+              advertiser: advertiser,
+            ),
+            deviceBindingService: StudentDeviceBindingService(),
+            profile: const StudentAcademicProfile(
+              matricula: '123456',
+              institutionalEmail: 'alumno@alumnos.uat.edu.mx',
+              displayName: 'Jared Castillo',
+            ),
+            initialUatSessionId: null,
+            demoMode: false,
+            themeMode: ThemeMode.light,
+            onThemeModeChanged: (_) {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final carousel = find.byKey(const Key('attendance-class-carousel'));
+      expect(carousel, findsOneWidget);
+      expect(tester.widget<PageView>(carousel).scrollDirection, Axis.vertical);
+      expect(
+        find.byKey(const ValueKey('class-indicator-0-active')),
+        findsOneWidget,
+      );
+
+      await tester.drag(carousel, const Offset(0, -180));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('class-indicator-1-active')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('attendance fits a compact screen and locks a finished day', (
     WidgetTester tester,
@@ -255,7 +325,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Perfil'));
+    await tester.tap(find.byTooltip('Abrir perfil'));
     await tester.pump();
     await tester.ensureVisible(find.text('Sincronizar con el servidor'));
     events.clear();
@@ -306,7 +376,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Perfil'));
+    await tester.tap(find.byTooltip('Abrir perfil'));
     await tester.pump();
     await tester.ensureVisible(find.text('Sincronizar con el servidor'));
     events.clear();

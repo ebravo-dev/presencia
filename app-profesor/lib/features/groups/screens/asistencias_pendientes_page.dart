@@ -383,14 +383,15 @@ class _AsistenciasPendientesPageState
         studentIdMap[studentId] = studentId;
         studentIdMap[student.number.toString()] = studentId;
         if (student.matricula != null) {
-          studentIdMap[student.matricula!] = studentId;
+          studentIdMap[student.matricula!.trim().toUpperCase()] = studentId;
         }
       }
     }
 
     final attendances = <Map<String, dynamic>>[];
     registro.asistenciasAlumnos.forEach((key, present) {
-      final studentId = studentIdMap[key];
+      final studentId =
+          studentIdMap[key] ?? studentIdMap[key.trim().toUpperCase()];
       if (studentId == null) {
         return;
       }

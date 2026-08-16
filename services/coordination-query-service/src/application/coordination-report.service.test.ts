@@ -48,6 +48,39 @@ describe('CoordinationReportService', () => {
 
     expect(report?.data.rows).toHaveLength(1);
   });
+
+  it.each([
+    ['2026-08-03T12:50:00.000Z', 'TAKEN'],
+    ['2026-08-03T13:10:59.000Z', 'TAKEN'],
+    ['2026-08-03T13:11:00.000Z', 'LATE'],
+    ['2026-08-03T14:10:59.000Z', 'LATE'],
+  ] as const)('classifies an entry at %s as %s', async (entryAt, expected) => {
+    const service = new CoordinationReportService(
+      attendanceWindowRepository(entryAt),
+      () => new Date('2026-08-03T14:10:59.000Z'),
+      10,
+    );
+
+    const report = await service.weekly('teacher-1', '2026-08-03');
+
+    expect(report?.data.rows[0]?.cells.monday?.status).toBe(expected);
+    expect(report?.data.rows[0]?.cells.monday?.hourSlots[0]?.status).toBe(expected);
+  });
+
+  it.each([
+    ['2026-08-03T14:10:59.000Z', 'FUTURE'],
+    ['2026-08-03T14:11:00.000Z', 'MISSING'],
+  ] as const)('keeps the class at %s as %s when no entry exists', async (now, expected) => {
+    const service = new CoordinationReportService(
+      attendanceWindowRepository(null),
+      () => new Date(now),
+      10,
+    );
+
+    const report = await service.weekly('teacher-1', '2026-08-03');
+
+    expect(report?.data.rows[0]?.cells.monday?.status).toBe(expected);
+  });
 });
 
 function repository(cycle = { externalId: '151', name: '2026 - 2 VERANO' }): CoordinationQueryRepository {
@@ -73,6 +106,30 @@ function repository(cycle = { externalId: '151', name: '2026 - 2 VERANO' }): Coo
             professorEntryAt: new Date('2026-07-27T14:00:00.000Z'), professorExitAt: new Date('2026-07-27T18:00:00.000Z'),
             uploadStatus: 'COMPLETED', uploadError: null,
           }],
+        }],
+      };
+    },
+  };
+}
+
+function attendanceWindowRepository(entryAt: string | null): CoordinationQueryRepository {
+  return {
+    async project() { return true; }, async overview() { return {}; }, async coordinations() { return {}; },
+    async teachers() { return {}; }, async teacherAssignments() { return null; },
+    async resetDemoData() {},
+    async teacherReportSource() {
+      return {
+        teacher: { id: 'teacher-1', name: 'Profesor', email: 'profesor@uat.edu.mx', institutionalCode: '308127', coordinations: [] },
+        groups: [{
+          id: 'group-window', externalGroupId: 'window-1', groupCode: '1-A', schoolCycleExternalId: '153',
+          schoolCycleName: '2026 - 3 OTOÑO', classroom: 'A1', educationLevel: 'LIC', period: '2026-3',
+          schedule: { monday: [{ raw: '07:00-08:00', startTime: '07:00', endTime: '08:00' }] },
+          subject: { name: 'Ventana de asistencia' },
+          attendanceRecords: entryAt ? [{
+            attendanceSessionId: 'attendance-window', date: new Date('2026-08-03T00:00:00.000Z'),
+            professorEntryAt: new Date(entryAt), professorExitAt: null,
+            uploadStatus: 'COMPLETED', uploadError: null,
+          }] : [],
         }],
       };
     },

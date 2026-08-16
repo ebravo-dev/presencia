@@ -71,6 +71,8 @@ model Student {
   id          String       @id @default(cuid())
   matricula   String
   name        String
+  uatStudentId Int?        @map("uat_student_id")
+  listNumber  Int?         @map("list_number")
   beaconUuid  String?      @map("beacon_uuid")
   groupId     String       @map("group_id")
   createdAt   DateTime     @default(now()) @map("created_at")
@@ -80,6 +82,7 @@ model Student {
   group       Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
   @@unique([matricula, groupId])
+  @@unique([uatStudentId, groupId])
   @@index([beaconUuid])
   @@map("students")
 }

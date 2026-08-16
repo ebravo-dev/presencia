@@ -68,13 +68,13 @@ class AttendanceBatchService {
         students[student.number.toString()] = mapped;
         final matricula = student.matricula;
         if (matricula != null && matricula.isNotEmpty) {
-          students[matricula] = mapped;
+          students[matricula.trim().toUpperCase()] = mapped;
         }
       }
 
       final attendances = <Map<String, dynamic>>[];
       record.asistenciasAlumnos.forEach((key, present) {
-        final student = students[key];
+        final student = students[key] ?? students[key.trim().toUpperCase()];
         if (student == null) return;
         attendances.add({
           'id_alumno': student.id,
@@ -267,13 +267,13 @@ class AttendanceBatchService {
       students[student.number.toString()] = mapped;
       final matricula = student.matricula;
       if (matricula != null && matricula.isNotEmpty) {
-        students[matricula] = mapped;
+        students[matricula.trim().toUpperCase()] = mapped;
       }
     }
 
     final attendances = <Map<String, dynamic>>[];
     record.asistenciasAlumnos.forEach((key, present) {
-      final student = students[key];
+      final student = students[key] ?? students[key.trim().toUpperCase()];
       if (student == null) return;
       attendances.add({
         'studentId': student.id,

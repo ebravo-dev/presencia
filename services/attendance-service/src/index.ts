@@ -11,7 +11,7 @@ import { buildAttendanceApp } from './presentation/app.js';
 const env = loadAttendanceEnv();
 const prisma = new PrismaClient();
 await prisma.$connect();
-const repository = new PrismaAttendanceRepository(prisma);
+const repository = new PrismaAttendanceRepository(prisma, env.APP_TIME_ZONE);
 const eventBus = new AttendanceEventBus(prisma, repository, env.RABBITMQ_URL, env.OUTBOX_POLL_INTERVAL_MS, console);
 await eventBus.start();
 const app = await buildAttendanceApp({

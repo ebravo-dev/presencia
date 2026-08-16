@@ -53,7 +53,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Timer? _scheduleClock;
   int _selectedTab = 0;
   int _selectedClass = 0;
-  int _historyCount = 0;
   int _attendanceToleranceMinutes =
       LocalStorageService.defaultAttendanceToleranceMinutes;
   bool _isSyncingDeviceBinding = false;
@@ -90,7 +89,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _studentAuth = widget.studentAuth ?? StudentAuthService();
     _schedule = widget.storage.studentSchedule;
     _attendanceToleranceMinutes = widget.storage.attendanceToleranceMinutes;
-    _historyCount = widget.storage.attendanceHistoryCount;
     _pendingUatSessionId = widget.initialUatSessionId;
     _advertiserState = widget.bleService.currentState;
     _attendanceState = widget.attendanceSession.currentState;
@@ -109,7 +107,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _confirmationSubscription = widget.bleService.confirmationStream.listen((
       confirmation,
     ) {
-      if (!confirmation.isConfirmed) return;
+      if (!confirmation.isConfirmed ||
+          !confirmation.belongsToMatricula(widget.storage.matricula)) {
+        return;
+      }
       if (!mounted) return;
       final id = DateTime.now().microsecondsSinceEpoch.toString();
       setState(() {
@@ -371,16 +372,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _saveAttendance(AttendanceConfirmation confirmation) async {
+    final receivedAt = DateTime.now();
     await widget.storage.addAttendanceHistoryEntry(
-      DateTime.now(),
+      confirmation.recordedAtForHistory(receivedAt),
       classId: confirmation.classId,
       className: confirmation.className,
       group: confirmation.group,
       classroom: confirmation.classroom,
     );
-    if (mounted) {
-      setState(() => _historyCount = widget.storage.attendanceHistoryCount);
-    }
   }
 
   Future<void> _toggleAttendance() async {
@@ -396,9 +395,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => HistoryScreen(storage: widget.storage)),
     );
-    if (mounted) {
-      setState(() => _historyCount = widget.storage.attendanceHistoryCount);
-    }
   }
 
   @override
@@ -415,7 +411,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final pages = [
       _AttendancePage(
-        historyCount: _historyCount,
+        profile: _profile,
         selectedClass: _selectedClass,
         schedule: _schedule,
         attendanceToleranceMinutes: _attendanceToleranceMinutes,
@@ -427,6 +423,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         hasError: _hasError,
         onSelectClass: (index) => setState(() => _selectedClass = index),
         onRegister: _toggleAttendance,
+        onOpenSchedule: () => setState(() => _selectedTab = 1),
+        onOpenProfile: () => setState(() => _selectedTab = 2),
       ),
       _SchedulePage(
         schedule: _schedule,
@@ -478,27 +476,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ],
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Align(
-          heightFactor: 1,
-          alignment: Alignment.center,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 430),
-            child: _BottomNav(
-              index: _selectedTab,
-              onChanged: (value) => setState(() => _selectedTab = value),
+      bottomNavigationBar: _selectedTab == 0
+          ? null
+          : SafeArea(
+              top: false,
+              child: Align(
+                heightFactor: 1,
+                alignment: Alignment.center,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 430),
+                  child: _BottomNav(
+                    index: _selectedTab,
+                    onChanged: (value) => setState(() => _selectedTab = value),
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-      ),
     );
   }
 }
 
-class _AttendancePage extends StatelessWidget {
+class _AttendancePage extends StatefulWidget {
   const _AttendancePage({
-    required this.historyCount,
+    required this.profile,
     required this.selectedClass,
     required this.schedule,
     required this.attendanceToleranceMinutes,
@@ -510,8 +510,10 @@ class _AttendancePage extends StatelessWidget {
     required this.hasError,
     required this.onSelectClass,
     required this.onRegister,
+    required this.onOpenSchedule,
+    required this.onOpenProfile,
   });
-  final int historyCount;
+  final StudentAcademicProfile profile;
   final int selectedClass;
   final List<StudentScheduleEntry> schedule;
   final int attendanceToleranceMinutes;
@@ -520,266 +522,291 @@ class _AttendancePage extends StatelessWidget {
   final String? confirmedClassName;
   final ValueChanged<int> onSelectClass;
   final VoidCallback onRegister;
+  final VoidCallback onOpenSchedule;
+  final VoidCallback onOpenProfile;
+
+  @override
+  State<_AttendancePage> createState() => _AttendancePageState();
+}
+
+class _AttendancePageState extends State<_AttendancePage> {
+  static const _navy = Color(0xFF003B5C);
+  static const _orange = Color(0xFFD65F05);
+  static const _lightBackground = Color(0xFFF7F8FA);
+
+  late PageController _pageController;
+  int? _silentPageChange;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(
+      initialPage: widget.selectedClass,
+      viewportFraction: .24,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _AttendancePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.schedule, widget.schedule)) {
+      _pageController.dispose();
+      _pageController = PageController(
+        initialPage: widget.selectedClass,
+        viewportFraction: .24,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _selectClass(int index) {
+    if (index == widget.selectedClass) return;
+    if (_silentPageChange == index) {
+      _silentPageChange = null;
+    } else {
+      _silentPageChange = null;
+      unawaited(HapticFeedback.selectionClick());
+    }
+    widget.onSelectClass(index);
+  }
+
+  void _moveToClass(int index) {
+    if (!_pageController.hasClients) return;
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final accent = dark ? const Color(0xFF5DC2F0) : _navy;
     final now = DateTime.now();
-    final todayClasses = scheduleForWeekday(schedule, DateTime.now().weekday);
+    final todayClasses = scheduleForWeekday(
+      widget.schedule,
+      DateTime.now().weekday,
+    );
     final firstAvailable = todayClasses.indexWhere(
       (occurrence) => scheduleIsAvailable(
         occurrence,
         now,
-        toleranceMinutes: attendanceToleranceMinutes,
+        toleranceMinutes: widget.attendanceToleranceMinutes,
       ),
     );
     final safeSelectedClass = todayClasses.isEmpty
         ? 0
-        : (selectedClass.clamp(0, todayClasses.length - 1));
+        : (widget.selectedClass.clamp(0, todayClasses.length - 1));
     final selectedIsAvailable =
         todayClasses.isNotEmpty &&
         scheduleIsAvailable(
           todayClasses[safeSelectedClass],
           now,
-          toleranceMinutes: attendanceToleranceMinutes,
+          toleranceMinutes: widget.attendanceToleranceMinutes,
         );
     final dayFinished = todayClasses.isNotEmpty && firstAvailable == -1;
     final effectiveSelectedClass = !dayFinished && !selectedIsAvailable
         ? firstAvailable
         : safeSelectedClass;
-    final buttonTitle = confirmed
+    final buttonTitle = widget.confirmed
         ? 'Asistencia registrada'
         : dayFinished
         ? 'Jornada terminada'
-        : isActive || isChecking
+        : widget.isActive || widget.isChecking
         ? 'Cancelando registro'
-        : hasError
+        : widget.hasError
         ? 'Intentar de nuevo'
         : 'Registrar asistencia';
-    final buttonDetail = confirmed
-        ? 'Confirmada en ${confirmedClassName ?? 'tu clase'}'
-        : dayFinished
-        ? 'No hay más materias disponibles hoy'
-        : isChecking
-        ? 'Verificando disponibilidad'
-        : isActive
-        ? 'Esperando confirmación'
-        : hasError
-        ? 'Revisa tu celular y vuelve a intentarlo'
-        : 'Disponible cuando el profesor inicie el pase';
+
+    if (!dayFinished &&
+        todayClasses.isNotEmpty &&
+        _pageController.hasClients &&
+        (_pageController.page?.round() ?? effectiveSelectedClass) !=
+            effectiveSelectedClass) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _pageController.hasClients) {
+          _silentPageChange = effectiveSelectedClass;
+          _pageController.jumpToPage(effectiveSelectedClass);
+        }
+      });
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.maxHeight < 610;
-        return Padding(
-          padding: EdgeInsets.fromLTRB(20, compact ? 10 : 16, 20, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const _PageHeader(
-                title: 'Asistencia',
-                subtitle: 'Materias de hoy',
-              ),
-              SizedBox(height: compact ? 8 : 14),
-              Card(
-                margin: EdgeInsets.zero,
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: compact ? 12 : 16,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '$historyCount',
-                              style: Theme.of(context).textTheme.headlineSmall
-                                  ?.copyWith(fontSize: compact ? 30 : 36),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              historyCount == 1
-                                  ? 'asistencia confirmada'
-                                  : 'asistencias confirmadas',
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ],
+        final compact = constraints.maxHeight < 650;
+        return ColoredBox(
+          color: dark
+              ? Theme.of(context).scaffoldBackgroundColor
+              : _lightBackground,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(20, compact ? 12 : 20, 20, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _StudentHomeHeader(
+                  profile: widget.profile,
+                  accent: accent,
+                  onOpenProfile: widget.onOpenProfile,
+                ),
+                SizedBox(height: compact ? 16 : 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Tu día',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontSize: compact ? 18 : 20,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
-                      SizedBox(
-                        width: 142,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              Icons.verified_outlined,
-                              size: 18,
-                              color: scheme.primary,
+                    ),
+                    TextButton(
+                      onPressed: widget.onOpenSchedule,
+                      style: TextButton.styleFrom(
+                        foregroundColor: accent,
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Ver horario completo',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
                             ),
-                            const SizedBox(width: 7),
+                          ),
+                          SizedBox(width: 5),
+                          Icon(Icons.arrow_forward_rounded, size: 13),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  dayFinished
+                      ? 'Tu horario de hoy ya terminó'
+                      : todayClasses.length > 1
+                      ? 'Desliza hacia arriba o abajo para elegir'
+                      : 'Tu clase programada para hoy',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                SizedBox(height: compact ? 6 : 10),
+                Expanded(
+                  child: widget.scheduleLoading && widget.schedule.isEmpty
+                      ? const Center(child: _AcademicLoadingCard())
+                      : todayClasses.isEmpty
+                      ? const Center(child: _NoClassesTodayCard())
+                      : dayFinished
+                      ? Center(
+                          child: SizedBox(
+                            height: compact ? 126 : 146,
+                            child: _FinishedClassesPanel(classes: todayClasses),
+                          ),
+                        )
+                      : Row(
+                          children: [
                             Expanded(
-                              child: Text(
-                                'Registros confirmados en este celular',
-                                style: Theme.of(context).textTheme.bodySmall,
+                              child: PageView.builder(
+                                key: const Key('attendance-class-carousel'),
+                                controller: _pageController,
+                                scrollDirection: Axis.vertical,
+                                physics: const BouncingScrollPhysics(),
+                                itemCount: todayClasses.length,
+                                onPageChanged: _selectClass,
+                                itemBuilder: (context, index) {
+                                  final locked = scheduleHasEnded(
+                                    todayClasses[index],
+                                    now,
+                                    toleranceMinutes:
+                                        widget.attendanceToleranceMinutes,
+                                  );
+                                  return GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: locked
+                                        ? null
+                                        : () => _moveToClass(index),
+                                    child: _ClassCard(
+                                      key: ValueKey('attendance-class-$index'),
+                                      occurrence: todayClasses[index],
+                                      selected: index == effectiveSelectedClass,
+                                      locked: locked,
+                                      now: now,
+                                    ),
+                                  );
+                                },
                               ),
                             ),
+                            if (todayClasses.length > 1) ...[
+                              const SizedBox(width: 8),
+                              _VerticalPageIndicator(
+                                count: todayClasses.length,
+                                index: effectiveSelectedClass,
+                                color: accent,
+                              ),
+                            ],
                           ],
                         ),
-                      ),
-                    ],
-                  ),
                 ),
-              ),
-              SizedBox(height: compact ? 9 : 14),
-              Text(
-                'Clase a registrar',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                dayFinished
-                    ? 'Tu horario de hoy ya terminó'
-                    : 'Desliza para elegir una materia disponible',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              SizedBox(height: compact ? 7 : 10),
-              SizedBox(
-                height: compact ? 126 : 146,
-                child: scheduleLoading && schedule.isEmpty
-                    ? const _AcademicLoadingCard()
-                    : todayClasses.isEmpty
-                    ? const _NoClassesTodayCard()
-                    : dayFinished
-                    ? _FinishedClassesPanel(classes: todayClasses)
-                    : SizedBox.expand(
-                        child: PageView.builder(
-                          controller: PageController(
-                            viewportFraction: .74,
-                            initialPage: selectedIsAvailable
-                                ? safeSelectedClass
-                                : firstAvailable,
-                          ),
-                          itemCount: todayClasses.length,
-                          onPageChanged: onSelectClass,
-                          itemBuilder: (context, index) => _ClassCard(
-                            occurrence: todayClasses[index],
-                            selected: index == effectiveSelectedClass,
-                            locked: scheduleHasEnded(
-                              todayClasses[index],
-                              now,
-                              toleranceMinutes: attendanceToleranceMinutes,
-                            ),
-                          ),
-                        ),
-                      ),
-              ),
-              if (todayClasses.isNotEmpty && !dayFinished)
-                Padding(
-                  padding: EdgeInsets.only(top: compact ? 6 : 9),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(
-                      todayClasses.length,
-                      (index) => AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        margin: const EdgeInsets.symmetric(horizontal: 5),
-                        width: index == effectiveSelectedClass ? 18 : 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: index == effectiveSelectedClass
-                              ? scheme.primary
-                              : appMuted(context).withValues(alpha: .4),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
+                if (widget.confirmed) ...[
+                  const SizedBox(height: 8),
+                  _AttendanceConfirmedBanner(
+                    className: widget.confirmedClassName,
                   ),
-                ),
-              if (confirmed) ...[
-                SizedBox(height: compact ? 6 : 10),
-                Container(
-                  padding: EdgeInsets.all(compact ? 10 : 13),
-                  decoration: BoxDecoration(
-                    color: AppColors.success.withValues(alpha: .12),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: AppColors.success.withValues(alpha: .32),
+                ],
+                SizedBox(height: compact ? 10 : 16),
+                Semantics(
+                  button: true,
+                  label: buttonTitle,
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: compact ? 50 : 54,
+                    child: FilledButton(
+                      onPressed: widget.confirmed || dayFinished
+                          ? null
+                          : widget.onRegister,
+                      style: FilledButton.styleFrom(
+                        disabledBackgroundColor: widget.confirmed
+                            ? AppColors.success
+                            : dark
+                            ? scheme.surfaceContainerHighest
+                            : const Color(0xFFD5D8DC),
+                        backgroundColor: widget.confirmed
+                            ? AppColors.success
+                            : _orange,
+                        foregroundColor: Colors.white,
+                        disabledForegroundColor: Colors.white,
+                        shape: const StadiumBorder(),
+                        elevation: 0,
+                      ),
+                      child: widget.isChecking
+                          ? const SizedBox.square(
+                              dimension: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(
+                              buttonTitle,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                              ),
+                            ),
                     ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.verified_rounded,
-                        color: AppColors.success,
-                        size: compact ? 24 : 28,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Asistencia tomada correctamente',
-                              style: Theme.of(context).textTheme.titleSmall
-                                  ?.copyWith(fontWeight: FontWeight.w800),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              confirmedClassName ?? 'Clase confirmada',
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: AppColors.success),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
                   ),
                 ),
               ],
-              const Spacer(),
-              Semantics(
-                button: true,
-                label: buttonTitle,
-                child: SizedBox(
-                  height: compact ? 66 : 76,
-                  child: FilledButton(
-                    onPressed: confirmed || dayFinished ? null : onRegister,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: confirmed
-                          ? AppColors.success
-                          : scheme.primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      padding: EdgeInsets.zero,
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          buttonTitle,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: compact ? 16 : 18,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          buttonDetail,
-                          style: const TextStyle(fontSize: 11),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         );
       },
@@ -1103,101 +1130,260 @@ class _PageHeader extends StatelessWidget {
   );
 }
 
+class _StudentHomeHeader extends StatelessWidget {
+  const _StudentHomeHeader({
+    required this.profile,
+    required this.accent,
+    required this.onOpenProfile,
+  });
+
+  final StudentAcademicProfile profile;
+  final Color accent;
+  final VoidCallback onOpenProfile;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = profile.displayName.trim();
+    final firstName = name.isEmpty
+        ? 'estudiante'
+        : name.split(RegExp(r'\s+')).first;
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Hola, $firstName',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                _formattedHomeDate(DateTime.now()),
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 16),
+        Tooltip(
+          message: 'Abrir perfil',
+          child: Semantics(
+            button: true,
+            label: 'Abrir perfil de ${profile.displayName}',
+            child: Material(
+              color: accent,
+              shape: const CircleBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: onOpenProfile,
+                child: SizedBox.square(
+                  dimension: 48,
+                  child: Center(
+                    child: Text(
+                      _profileInitials(profile),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _ClassCard extends StatelessWidget {
   const _ClassCard({
+    super.key,
     required this.occurrence,
     required this.selected,
+    required this.now,
     this.locked = false,
   });
   final StudentScheduleOccurrence occurrence;
   final bool selected;
   final bool locked;
+  final DateTime now;
 
   @override
-  Widget build(BuildContext context) => AnimatedScale(
-    scale: selected ? 1 : .92,
-    duration: const Duration(milliseconds: 220),
-    child: AnimatedOpacity(
-      opacity: locked ? .42 : (selected ? 1 : .58),
-      duration: const Duration(milliseconds: 220),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: selected
-                ? Theme.of(context).colorScheme.secondary
-                : appSurface(context),
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) {
+    const orange = Color(0xFFD65F05);
+    const navy = Color(0xFF003B5C);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final start = _scheduleTimeForToday(occurrence.slot.startTime, now);
+    final end = _scheduleTimeForToday(occurrence.slot.endTime, now);
+    final inProgress =
+        start != null &&
+        end != null &&
+        !now.isBefore(start) &&
+        now.isBefore(end);
+
+    late final String status;
+    late final Color statusColor;
+    if (locked) {
+      status = 'Clase finalizada';
+      statusColor = appMuted(context);
+    } else if (inProgress) {
+      status = 'Asistencia pendiente';
+      statusColor = const Color(0xFFC92A20);
+    } else if (start != null && start.isAfter(now)) {
+      final minutes = start.difference(now).inMinutes + 1;
+      status = minutes < 60 ? 'Comienza en $minutes min' : 'Próxima clase';
+      statusColor = dark ? const Color(0xFF5DC2F0) : navy;
+    } else {
+      status = 'Disponible para registrar';
+      statusColor = orange;
+    }
+
+    final roomAndState = [
+      occurrence.entry.classroom ?? 'Aula por confirmar',
+      if (inProgress) 'En curso',
+    ].join(' · ');
+    final timeColor = selected
+        ? orange
+        : dark
+        ? const Color(0xFF5DC2F0)
+        : navy;
+
+    return AnimatedScale(
+      scale: selected ? 1 : .95,
+      duration: const Duration(milliseconds: 200),
+      child: AnimatedOpacity(
+        opacity: locked ? .48 : (selected ? 1 : .72),
+        duration: const Duration(milliseconds: 200),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              color: selected
+                  ? dark
+                        ? orange.withValues(alpha: .16)
+                        : const Color(0xFFFFEEE2)
+                  : appSurface(context),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: selected
+                    ? orange.withValues(alpha: .52)
+                    : dark
+                    ? const Color(0xFF34383C)
+                    : const Color(0xFFD7DDE2),
+              ),
+              boxShadow: selected && !dark
+                  ? [
+                      BoxShadow(
+                        color: orange.withValues(alpha: .08),
+                        blurRadius: 16,
+                        offset: const Offset(0, 5),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Row(
               children: [
-                Text(
-                  occurrence.entry.subject,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: selected ? Colors.white : null,
-                  ),
+                SizedBox(
+                  width: 56,
+                  child:
+                      occurrence.slot.startTime != null &&
+                          occurrence.slot.endTime != null
+                      ? Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              occurrence.slot.startTime!,
+                              style: TextStyle(
+                                color: timeColor,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              occurrence.slot.endTime!,
+                              style: TextStyle(
+                                color: timeColor,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        )
+                      : Text(
+                          occurrence.slot.displayTime,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: timeColor,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                 ),
-                if (occurrence.entry.group != null ||
-                    occurrence.entry.professor != null) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    [
-                      if (occurrence.entry.group != null)
-                        'Grupo ${occurrence.entry.group}',
-                      if (occurrence.entry.professor != null)
-                        occurrence.entry.professor!,
-                    ].join(' · '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: selected ? Colors.white70 : appMuted(context),
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
-                if (locked) ...[
-                  const SizedBox(height: 4),
-                  const Row(
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.lock_clock_rounded, size: 14),
-                      SizedBox(width: 4),
-                      Text('Clase finalizada', style: TextStyle(fontSize: 10)),
-                    ],
-                  ),
-                ],
-                const Spacer(),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.room_outlined,
-                      size: 16,
-                      color: selected ? Colors.white70 : appMuted(context),
-                    ),
-                    const SizedBox(width: 5),
-                    Expanded(
-                      child: Text(
-                        occurrence.entry.classroom ?? 'Aula por confirmar',
+                      Text(
+                        occurrence.entry.subject,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: selected ? Colors.white70 : appMuted(context),
-                          fontSize: 12,
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  occurrence.slot.displayTime,
-                  style: TextStyle(
-                    color: selected ? Colors.white70 : appMuted(context),
-                    fontSize: 12,
+                      const SizedBox(height: 3),
+                      Text(
+                        roomAndState,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(fontSize: 10),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              color: statusColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              status,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: statusColor,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -1205,6 +1391,83 @@ class _ClassCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _VerticalPageIndicator extends StatelessWidget {
+  const _VerticalPageIndicator({
+    required this.count,
+    required this.index,
+    required this.color,
+  });
+
+  final int count;
+  final int index;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: 'Clase ${index + 1} de $count',
+    child: SizedBox(
+      width: 18,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(count, (dotIndex) {
+            final active = dotIndex == index;
+            return AnimatedContainer(
+              key: ValueKey(
+                'class-indicator-$dotIndex-${active ? 'active' : 'inactive'}',
+              ),
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              width: 7,
+              height: active ? 22 : 7,
+              margin: const EdgeInsets.symmetric(vertical: 3),
+              decoration: BoxDecoration(
+                color: active
+                    ? color
+                    : appMuted(context).withValues(alpha: .28),
+                borderRadius: BorderRadius.circular(8),
+              ),
+            );
+          }),
+        ),
+      ),
+    ),
+  );
+}
+
+class _AttendanceConfirmedBanner extends StatelessWidget {
+  const _AttendanceConfirmedBanner({this.className});
+
+  final String? className;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    decoration: BoxDecoration(
+      color: AppColors.success.withValues(alpha: .11),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: AppColors.success.withValues(alpha: .28)),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.verified_rounded, color: AppColors.success, size: 21),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'Asistencia confirmada · ${className ?? 'Clase registrada'}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+        ),
+      ],
     ),
   );
 }
@@ -1542,6 +1805,55 @@ Color _scheduleColor(String externalGroupId) {
     (sum, item) => sum + item,
   );
   return colors[hash % colors.length];
+}
+
+String _formattedHomeDate(DateTime date) {
+  const weekdays = [
+    'Lunes',
+    'Martes',
+    'Miércoles',
+    'Jueves',
+    'Viernes',
+    'Sábado',
+    'Domingo',
+  ];
+  const months = [
+    'enero',
+    'febrero',
+    'marzo',
+    'abril',
+    'mayo',
+    'junio',
+    'julio',
+    'agosto',
+    'septiembre',
+    'octubre',
+    'noviembre',
+    'diciembre',
+  ];
+  return '${weekdays[date.weekday - 1]}, ${date.day} de ${months[date.month - 1]}';
+}
+
+DateTime? _scheduleTimeForToday(String? value, DateTime now) {
+  if (value == null) return null;
+  final parts = value.split(':');
+  if (parts.length != 2) return null;
+  final hour = int.tryParse(parts[0]);
+  final minute = int.tryParse(parts[1]);
+  if (hour == null || minute == null) return null;
+  return DateTime(now.year, now.month, now.day, hour, minute);
+}
+
+String _profileInitials(StudentAcademicProfile profile) {
+  final name = profile.displayName.trim();
+  if (name.isEmpty) return 'FI';
+  return name
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .take(2)
+      .map((part) => part.substring(0, 1))
+      .join()
+      .toUpperCase();
 }
 
 String _academicSummary(StudentAcademicProfile profile) {

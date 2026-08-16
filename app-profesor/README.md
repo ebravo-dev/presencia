@@ -68,7 +68,7 @@ lib/
 │   └── reports/         # Reportes y estadísticas
 ├── services/
 │   ├── native_altbeacon_channel.dart      # Canal nativo AltBeacon
-│   ├── teacher_beacon_attendance_service.dart # Flujo de asistencia por beacons
+│   ├── ble_beacon_verification_service.dart # Verificación manual del beacon
 │   ├── database_service.dart              # Base de datos local
 │   └── sync_service.dart                  # Sincronización
 └── shared/

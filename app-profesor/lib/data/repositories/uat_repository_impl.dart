@@ -189,13 +189,18 @@ class UatRepositoryImpl implements IUatRepository {
         studentIdMap[student.number.toString()] = student.id!;
       }
       if (student.matricula != null) {
-        studentIdMap[student.matricula!] = student.id ?? student.matricula!;
+        final matricula = student.matricula!.trim().toUpperCase();
+        if (matricula.isNotEmpty) {
+          studentIdMap[matricula] = student.id ?? matricula;
+        }
       }
     }
 
     return registro.asistenciasAlumnos.entries
         .map((entry) {
-          final idAlumno = studentIdMap[entry.key];
+          final idAlumno =
+              studentIdMap[entry.key] ??
+              studentIdMap[entry.key.trim().toUpperCase()];
           if (idAlumno == null) return null;
           return {
             'id_alumno': int.tryParse(idAlumno) ?? 0,

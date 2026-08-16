@@ -34,9 +34,13 @@ import type {
   StudentPresenceObservationCommand,
   StudentPresenceObservationResult,
 } from '../domain/presence-observation.js';
+import { classifyProfessorArrival } from '../domain/professor-attendance-window.js';
 
 export class PrismaAttendanceRepository implements AttendanceRepository {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly timeZone = 'America/Monterrey',
+  ) {}
 
   async attendanceSettings() {
     const current = await this.prisma.attendanceConfiguration.findUnique({
@@ -494,6 +498,22 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
         await this.recordPresenceCommand(transaction, command, 'PROFESSOR_ENTRY', result);
         return result;
       }
+      const configuration = await transaction.attendanceConfiguration.findUnique({
+        where: { id: 'global' },
+        select: { teacherAttendanceToleranceMinutes: true },
+      });
+      const arrivalStatus = classifyProfessorArrival({
+        schedule: group.schedule,
+        observedAt: command.observedAt,
+        timeZone: this.timeZone,
+        toleranceMinutes: configuration?.teacherAttendanceToleranceMinutes ?? 10,
+      });
+      if (arrivalStatus === 'OUTSIDE_WINDOW') {
+        throw new AttendanceDomainError(
+          'PROFESSOR_ENTRY_OUTSIDE_WINDOW',
+          'La ventana para registrar la entrada de esta clase ya terminó o todavía no inicia.',
+        );
+      }
       const session = await transaction.attendanceSession.upsert({
         where: { groupId_date: { groupId: group.id, date } },
         create: {
@@ -870,7 +890,7 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
     const group = await transaction.attendanceRosterGroup.findUnique({
       where: { externalGroupId: command.externalGroupId },
       select: {
-        id: true, externalGroupId: true, professorExternalId: true, classroom: true, active: true,
+        id: true, externalGroupId: true, professorExternalId: true, classroom: true, schedule: true, active: true,
       },
     });
     if (!group?.active) {

@@ -327,6 +327,7 @@ function DocumentPreview({ report, fallbackTeacher }: { report: AttendanceReport
         ) : (
           <div className="flex gap-4">
           <span>✓ Asistencia</span>
+          <span className="text-amber-600">◷ Asistencia tardía</span>
           <span className="text-red-600">✕ Inasistencia</span>
           <span>— Sin clase</span>
           <span>◷ Clase futura</span>

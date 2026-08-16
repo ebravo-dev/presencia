@@ -4,11 +4,14 @@ Documento de referencia de los cambios realizados en la app de profesores y el b
 
 ## Flujo General
 
-1. La app de profesores abre la pantalla de clases.
-2. Si existe una clase activa dentro de la ventana horaria, la app inicia escaneo del beacon del salon.
-3. Cuando detecta el beacon configurado para ese salon, registra la entrada del profesor con hora exacta.
-4. Despues de registrar entrada, la app cambia automaticamente a escaneo de beacons de alumnos.
-5. Cada alumno detectado se marca como presente localmente y se reporta al backend.
+1. La app de profesores abre la pantalla de clases sin iniciar ningun escaneo del salon.
+2. El profesor entra al detalle de la clase y pulsa `Marcar Entrada`.
+3. Solo entonces la app busca el beacon configurado para ese salon.
+4. Si lo detecta, registra la entrada del profesor con hora exacta.
+5. La deteccion de alumnos tambien se inicia y se detiene mediante su boton dedicado.
+
+La sincronizacion de clases nunca inicia la deteccion del beacon ni crea entradas
+del profesor. Las asistencias locales existentes se conservan durante ese proceso.
 
 ## App de Profesores
 
@@ -59,18 +62,13 @@ Archivos principales:
   - Expone `AltBeaconDetection`.
   - Expone `startScanning`, `stopScanning`, `detectionsStream`.
 
-- `lib/services/teacher_beacon_attendance_service.dart`
-  - Orquesta el flujo completo.
-  - Detecta la clase activa.
-  - Busca beacon del salon.
-  - Guarda entrada local del profesor.
-  - Cambia a escaneo de beacons de alumnos.
-  - Marca alumnos presentes localmente.
-  - Reporta detecciones al backend.
-
 - `lib/services/ble_beacon_verification_service.dart`
-  - Ahora usa `NativeAltBeaconChannel`.
-  - Ya no usa el canal BLE anterior.
+  - Usa `NativeAltBeaconChannel`.
+  - Se invoca exclusivamente desde los botones `Marcar Entrada` y `Marcar Salida`.
+  - No se ejecuta al abrir la app, reanudarla ni sincronizar clases.
+
+- `lib/services/student_attendance_ble_service.dart`
+  - Detecta alumnos solo al pulsar el boton dedicado en el detalle de la clase.
 
 - `lib/shared/models/alumno.dart`
   - Se agrego `beaconUuid`.

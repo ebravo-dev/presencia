@@ -8,17 +8,19 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
   private let serviceUuid = CBUUID(string: "9f5f7f86-8e67-4f12-a8a5-b7f6f4f7b2c1")
   private let attendanceUuidCharacteristicUuid = CBUUID(string: "9f5f7f86-8e67-4f12-a8a5-b7f6f4f7b2c2")
   private let confirmationCharacteristicUuid = CBUUID(string: "9f5f7f86-8e67-4f12-a8a5-b7f6f4f7b2c3")
+  private let maxConcurrentConnections = 6
 
   private var centralManager: CBCentralManager?
   private var eventSink: FlutterEventSink?
   private var targetUuids: Set<String> = []
-  private var confirmationPayload: Data?
+  private var confirmationPayloads: [String: Data] = [:]
   private var handledUuids: Set<String> = []
   private var inFlightUuids: Set<String> = []
   private var peripherals: [UUID: CBPeripheral] = [:]
   private var rssiByPeripheral: [UUID: NSNumber] = [:]
   private var pendingDetections: [UUID: [String: Any]] = [:]
   private var pendingUuidByPeripheral: [UUID: String] = [:]
+  private var teacherAckTimeouts: [String: DispatchWorkItem] = [:]
   private var pendingStartResult: FlutterResult?
 
   override init() {
@@ -56,20 +58,43 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
     switch call.method {
     case "startScanning":
       guard let args = call.arguments as? [String: Any],
-            let uuids = args["uuids"] as? [String],
-            !uuids.isEmpty,
-            let payload = args["confirmationPayload"] as? String,
-            let payloadData = payload.data(using: .utf8),
-            !payloadData.isEmpty
+            let rawPayloads = args["confirmationPayloads"] as? [String: Any]
       else {
-        result(FlutterError(code: "INVALID_ARGUMENT", message: "Se requieren UUIDs y contexto de clase", details: nil))
+        result(FlutterError(code: "INVALID_ARGUMENT", message: "Se requieren confirmaciones por matricula", details: nil))
         return
       }
-      startScanning(uuids: uuids, confirmationPayload: payloadData, result: result)
+      let payloads = rawPayloads.reduce(into: [String: Data]()) { values, entry in
+        let normalized = normalizeUuid(entry.key)
+        if !normalized.isEmpty,
+           let payload = entry.value as? String,
+           let data = payload.data(using: .utf8),
+           !data.isEmpty {
+          values[normalized] = data
+        }
+      }
+      guard !payloads.isEmpty else {
+        result(FlutterError(code: "INVALID_ARGUMENT", message: "Las confirmaciones por matricula son invalidas", details: nil))
+        return
+      }
+      startScanning(confirmationPayloads: payloads, result: result)
 
     case "stopScanning":
       stopScanning()
       result(true)
+
+    case "confirmAttendance":
+      guard let args = call.arguments as? [String: Any],
+            let rawUuid = args["uuid"] as? String
+      else {
+        result(FlutterError(code: "INVALID_ARGUMENT", message: "Se requiere el UUID del alumno", details: nil))
+        return
+      }
+      let normalized = normalizeUuid(rawUuid)
+      guard !normalized.isEmpty else {
+        result(FlutterError(code: "INVALID_ARGUMENT", message: "UUID de alumno inválido", details: nil))
+        return
+      }
+      result(confirmAttendance(normalizedUuid: normalized))
 
     default:
       result(FlutterMethodNotImplemented)
@@ -77,16 +102,17 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
   }
 
   private func startScanning(
-    uuids: [String],
-    confirmationPayload: Data,
+    confirmationPayloads: [String: Data],
     result: @escaping FlutterResult
   ) {
-    targetUuids = Set(uuids.map(normalizeUuid).filter { !$0.isEmpty })
-    self.confirmationPayload = confirmationPayload
+    targetUuids = Set(confirmationPayloads.keys)
+    self.confirmationPayloads = confirmationPayloads
     handledUuids.removeAll()
     inFlightUuids.removeAll()
     pendingDetections.removeAll()
     pendingUuidByPeripheral.removeAll()
+    teacherAckTimeouts.values.forEach { $0.cancel() }
+    teacherAckTimeouts.removeAll()
     guard !targetUuids.isEmpty else {
       result(FlutterError(code: "INVALID_UUID", message: "UUIDs invalidos", details: nil))
       return
@@ -118,6 +144,8 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
     rssiByPeripheral.removeAll()
     pendingDetections.removeAll()
     pendingUuidByPeripheral.removeAll()
+    teacherAckTimeouts.values.forEach { $0.cancel() }
+    teacherAckTimeouts.removeAll()
     inFlightUuids.removeAll()
   }
 
@@ -142,6 +170,9 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
     rssi RSSI: NSNumber
   ) {
     if peripherals[peripheral.identifier] != nil { return }
+    // Keep scanning the whole roster while processing a safe number of GATT
+    // connections at once; duplicate advertisements fill slots as they free.
+    if peripherals.count >= maxConcurrentConnections { return }
     peripherals[peripheral.identifier] = peripheral
     rssiByPeripheral[peripheral.identifier] = RSSI
     peripheral.delegate = self
@@ -172,7 +203,8 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
   }
 
   func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-    guard characteristic.uuid == attendanceUuidCharacteristicUuid,
+    guard error == nil,
+          characteristic.uuid == attendanceUuidCharacteristicUuid,
           let value = characteristic.value,
           let uuid = String(data: value, encoding: .utf8)
     else {
@@ -191,8 +223,8 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
     inFlightUuids.insert(normalized)
 
     if let service = peripheral.services?.first(where: { $0.uuid == serviceUuid }),
-       let confirmation = service.characteristics?.first(where: { $0.uuid == confirmationCharacteristicUuid }),
-       let data = confirmationPayload,
+       service.characteristics?.contains(where: { $0.uuid == confirmationCharacteristicUuid }) == true,
+       let data = confirmationPayloads[normalized],
        data.count <= peripheral.maximumWriteValueLength(for: .withResponse) {
       var payload: [String: Any] = [
         "uuid": uuid,
@@ -203,7 +235,8 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
       }
       pendingDetections[peripheral.identifier] = payload
       pendingUuidByPeripheral[peripheral.identifier] = normalized
-      peripheral.writeValue(data, for: confirmation, type: .withResponse)
+      eventSink?([payload])
+      scheduleTeacherAckTimeout(for: peripheral, normalizedUuid: normalized)
     } else {
       inFlightUuids.remove(normalized)
       centralManager?.cancelPeripheralConnection(peripheral)
@@ -218,15 +251,13 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
     guard characteristic.uuid == confirmationCharacteristicUuid else { return }
 
     let normalized = pendingUuidByPeripheral.removeValue(forKey: peripheral.identifier)
-    let payload = pendingDetections.removeValue(forKey: peripheral.identifier)
+    pendingDetections.removeValue(forKey: peripheral.identifier)
     if let normalized = normalized {
+      teacherAckTimeouts.removeValue(forKey: normalized)?.cancel()
       inFlightUuids.remove(normalized)
       if error == nil {
         handledUuids.insert(normalized)
       }
-    }
-    if error == nil, let payload = payload {
-      eventSink?([payload])
     }
     centralManager?.cancelPeripheralConnection(peripheral)
   }
@@ -244,8 +275,39 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
     rssiByPeripheral.removeValue(forKey: peripheral.identifier)
     pendingDetections.removeValue(forKey: peripheral.identifier)
     if let normalized = pendingUuidByPeripheral.removeValue(forKey: peripheral.identifier) {
+      teacherAckTimeouts.removeValue(forKey: normalized)?.cancel()
       inFlightUuids.remove(normalized)
     }
+  }
+
+  private func confirmAttendance(normalizedUuid: String) -> Bool {
+    guard let pending = pendingUuidByPeripheral.first(where: { $0.value == normalizedUuid }),
+          let peripheral = peripherals[pending.key],
+          let service = peripheral.services?.first(where: { $0.uuid == serviceUuid }),
+          let confirmation = service.characteristics?.first(where: { $0.uuid == confirmationCharacteristicUuid }),
+          let data = confirmationPayloads[normalizedUuid],
+          data.count <= peripheral.maximumWriteValueLength(for: .withResponse)
+    else {
+      return false
+    }
+
+    peripheral.writeValue(data, for: confirmation, type: .withResponse)
+    return true
+  }
+
+  private func scheduleTeacherAckTimeout(for peripheral: CBPeripheral, normalizedUuid: String) {
+    teacherAckTimeouts.removeValue(forKey: normalizedUuid)?.cancel()
+    let peripheralId = peripheral.identifier
+    let timeout = DispatchWorkItem { [weak self] in
+      guard let self = self,
+            self.pendingUuidByPeripheral[peripheralId] == normalizedUuid
+      else {
+        return
+      }
+      self.centralManager?.cancelPeripheralConnection(peripheral)
+    }
+    teacherAckTimeouts[normalizedUuid] = timeout
+    DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: timeout)
   }
 
   private func normalizeUuid(_ uuid: String) -> String {

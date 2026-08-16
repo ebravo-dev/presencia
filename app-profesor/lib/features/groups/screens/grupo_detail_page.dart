@@ -87,10 +87,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       StudentAttendanceBleService();
   StreamSubscription<List<StudentAttendanceDetection>>?
   _studentBeaconSubscription;
+  Future<void> _studentDetectionQueue = Future<void>.value();
   bool _isStudentBeaconScanning = false;
   bool _isLoadingStudentBeaconBindings = false;
   Map<String, String> _studentKeyByBeaconUuid = {};
-  List<String> _studentBeaconScanUuids = [];
   final Set<String> _detectedStudentBeaconUuids = {};
   final Set<String> _automaticallyDetectedStudentKeys = {};
   bool _studentScanTimerEnabled = false;
@@ -924,7 +924,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                         child: Text(
                           _entradaProfesor == null
                               ? 'Marcar Entrada'
-                              : 'Entrada: ${_getFormattedDate(_entradaProfesor!)} ${_formatTime(_entradaProfesor!)}',
+                              : '${_entradaEsTardia(_entradaProfesor!) ? 'Entrada tardía' : 'Entrada'}: ${_getFormattedDate(_entradaProfesor!)} ${_formatTime(_entradaProfesor!)}',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.9),
                             fontSize: 18,
@@ -1137,12 +1137,22 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     }
 
     HapticFeedback.heavyImpact();
+    final entrada = DateTime.now();
     setState(() {
-      _entradaProfesor = DateTime.now();
+      _entradaProfesor = entrada;
       _entradaVerificada = resultado.verificada;
       _motivoEntrada = resultado.motivo;
     });
     await _guardarAsistencia();
+    if (mounted && _entradaEsTardia(entrada)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Entrada registrada como asistencia tardía.'),
+          backgroundColor: Colors.orange[700],
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
     if (resultado.verificada && resultado.beaconUuid != null) {
       await _sincronizarEntradaProfesor(resultado.beaconUuid!);
     }
@@ -1240,20 +1250,32 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   }
 
   String _alumnoKey(Alumno alumno) {
-    return alumno.id ?? alumno.number.toString();
+    final matricula = alumno.matricula?.trim().toUpperCase();
+    if (matricula != null && matricula.isNotEmpty) return matricula;
+    final id = alumno.id?.trim();
+    return id != null && id.isNotEmpty ? id : alumno.number.toString();
   }
 
   Map<String, bool> _normalizarAsistencias(Map<String, bool> asistencias) {
-    final numberToId = <String, String>{};
+    final aliasesToStudentKey = <String, String>{};
     for (final alumno in widget.grupo.students) {
-      if (alumno.id != null) {
-        numberToId[alumno.number.toString()] = alumno.id!;
+      final studentKey = _alumnoKey(alumno);
+      aliasesToStudentKey[studentKey] = studentKey;
+      aliasesToStudentKey[alumno.number.toString()] = studentKey;
+      final id = alumno.id?.trim();
+      if (id != null && id.isNotEmpty) aliasesToStudentKey[id] = studentKey;
+      final matricula = alumno.matricula?.trim().toUpperCase();
+      if (matricula != null && matricula.isNotEmpty) {
+        aliasesToStudentKey[matricula] = studentKey;
       }
     }
 
     final normalized = <String, bool>{};
     asistencias.forEach((key, value) {
-      final normalizedKey = numberToId[key] ?? key;
+      final normalizedKey =
+          aliasesToStudentKey[key] ??
+          aliasesToStudentKey[key.trim().toUpperCase()] ??
+          key;
       normalized[normalizedKey] = value;
     });
 
@@ -1319,14 +1341,15 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         studentIdMap[studentId] = studentId;
         studentIdMap[student.number.toString()] = studentId;
         if (student.matricula != null) {
-          studentIdMap[student.matricula!] = studentId;
+          studentIdMap[student.matricula!.trim().toUpperCase()] = studentId;
         }
       }
     }
 
     final attendances = <Map<String, dynamic>>[];
     _asistencias.forEach((key, present) {
-      final studentId = studentIdMap[key];
+      final studentId =
+          studentIdMap[key] ?? studentIdMap[key.trim().toUpperCase()];
       if (studentId == null) return;
 
       attendances.add({
@@ -1432,19 +1455,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       return;
     }
 
-    if (_entradaVerificada && _entradaProfesor != null) {
-      final beaconUuid = _authStorage.getBeaconUuidForClassroom(
-        widget.grupo.classroom,
-      );
-      if (beaconUuid != null && beaconUuid.isNotEmpty) {
-        await _sincronizarEntradaProfesor(beaconUuid);
-      }
-    }
-    if (_salidaProfesor != null) {
-      await _sincronizarSalidaProfesor();
-    }
-    if (!mounted) return;
-
+    // La presencia del profesor se envía únicamente cuando se verifica la
+    // entrada o la salida. Repetirla al subir alumnos usaría la hora actual del
+    // servidor y podría crear una marca distinta a la que ya fue tomada.
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1762,13 +1775,30 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   }
 
   bool _puedeEscanearAlumnos() {
-    return _esFechaHoy() &&
-        _esDiaDeClase() &&
-        AttendanceWindow.canTakeAttendance(
-          widget.horario,
-          DateTime.now(),
-          toleranceMinutes: ApiConstants.teacherAttendanceToleranceMinutes,
-        );
+    return AttendanceWindow.canTakeStudentAttendanceForDate(
+      widget.horario,
+      selectedDate: _selectedDateTime,
+      now: DateTime.now(),
+      isClassDay: _esDiaDeClase(),
+      toleranceMinutes: ApiConstants.teacherAttendanceToleranceMinutes,
+    );
+  }
+
+  String _mensajeEscaneoNoDisponible() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final selectedDay = DateTime(
+      _selectedDateTime.year,
+      _selectedDateTime.month,
+      _selectedDateTime.day,
+    );
+    if (selectedDay.isAfter(today)) {
+      return 'No se puede tomar asistencia para una fecha futura.';
+    }
+    if (!_esDiaDeClase()) {
+      return 'La fecha seleccionada no corresponde a un día de clase de esta materia.';
+    }
+    return 'La asistencia de hoy solo puede escanearse dentro del horario de la clase.';
   }
 
   bool _puedeSubirAsistencia() {
@@ -1786,15 +1816,19 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
   Future<Map<String, String>> _loadStudentBeaconBindingsForScan() async {
     final fallback = <String, String>{};
-    _studentBeaconScanUuids = [];
 
     for (final alumno in widget.grupo.students) {
       final beaconUuid = alumno.beaconUuid;
-      if (beaconUuid == null || beaconUuid.isEmpty) continue;
+      final matricula = alumno.matricula?.trim().toUpperCase();
+      if (beaconUuid == null ||
+          beaconUuid.isEmpty ||
+          matricula == null ||
+          matricula.isEmpty) {
+        continue;
+      }
       final normalized = _normalizeBeaconUuid(beaconUuid);
       if (normalized.isEmpty) continue;
       fallback[normalized] = _alumnoKey(alumno);
-      _studentBeaconScanUuids.add(beaconUuid);
     }
 
     final matriculas = widget.grupo.students
@@ -1816,11 +1850,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       },
       (bindings) {
         final resolved = <String, String>{};
-        final scanUuids = <String>[];
-        final studentKeys = {
-          for (final alumno in widget.grupo.students)
-            if (alumno.id != null) alumno.id!: _alumnoKey(alumno),
-        };
         final studentKeysByMatricula = {
           for (final alumno in widget.grupo.students)
             if (alumno.matricula?.trim().isNotEmpty ?? false)
@@ -1828,29 +1857,23 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         };
 
         for (final binding in bindings) {
-          final studentId = binding['studentId']?.toString();
           final matricula = binding['matricula']?.toString();
           final beaconUuid = binding['attendanceUuid']?.toString();
-          if (beaconUuid == null || beaconUuid.isEmpty) {
+          if (matricula == null ||
+              matricula.trim().isEmpty ||
+              beaconUuid == null ||
+              beaconUuid.isEmpty) {
             continue;
           }
           final studentKey =
-              (matricula == null || matricula.trim().isEmpty
-                  ? null
-                  : studentKeysByMatricula[matricula.trim().toUpperCase()]) ??
-              (studentId == null || studentId.isEmpty
-                  ? null
-                  : studentKeys[studentId]) ??
-              studentId;
+              studentKeysByMatricula[matricula.trim().toUpperCase()];
           if (studentKey == null || studentKey.isEmpty) continue;
           final normalized = _normalizeBeaconUuid(beaconUuid);
           if (normalized.isEmpty) continue;
           resolved[normalized] = studentKey;
-          scanUuids.add(beaconUuid);
         }
 
         if (resolved.isEmpty) return fallback;
-        _studentBeaconScanUuids = scanUuids;
         return resolved;
       },
     );
@@ -1861,10 +1884,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
     if (!_puedeEscanearAlumnos()) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'La detección Bluetooth solo está disponible para la clase de hoy.',
-          ),
+        SnackBar(
+          content: Text(_mensajeEscaneoNoDisponible()),
           backgroundColor: Colors.orange,
         ),
       );
@@ -1897,7 +1918,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     final bindings = await _loadStudentBeaconBindingsForScan();
     if (!mounted) return;
 
-    if (bindings.isEmpty || _studentBeaconScanUuids.isEmpty) {
+    if (bindings.isEmpty) {
       setState(() {
         _isLoadingStudentBeaconBindings = false;
       });
@@ -1910,23 +1931,54 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       return;
     }
 
+    final studentsByKey = {
+      for (final student in widget.grupo.students) _alumnoKey(student): student,
+    };
+    final attendanceDay = DateTime(
+      _selectedDateTime.year,
+      _selectedDateTime.month,
+      _selectedDateTime.day,
+    );
+    final confirmationsByUuid = <String, StudentAttendanceGattConfirmation>{};
+    final scannableBindings = <String, String>{};
+    for (final binding in bindings.entries) {
+      final student = studentsByKey[binding.value];
+      final matricula = student?.matricula?.trim().toUpperCase();
+      if (matricula == null || matricula.isEmpty) continue;
+      scannableBindings[binding.key] = binding.value;
+      confirmationsByUuid[binding.key] = StudentAttendanceGattConfirmation(
+        matricula: matricula,
+        materia: widget.grupo.subject,
+        dia: attendanceDay,
+      );
+    }
+
+    if (confirmationsByUuid.isEmpty) {
+      setState(() {
+        _isLoadingStudentBeaconBindings = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No hay alumnos con UUID y matrícula válidos en este grupo.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     await _studentBeaconSubscription?.cancel();
-    _studentKeyByBeaconUuid = bindings;
+    _studentKeyByBeaconUuid = scannableBindings;
     _studentBeaconSubscription = _studentBeaconService.detectionsStream.listen(
-      _handleStudentBeaconDetections,
+      _enqueueStudentBeaconDetections,
     );
 
     _bleBeaconService.cancelScan();
     bool started = false;
     try {
       started = await _studentBeaconService.startScanning(
-        uuids: _studentBeaconScanUuids,
-        classContext: StudentAttendanceClassContext(
-          classId: widget.grupo.id,
-          className: widget.grupo.name,
-          group: widget.grupo.groupLetter ?? widget.grupo.grupoLetra,
-          classroom: widget.grupo.classroom,
-        ),
+        confirmationsByUuid: confirmationsByUuid,
       );
     } on PlatformException catch (error) {
       Logger.info(
@@ -2002,9 +2054,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     _studentScanEndsAt = null;
     await _studentBeaconSubscription?.cancel();
     _studentBeaconSubscription = null;
+    await _studentDetectionQueue;
     await _studentBeaconService.stopScanning();
     _studentKeyByBeaconUuid = {};
-    _studentBeaconScanUuids = [];
     if (mounted) {
       setState(() {
         _isStudentBeaconScanning = false;
@@ -2028,30 +2080,144 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   Future<void> _handleStudentBeaconDetections(
     List<StudentAttendanceDetection> detections,
   ) async {
-    if (!_isStudentBeaconScanning || detections.isEmpty) return;
+    if ((!_isStudentBeaconScanning && !_isLoadingStudentBeaconBindings) ||
+        detections.isEmpty) {
+      return;
+    }
 
-    final updates = <String, bool>{};
+    final studentsByUuid = <String, String>{};
+    final previousAttendance = <String, ({bool existed, bool? wasPresent})>{};
+    final newlyDetectedUuids = <String>{};
+    final newlyAutomaticStudentKeys = <String>{};
 
     for (final detection in detections) {
       final normalized = _normalizeBeaconUuid(detection.uuid);
       final studentKey = _studentKeyByBeaconUuid[normalized];
       if (studentKey == null) continue;
-      if (!_detectedStudentBeaconUuids.add(normalized)) continue;
-      updates[studentKey] = true;
-      _automaticallyDetectedStudentKeys.add(studentKey);
+      studentsByUuid[normalized] = studentKey;
+      if (_detectedStudentBeaconUuids.contains(normalized)) continue;
+
+      previousAttendance.putIfAbsent(
+        studentKey,
+        () => (
+          existed: _asistencias.containsKey(studentKey),
+          wasPresent: _asistencias[studentKey],
+        ),
+      );
+      newlyDetectedUuids.add(normalized);
+      if (!_automaticallyDetectedStudentKeys.contains(studentKey)) {
+        newlyAutomaticStudentKeys.add(studentKey);
+      }
     }
 
-    if (updates.isEmpty) return;
+    if (newlyDetectedUuids.isNotEmpty) {
+      void acceptDetections() {
+        for (final studentKey in previousAttendance.keys) {
+          _asistencias[studentKey] = true;
+        }
+        _detectedStudentBeaconUuids.addAll(newlyDetectedUuids);
+        _automaticallyDetectedStudentKeys.addAll(newlyAutomaticStudentKeys);
+      }
 
-    if (mounted) {
-      setState(() {
-        _asistencias.addAll(updates);
-      });
-    } else {
-      _asistencias.addAll(updates);
+      if (mounted) {
+        setState(acceptDetections);
+      } else {
+        acceptDetections();
+      }
+
+      try {
+        await _guardarAsistencia();
+      } catch (error, stackTrace) {
+        Logger.error(
+          'No se pudo guardar una detección de asistencia; no se confirmó al alumno.',
+          error,
+          stackTrace,
+        );
+
+        void rollbackDetections() {
+          for (final entry in previousAttendance.entries) {
+            if (entry.value.existed) {
+              _asistencias[entry.key] = entry.value.wasPresent ?? false;
+            } else {
+              _asistencias.remove(entry.key);
+            }
+          }
+          _detectedStudentBeaconUuids.removeAll(newlyDetectedUuids);
+          _automaticallyDetectedStudentKeys.removeAll(
+            newlyAutomaticStudentKeys,
+          );
+        }
+
+        if (mounted) {
+          setState(rollbackDetections);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'No se pudo guardar la asistencia. El alumno no recibió confirmación.',
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        } else {
+          rollbackDetections();
+        }
+        return;
+      }
+
+      if (mounted) {
+        await WidgetsBinding.instance.endOfFrame;
+      }
     }
 
-    await _guardarAsistencia();
+    for (final entry in studentsByUuid.entries) {
+      if (_asistencias[entry.value] != true) continue;
+      try {
+        final confirmationStarted = await _studentBeaconService
+            .confirmAttendance(entry.key);
+        if (!confirmationStarted) {
+          Logger.info(
+            '[StudentBeaconScan] La conexión de ${entry.key} terminó antes de confirmar; se reintentará al detectarlo de nuevo.',
+          );
+        }
+      } on PlatformException catch (error, stackTrace) {
+        Logger.error(
+          'No se pudo confirmar la asistencia al teléfono del alumno.',
+          error,
+          stackTrace,
+        );
+      }
+    }
+  }
+
+  void _enqueueStudentBeaconDetections(
+    List<StudentAttendanceDetection> detections,
+  ) {
+    final previous = _studentDetectionQueue;
+    _studentDetectionQueue = _processQueuedStudentDetections(
+      previous,
+      detections,
+    );
+  }
+
+  Future<void> _processQueuedStudentDetections(
+    Future<void> previous,
+    List<StudentAttendanceDetection> detections,
+  ) async {
+    try {
+      await previous;
+    } catch (_) {
+      // A failed batch must not prevent later students from being processed.
+    }
+
+    try {
+      await _handleStudentBeaconDetections(detections);
+    } catch (error, stackTrace) {
+      Logger.error(
+        'Error procesando una detección BLE de alumno.',
+        error,
+        stackTrace,
+      );
+    }
   }
 
   String _getFormattedDate(DateTime dateTime) {
@@ -2147,6 +2313,15 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     );
   }
 
+  bool _entradaEsTardia(DateTime entrada) {
+    return AttendanceWindow.arrivalStatus(
+          widget.horario,
+          entrada,
+          toleranceMinutes: ApiConstants.teacherAttendanceToleranceMinutes,
+        ) ==
+        ProfessorArrivalStatus.late;
+  }
+
   bool _puedeMarcarSalida() {
     return AttendanceWindow.canMarkExit(
       widget.horario,
@@ -2163,11 +2338,16 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     final tolerance = ApiConstants.teacherAttendanceToleranceMinutes;
     final ventanaInicio = inicioClase.subtract(Duration(minutes: tolerance));
     final ventanaFin = finClase.add(Duration(minutes: tolerance));
+    final finPuntual = inicioClase.add(Duration(minutes: tolerance));
+    final inicioTardio = finPuntual.add(const Duration(minutes: 1));
 
     final horaInicio = _formatTime(ventanaInicio);
     final horaFin = _formatTime(ventanaFin);
+    final horaFinPuntual = _formatTime(finPuntual);
+    final horaInicioTardio = _formatTime(inicioTardio);
 
-    return 'Puedes marcar entrada entre $horaInicio y $horaFin';
+    return 'Puedes marcar entrada entre $horaInicio y $horaFin. '
+        'Será puntual hasta $horaFinPuntual y tardía desde $horaInicioTardio.';
   }
 
   String _getMensajeVentanaSalida() {

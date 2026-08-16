@@ -13,7 +13,6 @@ import '../../../../shared/models/grupo.dart';
 import '../../../../services/asistencia_local_service.dart';
 import '../../../../services/api_service.dart';
 import '../../../../services/auth_storage_service.dart';
-import '../../../../services/teacher_beacon_attendance_service.dart';
 import '../../authentication/providers/profesor_auth_provider.dart';
 import 'grupo_detail_page.dart';
 import 'upload_management_page.dart';
@@ -26,7 +25,7 @@ class GruposPage extends ConsumerStatefulWidget {
 }
 
 class _GruposPageState extends ConsumerState<GruposPage>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   bool _isExpanded = false; // Control de expansión de tarjetas
   bool _showTitle = true; // Control de visibilidad del título
@@ -56,7 +55,6 @@ class _GruposPageState extends ConsumerState<GruposPage>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
 
     // Animación pulsante para el indicador de clase actual
     _pulseController = AnimationController(
@@ -83,21 +81,12 @@ class _GruposPageState extends ConsumerState<GruposPage>
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _titleVisibilityTimer?.cancel();
     _scheduleRefreshTimer?.cancel();
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     _pulseController.dispose();
-    TeacherBeaconAttendanceService().stop();
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) {
-      TeacherBeaconAttendanceService().stop();
-    }
   }
 
   /// Checks sync status on app start and handles accordingly
@@ -388,12 +377,6 @@ class _GruposPageState extends ConsumerState<GruposPage>
           ? Brightness.dark
           : Brightness.light,
     );
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && grupos.isNotEmpty) {
-        TeacherBeaconAttendanceService().startForCurrentClass(grupos);
-      }
-    });
 
     // Ordenar grupos por proximidad
     final sortedGruposWithIndex = _sortGruposByProximity(grupos);
@@ -1535,7 +1518,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Las asistencias no subidas y los datos locales serán reemplazados con la información actualizada del portal.',
+                            'Las asistencias ya tomadas se conservarán. Solo se actualizarán tus clases con la información del portal.',
                             style: TextStyle(
                               fontSize: 13,
                               color: Colors.orange,
@@ -1671,7 +1654,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Las asistencias no subidas y los datos locales serán reemplazados con la información actualizada del portal.',
+                            'Las asistencias ya tomadas se conservarán. Solo se actualizarán tus clases con la información del portal.',
                             style: TextStyle(
                               fontSize: 13,
                               color: Colors.orange,

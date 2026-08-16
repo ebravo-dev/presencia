@@ -1,26 +1,109 @@
 import 'dart:convert';
 
 import 'package:appprofesoresuniversidad/services/student_attendance_ble_service.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('GATT confirmation identifies the active professor class', () {
-    const context = StudentAttendanceClassContext(
-      classId: 'group-42',
-      className: 'Redes y telecomunicaciones',
-      group: 'A',
-      classroom: 'LC-3',
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const channel = MethodChannel('com.presencia/student_attendance_ble');
+
+  tearDown(() async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null);
+  });
+
+  test('GATT confirmation contains matricula, materia and attendance day', () {
+    final confirmation = StudentAttendanceGattConfirmation(
+      matricula: ' 2200000001 ',
+      materia: 'Redes y telecomunicaciones',
+      dia: DateTime(2026, 8, 16, 9, 30),
     );
 
-    final payload = jsonDecode(context.toGattPayload()) as Map<String, dynamic>;
+    final payload =
+        jsonDecode(confirmation.toGattPayload()) as Map<String, dynamic>;
 
     expect(payload, {
-      'v': 1,
-      's': 'confirmed',
-      'id': 'group-42',
-      'name': 'Redes y telecomunicaciones',
-      'group': 'A',
-      'room': 'LC-3',
+      'id': '2200000001',
+      'materia': 'Redes y telecomunicaciones',
+      'dia': '2026-08-16',
     });
   });
+
+  test('homonymous students receive different GATT identities', () {
+    final first = StudentAttendanceGattConfirmation(
+      matricula: '2200000001',
+      materia: 'Redes',
+      dia: DateTime(2026, 8, 16),
+    );
+    final second = StudentAttendanceGattConfirmation(
+      matricula: '2200000002',
+      materia: 'Redes',
+      dia: DateTime(2026, 8, 16),
+    );
+
+    expect(first.toGattPayload(), isNot(second.toGattPayload()));
+  });
+
+  test('scans by registered UUID with one payload per student', () async {
+    MethodCall? capturedCall;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          capturedCall = call;
+          return true;
+        });
+
+    final started = await StudentAttendanceBleService().startScanning(
+      confirmationsByUuid: {
+        '11111111-2222-4333-8444-555555555555':
+            StudentAttendanceGattConfirmation(
+              matricula: '2200000001',
+              materia: 'Redes',
+              dia: DateTime(2026, 8, 16),
+            ),
+        'AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE':
+            StudentAttendanceGattConfirmation(
+              matricula: '2200000002',
+              materia: 'Redes',
+              dia: DateTime(2026, 8, 16),
+            ),
+      },
+    );
+
+    expect(started, isTrue);
+    expect(capturedCall?.method, 'startScanning');
+    final arguments = capturedCall?.arguments as Map<Object?, Object?>;
+    final payloads = arguments['confirmationPayloads'] as Map<Object?, Object?>;
+    expect(payloads.keys.toSet(), {
+      '11111111222243338444555555555555',
+      'aaaaaaaabbbb4ccc8dddeeeeeeeeeeee',
+    });
+    expect(jsonDecode(payloads['11111111222243338444555555555555'] as String), {
+      'id': '2200000001',
+      'materia': 'Redes',
+      'dia': '2026-08-16',
+    });
+  });
+
+  test(
+    'confirms a UUID only through an explicit teacher-app acknowledgement',
+    () async {
+      MethodCall? capturedCall;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            capturedCall = call;
+            return true;
+          });
+
+      final confirmed = await StudentAttendanceBleService().confirmAttendance(
+        '11111111-2222-4333-8444-555555555555',
+      );
+
+      expect(confirmed, isTrue);
+      expect(capturedCall?.method, 'confirmAttendance');
+      expect(capturedCall?.arguments, {
+        'uuid': '11111111222243338444555555555555',
+      });
+    },
+  );
 }
