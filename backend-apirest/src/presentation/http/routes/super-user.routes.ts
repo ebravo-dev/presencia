@@ -412,21 +412,34 @@ export async function resetDemoEnvironment(services: {
     'sesiones y datos locales',
     'Academic Service',
     'Attendance Service',
+    'Coordination Query Service',
   ] as const;
-  const results = await Promise.allSettled([
-    services.demoPortal.resetData(),
+
+  // Clear the source catalog first, then each downstream layer. Keeping the
+  // phases ordered prevents background synchronization from recreating data
+  // while another service is still being reset. Each phase still settles all
+  // of its operations so one failure does not skip the remaining cleanups.
+  const portal = await settle(() => services.demoPortal.resetData());
+  const identityAndLocal = await Promise.allSettled([
     services.identityService.resetDemoData(),
     services.resetLocalDemoData(),
+  ]);
+  const domainServices = await Promise.allSettled([
     services.academicService.resetDemoData(),
     services.attendanceService.resetDemoData(),
   ]);
-  const projection = await Promise.allSettled([services.coordinationQuery.resetDemoData()]);
-  const allResults = [...results, ...projection];
+  const projection = await settle(() => services.coordinationQuery.resetDemoData());
+  const allResults: PromiseSettledResult<unknown>[] = [
+    portal,
+    ...identityAndLocal,
+    ...domainServices,
+    projection,
+  ];
   const failed = allResults.flatMap((result, index) => {
     if (result.status === 'fulfilled') return [];
     const error = result.reason;
     return [{
-      component: components[index] ?? 'Coordination Query Service',
+      component: components[index] ?? 'Componente demo desconocido',
       code: error instanceof ApiError ? error.code : 'UNEXPECTED_ERROR',
       statusCode: error instanceof ApiError ? error.statusCode : 500,
     }];
@@ -440,15 +453,23 @@ export async function resetDemoEnvironment(services: {
     );
   }
 
-  const portal = settledValue(results[0]);
-  const identity = settledValue(results[1]);
-  const local = settledValue(results[2]);
+  const portalValue = settledValue(portal);
+  const identity = settledValue(identityAndLocal[0]);
+  const local = settledValue(identityAndLocal[1]);
   return {
-    ...portal.data.deleted,
+    ...portalValue.data.deleted,
     identities: identity.data.identities,
     teacherSessions: local.teacherSessions,
     studentSessions: local.studentSessions,
   };
+}
+
+async function settle<T>(operation: () => Promise<T>): Promise<PromiseSettledResult<T>> {
+  try {
+    return { status: 'fulfilled', value: await operation() };
+  } catch (reason) {
+    return { status: 'rejected', reason };
+  }
 }
 
 function settledValue<T>(result: PromiseSettledResult<T>): T {

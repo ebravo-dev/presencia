@@ -97,14 +97,34 @@ describe('superUserRoutes', () => {
   });
 
   it('coordinates every isolated demo store during a reset', async () => {
-    const demoPortal = { resetData: vi.fn(async () => ({
-      data: { deleted: { teachers: 2, students: 4, classes: 3, attendanceWrites: 5 } },
-    })) };
-    const identityService = { resetDemoData: vi.fn(async () => ({ data: { identities: 6 } })) };
-    const academicService = { resetDemoData: vi.fn(async () => undefined) };
-    const attendanceService = { resetDemoData: vi.fn(async () => undefined) };
-    const coordinationQuery = { resetDemoData: vi.fn(async () => undefined) };
-    const resetLocalDemoData = vi.fn(async () => ({ teacherSessions: 7, studentSessions: 8 }));
+    let sourceCleared = false;
+    let identityAndLocalPending = 2;
+    let domainServicesPending = 2;
+    const demoPortal = { resetData: vi.fn(async () => {
+      sourceCleared = true;
+      return { data: { deleted: { teachers: 2, students: 4, classes: 3, attendanceWrites: 5 } } };
+    }) };
+    const identityService = { resetDemoData: vi.fn(async () => {
+      expect(sourceCleared).toBe(true);
+      identityAndLocalPending -= 1;
+      return { data: { identities: 6 } };
+    }) };
+    const resetLocalDemoData = vi.fn(async () => {
+      expect(sourceCleared).toBe(true);
+      identityAndLocalPending -= 1;
+      return { teacherSessions: 7, studentSessions: 8 };
+    });
+    const academicService = { resetDemoData: vi.fn(async () => {
+      expect(identityAndLocalPending).toBe(0);
+      domainServicesPending -= 1;
+    }) };
+    const attendanceService = { resetDemoData: vi.fn(async () => {
+      expect(identityAndLocalPending).toBe(0);
+      domainServicesPending -= 1;
+    }) };
+    const coordinationQuery = { resetDemoData: vi.fn(async () => {
+      expect(domainServicesPending).toBe(0);
+    }) };
 
     await expect(resetDemoEnvironment({
       demoPortal: demoPortal as never,

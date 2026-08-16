@@ -21,6 +21,10 @@ interface DependencyStatus {
   readonly error?: string;
 }
 
+// The browser and Nginx allow 60 seconds for this multi-service operation.
+// End the gateway hop first so it can still return a structured error.
+const DEMO_RESET_UPSTREAM_TIMEOUT_MS = 55_000;
+
 function headerValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -174,8 +178,13 @@ export async function buildGateway(options: BuildGatewayOptions = {}): Promise<F
       });
     }
     const upstreamUrl = new URL(request.raw.url ?? request.url, upstream).toString();
+    const pathname = new URL(request.raw.url ?? request.url, 'http://gateway.internal').pathname;
+    const upstreamTimeout = request.method === 'DELETE' && pathname === '/api/superUsuario/debug/data'
+      ? Math.max(env.UPSTREAM_TIMEOUT_MS, DEMO_RESET_UPSTREAM_TIMEOUT_MS)
+      : env.UPSTREAM_TIMEOUT_MS;
 
     return reply.from(upstreamUrl, {
+      timeout: upstreamTimeout,
       rewriteRequestHeaders(_originalRequest, headers) {
         const forwardedHeaders = { ...headers };
         delete forwardedHeaders.host;

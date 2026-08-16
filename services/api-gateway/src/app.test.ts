@@ -67,6 +67,34 @@ describe('API Gateway', () => {
     expect(response.json().traceparent).toBe(response.headers.traceparent);
   });
 
+  it('allows the coordinated demo reset to outlive the default upstream timeout', async () => {
+    const slowUat = Fastify();
+    slowUat.delete('/api/superUsuario/debug/data', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      return { data: { reset: true } };
+    });
+    await slowUat.listen({ host: '127.0.0.1', port: 0 });
+    const shortTimeoutGateway = await buildGateway({
+      env: gatewayEnvSchema.parse({
+        ...env,
+        UAT_INTEGRATION_URL: slowUat.listeningOrigin,
+        UPSTREAM_TIMEOUT_MS: 20,
+      }),
+      redis: { ping: async () => 'PONG', quit: async () => 'OK' },
+    });
+
+    const response = await shortTimeoutGateway.inject({
+      method: 'DELETE',
+      url: '/api/superUsuario/debug/data',
+      payload: { confirmation: 'BORRAR DEMO' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ data: { reset: true } });
+    await shortTimeoutGateway.close();
+    await slowUat.close();
+  });
+
   it('fails closed when a cutover target has no configured upstream', async () => {
     const cutoverGateway = await buildGateway({
       env: gatewayEnvSchema.parse({
