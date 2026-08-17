@@ -1,5 +1,5 @@
 import { api, superApi } from './client';
-import type { ActiveAcademicCycleResponse, Assignment, AttendanceSettingsResponse, Beacon, CoordinatorAccount, CoordinatorUser, DebugCatalogResponse, DebugClassResponse, DebugFlowLogsResponse, DebugMutationResponse, DebugScheduleInput, DebugSettingsResponse, DebugStatusResponse, DebugStudent, DebugStudentAttendanceResponse, DebugTeacher, InfrastructureSummaryResponse, OverviewResponse, ProfessorOption, RangeReportResponse, SharedClassAssignment, StudentDeviceBinding, SuperUser, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
+import type { ActiveAcademicCycleResponse, Assignment, AttendanceSettingsResponse, Beacon, CoordinatorAccount, CoordinatorUser, DatabaseCatalogResponse, DatabasePurgeResponse, DatabaseTargetId, DebugCatalogResponse, DebugClassResponse, DebugFlowLogsResponse, DebugMutationResponse, DebugScheduleInput, DebugSettingsResponse, DebugStatusResponse, DebugStudent, DebugStudentAttendanceResponse, DebugTeacher, InfrastructureSummaryResponse, OverviewResponse, ProfessorOption, RangeReportResponse, SharedClassAssignment, StudentDeviceBinding, SuperUser, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
 
 export const coordinationApi = {
   login: async (input: { email: string; password: string }) => (await api.post<{ data: { user: CoordinatorUser; expiresAt: string } }>('/coordinacion/auth/login', input)).data,
@@ -26,6 +26,10 @@ export const superUserApi = {
   login: async (input: { password: string }) => (await superApi.post<{ data: { user: SuperUser; expiresAt: string } }>('/superUsuario/auth/login', input)).data,
   me: async () => (await superApi.get<{ data: { user: SuperUser } }>('/superUsuario/auth/me')).data,
   logout: async () => { await superApi.post('/superUsuario/auth/logout'); },
+  databases: async () => (await superApi.get<DatabaseCatalogResponse>('/superUsuario/bases-datos')).data,
+  purgeDatabase: async (input: { target: DatabaseTargetId | 'all'; confirmation: string }) => (
+    await superApi.post<DatabasePurgeResponse>('/superUsuario/bases-datos/borrar', input, { timeout: 60_000 })
+  ).data,
   activeAcademicCycle: async () => (await superApi.get<ActiveAcademicCycleResponse>('/superUsuario/ciclo-escolar')).data,
   changeActiveAcademicCycle: async (cycleExternalId: number) => (
     await superApi.put<ActiveAcademicCycleResponse>('/superUsuario/ciclo-escolar', { cycleExternalId })

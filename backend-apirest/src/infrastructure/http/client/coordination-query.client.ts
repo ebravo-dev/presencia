@@ -39,6 +39,27 @@ export class CoordinationQueryClient {
     if (!response.ok) throw new ApiError(response.status, 'COORDINATION_QUERY_ERROR', 'El servicio de consultas rechazó el reinicio demo.');
   }
 
+  async purgeAllData(): Promise<void> {
+    let response: Response;
+    try {
+      response = await fetch(new URL('/internal/v1/coordination/data/purge', this.baseUrl), {
+        method: 'POST',
+        signal: AbortSignal.timeout(this.timeoutMs),
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+          'x-internal-service-token': this.internalToken,
+        },
+        body: JSON.stringify({ confirmation: 'PURGE_ALL_DATA' }),
+      });
+    } catch (error) {
+      throw new ApiError(503, 'COORDINATION_QUERY_UNAVAILABLE', 'El servicio de consultas no está disponible.', {
+        cause: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+    if (!response.ok) throw new ApiError(response.status, 'COORDINATION_QUERY_ERROR', 'El servicio de consultas rechazó el borrado de datos.');
+  }
+
   private async get(path: string, query: Record<string, string | number | undefined> = {}) {
     const url = new URL(path, this.baseUrl);
     for (const [key, value] of Object.entries(query)) if (value !== undefined) url.searchParams.set(key, String(value));

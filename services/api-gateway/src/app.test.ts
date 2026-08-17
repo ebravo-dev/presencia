@@ -95,6 +95,34 @@ describe('API Gateway', () => {
     await slowUat.close();
   });
 
+  it('allows the super-user database purge to outlive the default upstream timeout', async () => {
+    const slowUat = Fastify();
+    slowUat.post('/api/superUsuario/bases-datos/borrar', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      return { data: { purged: ['academic'] } };
+    });
+    await slowUat.listen({ host: '127.0.0.1', port: 0 });
+    const shortTimeoutGateway = await buildGateway({
+      env: gatewayEnvSchema.parse({
+        ...env,
+        UAT_INTEGRATION_URL: slowUat.listeningOrigin,
+        UPSTREAM_TIMEOUT_MS: 20,
+      }),
+      redis: { ping: async () => 'PONG', quit: async () => 'OK' },
+    });
+
+    const response = await shortTimeoutGateway.inject({
+      method: 'POST',
+      url: '/api/superUsuario/bases-datos/borrar',
+      payload: { target: 'academic', confirmation: 'BORRAR ACADEMICA' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ data: { purged: ['academic'] } });
+    await shortTimeoutGateway.close();
+    await slowUat.close();
+  });
+
   it('fails closed when a cutover target has no configured upstream', async () => {
     const cutoverGateway = await buildGateway({
       env: gatewayEnvSchema.parse({

@@ -134,6 +134,19 @@ describe('Attendance HTTP API', () => {
     await enabled.close();
   });
 
+  it('allows an authenticated explicit purge outside demo mode', async () => {
+    let resets = 0;
+    const app = await testApp({ resetDemoData: async () => { resets += 1; } });
+    const response = await app.inject({
+      method: 'POST', url: '/internal/v1/attendance/data/purge',
+      headers: { 'x-internal-service-token': token }, payload: { confirmation: 'PURGE_ALL_DATA' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ data: { purged: true, service: 'attendance' } });
+    expect(resets).toBe(1);
+    await app.close();
+  });
+
   it('rejects professor timestamps on attendance captures', async () => {
     const app = await testApp();
     const response = await app.inject({

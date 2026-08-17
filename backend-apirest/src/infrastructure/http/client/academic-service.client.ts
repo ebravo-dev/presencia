@@ -49,6 +49,12 @@ export class AcademicServiceClient implements AcademicSnapshotPublisher, Student
     await this.request('/internal/v1/academic/demo-data', { method: 'DELETE' });
   }
 
+  async purgeAllData(): Promise<void> {
+    await this.request('/internal/v1/academic/data/purge', {
+      method: 'POST', body: { confirmation: 'PURGE_ALL_DATA' },
+    });
+  }
+
   listSharedClasses(): Promise<SharedClassListResponse> {
     return this.request('/internal/v1/academic/shared-classes', { method: 'GET' });
   }

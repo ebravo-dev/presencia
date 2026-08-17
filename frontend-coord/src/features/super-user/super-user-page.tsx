@@ -1,13 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, Bluetooth, Bug, CalendarRange, Copy, Database, KeyRound, Link2, Lock, LogOut, Pencil, Play, PlusCircle, RefreshCw, ShieldCheck, Trash2, UserCog, Users } from 'lucide-react';
+import { Activity, AlertTriangle, Bluetooth, Bug, CalendarRange, Copy, Database, KeyRound, Link2, Lock, LogOut, Pencil, Play, PlusCircle, RefreshCw, ShieldCheck, Trash2, UserCog, Users } from 'lucide-react';
 import { FormEvent, useState } from 'react';
 import { superUserApi } from '@/core/api/coordination.api';
-import type { Beacon, CoordinatorAccount, DebugClassResponse, DebugMutationResponse, DebugScheduleInput, ScheduleDay } from '@/core/api/types';
+import type { Beacon, CoordinatorAccount, DatabaseTargetId, DebugClassResponse, DebugMutationResponse, DebugScheduleInput, ScheduleDay } from '@/core/api/types';
 import { Button, Card, EmptyState, Skeleton, cn } from '@/shared/components/ui';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 
 const REFRESH_INTERVAL_MS = 10_000;
-type Section = 'cycle' | 'coordinators' | 'beacons' | 'students' | 'debug';
+type Section = 'cycle' | 'coordinators' | 'beacons' | 'students' | 'databases' | 'debug';
 
 export function SuperUserPage() {
   const session = useQuery({ queryKey: ['super-user', 'me'], queryFn: superUserApi.me, retry: false });
@@ -101,6 +101,7 @@ function SuperUserConsole() {
           <SectionButton current={section} value="coordinators" onClick={setSection} icon={<UserCog size={17} />} label="Coordinadores" />
           <SectionButton current={section} value="beacons" onClick={setSection} icon={<Bluetooth size={17} />} label="Beacons" />
           <SectionButton current={section} value="students" onClick={setSection} icon={<Link2 size={17} />} label="Alumnos vinculados" />
+          <SectionButton current={section} value="databases" onClick={setSection} icon={<Database size={17} />} label="Bases de datos" />
           <SectionButton current={section} value="debug" onClick={setSection} icon={<Bug size={17} />} label="Debug" />
         </div>
 
@@ -108,6 +109,7 @@ function SuperUserConsole() {
         {section === 'coordinators' && <CoordinatorAdmin />}
         {section === 'beacons' && <BeaconAdmin />}
         {section === 'students' && <StudentBindingAdmin />}
+        {section === 'databases' && <DatabaseAdmin />}
         {section === 'debug' && <DebugAdmin />}
       </div>
     </main>
@@ -129,6 +131,136 @@ function SectionButton({ current, value, onClick, icon, label }: { current: Sect
     >
       {icon}{label}
     </button>
+  );
+}
+
+function DatabaseAdmin() {
+  const queryClient = useQueryClient();
+  const [selectedTargetId, setSelectedTargetId] = useState<DatabaseTargetId | 'all' | null>(null);
+  const [confirmation, setConfirmation] = useState('');
+  const catalog = useQuery({
+    queryKey: ['super-user', 'databases'],
+    queryFn: superUserApi.databases,
+  });
+  const selectedTarget = selectedTargetId === 'all'
+    ? catalog.data?.data.all
+    : catalog.data?.data.databases.find(({ id }) => id === selectedTargetId);
+  const purge = useMutation({
+    mutationFn: () => {
+      if (!selectedTargetId) throw new Error('DATABASE_TARGET_REQUIRED');
+      return superUserApi.purgeDatabase({ target: selectedTargetId, confirmation });
+    },
+    onSuccess: async (response) => {
+      setConfirmation('');
+      setSelectedTargetId(null);
+      if (response.data.sessionInvalidated) {
+        queryClient.clear();
+        window.location.assign('/coordinacion/superUsuario');
+        return;
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['super-user'] }),
+        queryClient.invalidateQueries({ queryKey: ['coordination'] }),
+        queryClient.invalidateQueries({ queryKey: ['shared-classes'] }),
+      ]);
+    },
+  });
+
+  const selectTarget = (target: DatabaseTargetId | 'all') => {
+    purge.reset();
+    setConfirmation('');
+    setSelectedTargetId(target);
+  };
+
+  if (catalog.isLoading) return <Card className="p-5"><Skeleton className="h-48" /></Card>;
+  if (catalog.isError || !catalog.data) {
+    return <Card className="p-5"><EmptyState icon={<Database />} title="Bases no disponibles" description="No se pudo consultar el catálogo de bases de datos." /></Card>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card className="border-red-200 bg-red-50/70 p-5 dark:border-red-950 dark:bg-red-950/15">
+        <div className="flex items-start gap-3">
+          <div className="rounded-xl bg-red-100 p-2.5 text-red-700 dark:bg-red-950 dark:text-red-300"><AlertTriangle size={22} /></div>
+          <div>
+            <h2 className="font-black text-red-950 dark:text-red-100">Zona destructiva</h2>
+            <p className="mt-1 text-sm leading-relaxed text-red-800 dark:text-red-200">
+              Estas acciones eliminan registros de forma irreversible. Se conservan el esquema, las tablas y las migraciones para que los servicios puedan volver a iniciar.
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {catalog.data.data.databases.map((database) => (
+          <Card key={database.id} className="flex flex-col p-5">
+            <div className="mb-3 flex items-center gap-3">
+              <div className="rounded-xl bg-slate-100 p-2.5 text-slate-700 dark:bg-[#15181d] dark:text-slate-200"><Database size={20} /></div>
+              <div><h3 className="font-black">{database.name}</h3><p className="font-mono text-xs text-slate-400">{database.id}</p></div>
+            </div>
+            <p className="mb-5 flex-1 text-sm leading-relaxed text-slate-500">{database.description}</p>
+            <Button variant="danger" onClick={() => selectTarget(database.id)} disabled={purge.isPending}>
+              <Trash2 size={16} />Borrar esta base
+            </Button>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="border-red-300 p-5 dark:border-red-900">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="font-black text-red-700 dark:text-red-300">{catalog.data.data.all.name}</h2>
+            <p className="mt-1 text-sm text-slate-500">{catalog.data.data.all.description} La sesión actual se cerrará.</p>
+          </div>
+          <Button variant="danger" onClick={() => selectTarget('all')} disabled={purge.isPending}>
+            <Trash2 size={17} />Borrar todas
+          </Button>
+        </div>
+      </Card>
+
+      {selectedTarget && (
+        <Card className="border-red-300 p-5 shadow-lg dark:border-red-900">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 shrink-0 text-red-600" size={22} />
+            <div className="w-full">
+              <h2 className="font-black">Confirmar borrado de {selectedTarget.name}</h2>
+              <p className="mt-1 text-sm text-slate-500">Esta operación no se puede deshacer. Escribe exactamente:</p>
+              <code className="mt-3 block rounded-lg bg-slate-950 px-3 py-2 font-mono text-sm font-bold text-red-300">{selectedTarget.confirmationPhrase}</code>
+              <input
+                className="field mt-3 font-mono"
+                value={confirmation}
+                onChange={(event) => setConfirmation(event.target.value)}
+                placeholder={selectedTarget.confirmationPhrase}
+                autoComplete="off"
+                autoFocus
+              />
+              {selectedTarget.invalidatesSuperUserSession && (
+                <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+                  Este borrado elimina Identidad y cerrará la sesión de Super Usuario al finalizar.
+                </p>
+              )}
+              {purge.isError && <p role="alert" className="mt-3 text-sm font-semibold text-red-600">{apiErrorMessage(purge.error, 'No se pudo completar el borrado. Algunas bases podrían haberse eliminado; revisa los servicios antes de reintentar.')}</p>}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button
+                  variant="danger"
+                  disabled={purge.isPending || confirmation !== selectedTarget.confirmationPhrase}
+                  onClick={() => purge.mutate()}
+                >
+                  <Trash2 size={16} />{purge.isPending ? 'Borrando...' : 'Confirmar borrado irreversible'}
+                </Button>
+                <Button type="button" variant="secondary" disabled={purge.isPending} onClick={() => { setSelectedTargetId(null); setConfirmation(''); purge.reset(); }}>Cancelar</Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {purge.isSuccess && !purge.data.data.sessionInvalidated && (
+        <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">
+          Borrado completado: {purge.data.data.purged.join(', ')}.
+        </p>
+      )}
+    </div>
   );
 }
 

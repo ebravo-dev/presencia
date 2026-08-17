@@ -77,6 +77,62 @@ const debugAttendanceSimulationSchema = z.object({
   })).min(1).max(1_000),
 });
 const debugResetSchema = z.object({ confirmation: z.literal('BORRAR DEMO') }).strict();
+const databaseTargetSchema = z.enum([
+  'integration', 'identity', 'academic', 'attendance', 'coordination-query', 'all',
+]);
+const databasePurgeSchema = z.object({
+  target: databaseTargetSchema,
+  confirmation: z.string().trim().min(1).max(80),
+}).strict();
+
+type DatabaseTarget = z.infer<typeof databaseTargetSchema>;
+type SingleDatabaseTarget = Exclude<DatabaseTarget, 'all'>;
+
+const DATABASE_TARGETS: ReadonlyArray<{
+  id: SingleDatabaseTarget;
+  name: string;
+  description: string;
+  confirmationPhrase: string;
+  invalidatesSuperUserSession: boolean;
+}> = [
+  {
+    id: 'integration',
+    name: 'Integración UAT',
+    description: 'Sesiones UAT, clases compartidas, cosechas locales y cola de subidas.',
+    confirmationPhrase: 'BORRAR INTEGRACION UAT',
+    invalidatesSuperUserSession: false,
+  },
+  {
+    id: 'identity',
+    name: 'Identidad',
+    description: 'Identidades, cuentas coordinadoras, credenciales y sesiones. Cerrará esta sesión.',
+    confirmationPhrase: 'BORRAR IDENTIDAD',
+    invalidatesSuperUserSession: true,
+  },
+  {
+    id: 'academic',
+    name: 'Académica',
+    description: 'Profesores, alumnos, ciclos observados, materias, grupos y clases compartidas.',
+    confirmationPhrase: 'BORRAR ACADEMICA',
+    invalidatesSuperUserSession: false,
+  },
+  {
+    id: 'attendance',
+    name: 'Asistencia',
+    description: 'Listas, capturas, detecciones, dispositivos vinculados y beacons.',
+    confirmationPhrase: 'BORRAR ASISTENCIA',
+    invalidatesSuperUserSession: false,
+  },
+  {
+    id: 'coordination-query',
+    name: 'Proyección de coordinación',
+    description: 'Proyecciones utilizadas por dashboard, profesores y reportes.',
+    confirmationPhrase: 'BORRAR PROYECCION COORDINACION',
+    invalidatesSuperUserSession: false,
+  },
+] as const;
+
+const ALL_DATABASES_CONFIRMATION = 'BORRAR TODAS LAS BASES';
 
 export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async (
   fastify,
@@ -112,6 +168,46 @@ export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async
   });
 
   fastify.get('/api/superUsuario/auth/me', async (request) => ({ data: { user: { role: request.superUser?.role } } }));
+  fastify.get('/api/superUsuario/bases-datos', async () => ({
+    data: {
+      databases: DATABASE_TARGETS,
+      all: {
+        id: 'all',
+        name: 'Todas las bases de datos',
+        description: 'Borra los registros de los cinco servicios. Conserva esquemas y migraciones.',
+        confirmationPhrase: ALL_DATABASES_CONFIRMATION,
+        invalidatesSuperUserSession: true,
+      },
+    },
+    meta: { generatedAt: new Date().toISOString() },
+  }));
+  fastify.post('/api/superUsuario/bases-datos/borrar', {
+    config: { rateLimit: { max: 2, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const input = databasePurgeSchema.parse(request.body);
+    const expectedConfirmation = input.target === 'all'
+      ? ALL_DATABASES_CONFIRMATION
+      : DATABASE_TARGETS.find(({ id }) => id === input.target)?.confirmationPhrase;
+    if (input.confirmation !== expectedConfirmation) {
+      return reply.code(400).send({
+        error: 'INVALID_DATABASE_PURGE_CONFIRMATION',
+        message: `Escribe ${expectedConfirmation} para confirmar el borrado.`,
+      });
+    }
+
+    request.log.warn({ target: input.target, actorIdentityId: request.superUser?.id }, 'Super user database purge started.');
+    const purged = await purgeDatabaseData(input.target, {
+      identityService, academicService, attendanceService, coordinationQuery, resetLocalDemoData,
+    });
+    request.log.warn({ target: input.target, purged }, 'Super user database purge completed.');
+    return {
+      data: {
+        purged,
+        purgedAt: new Date().toISOString(),
+        sessionInvalidated: input.target === 'identity' || input.target === 'all',
+      },
+    };
+  });
   fastify.get('/api/superUsuario/ciclo-escolar', async () => {
     const result = await academicService.activeAcademicCycle();
     return { ...result, meta: { mode: env.PRESENCIA_DEBUG_MODE ? 'DEMO' : 'PRODUCTION' } };
@@ -397,6 +493,75 @@ export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async
     };
   });
 };
+
+export async function purgeDatabaseData(target: DatabaseTarget, services: {
+  identityService: Pick<IdentityServiceClient, 'purgeAllData'>;
+  academicService: Pick<AcademicServiceClient, 'purgeAllData'>;
+  attendanceService: Pick<AttendanceServiceCommandClient, 'purgeAllData'>;
+  coordinationQuery: Pick<CoordinationQueryClient, 'purgeAllData'>;
+  resetLocalDemoData: () => Promise<{ teacherSessions: number; studentSessions: number }>;
+}): Promise<SingleDatabaseTarget[]> {
+  const selected = target === 'all'
+    ? DATABASE_TARGETS.map(({ id }) => id)
+    : [target];
+  const purged: SingleDatabaseTarget[] = [];
+  const failed: Array<{ target: SingleDatabaseTarget; code: string; statusCode: number }> = [];
+
+  // Identity is intentionally last: purging it revokes the super-user session
+  // that authorized this request.
+  const ordered: SingleDatabaseTarget[] = [];
+  for (const item of selected) if (item !== 'identity') ordered.push(item);
+  if (selected.includes('identity')) ordered.push('identity');
+
+  for (const item of ordered) {
+    try {
+      await purgeSingleDatabase(item, services);
+      purged.push(item);
+    } catch (error) {
+      failed.push({
+        target: item,
+        code: error instanceof ApiError ? error.code : 'UNEXPECTED_ERROR',
+        statusCode: error instanceof ApiError ? error.statusCode : 500,
+      });
+    }
+  }
+
+  if (failed.length > 0) {
+    throw new ApiError(
+      503,
+      'DATABASE_PURGE_FAILED',
+      `El borrado quedó incompleto. Falló: ${failed.map(({ target: item }) => item).join(', ')}.`,
+      { failed, purged },
+    );
+  }
+  return purged;
+}
+
+async function purgeSingleDatabase(target: SingleDatabaseTarget, services: {
+  identityService: Pick<IdentityServiceClient, 'purgeAllData'>;
+  academicService: Pick<AcademicServiceClient, 'purgeAllData'>;
+  attendanceService: Pick<AttendanceServiceCommandClient, 'purgeAllData'>;
+  coordinationQuery: Pick<CoordinationQueryClient, 'purgeAllData'>;
+  resetLocalDemoData: () => Promise<{ teacherSessions: number; studentSessions: number }>;
+}): Promise<void> {
+  if (target === 'integration') {
+    await services.resetLocalDemoData();
+    return;
+  }
+  if (target === 'identity') {
+    await services.identityService.purgeAllData();
+    return;
+  }
+  if (target === 'academic') {
+    await services.academicService.purgeAllData();
+    return;
+  }
+  if (target === 'attendance') {
+    await services.attendanceService.purgeAllData();
+    return;
+  }
+  await services.coordinationQuery.purgeAllData();
+}
 
 export async function resetDemoEnvironment(services: {
   demoPortal: DemoPortalClient;

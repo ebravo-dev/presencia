@@ -98,4 +98,26 @@ describe('Identity HTTP API', () => {
     expect(resets).toBe(1);
     await enabled.close();
   });
+
+  it('purges all identities only with internal auth and explicit confirmation', async () => {
+    let purges = 0;
+    const app = await buildIdentityApp({
+      env: identityEnvSchema.parse({ NODE_ENV: 'test', INTERNAL_API_TOKEN: internalToken }),
+      sessions: {
+        purgeAllIdentities: async () => { purges += 1; return 7; },
+      } as never,
+      readiness: { check: async () => ({ database: true, redis: true }) },
+    });
+    expect((await app.inject({
+      method: 'POST', url: '/internal/v1/identities/data/purge', payload: { confirmation: 'PURGE_ALL_DATA' },
+    })).statusCode).toBe(404);
+    const response = await app.inject({
+      method: 'POST', url: '/internal/v1/identities/data/purge',
+      headers: { 'x-internal-service-token': internalToken }, payload: { confirmation: 'PURGE_ALL_DATA' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ data: { purged: true, service: 'identity', identities: 7 } });
+    expect(purges).toBe(1);
+    await app.close();
+  });
 });

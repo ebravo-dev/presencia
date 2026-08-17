@@ -2,6 +2,7 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { Registry, collectDefaultMetrics } from 'prom-client';
+import { z } from 'zod';
 import type { CaptureAttendanceService } from '../application/capture-attendance.service.js';
 import type { ClassroomBeaconService } from '../application/classroom-beacon.service.js';
 import type { DeviceBindingService } from '../application/device-binding.service.js';
@@ -18,6 +19,8 @@ import {
   professorEntryObservationSchema, professorExitObservationSchema, studentPresenceObservationSchema,
   attendanceSettingsUpdateSchema,
 } from './schemas.js';
+
+const purgeDataSchema = z.object({ confirmation: z.literal('PURGE_ALL_DATA') }).strict();
 
 export async function buildAttendanceApp(options: {
   env: AttendanceEnv;
@@ -229,6 +232,11 @@ export async function buildAttendanceApp(options: {
     if (!options.env.PRESENCIA_DEBUG_MODE) return reply.code(404).send({ error: 'DEMO_MODE_DISABLED' });
     await options.repository.resetDemoData();
     return reply.code(204).send();
+  });
+  app.post('/internal/v1/attendance/data/purge', { preHandler: internal }, async (request) => {
+    purgeDataSchema.parse(request.body);
+    await options.repository.resetDemoData();
+    return { data: { purged: true, service: 'attendance' } };
   });
 
   app.setErrorHandler((error, request, reply) => {

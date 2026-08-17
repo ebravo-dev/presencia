@@ -4,4 +4,5 @@ export interface IdentityRepository {
   resolveVerified(input: ResolveVerifiedIdentityInput): Promise<Identity>;
   findById(id: string): Promise<Identity | null>;
   resetDemoIdentities(): Promise<string[]>;
+  purgeAllIdentities(): Promise<string[]>;
 }

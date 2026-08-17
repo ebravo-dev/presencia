@@ -56,4 +56,14 @@ export class PrismaIdentityRepository implements IdentityRepository {
       return ids;
     });
   }
+
+  async purgeAllIdentities(): Promise<string[]> {
+    return this.prisma.$transaction(async (transaction) => {
+      const identities = await transaction.identity.findMany({ select: { id: true } });
+      const ids = identities.map(({ id }) => id);
+      await transaction.securityAuditEvent.deleteMany();
+      await transaction.identity.deleteMany();
+      return ids;
+    });
+  }
 }

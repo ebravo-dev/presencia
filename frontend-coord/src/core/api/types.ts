@@ -1,5 +1,27 @@
 export interface CoordinatorUser { id: string; email: string; name: string; role: string }
 export interface SuperUser { role: 'SUPER_USER' }
+export type DatabaseTargetId = 'integration' | 'identity' | 'academic' | 'attendance' | 'coordination-query';
+export interface DatabaseTarget {
+  id: DatabaseTargetId;
+  name: string;
+  description: string;
+  confirmationPhrase: string;
+  invalidatesSuperUserSession: boolean;
+}
+export interface DatabaseCatalogResponse {
+  data: {
+    databases: DatabaseTarget[];
+    all: Omit<DatabaseTarget, 'id'> & { id: 'all' };
+  };
+  meta: { generatedAt: string };
+}
+export interface DatabasePurgeResponse {
+  data: {
+    purged: DatabaseTargetId[];
+    purgedAt: string;
+    sessionInvalidated: boolean;
+  };
+}
 export interface AcademicCycleOption {
   externalId: number;
   year: number;

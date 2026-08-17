@@ -156,6 +156,12 @@ export class AttendanceServiceCommandClient implements AttendanceBindingClient {
     await this.request('/internal/v1/attendance/demo-data', { method: 'DELETE' });
   }
 
+  async purgeAllData(): Promise<void> {
+    await this.request('/internal/v1/attendance/data/purge', {
+      method: 'POST', body: { confirmation: 'PURGE_ALL_DATA' },
+    });
+  }
+
   private async request<T = unknown>(
     path: string,
     options: {

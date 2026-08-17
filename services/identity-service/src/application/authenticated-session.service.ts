@@ -56,4 +56,10 @@ export class AuthenticatedSessionService {
     await this.sessions.revokeIdentities(identityIds);
     return identityIds.length;
   }
+
+  async purgeAllIdentities(): Promise<number> {
+    const identityIds = await this.identities.purgeAllIdentities();
+    await this.sessions.revokeIdentities(identityIds);
+    return identityIds.length;
+  }
 }

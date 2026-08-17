@@ -847,12 +847,50 @@ paths:
       responses:
         "204": { description: Asignacion eliminada }
         "404": { $ref: "#/components/responses/Error" }
+  /api/superUsuario/bases-datos:
+    get:
+      tags: [SuperUsuario]
+      security: [{ SuperUserCookie: [] }]
+      summary: Lista las bases cuyos registros puede borrar el super usuario
+      responses:
+        "200":
+          description: Catálogo con frases de confirmación e impacto de sesión
+        "401": { $ref: "#/components/responses/Error" }
+  /api/superUsuario/bases-datos/borrar:
+    post:
+      tags: [SuperUsuario]
+      security: [{ SuperUserCookie: [] }]
+      summary: Borra registros de una base específica o de todas
+      description: Conserva esquemas, tablas y migraciones. La frase debe coincidir exactamente con la indicada por el catálogo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target, confirmation]
+              additionalProperties: false
+              properties:
+                target:
+                  type: string
+                  enum: [integration, identity, academic, attendance, coordination-query, all]
+                confirmation: { type: string }
+      responses:
+        "200": { description: Borrado completado }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     CoordinatorCookie:
       type: apiKey
       in: cookie
       name: coord_session
+    SuperUserCookie:
+      type: apiKey
+      in: cookie
+      name: super_user_session
   parameters:
     UatSessionHeader:
       name: X-UAT-Session-Id

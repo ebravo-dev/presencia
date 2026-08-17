@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { DemoPortalStatus } from '../../../infrastructure/http/client/demo-portal.client.js';
 import { ApiError } from '../../../errors/api-error.js';
 import {
+  purgeDatabaseData,
   resetDemoEnvironment,
   superUserRoutes,
   synchronizeAfterDemoMutation,
@@ -93,7 +94,53 @@ describe('superUserRoutes', () => {
       payload: { confirmation: 'BORRAR DEMO' },
     });
     expect(disabledReset.statusCode).toBe(404);
+
+    const databases = await app.inject({
+      method: 'GET', url: '/api/superUsuario/bases-datos',
+      headers: { cookie: 'super_user_session=identity-token' },
+    });
+    expect(databases.statusCode).toBe(200);
+    expect(databases.json()).toMatchObject({
+      data: {
+        databases: expect.arrayContaining([
+          expect.objectContaining({ id: 'identity' }),
+          expect.objectContaining({ id: 'academic' }),
+          expect.objectContaining({ id: 'attendance' }),
+        ]),
+        all: { id: 'all', confirmationPhrase: 'BORRAR TODAS LAS BASES' },
+      },
+    });
+    const invalidPurge = await app.inject({
+      method: 'POST', url: '/api/superUsuario/bases-datos/borrar',
+      headers: { cookie: 'super_user_session=identity-token' },
+      payload: { target: 'academic', confirmation: 'BORRAR' },
+    });
+    expect(invalidPurge.statusCode).toBe(400);
+    expect(invalidPurge.json()).toMatchObject({ error: 'INVALID_DATABASE_PURGE_CONFIRMATION' });
     await app.close();
+  });
+
+  it('purges all databases in order and invalidates identity last', async () => {
+    const order: string[] = [];
+    const services = {
+      resetLocalDemoData: vi.fn(async () => {
+        order.push('integration');
+        return { teacherSessions: 1, studentSessions: 2 };
+      }),
+      academicService: { purgeAllData: vi.fn(async () => { order.push('academic'); }) },
+      attendanceService: { purgeAllData: vi.fn(async () => { order.push('attendance'); }) },
+      coordinationQuery: { purgeAllData: vi.fn(async () => { order.push('coordination-query'); }) },
+      identityService: { purgeAllData: vi.fn(async () => {
+        expect(order).toEqual(['integration', 'academic', 'attendance', 'coordination-query']);
+        order.push('identity');
+        return { data: { purged: true as const, service: 'identity' as const, identities: 3 } };
+      }) },
+    };
+
+    await expect(purgeDatabaseData('all', services)).resolves.toEqual([
+      'integration', 'academic', 'attendance', 'coordination-query', 'identity',
+    ]);
+    expect(order).toEqual(['integration', 'academic', 'attendance', 'coordination-query', 'identity']);
   });
 
   it('coordinates every isolated demo store during a reset', async () => {

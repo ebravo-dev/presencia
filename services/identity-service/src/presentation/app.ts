@@ -16,6 +16,8 @@ import {
   tokenSchema,
 } from './schemas.js';
 
+const purgeDataSchema = z.object({ confirmation: z.literal('PURGE_ALL_DATA') }).strict();
+
 export interface IdentityReadiness {
   check(): Promise<{ database: boolean; redis: boolean }>;
 }
@@ -160,6 +162,12 @@ export async function buildIdentityApp(options: IdentityAppOptions) {
     if (!options.env.PRESENCIA_DEBUG_MODE) return reply.code(404).send({ error: 'DEMO_MODE_DISABLED' });
     const deleted = await options.sessions.resetDemoIdentities();
     return { data: { identities: deleted } };
+  });
+
+  app.post('/internal/v1/identities/data/purge', { preHandler: requireInternal }, async (request) => {
+    purgeDataSchema.parse(request.body);
+    const identities = await options.sessions.purgeAllIdentities();
+    return { data: { purged: true, service: 'identity', identities } };
   });
 
   app.setErrorHandler((error, request, reply) => {

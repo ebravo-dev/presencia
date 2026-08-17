@@ -61,6 +61,7 @@ const fakeIdentities: IdentityRepository = {
     } : null;
   },
   async resetDemoIdentities() { return ['identity-1']; },
+  async purgeAllIdentities() { return ['identity-1']; },
 };
 
 class FakeSessionStore implements IdentitySessionStore {

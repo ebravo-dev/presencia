@@ -35,6 +35,19 @@ describe('Coordination Query HTTP API', () => {
     expect(resets).toBe(1);
     await enabled.close();
   });
+
+  it('allows an authenticated explicit purge outside demo mode', async () => {
+    let resets = 0;
+    const app = await testApp({ resetDemoData: async () => { resets += 1; } });
+    const response = await app.inject({
+      method: 'POST', url: '/internal/v1/coordination/data/purge',
+      headers: { 'x-internal-service-token': token }, payload: { confirmation: 'PURGE_ALL_DATA' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ data: { purged: true, service: 'coordination-query' } });
+    expect(resets).toBe(1);
+    await app.close();
+  });
 });
 
 async function testApp(options: { debugMode?: boolean; resetDemoData?: () => Promise<void> } = {}) {

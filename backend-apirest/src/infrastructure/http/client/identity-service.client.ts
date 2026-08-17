@@ -121,6 +121,12 @@ export class IdentityServiceClient {
     return this.request('/internal/v1/identities/demo-data', { method: 'DELETE' });
   }
 
+  purgeAllData(): Promise<{ data: { purged: true; service: 'identity'; identities: number } }> {
+    return this.request('/internal/v1/identities/data/purge', {
+      method: 'POST', body: { confirmation: 'PURGE_ALL_DATA' },
+    });
+  }
+
   private async request<T>(path: string, options: { method: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown }): Promise<T> {
     let response: Response;
     try {

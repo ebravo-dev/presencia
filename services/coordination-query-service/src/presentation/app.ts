@@ -2,10 +2,13 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { Registry, collectDefaultMetrics } from 'prom-client';
+import { z } from 'zod';
 import type { CoordinationReportService } from '../application/coordination-report.service.js';
 import type { CoordinationQueryRepository } from '../domain/query.repository.js';
 import type { CoordinationQueryEnv } from '../infrastructure/config.js';
 import { rangeReportSchema, teacherListSchema, teacherParamsSchema, weeklyReportSchema } from './schemas.js';
+
+const purgeDataSchema = z.object({ confirmation: z.literal('PURGE_ALL_DATA') }).strict();
 
 export async function buildCoordinationQueryApp(options: {
   env: CoordinationQueryEnv; repository: CoordinationQueryRepository; reports: CoordinationReportService;
@@ -56,6 +59,11 @@ export async function buildCoordinationQueryApp(options: {
     if (!options.env.PRESENCIA_DEBUG_MODE) return reply.code(404).send({ error: 'DEMO_MODE_DISABLED' });
     await options.repository.resetDemoData();
     return reply.code(204).send();
+  });
+  app.post('/internal/v1/coordination/data/purge', { preHandler: internal }, async (request) => {
+    purgeDataSchema.parse(request.body);
+    await options.repository.resetDemoData();
+    return { data: { purged: true, service: 'coordination-query' } };
   });
   app.setErrorHandler((error, request, reply) => {
     request.log.error({ err: error }, 'Coordination Query request failed.');
