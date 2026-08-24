@@ -23,6 +23,7 @@ const attendancePayloadSchema = z.object({
   attendanceSessionId: z.string().min(1), externalGroupId: z.string().min(1),
   professorExternalId: z.string().min(1), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   professorEntryAt: z.iso.datetime().nullable(), professorExitAt: z.iso.datetime().nullable(),
+  actualClassroom: nullableText,
   entries: z.array(z.unknown()).optional(), entriesCount: z.number().int().nonnegative().optional(),
   version: z.number().int().positive(),
   uploadStatus: z.enum(['DRAFT', 'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'SKIPPED']).optional(),

@@ -34,13 +34,14 @@ class AsistenciaRegistroAdapter extends TypeAdapter<AsistenciaRegistro> {
       grupoCode: fields[14] as String?,
       grupoGroupLetter: fields[15] as String?,
       grupoPeriod: fields[16] as String?,
+      salonUtilizado: fields[17] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, AsistenciaRegistro obj) {
     writer
-      ..writeByte(17)
+      ..writeByte(18)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -74,7 +75,9 @@ class AsistenciaRegistroAdapter extends TypeAdapter<AsistenciaRegistro> {
       ..writeByte(15)
       ..write(obj.grupoGroupLetter)
       ..writeByte(16)
-      ..write(obj.grupoPeriod);
+      ..write(obj.grupoPeriod)
+      ..writeByte(17)
+      ..write(obj.salonUtilizado);
   }
 
   @override

@@ -22,6 +22,7 @@ export interface AttendanceCoordinationProjectionSnapshot {
   date: string;
   professorEntryAt: Date | null;
   professorExitAt: Date | null;
+  actualClassroom: string | null;
   entriesCount: number;
   uploadStatus: 'DRAFT' | 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
   uploadError: string | null;

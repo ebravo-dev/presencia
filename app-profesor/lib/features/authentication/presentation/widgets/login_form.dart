@@ -186,67 +186,6 @@ class _LoginFormState extends ConsumerState<LoginForm> {
                     ),
             ),
           ),
-          const SizedBox(height: 12),
-
-          // Demo credentials hint - Responsive
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: UATColors.accent.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: UATColors.accent.withValues(alpha: 0.2),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.info_outline, color: UATColors.accent, size: 14),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Credenciales de prueba:',
-                        style: TextStyle(
-                          color: UATColors.accent,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '• juan.perez + @docentes.uat.edu.mx',
-                  style: TextStyle(
-                    color: UATColors.accent80,
-                    fontSize: 10,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '• maria.rodriguez + @uat.edu.mx',
-                  style: TextStyle(
-                    color: UATColors.accent80,
-                    fontSize: 10,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Contraseña: uat2024',
-                  style: TextStyle(
-                    color: UATColors.accent80,
-                    fontSize: 10,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );

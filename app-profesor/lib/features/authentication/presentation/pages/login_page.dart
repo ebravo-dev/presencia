@@ -1,11 +1,9 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/uat_colors.dart';
 import '../../../../core/theme/uat_theme.dart';
-import '../../../../core/utils/debug_tools.dart';
 import '../widgets/profesor_login_form.dart';
 import '../../providers/profesor_auth_provider.dart';
 
@@ -150,46 +148,6 @@ class LoginPage extends ConsumerWidget {
                 context,
               ).textTheme.bodySmall?.copyWith(color: Colors.grey.shade400),
             ),
-
-            // Debug tools (solo en modo debug)
-            if (kDebugMode) ...[
-              const SizedBox(height: 16),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  TextButton.icon(
-                    onPressed: () async {
-                      await DebugTools.clearAllStorage();
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('🧹 Storage limpiado'),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.delete_outline, size: 16),
-                    label: const Text('Limpiar Storage'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.red.shade400,
-                      textStyle: const TextStyle(fontSize: 12),
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: () => DebugTools.checkStoredSession(),
-                    icon: const Icon(Icons.info_outline, size: 16),
-                    label: const Text('Ver Sesión'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.blue.shade400,
-                      textStyle: const TextStyle(fontSize: 12),
-                    ),
-                  ),
-                ],
-              ),
-            ],
           ],
         ),
       ),
@@ -277,7 +235,7 @@ class LoginPage extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Verificando credenciales...',
+                    'Comprobando tus datos...',
                     style: Theme.of(
                       context,
                     ).textTheme.bodySmall?.copyWith(color: UATColors.neutral80),

@@ -1,4 +1,5 @@
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -169,15 +170,18 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         // Populate the stepper so the UI isn't empty when re-entering mid-sync
         _stepsNotifier.value = [
           _SyncStepData(
-            label: 'Conectando al servidor',
+            label: 'Preparando el envío',
             status: _StepStatus.completed,
           ),
-          _SyncStepData(label: 'Conectado', status: _StepStatus.completed),
           _SyncStepData(
-            label: 'Subiendo asistencia',
+            label: 'Información lista',
+            status: _StepStatus.completed,
+          ),
+          _SyncStepData(
+            label: 'Enviando asistencias',
             status: _StepStatus.inProgress,
             subtitle:
-                '${newSyncingOnServer.length} registro${newSyncingOnServer.length == 1 ? '' : 's'} procesando...',
+                '${newSyncingOnServer.length} registro${newSyncingOnServer.length == 1 ? '' : 's'} en proceso...',
           ),
           _SyncStepData(label: '¡Terminado!', status: _StepStatus.pending),
         ];
@@ -255,18 +259,15 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
     HapticFeedback.mediumImpact();
     _stepsNotifier.value = [
       _SyncStepData(
-        label: 'Preparando registros',
+        label: 'Preparando asistencias',
         status: _StepStatus.inProgress,
       ),
+      _SyncStepData(label: 'Enviando asistencias', status: _StepStatus.pending),
       _SyncStepData(
-        label: 'Entregando lote al servidor',
+        label: 'Guardando información',
         status: _StepStatus.pending,
       ),
-      _SyncStepData(
-        label: 'Procesando en servidor',
-        status: _StepStatus.pending,
-      ),
-      _SyncStepData(label: 'Confirmación de UAT', status: _StepStatus.pending),
+      _SyncStepData(label: 'Confirmando envío', status: _StepStatus.pending),
     ];
 
     _updateStep(0, _StepStatus.completed);
@@ -275,7 +276,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       1,
       _StepStatus.inProgress,
       subtitle:
-          '${_pendientes.length} lista${_pendientes.length == 1 ? '' : 's'} al servicio de asistencia',
+          '${_pendientes.length} lista${_pendientes.length == 1 ? '' : 's'} por enviar',
     );
     final directResult = await _attendanceBatchService.submitDirectToBackend(
       token: token,
@@ -295,14 +296,14 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
       directResult.failed > 0 ? _StepStatus.failed : _StepStatus.pending,
       subtitle: directResult.failed > 0
           ? null
-          : 'El worker publicará las listas en segundo plano.',
+          : 'Las listas se guardarán en unos momentos.',
     );
     _updateStep(
       3,
       directResult.failed > 0 ? _StepStatus.failed : _StepStatus.pending,
       subtitle: directResult.failed > 0
           ? 'Las listas fallidas permanecen pendientes.'
-          : 'La app las marcará sincronizadas sólo después de recibir COMPLETED.',
+          : 'Las asistencias se marcarán como enviadas al finalizar.',
     );
     HapticFeedback.heavyImpact();
 
@@ -359,10 +360,10 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                   // Header
                   Text(
                     allCompleted
-                        ? '¡Sincronización completada!'
+                        ? '¡Envío completado!'
                         : anyFailed
-                        ? 'Error en sincronización'
-                        : 'Sincronizando...',
+                        ? 'No pudimos completar el envío'
+                        : 'Enviando asistencias...',
                     style: TextStyle(
                       color: palette.textPrimary,
                       fontSize: 22,
@@ -403,7 +404,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'La sincronización corre en la nube. Si ya enviaste, los registros se actualizarán al abrir esta pantalla cuando tengas internet.',
+                      'El envío continuará aunque cierres la app. Los registros se actualizarán cuando tengas internet.',
                       style: TextStyle(
                         color: Colors.blue.shade400,
                         fontSize: 13,
@@ -680,7 +681,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         Align(
           alignment: Alignment.centerLeft,
           child: Text(
-            'Sincronización',
+            'Envío de asistencias',
             style: TextStyle(
               color: palette.textPrimary,
               fontSize: 34,
@@ -731,7 +732,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
         ),
         const SizedBox(height: 12),
         Text(
-          'Toda tu información está en la nube',
+          'Todas tus asistencias están guardadas',
           style: TextStyle(color: palette.textSecondary, fontSize: 16),
           textAlign: TextAlign.center,
         ),
@@ -769,7 +770,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    '${_syncingOnServer.length} registro${_syncingOnServer.length == 1 ? '' : 's'} sincronizando en el servidor. Se actualizará al terminar.',
+                    '${_syncingOnServer.length} registro${_syncingOnServer.length == 1 ? '' : 's'} en proceso. Se actualizará al terminar.',
                     style: TextStyle(color: Colors.blue.shade300, fontSize: 13),
                   ),
                 ),
@@ -917,8 +918,8 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                       const SizedBox(width: 16),
                       Text(
                         _syncingOnServer.isNotEmpty
-                            ? 'Sincronizando...'
-                            : 'Subir Asistencias',
+                            ? 'Enviando...'
+                            : 'Enviar asistencias',
                         style: TextStyle(
                           color: blocked
                               ? palette.textTertiary
@@ -1308,7 +1309,7 @@ class _CalendarModalState extends State<_CalendarModal> {
       children: [
         _buildLegendItem(Colors.orange, 'Pendiente'),
         const SizedBox(width: 32),
-        _buildLegendItem(Colors.green, 'Sincronizado'),
+        _buildLegendItem(Colors.green, 'Enviado'),
       ],
     );
   }

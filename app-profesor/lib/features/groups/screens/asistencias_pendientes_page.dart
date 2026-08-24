@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../shared/models/asistencia_registro.dart';
 import '../../../shared/models/grupo.dart';
 import '../../../core/theme/uat_colors.dart';
@@ -171,7 +172,7 @@ class _AsistenciasPendientesPageState
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'Sincronizando asistencias...',
+                  'Enviando asistencias...',
                   style: TextStyle(
                     color: palette.textPrimary,
                     fontSize: 16,
@@ -201,7 +202,7 @@ class _AsistenciasPendientesPageState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Todas las asistencias fueron sincronizadas'),
+            content: Text('Todas las asistencias fueron enviadas'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
           ),
@@ -214,7 +215,9 @@ class _AsistenciasPendientesPageState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Error al sincronizar. Intente nuevamente.'),
+            content: Text(
+              'No pudimos enviar las asistencias. Intenta de nuevo.',
+            ),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
           ),
@@ -295,7 +298,7 @@ class _AsistenciasPendientesPageState
       date: registroActualizado.fecha,
       attendances: attendances,
       groupName: grupo.name,
-      classroom: grupo.classroom,
+      classroom: registroActualizado.salonUtilizado ?? grupo.classroom,
       level: grupo.level,
       schedule: grupo.schedule,
     );
@@ -318,8 +321,8 @@ class _AsistenciasPendientesPageState
         if (showSnackbars && mounted) {
           final isDebugUpload = response['skippedApiRestUpload'] == true;
           final message = isDebugUpload
-              ? 'Modo debug: asistencia registrada para reportes. No se envio a UAT.'
-              : 'Asistencia del ${_formatearFecha(registroActualizado.fecha)} sincronizada';
+              ? 'Modo de prueba: asistencia disponible en los reportes.'
+              : 'Asistencia del ${_formatearFecha(registroActualizado.fecha)} enviada';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(message),
@@ -589,7 +592,7 @@ class _AsistenciasPendientesPageState
                     )
                   : const Icon(Icons.cloud_upload, color: Colors.white),
               label: Text(
-                _isSyncing ? 'Sincronizando...' : 'Subir todas',
+                _isSyncing ? 'Enviando...' : 'Enviar todas',
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w600,
@@ -618,7 +621,7 @@ class _AsistenciasPendientesPageState
           ),
           const SizedBox(height: 24),
           Text(
-            'Todo sincronizado',
+            'Todo enviado',
             style: TextStyle(
               color: palette.textPrimary,
               fontSize: 22,

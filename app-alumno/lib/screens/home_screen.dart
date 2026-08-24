@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/attendance_confirmation.dart';
+import '../models/attendance_history_entry.dart';
 import '../models/student_academic_profile.dart';
 import '../models/student_schedule_entry.dart';
 import '../services/attendance_session_service.dart';
@@ -56,8 +57,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Timer? _scheduleClock;
   int _selectedTab = 0;
   int _selectedClass = 0;
-  int _attendanceToleranceMinutes =
-      LocalStorageService.defaultAttendanceToleranceMinutes;
   bool _isSyncingDeviceBinding = false;
   bool _isSyncingAcademicInfo = false;
   bool _isManualSyncing = false;
@@ -93,7 +92,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _profile = widget.profile;
     _studentAuth = widget.studentAuth ?? StudentAuthService();
     _schedule = widget.storage.studentSchedule;
-    _attendanceToleranceMinutes = widget.storage.attendanceToleranceMinutes;
     _pendingUatSessionId = widget.initialUatSessionId;
     _advertiserState = widget.bleService.currentState;
     _attendanceState = widget.attendanceSession.currentState;
@@ -199,7 +197,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         _schedule = result.schedule;
         _selectedClass = 0;
-        _attendanceToleranceMinutes = result.attendanceToleranceMinutes;
         _lastSuccessfulSync = result.syncedAt;
         if (result.profile != null) _profile = result.profile!;
       });
@@ -277,7 +274,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             }
 
             return AlertDialog(
-              title: const Text('Actualiza tu contraseña UAT'),
+              title: const Text('Actualiza tu contraseña institucional'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -348,7 +345,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       if (!online) {
         _showSyncFeedback(
-          'Sin conexión con el servidor. Revisa tu internet e inténtalo de nuevo.',
+          'Sin conexión. Revisa tu internet e inténtalo de nuevo.',
           isError: true,
         );
         return;
@@ -395,6 +392,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       group: confirmation.group,
       classroom: confirmation.classroom,
     );
+    if (mounted) setState(() {});
   }
 
   Future<void> _openAttendanceSheet() async {
@@ -430,7 +428,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         icon: const Icon(Icons.logout_rounded),
         title: const Text('¿Cerrar sesión?'),
         content: const Text(
-          'Se eliminarán de este equipo tus credenciales, perfil, horario e historial local.',
+          'Se eliminarán de este equipo tus datos de acceso, perfil, horario e historial.',
         ),
         actions: [
           TextButton(
@@ -482,7 +480,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         profile: _profile,
         selectedClass: _selectedClass,
         schedule: _schedule,
-        attendanceToleranceMinutes: _attendanceToleranceMinutes,
         scheduleLoading: _isSyncingAcademicInfo,
         isActive: _isActive,
         isChecking: _isChecking,
@@ -496,9 +493,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       _SchedulePage(
         schedule: _schedule,
+        attendanceHistory: widget.storage.attendanceHistory,
         loading: _isSyncingAcademicInfo,
         errorMessage: _academicSyncError,
         onRetry: _syncAcademicInfo,
+        onBack: () => setState(() => _selectedTab = 0),
       ),
       _ProfilePage(
         profile: _profile,
@@ -511,6 +510,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         lastSyncedAt: _lastSuccessfulSync,
         onLogout: _confirmLogout,
         isLoggingOut: _isLoggingOut,
+        onBack: () => setState(() => _selectedTab = 0),
       ),
     ];
     return Scaffold(
@@ -526,7 +526,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   vertical: 8,
                 ),
                 child: const Text(
-                  'MODO DEMO · Datos ficticios, sin conexión a UAT real',
+                  'MODO DE PRUEBA · Información de ejemplo',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Color(0xFF451A03),
@@ -546,22 +546,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ],
         ),
       ),
-      bottomNavigationBar: _selectedTab == 0
-          ? null
-          : SafeArea(
-              top: false,
-              child: Align(
-                heightFactor: 1,
-                alignment: Alignment.center,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 430),
-                  child: _BottomNav(
-                    index: _selectedTab,
-                    onChanged: (value) => setState(() => _selectedTab = value),
-                  ),
-                ),
-              ),
-            ),
     );
   }
 }
@@ -571,7 +555,6 @@ class _AttendancePage extends StatefulWidget {
     required this.profile,
     required this.selectedClass,
     required this.schedule,
-    required this.attendanceToleranceMinutes,
     required this.scheduleLoading,
     required this.isActive,
     required this.isChecking,
@@ -586,7 +569,6 @@ class _AttendancePage extends StatefulWidget {
   final StudentAcademicProfile profile;
   final int selectedClass;
   final List<StudentScheduleEntry> schedule;
-  final int attendanceToleranceMinutes;
   final bool scheduleLoading;
   final bool isActive, isChecking, confirmed, hasError;
   final String? confirmedClassName;
@@ -603,6 +585,8 @@ class _AttendancePageState extends State<_AttendancePage> {
   static const _navy = Color(0xFF003B5C);
   static const _orange = Color(0xFFD65F05);
   static const _lightBackground = Color(0xFFF7F8FA);
+  static const _carouselViewportFraction = .25;
+  static const _carouselTrailingSlots = 3;
 
   late PageController _pageController;
   int? _silentPageChange;
@@ -612,7 +596,7 @@ class _AttendancePageState extends State<_AttendancePage> {
     super.initState();
     _pageController = PageController(
       initialPage: widget.selectedClass,
-      viewportFraction: .24,
+      viewportFraction: _carouselViewportFraction,
     );
   }
 
@@ -623,7 +607,7 @@ class _AttendancePageState extends State<_AttendancePage> {
       _pageController.dispose();
       _pageController = PageController(
         initialPage: widget.selectedClass,
-        viewportFraction: .24,
+        viewportFraction: _carouselViewportFraction,
       );
     }
   }
@@ -664,39 +648,22 @@ class _AttendancePageState extends State<_AttendancePage> {
       widget.schedule,
       DateTime.now().weekday,
     );
-    final firstAvailable = todayClasses.indexWhere(
-      (occurrence) => scheduleIsAvailable(
-        occurrence,
-        now,
-        toleranceMinutes: widget.attendanceToleranceMinutes,
-      ),
-    );
     final safeSelectedClass = todayClasses.isEmpty
         ? 0
         : (widget.selectedClass.clamp(0, todayClasses.length - 1));
-    final selectedIsAvailable =
+    final effectiveSelectedClass = safeSelectedClass;
+    final dayFinished =
         todayClasses.isNotEmpty &&
-        scheduleIsAvailable(
-          todayClasses[safeSelectedClass],
-          now,
-          toleranceMinutes: widget.attendanceToleranceMinutes,
-        );
-    final dayFinished = todayClasses.isNotEmpty && firstAvailable == -1;
-    final effectiveSelectedClass = !dayFinished && !selectedIsAvailable
-        ? firstAvailable
-        : safeSelectedClass;
+        todayClasses.every((occurrence) => scheduleHasEnded(occurrence, now));
     final buttonTitle = widget.confirmed
         ? 'Asistencia registrada'
-        : dayFinished
-        ? 'Jornada terminada'
         : widget.isActive || widget.isChecking
         ? 'Cancelando registro'
         : widget.hasError
         ? 'Intentar de nuevo'
         : 'Registrar asistencia';
 
-    if (!dayFinished &&
-        todayClasses.isNotEmpty &&
+    if (todayClasses.isNotEmpty &&
         _pageController.hasClients &&
         (_pageController.page?.round() ?? effectiveSelectedClass) !=
             effectiveSelectedClass) {
@@ -762,9 +729,7 @@ class _AttendancePageState extends State<_AttendancePage> {
                   ],
                 ),
                 Text(
-                  dayFinished
-                      ? 'Tu horario de hoy ya terminó'
-                      : todayClasses.length > 1
+                  todayClasses.length > 1
                       ? 'Desliza hacia arriba o abajo para elegir'
                       : 'Tu clase programada para hoy',
                   style: Theme.of(context).textTheme.bodySmall,
@@ -775,13 +740,6 @@ class _AttendancePageState extends State<_AttendancePage> {
                       ? const Center(child: _AcademicLoadingCard())
                       : todayClasses.isEmpty
                       ? const Center(child: _NoClassesTodayCard())
-                      : dayFinished
-                      ? Center(
-                          child: SizedBox(
-                            height: compact ? 126 : 146,
-                            child: _FinishedClassesPanel(classes: todayClasses),
-                          ),
-                        )
                       : Row(
                           children: [
                             Expanded(
@@ -789,26 +747,23 @@ class _AttendancePageState extends State<_AttendancePage> {
                                 key: const Key('attendance-class-carousel'),
                                 controller: _pageController,
                                 scrollDirection: Axis.vertical,
+                                padEnds: false,
                                 physics: const BouncingScrollPhysics(),
-                                itemCount: todayClasses.length,
+                                itemCount:
+                                    todayClasses.length +
+                                    _carouselTrailingSlots,
                                 onPageChanged: _selectClass,
                                 itemBuilder: (context, index) {
-                                  final locked = scheduleHasEnded(
-                                    todayClasses[index],
-                                    now,
-                                    toleranceMinutes:
-                                        widget.attendanceToleranceMinutes,
-                                  );
+                                  if (index >= todayClasses.length) {
+                                    return const SizedBox.shrink();
+                                  }
                                   return GestureDetector(
                                     behavior: HitTestBehavior.opaque,
-                                    onTap: locked
-                                        ? null
-                                        : () => _moveToClass(index),
+                                    onTap: () => _moveToClass(index),
                                     child: _ClassCard(
                                       key: ValueKey('attendance-class-$index'),
                                       occurrence: todayClasses[index],
                                       selected: index == effectiveSelectedClass,
-                                      locked: locked,
                                       now: now,
                                     ),
                                   );
@@ -826,6 +781,10 @@ class _AttendancePageState extends State<_AttendancePage> {
                           ],
                         ),
                 ),
+                if (dayFinished) ...[
+                  SizedBox(height: compact ? 6 : 8),
+                  const _DayFinishedBanner(),
+                ],
                 if (widget.confirmed) ...[
                   const SizedBox(height: 8),
                   _AttendanceConfirmedBanner(
@@ -840,9 +799,7 @@ class _AttendancePageState extends State<_AttendancePage> {
                     width: double.infinity,
                     height: compact ? 50 : 54,
                     child: FilledButton(
-                      onPressed: widget.confirmed || dayFinished
-                          ? null
-                          : widget.onRegister,
+                      onPressed: widget.confirmed ? null : widget.onRegister,
                       style: FilledButton.styleFrom(
                         disabledBackgroundColor: widget.confirmed
                             ? AppColors.success
@@ -887,15 +844,19 @@ class _AttendancePageState extends State<_AttendancePage> {
 class _SchedulePage extends StatefulWidget {
   const _SchedulePage({
     required this.schedule,
+    required this.attendanceHistory,
     required this.loading,
     required this.errorMessage,
     required this.onRetry,
+    required this.onBack,
   });
 
   final List<StudentScheduleEntry> schedule;
+  final List<AttendanceHistoryEntry> attendanceHistory;
   final bool loading;
   final String? errorMessage;
   final Future<void> Function() onRetry;
+  final VoidCallback onBack;
 
   @override
   State<_SchedulePage> createState() => _SchedulePageState();
@@ -904,82 +865,269 @@ class _SchedulePage extends StatefulWidget {
 class _SchedulePageState extends State<_SchedulePage> {
   int _weekday = DateTime.now().weekday;
   static const _days = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+  late final ScrollController _dayScrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _dayScrollController = ScrollController();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _revealSelectedDay());
+  }
+
+  @override
+  void dispose() {
+    _dayScrollController.dispose();
+    super.dispose();
+  }
+
+  void _selectWeekday(int weekday) {
+    if (_weekday == weekday) return;
+    setState(() => _weekday = weekday);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _revealSelectedDay());
+  }
+
+  void _revealSelectedDay() {
+    if (!mounted || !_dayScrollController.hasClients) return;
+    final target = ((_weekday - 1) * 58.0).clamp(
+      0.0,
+      _dayScrollController.position.maxScrollExtent,
+    );
+    _dayScrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    const lightBackground = Color(0xFFF7F8FA);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final now = DateTime.now();
+    final weekStart = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: now.weekday - 1));
+    final selectedDate = weekStart.add(Duration(days: _weekday - 1));
     final classes = scheduleForWeekday(widget.schedule, _weekday);
-    return RefreshIndicator(
-      onRefresh: widget.onRetry,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const _PageHeader(title: 'Horario', subtitle: 'Datos de UAT'),
-            const SizedBox(height: 24),
-            SizedBox(
-              height: 44,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: _days.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 10),
-                itemBuilder: (_, index) {
-                  final weekday = index + 1;
-                  return SizedBox(
-                    width: 62,
-                    child: ChoiceChip(
-                      label: Text(_days[index]),
-                      selected: _weekday == weekday,
-                      onSelected: (_) => setState(() => _weekday = weekday),
-                      showCheckmark: false,
-                      selectedColor: Theme.of(context).colorScheme.primary,
-                      labelStyle: TextStyle(
-                        color: _weekday == weekday ? Colors.white : null,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        side: BorderSide.none,
-                      ),
-                    ),
-                  );
-                },
+    return ColoredBox(
+      key: const Key('full-schedule-background'),
+      color: dark ? Theme.of(context).scaffoldBackgroundColor : lightBackground,
+      child: RefreshIndicator(
+        onRefresh: widget.onRetry,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _ScheduleHeader(
+                weekNumber: _isoWeekNumber(selectedDate),
+                month: _monthName(selectedDate.month),
+                onBack: widget.onBack,
               ),
-            ),
-            const SizedBox(height: 26),
-            if (widget.loading && widget.schedule.isEmpty)
-              const _AcademicLoadingCard()
-            else if (widget.errorMessage != null && widget.schedule.isEmpty)
-              _AcademicErrorCard(
-                message: widget.errorMessage!,
-                onRetry: widget.onRetry,
-              )
-            else if (classes.isEmpty)
-              const Card(child: _EmptySchedule())
-            else
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      for (var index = 0; index < classes.length; index++) ...[
-                        _ScheduleItem(occurrence: classes[index]),
-                        if (index < classes.length - 1)
-                          const SizedBox(height: 14),
-                      ],
-                    ],
-                  ),
+              const SizedBox(height: 26),
+              SizedBox(
+                key: const Key('full-schedule-day-selector'),
+                height: 64,
+                child: ListView.separated(
+                  controller: _dayScrollController,
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _days.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (_, index) {
+                    final weekday = index + 1;
+                    final date = weekStart.add(Duration(days: index));
+                    return _ScheduleDayPill(
+                      day: _days[index],
+                      date: date.day,
+                      selected: _weekday == weekday,
+                      onTap: () => _selectWeekday(weekday),
+                    );
+                  },
                 ),
               ),
-            if (widget.errorMessage != null && widget.schedule.isNotEmpty) ...[
+              const SizedBox(height: 22),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _scheduleSectionTitle(selectedDate, now),
+                      key: const Key('full-schedule-section-title'),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  if (classes.isNotEmpty)
+                    Text(
+                      _scheduleRange(classes),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                ],
+              ),
               const SizedBox(height: 14),
-              _InlineSyncWarning(
-                message: widget.errorMessage!,
-                onRetry: widget.onRetry,
+              if (widget.loading && widget.schedule.isEmpty)
+                const _AcademicLoadingCard()
+              else if (widget.errorMessage != null && widget.schedule.isEmpty)
+                _AcademicErrorCard(
+                  message: widget.errorMessage!,
+                  onRetry: widget.onRetry,
+                )
+              else if (classes.isEmpty)
+                const Card(child: _EmptySchedule())
+              else
+                for (var index = 0; index < classes.length; index++) ...[
+                  _FullScheduleCard(
+                    key: ValueKey('full-schedule-card-$index'),
+                    occurrence: classes[index],
+                    selectedDate: selectedDate,
+                    now: now,
+                    registered: widget.attendanceHistory.any(
+                      (entry) => _attendanceMatches(
+                        entry,
+                        classes[index],
+                        selectedDate,
+                      ),
+                    ),
+                  ),
+                  if (index < classes.length - 1) const SizedBox(height: 10),
+                ],
+              if (widget.errorMessage != null &&
+                  widget.schedule.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                _InlineSyncWarning(
+                  message: widget.errorMessage!,
+                  onRetry: widget.onRetry,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ScheduleHeader extends StatelessWidget {
+  const _ScheduleHeader({
+    required this.weekNumber,
+    required this.month,
+    required this.onBack,
+  });
+
+  final int weekNumber;
+  final String month;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final accent = dark ? const Color(0xFF5DC2F0) : const Color(0xFF003B5C);
+    return Row(
+      children: [
+        IconButton(
+          key: const Key('subpage-back-button'),
+          tooltip: 'Volver al inicio',
+          onPressed: onBack,
+          visualDensity: VisualDensity.compact,
+          style: IconButton.styleFrom(foregroundColor: accent),
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Mi horario',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontSize: 23,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                'Semana $weekNumber · $month',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
             ],
-          ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ScheduleDayPill extends StatelessWidget {
+  const _ScheduleDayPill({
+    required this.day,
+    required this.date,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String day;
+  final int date;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    const orange = Color(0xFFD65F05);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Semantics(
+      selected: selected,
+      button: true,
+      label: '$day $date',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: 50,
+            decoration: BoxDecoration(
+              color: selected ? orange : appSurface(context),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: selected
+                    ? orange
+                    : dark
+                    ? const Color(0xFF34383C)
+                    : const Color(0xFFD7DDE2),
+              ),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  day,
+                  style: TextStyle(
+                    color: selected ? Colors.white : appMuted(context),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$date',
+                  style: TextStyle(
+                    color: selected ? Colors.white : appMuted(context),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -998,6 +1146,7 @@ class _ProfilePage extends StatelessWidget {
     required this.lastSyncedAt,
     required this.onLogout,
     required this.isLoggingOut,
+    required this.onBack,
   });
   final StudentAcademicProfile profile;
   final ThemeMode themeMode;
@@ -1009,8 +1158,14 @@ class _ProfilePage extends StatelessWidget {
   final DateTime? lastSyncedAt;
   final VoidCallback onLogout;
   final bool isLoggingOut;
+  final VoidCallback onBack;
   @override
   Widget build(BuildContext context) {
+    const navy = Color(0xFF003B5C);
+    const orange = Color(0xFFD65F05);
+    const lightBackground = Color(0xFFF7F8FA);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final accent = dark ? const Color(0xFF5DC2F0) : navy;
     final initials = profile.displayName.trim().isEmpty
         ? 'FI'
         : profile.displayName
@@ -1020,214 +1175,276 @@ class _ProfilePage extends StatelessWidget {
               .map((part) => part.substring(0, 1))
               .join()
               .toUpperCase();
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _PageHeader(
-            title: 'Perfil',
-            subtitle: 'Tu información estudiantil',
-          ),
-          const SizedBox(height: 22),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
-                          shape: BoxShape.circle,
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          initials,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 22,
+    return ColoredBox(
+      key: const Key('profile-page-background'),
+      color: dark ? Theme.of(context).scaffoldBackgroundColor : lightBackground,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _PageHeader(
+              title: 'Perfil',
+              subtitle: 'Tu información estudiantil',
+              onBack: onBack,
+            ),
+            const SizedBox(height: 22),
+            Card(
+              margin: EdgeInsets.zero,
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          key: const Key('profile-avatar'),
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            color: accent,
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            initials,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 22,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              profile.displayName,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              profile.programName ??
-                                  'Programa académico no disponible',
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Matrícula ${profile.matricula}',
-                              style: Theme.of(context).textTheme.labelSmall,
-                            ),
-                          ],
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                profile.displayName,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                profile.programName ??
+                                    'Programa académico no disponible',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Matrícula ${profile.matricula}',
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: onOpenHistory,
-                      icon: const Icon(Icons.history_rounded),
-                      label: const Text('Ver historial'),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'Información académica',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 10),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  _ProfileField(
-                    'CORREO',
-                    profile.institutionalEmail.isEmpty
-                        ? 'No sincronizado'
-                        : profile.institutionalEmail,
-                  ),
-                  const Divider(height: 32),
-                  _ProfileField(
-                    'PROGRAMA',
-                    profile.programName ?? 'No disponible en UAT',
-                  ),
-                  const Divider(height: 32),
-                  _ProfileField(
-                    'CICLO',
-                    profile.cycleName ?? 'No disponible en UAT',
-                  ),
-                  const Divider(height: 32),
-                  _ProfileField(
-                    'PROMEDIO Y CRÉDITOS',
-                    _academicSummary(profile),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          Card(
-            child: ListTile(
-              enabled: !isSyncing,
-              onTap: isSyncing ? null : onSync,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 18,
-                vertical: 8,
-              ),
-              leading: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.primary.withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.cloud_sync_outlined,
-                  color: Theme.of(context).colorScheme.primary,
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: onOpenHistory,
+                        style: TextButton.styleFrom(foregroundColor: accent),
+                        icon: const Icon(Icons.history_rounded),
+                        label: const Text('Ver historial'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              title: const Text('Sincronizar con el servidor'),
-              subtitle: Text(
-                isCheckingServer
-                    ? 'Verificando conexión…'
-                    : isSyncing
-                    ? 'Actualizando perfil y horario…'
-                    : _lastSyncLabel(lastSyncedAt),
-              ),
-              trailing: isSyncing
-                  ? const SizedBox.square(
-                      dimension: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2.4),
-                    )
-                  : const Icon(Icons.refresh_rounded),
             ),
-          ),
-          const SizedBox(height: 18),
-          Card(
-            child: SwitchListTile.adaptive(
-              title: const Text('Tema oscuro'),
-              subtitle: const Text('Usar la apariencia oscura'),
-              value:
-                  themeMode == ThemeMode.dark ||
-                  (themeMode == ThemeMode.system &&
-                      MediaQuery.platformBrightnessOf(context) ==
-                          Brightness.dark),
-              onChanged: (enabled) => onThemeModeChanged(
-                enabled ? ThemeMode.dark : ThemeMode.light,
+            const SizedBox(height: 18),
+            Text(
+              'Información académica',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
               ),
             ),
-          ),
-          const SizedBox(height: 18),
-          Card(
-            child: ListTile(
-              enabled: !isLoggingOut,
-              onTap: isLoggingOut ? null : onLogout,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 18,
-                vertical: 8,
+            const SizedBox(height: 10),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    _ProfileField(
+                      'CORREO',
+                      profile.institutionalEmail.isEmpty
+                          ? 'No disponible'
+                          : profile.institutionalEmail,
+                    ),
+                    const Divider(height: 32),
+                    _ProfileField(
+                      'PROGRAMA',
+                      profile.programName ?? 'No disponible',
+                    ),
+                    const Divider(height: 32),
+                    _ProfileField(
+                      'CICLO',
+                      profile.cycleName ?? 'No disponible',
+                    ),
+                    const Divider(height: 32),
+                    _ProfileField(
+                      'PROMEDIO Y CRÉDITOS',
+                      _academicSummary(profile),
+                    ),
+                  ],
+                ),
               ),
-              leading: Icon(
-                Icons.logout_rounded,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              title: Text(
-                'Cerrar sesión',
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-              subtitle: const Text('Salir de esta cuenta en este dispositivo'),
-              trailing: isLoggingOut
-                  ? const SizedBox.square(
-                      dimension: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2.4),
-                    )
-                  : const Icon(Icons.chevron_right_rounded),
             ),
-          ),
-        ],
+            const SizedBox(height: 18),
+            Card(
+              child: ListTile(
+                enabled: !isSyncing,
+                onTap: isSyncing ? null : onSync,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 8,
+                ),
+                leading: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(Icons.cloud_sync_outlined, color: accent),
+                ),
+                title: const Text('Actualizar información'),
+                subtitle: Text(
+                  isCheckingServer
+                      ? 'Comprobando conexión…'
+                      : isSyncing
+                      ? 'Actualizando perfil y horario…'
+                      : _lastSyncLabel(lastSyncedAt),
+                ),
+                trailing: isSyncing
+                    ? const SizedBox.square(
+                        dimension: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2.4),
+                      )
+                    : const Icon(Icons.refresh_rounded),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Card(
+              child: SwitchListTile.adaptive(
+                secondary: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: orange.withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.dark_mode_outlined, color: orange),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 4,
+                ),
+                title: const Text('Tema oscuro'),
+                subtitle: const Text('Usar la apariencia oscura'),
+                value:
+                    themeMode == ThemeMode.dark ||
+                    (themeMode == ThemeMode.system &&
+                        MediaQuery.platformBrightnessOf(context) ==
+                            Brightness.dark),
+                onChanged: (enabled) => onThemeModeChanged(
+                  enabled ? ThemeMode.dark : ThemeMode.light,
+                ),
+                activeTrackColor: accent,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Card(
+              child: ListTile(
+                enabled: !isLoggingOut,
+                onTap: isLoggingOut ? null : onLogout,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 8,
+                ),
+                leading: Icon(
+                  Icons.logout_rounded,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                title: Text(
+                  'Cerrar sesión',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+                subtitle: const Text(
+                  'Salir de esta cuenta en este dispositivo',
+                ),
+                trailing: isLoggingOut
+                    ? const SizedBox.square(
+                        dimension: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2.4),
+                      )
+                    : const Icon(Icons.chevron_right_rounded),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 class _PageHeader extends StatelessWidget {
-  const _PageHeader({required this.title, required this.subtitle});
+  const _PageHeader({required this.title, required this.subtitle, this.onBack});
   final String title, subtitle;
+  final VoidCallback? onBack;
+
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(title, style: Theme.of(context).textTheme.headlineSmall),
-      const SizedBox(height: 3),
-      Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
-    ],
-  );
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final accent = dark ? const Color(0xFF5DC2F0) : const Color(0xFF003B5C);
+    return Row(
+      children: [
+        if (onBack != null) ...[
+          Tooltip(
+            message: 'Volver al inicio',
+            child: IconButton(
+              key: const Key('subpage-back-button'),
+              onPressed: onBack,
+              style: IconButton.styleFrom(
+                backgroundColor: appSurface(context),
+                foregroundColor: accent,
+                side: BorderSide(
+                  color: dark
+                      ? const Color(0xFF34383C)
+                      : const Color(0xFFD7DDE2),
+                ),
+              ),
+              icon: const Icon(Icons.arrow_back_rounded),
+            ),
+          ),
+          const SizedBox(width: 12),
+        ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _StudentHomeHeader extends StatelessWidget {
@@ -1310,11 +1527,9 @@ class _ClassCard extends StatelessWidget {
     required this.occurrence,
     required this.selected,
     required this.now,
-    this.locked = false,
   });
   final StudentScheduleOccurrence occurrence;
   final bool selected;
-  final bool locked;
   final DateTime now;
 
   @override
@@ -1329,15 +1544,16 @@ class _ClassCard extends StatelessWidget {
         end != null &&
         !now.isBefore(start) &&
         now.isBefore(end);
+    final ended = end != null && !now.isBefore(end);
 
     late final String status;
     late final Color statusColor;
-    if (locked) {
-      status = 'Clase finalizada';
-      statusColor = appMuted(context);
-    } else if (inProgress) {
+    if (inProgress) {
       status = 'Asistencia pendiente';
       statusColor = const Color(0xFFC92A20);
+    } else if (ended) {
+      status = 'Clase terminada · registro disponible';
+      statusColor = orange;
     } else if (start != null && start.isAfter(now)) {
       final minutes = start.difference(now).inMinutes + 1;
       status = minutes < 60 ? 'Comienza en $minutes min' : 'Próxima clase';
@@ -1361,7 +1577,7 @@ class _ClassCard extends StatelessWidget {
       scale: selected ? 1 : .95,
       duration: const Duration(milliseconds: 200),
       child: AnimatedOpacity(
-        opacity: locked ? .48 : (selected ? 1 : .72),
+        opacity: selected ? 1 : .72,
         duration: const Duration(milliseconds: 200),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 5),
@@ -1406,18 +1622,22 @@ class _ClassCard extends StatelessWidget {
                           children: [
                             Text(
                               occurrence.slot.startTime!,
+                              maxLines: 1,
                               style: TextStyle(
                                 color: timeColor,
                                 fontSize: 11,
+                                height: 1,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
                             const SizedBox(height: 2),
                             Text(
                               occurrence.slot.endTime!,
+                              maxLines: 1,
                               style: TextStyle(
                                 color: timeColor,
                                 fontSize: 11,
+                                height: 1,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
@@ -1446,6 +1666,7 @@ class _ClassCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                           fontSize: 13,
+                          height: 1,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -1454,9 +1675,10 @@ class _ClassCard extends StatelessWidget {
                         roomAndState,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(
-                          context,
-                        ).textTheme.bodySmall?.copyWith(fontSize: 10),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontSize: 10,
+                          height: 1,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Row(
@@ -1478,6 +1700,7 @@ class _ClassCard extends StatelessWidget {
                               style: TextStyle(
                                 color: statusColor,
                                 fontSize: 10,
+                                height: 1,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -1573,225 +1796,229 @@ class _AttendanceConfirmedBanner extends StatelessWidget {
   );
 }
 
-class _FinishedClassesPanel extends StatelessWidget {
-  const _FinishedClassesPanel({required this.classes});
-
-  final List<StudentScheduleOccurrence> classes;
-
-  @override
-  Widget build(BuildContext context) => Card(
-    margin: EdgeInsets.zero,
-    child: Stack(
-      children: [
-        for (var index = 0; index < classes.length.clamp(0, 3); index++)
-          Positioned(
-            left: 12.0 + index * 17,
-            top: 18.0 + index * 10,
-            bottom: 18.0 - index * 4,
-            child: Container(
-              width: 54,
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  context,
-                ).colorScheme.secondary.withValues(alpha: .18 + index * .08),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.secondary.withValues(alpha: .3),
-                ),
-              ),
-              alignment: Alignment.center,
-              child: const Icon(Icons.lock_clock_rounded, size: 18),
-            ),
-          ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(105, 8, 14, 8),
-          child: Center(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: SizedBox(
-                width: 200,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.nightlight_round,
-                      size: 19,
-                      color: appMuted(context),
-                    ),
-                    const SizedBox(height: 5),
-                    const Text(
-                      'Ya no hay más materias disponibles el día de hoy',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _BottomNav extends StatelessWidget {
-  const _BottomNav({required this.index, required this.onChanged});
-  final int index;
-  final ValueChanged<int> onChanged;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-    child: Container(
-      height: 70,
-      decoration: BoxDecoration(
-        color: appSurface(context),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Row(
-        children: [
-          _NavItem(
-            icon: Icons.how_to_reg_rounded,
-            label: 'Asistencia',
-            active: index == 0,
-            onTap: () => onChanged(0),
-          ),
-          _NavItem(
-            icon: Icons.calendar_month_rounded,
-            label: 'Horario',
-            active: index == 1,
-            onTap: () => onChanged(1),
-          ),
-          _NavItem(
-            icon: Icons.account_circle_rounded,
-            label: 'Perfil',
-            active: index == 2,
-            onTap: () => onChanged(2),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-class _NavItem extends StatelessWidget {
-  const _NavItem({
-    required this.icon,
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
-  final IconData icon;
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) => Expanded(
-    child: Semantics(
-      selected: active,
-      button: true,
-      label: label,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          margin: const EdgeInsets.all(7),
-          decoration: BoxDecoration(
-            color: active
-                ? Theme.of(context).colorScheme.primary.withValues(alpha: .13)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                color: active
-                    ? Theme.of(context).colorScheme.primary
-                    : appMuted(context),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: active
-                      ? Theme.of(context).colorScheme.primary
-                      : appMuted(context),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-class _ScheduleItem extends StatelessWidget {
-  const _ScheduleItem({required this.occurrence});
-
-  final StudentScheduleOccurrence occurrence;
+class _DayFinishedBanner extends StatelessWidget {
+  const _DayFinishedBanner();
 
   @override
   Widget build(BuildContext context) {
-    final color = _scheduleColor(occurrence.entry.externalGroupId);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 102,
-          child: Text(
-            occurrence.slot.displayTime,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
-        ),
-        Expanded(
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 72),
-            padding: const EdgeInsets.fromLTRB(18, 13, 12, 13),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: .12),
-              borderRadius: BorderRadius.circular(16),
-              border: Border(left: BorderSide(color: color, width: 6)),
+    const orange = Color(0xFFD65F05);
+    return Container(
+      key: const Key('day-finished-banner'),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      decoration: BoxDecoration(
+        color: orange.withValues(alpha: .1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: orange.withValues(alpha: .28)),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.schedule_rounded, color: orange, size: 20),
+          SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              'Jornada terminada · El registro sigue disponible',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+enum _FullScheduleState { registered, inProgress, ended, upcoming, scheduled }
+
+class _FullScheduleCard extends StatelessWidget {
+  const _FullScheduleCard({
+    super.key,
+    required this.occurrence,
+    required this.selectedDate,
+    required this.now,
+    required this.registered,
+  });
+
+  final StudentScheduleOccurrence occurrence;
+  final DateTime selectedDate;
+  final DateTime now;
+  final bool registered;
+
+  @override
+  Widget build(BuildContext context) {
+    const navy = Color(0xFF003B5C);
+    const orange = Color(0xFFD65F05);
+    const pendingRed = Color(0xFFC92A20);
+    const success = Color(0xFF18864B);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final accent = dark ? const Color(0xFF5DC2F0) : navy;
+    final start = _scheduleTimeForDate(occurrence.slot.startTime, selectedDate);
+    final end = _scheduleTimeForDate(occurrence.slot.endTime, selectedDate);
+    final selectedDay = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+    );
+    final today = DateTime(now.year, now.month, now.day);
+    final isFree = occurrence.entry.subject.trim().toLowerCase() == 'libre';
+
+    late final _FullScheduleState state;
+    if (registered) {
+      state = _FullScheduleState.registered;
+    } else if (selectedDay.isBefore(today) ||
+        (selectedDay == today && end != null && !now.isBefore(end))) {
+      state = _FullScheduleState.ended;
+    } else if (selectedDay == today &&
+        start != null &&
+        end != null &&
+        !now.isBefore(start) &&
+        now.isBefore(end)) {
+      state = _FullScheduleState.inProgress;
+    } else if (selectedDay.isAfter(today) ||
+        (selectedDay == today && start != null && start.isAfter(now))) {
+      state = _FullScheduleState.upcoming;
+    } else {
+      state = _FullScheduleState.scheduled;
+    }
+
+    final highlighted = !isFree && state == _FullScheduleState.inProgress;
+    final status = switch (state) {
+      _FullScheduleState.registered => 'Asistencia registrada',
+      _FullScheduleState.inProgress => 'Asistencia pendiente',
+      _FullScheduleState.ended => 'Clase terminada · registro disponible',
+      _FullScheduleState.upcoming => 'Próxima clase',
+      _FullScheduleState.scheduled => 'Clase programada',
+    };
+    final statusColor = switch (state) {
+      _FullScheduleState.registered => success,
+      _FullScheduleState.inProgress => pendingRed,
+      _FullScheduleState.ended => orange,
+      _FullScheduleState.upcoming || _FullScheduleState.scheduled => accent,
+    };
+    final statusIcon = switch (state) {
+      _FullScheduleState.registered => Icons.check_rounded,
+      _FullScheduleState.inProgress => Icons.circle,
+      _FullScheduleState.ended => Icons.schedule_rounded,
+      _FullScheduleState.upcoming => Icons.arrow_forward_rounded,
+      _FullScheduleState.scheduled => Icons.event_available_rounded,
+    };
+    final room = occurrence.entry.classroom ?? 'Aula por confirmar';
+    final roomLabel = highlighted ? '$room · En curso' : room;
+
+    return Container(
+      constraints: const BoxConstraints(minHeight: 92),
+      padding: const EdgeInsets.fromLTRB(13, 12, 13, 12),
+      decoration: BoxDecoration(
+        color: highlighted
+            ? dark
+                  ? orange.withValues(alpha: .15)
+                  : const Color(0xFFFFEEE2)
+            : appSurface(context),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: highlighted
+              ? orange.withValues(alpha: .45)
+              : dark
+              ? const Color(0xFF34383C)
+              : const Color(0xFFD7DDE2),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 62,
+            child:
+                occurrence.slot.startTime != null &&
+                    occurrence.slot.endTime != null
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        occurrence.slot.startTime!,
+                        style: TextStyle(
+                          color: highlighted ? orange : accent,
+                          fontSize: 12,
+                          height: 1,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        occurrence.slot.endTime!,
+                        style: TextStyle(
+                          color: highlighted ? orange : accent,
+                          fontSize: 12,
+                          height: 1,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  )
+                : Text(
+                    occurrence.slot.displayTime,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: accent,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   occurrence.entry.subject,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  occurrence.entry.classroom ?? 'Aula por confirmar',
-                  style: Theme.of(context).textTheme.bodySmall,
+                  isFree ? '-' : roomLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(fontSize: 11),
                 ),
-                if (occurrence.entry.professor != null) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    occurrence.entry.professor!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelSmall,
+                const SizedBox(height: 5),
+                if (isFree)
+                  Text('-', style: TextStyle(color: accent, fontSize: 11))
+                else
+                  Row(
+                    children: [
+                      Icon(statusIcon, color: statusColor, size: 13),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          status,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: statusColor,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
               ],
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -1809,7 +2036,7 @@ class _AcademicLoadingCard extends StatelessWidget {
           children: [
             CircularProgressIndicator(),
             SizedBox(height: 14),
-            Text('Actualizando horario desde UAT…'),
+            Text('Actualizando horario…'),
           ],
         ),
       ),
@@ -1886,7 +2113,7 @@ class _InlineSyncWarning extends StatelessWidget {
       title: const Text('Mostrando el último horario disponible'),
       subtitle: Text(message),
       trailing: IconButton(
-        tooltip: 'Reintentar sincronización',
+        tooltip: 'Reintentar actualización',
         onPressed: onRetry,
         icon: const Icon(Icons.refresh_rounded),
       ),
@@ -1894,19 +2121,86 @@ class _InlineSyncWarning extends StatelessWidget {
   );
 }
 
-Color _scheduleColor(String externalGroupId) {
-  const colors = [
-    AppColors.indigo,
-    AppColors.orange,
-    AppColors.success,
-    Color(0xFF8B5CF6),
-  ];
-  final hash = externalGroupId.codeUnits.fold<int>(
-    0,
-    (sum, item) => sum + item,
-  );
-  return colors[hash % colors.length];
+int _isoWeekNumber(DateTime date) {
+  final day = DateTime(date.year, date.month, date.day);
+  final thursday = day.add(Duration(days: DateTime.thursday - day.weekday));
+  final firstDayOfIsoYear = DateTime(thursday.year, 1, 1);
+  return 1 + thursday.difference(firstDayOfIsoYear).inDays ~/ 7;
 }
+
+String _monthName(int month) {
+  const months = [
+    'Enero',
+    'Febrero',
+    'Marzo',
+    'Abril',
+    'Mayo',
+    'Junio',
+    'Julio',
+    'Agosto',
+    'Septiembre',
+    'Octubre',
+    'Noviembre',
+    'Diciembre',
+  ];
+  return months[month.clamp(1, 12) - 1];
+}
+
+String _scheduleSectionTitle(DateTime selectedDate, DateTime now) {
+  if (_isSameCalendarDay(selectedDate, now)) return 'Clases de hoy';
+  const days = [
+    'lunes',
+    'martes',
+    'miércoles',
+    'jueves',
+    'viernes',
+    'sábado',
+    'domingo',
+  ];
+  return 'Clases del ${days[selectedDate.weekday - 1]}';
+}
+
+String _scheduleRange(List<StudentScheduleOccurrence> classes) {
+  final starts =
+      classes
+          .map((occurrence) => occurrence.slot.startTime)
+          .whereType<String>()
+          .toList()
+        ..sort();
+  final ends =
+      classes
+          .map((occurrence) => occurrence.slot.endTime)
+          .whereType<String>()
+          .toList()
+        ..sort();
+  if (starts.isEmpty || ends.isEmpty) return 'Horario por confirmar';
+  return '${starts.first} – ${ends.last}';
+}
+
+bool _attendanceMatches(
+  AttendanceHistoryEntry history,
+  StudentScheduleOccurrence occurrence,
+  DateTime selectedDate,
+) {
+  if (!_isSameCalendarDay(history.recordedAt.toLocal(), selectedDate)) {
+    return false;
+  }
+
+  final historyClassId = history.classId?.trim().toLowerCase();
+  final scheduleClassId = occurrence.entry.externalGroupId.trim().toLowerCase();
+  if (historyClassId?.isNotEmpty == true && scheduleClassId.isNotEmpty) {
+    return historyClassId == scheduleClassId;
+  }
+
+  final historyClassName = history.className?.trim().toLowerCase();
+  return historyClassName?.isNotEmpty == true &&
+      historyClassName == occurrence.entry.subject.trim().toLowerCase();
+}
+
+bool _isSameCalendarDay(DateTime left, DateTime right) =>
+    left.year == right.year &&
+    left.month == right.month &&
+    left.day == right.day;
 
 String _formattedHomeDate(DateTime date) {
   const weekdays = [
@@ -1936,13 +2230,17 @@ String _formattedHomeDate(DateTime date) {
 }
 
 DateTime? _scheduleTimeForToday(String? value, DateTime now) {
+  return _scheduleTimeForDate(value, now);
+}
+
+DateTime? _scheduleTimeForDate(String? value, DateTime date) {
   if (value == null) return null;
   final parts = value.split(':');
   if (parts.length != 2) return null;
   final hour = int.tryParse(parts[0]);
   final minute = int.tryParse(parts[1]);
   if (hour == null || minute == null) return null;
-  return DateTime(now.year, now.month, now.day, hour, minute);
+  return DateTime(date.year, date.month, date.day, hour, minute);
 }
 
 String _profileInitials(StudentAcademicProfile profile) {
@@ -1963,7 +2261,7 @@ String _academicSummary(StudentAcademicProfile profile) {
   if (profile.approvedCredits != null) {
     details.add('${profile.approvedCredits} créditos aprobados');
   }
-  return details.isEmpty ? 'No disponible en UAT' : details.join(' · ');
+  return details.isEmpty ? 'No disponible' : details.join(' · ');
 }
 
 String _lastSyncLabel(DateTime? syncedAt) {
@@ -1974,7 +2272,7 @@ String _lastSyncLabel(DateTime? syncedAt) {
   final local = syncedAt.toLocal();
   final hour = local.hour.toString().padLeft(2, '0');
   final minute = local.minute.toString().padLeft(2, '0');
-  return 'Última sincronización: $hour:$minute';
+  return 'Última actualización: $hour:$minute';
 }
 
 class _EmptySchedule extends StatelessWidget {

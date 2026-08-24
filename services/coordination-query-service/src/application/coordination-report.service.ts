@@ -7,6 +7,7 @@ type ToleranceSource = number | (() => number | Promise<number>);
 interface Slot { raw: string; startTime: string | null; endTime: string | null }
 interface AttendanceRecord {
   attendanceSessionId: string; date: Date; professorEntryAt: Date | null; professorExitAt: Date | null;
+  actualClassroom: string | null;
   uploadStatus: string; uploadError: string | null;
 }
 interface GroupSource {
@@ -77,9 +78,14 @@ export class CoordinationReportService {
       }).length;
       const display = displaySchedule(DAYS.flatMap((day) => schedule[day]));
       const parts = groupParts(group.groupCode ?? '');
+      const scheduledDates = new Set(scheduled.map(({ date }) => date));
+      const classroomsUsed = uniqueClassrooms(group.attendanceRecords
+        .filter((record) => record.professorEntryAt && scheduledDates.has(record.date.toISOString().slice(0, 10)))
+        .map((record) => record.actualClassroom));
       return {
         id: group.id, groupId: group.id, groupCode: parts.group ?? group.groupCode ?? group.externalGroupId,
         grade: parts.grade, subject: group.subject.name, classroom: group.classroom,
+        classroomsUsed,
         educationLevel: group.educationLevel, period: group.period ?? group.schoolCycleName ?? group.schoolCycleExternalId,
         startTime: display.startTime, endTime: display.endTime, rawSchedule: display.raw,
         scheduledClassDays: scheduled.length, reportedClassDays: attended,
@@ -139,6 +145,7 @@ export class CoordinationReportService {
       return [day, {
         date, status, professorEntryAt: record?.professorEntryAt?.toISOString() ?? null,
         professorExitAt: record?.professorExitAt?.toISOString() ?? null,
+        actualClassroom: record?.actualClassroom ?? null,
         scheduledHours: blocks.length, attendedHours: attended,
         workedMinutes, workedHours: Math.round((workedMinutes / 60) * 100) / 100,
         coverageRate: percentage(attended, blocks.length), hourSlots,
@@ -150,9 +157,11 @@ export class CoordinationReportService {
     const hourSlots = Object.values(cells).flatMap((cell) => cell.hourSlots);
     const scheduled = hourSlots.filter((slot) => ['TAKEN', 'LATE', 'MISSING', 'FUTURE'].includes(slot.status)).length;
     const attended = hourSlots.filter((slot) => slot.status === 'TAKEN' || slot.status === 'LATE').length;
+    const classroomsUsed = uniqueClassrooms(Object.values(cells).map((cell) => cell.actualClassroom));
     return [{
       id: group.id, groupId: group.id, groupCode: parts.group ?? group.groupCode ?? group.externalGroupId,
       grade: parts.grade, subject: group.subject.name, classroom: group.classroom,
+      classroomsUsed,
       educationLevel: group.educationLevel, period: group.period ?? group.schoolCycleName ?? group.schoolCycleExternalId,
       startTime: display.startTime, endTime: display.endTime, rawSchedule: display.raw,
       cells, completionRate: scheduled === 0 ? null : percentage(attended, scheduled),
@@ -262,7 +271,10 @@ function hourlyBlocks(dateValue: string, slots: Slot[]): HourBlock[] {
   });
 }
 function emptyCell(dateValue: string, status: CellStatus) {
-  return { date: dateValue, status, professorEntryAt: null, professorExitAt: null, scheduledHours: 0, attendedHours: 0, workedMinutes: 0, workedHours: 0, coverageRate: null, hourSlots: [] as Array<{ index: number; startTime: string; endTime: string; status: CellStatus }>, portalSyncStatus: null, portalSyncError: null };
+  return { date: dateValue, status, professorEntryAt: null, professorExitAt: null, actualClassroom: null, scheduledHours: 0, attendedHours: 0, workedMinutes: 0, workedHours: 0, coverageRate: null, hourSlots: [] as Array<{ index: number; startTime: string; endTime: string; status: CellStatus }>, portalSyncStatus: null, portalSyncError: null };
+}
+function uniqueClassrooms(values: Array<string | null | undefined>) {
+  return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))].sort();
 }
 function presenceMinutes(blocks: HourBlock[], record: AttendanceRecord | undefined, now: Date) {
   if (!record?.professorEntryAt) return 0;

@@ -370,7 +370,9 @@ function WeeklyReportTable({ report }: { report: WeeklyReportResponse }) {
               <th scope="row" rowSpan={rowSpan} className="border-b border-r border-slate-300 px-3 py-3 text-left align-middle last:border-b-0">
                 <span className="block font-extrabold tabular-nums">{row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : row.rawSchedule}</span>
                 <span className="mt-1 block font-semibold">{row.subject}</span>
-                <span className="mt-0.5 block text-[8px] font-normal text-slate-500">Grupo {row.groupCode}{row.classroom ? ` · ${row.classroom}` : ''} · Ciclo {row.period}</span>
+                <span className="mt-0.5 block text-[8px] font-normal text-slate-500">
+                  Grupo {row.groupCode} · Prog. {row.classroom || '—'} · Usado {formatClassrooms(row.classroomsUsed)} · Ciclo {row.period}
+                </span>
               </th>
             )}
             {days.map((day) => {
@@ -379,7 +381,7 @@ function WeeklyReportTable({ report }: { report: WeeklyReportResponse }) {
               return (
                 <td key={day.key} className="h-[48px] border-b border-r border-slate-300 text-center last:border-r-0">
                   <ReportMark cell={cell} hourSlot={hourSlot} />
-                  <HourSlotLabel hourSlot={hourSlot} />
+                  <HourSlotLabel hourSlot={hourSlot} actualClassroom={cell?.actualClassroom} />
                 </td>
               );
             })}
@@ -423,7 +425,7 @@ function RangeReportTable({ report }: { report: RangeReportResponse }) {
             <th scope="row" className="border-b border-r border-slate-300 px-3 py-3 text-left align-middle last:border-b-0">
               <span className="block font-semibold leading-snug">{row.subject}</span>
               <span className="mt-0.5 block text-[8px] font-normal text-slate-500">
-                {row.rawSchedule || 'Sin horario'}{row.classroom ? ` · ${row.classroom}` : ''} · Ciclo {row.period}
+                {row.rawSchedule || 'Sin horario'} · Prog. {row.classroom || '—'} · Usado {formatClassrooms(row.classroomsUsed)} · Ciclo {row.period}
               </span>
             </th>
             <td className="border-b border-r border-slate-300 text-center text-[12px]">{row.grade || '-'}</td>
@@ -452,9 +454,13 @@ function ReportMark({ cell, hourSlot }: { cell?: ReportCell; hourSlot?: ReportHo
   return <span className="mx-auto grid h-6 w-6 place-items-center rounded-full border border-amber-400 font-bold text-amber-600" aria-label="Horario no interpretable" title="Horario no interpretable">?</span>;
 }
 
-function HourSlotLabel({ hourSlot }: { hourSlot?: ReportHourSlot }) {
+function HourSlotLabel({ hourSlot, actualClassroom }: { hourSlot?: ReportHourSlot; actualClassroom?: string | null }) {
   if (!hourSlot) return <span className="mt-1 block text-[7px] leading-3 text-slate-300">—</span>;
-  return <span className="mt-1 block text-[7px] font-semibold leading-3 text-slate-500">{hourSlot.startTime}-{hourSlot.endTime}</span>;
+  return (
+    <span className="mt-1 block text-[7px] font-semibold leading-3 text-slate-500">
+      {hourSlot.startTime}-{hourSlot.endTime}{actualClassroom ? <><br />{actualClassroom}</> : null}
+    </span>
+  );
 }
 
 function attendanceTitle(cell?: ReportCell, hourSlot?: ReportHourSlot, label = 'Asistencia registrada') {
@@ -462,6 +468,7 @@ function attendanceTitle(cell?: ReportCell, hourSlot?: ReportHourSlot, label = '
   if (hourSlot) pieces.push(`Hora: ${hourSlot.startTime}-${hourSlot.endTime}`);
   if (cell?.professorEntryAt) pieces.push(`Entrada: ${formatTimeOnly(cell.professorEntryAt)}`);
   if (cell?.professorExitAt) pieces.push(`Salida: ${formatTimeOnly(cell.professorExitAt)}`);
+  if (cell?.actualClassroom) pieces.push(`Salón utilizado: ${cell.actualClassroom}`);
   if (cell && cell.scheduledHours > 0) pieces.push(`Cobertura: ${cell.attendedHours}/${cell.scheduledHours} h`);
   if (cell?.workedMinutes != null) pieces.push(`Permanencia real: ${formatWorkedTime(cell.workedMinutes)}`);
   if (cell?.portalSyncError) pieces.push(cell.portalSyncError);
@@ -473,6 +480,10 @@ function formatWorkedTime(minutes: number) {
   const remainder = minutes % 60;
   if (hours === 0) return `${remainder} min`;
   return remainder === 0 ? `${hours} h` : `${hours} h ${remainder} min`;
+}
+
+function formatClassrooms(classrooms?: string[]) {
+  return classrooms?.length ? classrooms.join(', ') : '—';
 }
 
 function SummaryValue({ label, value, tone }: { label: string; value: string | number; tone?: 'green' | 'red' | 'brand' }) {

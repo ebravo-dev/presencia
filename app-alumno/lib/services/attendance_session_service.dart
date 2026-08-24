@@ -228,7 +228,7 @@ class AttendanceSessionService {
       return 'Permite la ubicación para confirmar que estás en clase.';
     }
     if (text.contains('UNSUPPORTED')) {
-      return 'Este iPhone no es compatible con el pase de lista por Bluetooth.';
+      return 'Este iPhone no es compatible con el registro automático de asistencia.';
     }
     return 'No pudimos preparar el pase de lista.';
   }

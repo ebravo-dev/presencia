@@ -85,6 +85,7 @@ export interface ReportCell {
   status: ReportCellStatus;
   professorEntryAt: string | null;
   professorExitAt: string | null;
+  actualClassroom?: string | null;
   scheduledHours: number;
   attendedHours: number;
   workedMinutes?: number;
@@ -102,12 +103,14 @@ export interface ReportHourSlot {
 }
 export interface ReportRow {
   id: string; groupId: string; groupCode: string; grade?: string | null; subject: string; classroom: string | null; educationLevel: string | null;
+  classroomsUsed?: string[];
   period: string; startTime: string | null; endTime: string | null; rawSchedule: string;
   completionRate: number | null;
   cells: Partial<Record<ReportDay, ReportCell>>;
 }
 export interface RangeReportRow {
   id: string; groupId: string; groupCode: string; grade: string | null; subject: string; classroom: string | null; educationLevel: string | null;
+  classroomsUsed?: string[];
   period: string; startTime: string | null; endTime: string | null; rawSchedule: string;
   scheduledClassDays: number; reportedClassDays: number; attendanceRate: number | null;
 }

@@ -214,6 +214,7 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
       date: session.date.toISOString().slice(0, 10),
       professorEntryAt: session.professorEntryAt,
       professorExitAt: session.professorExitAt,
+      actualClassroom: session.actualClassroom,
       entriesCount: session._count.entries,
       uploadStatus: session.uploadStatus,
       uploadError: session.uploadError,
@@ -479,15 +480,11 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
       const duplicate = await this.processedPresenceCommand<ProfessorPresenceObservationResult>(transaction, command, 'PROFESSOR_ENTRY');
       if (duplicate) return duplicate;
       const group = await this.authorizedPresenceGroup(transaction, command);
-      const classroomKey = group.classroom ? normalizeClassroomKey(group.classroom) : '';
-      const classroomBeacon = classroomKey
-        ? await transaction.classroomBeacon.findUnique({ where: { classroomKey } })
-        : null;
+      const classroomBeacon = await transaction.classroomBeacon.findUnique({
+        where: { uuid: command.beaconUuid },
+      });
       if (!classroomBeacon) {
-        throw new AttendanceDomainError('CLASSROOM_BEACON_NOT_CONFIGURED', `No hay beacon asignado al salón ${group.classroom ?? ''}.`);
-      }
-      if (classroomBeacon.uuid !== command.beaconUuid) {
-        throw new AttendanceDomainError('ROOM_BEACON_MISMATCH', 'El beacon detectado no corresponde al salón del grupo.');
+        throw new AttendanceDomainError('CLASSROOM_BEACON_NOT_CONFIGURED', 'El beacon detectado no está asignado a un salón.');
       }
       const date = attendanceDate(command.attendanceDate);
       const existing = await transaction.attendanceSession.findUnique({
@@ -519,11 +516,13 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
         create: {
           groupId: group.id, date, professorExternalId: presenceProfessorExternalId(group, command),
           professorEntryAt: command.observedAt, roomBeaconUuid: command.beaconUuid,
+          actualClassroom: classroomBeacon.classroom,
           roomBeaconRssi: command.rssi ?? null, roomBeaconDistance: command.distance ?? null,
           roomBeaconAddress: command.bluetoothAddress ?? null,
         },
         update: {
           professorEntryAt: command.observedAt, roomBeaconUuid: command.beaconUuid,
+          actualClassroom: classroomBeacon.classroom,
           roomBeaconRssi: command.rssi ?? null, roomBeaconDistance: command.distance ?? null,
           roomBeaconAddress: command.bluetoothAddress ?? null,
           ...(!existing?.finalizedAt ? { version: { increment: 1 } } : {}),
@@ -959,6 +958,7 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
     transaction: Prisma.TransactionClient,
     session: {
       id: string; date: Date; professorExternalId: string; professorEntryAt: Date | null; professorExitAt: Date | null;
+      actualClassroom: string | null;
       uploadStatus: 'DRAFT' | 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'SKIPPED'; uploadError: string | null; version: number;
       _count: { entries: number };
     },
@@ -976,6 +976,7 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
           date: session.date.toISOString().slice(0, 10),
           professorEntryAt: session.professorEntryAt?.toISOString() ?? null,
           professorExitAt: session.professorExitAt?.toISOString() ?? null,
+          actualClassroom: session.actualClassroom,
           entriesCount: session._count.entries, uploadStatus: session.uploadStatus,
           uploadError: session.uploadError, version: session.version,
         }),
@@ -1104,7 +1105,8 @@ function attendanceDate(value: string): Date {
 
 function professorPresenceResult(
   session: {
-    id: string; date: Date; professorEntryAt: Date | null; professorExitAt: Date | null; version: number;
+    id: string; date: Date; professorEntryAt: Date | null; professorExitAt: Date | null;
+    actualClassroom: string | null; version: number;
   },
   externalGroupId: string,
   duplicate: boolean,
@@ -1113,6 +1115,7 @@ function professorPresenceResult(
     attendanceSessionId: session.id, externalGroupId, date: session.date.toISOString().slice(0, 10),
     professorEntryAt: session.professorEntryAt?.toISOString() ?? null,
     professorExitAt: session.professorExitAt?.toISOString() ?? null,
+    actualClassroom: session.actualClassroom,
     duplicate, version: session.version,
   };
 }

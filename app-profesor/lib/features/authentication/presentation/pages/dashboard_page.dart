@@ -140,8 +140,8 @@ class DashboardPage extends ConsumerWidget {
                       ),
                       _ActionCard(
                         icon: Icons.bluetooth,
-                        title: 'Detectar Beacons',
-                        subtitle: 'Verificar ubicación',
+                        title: 'Confirmar ubicación',
+                        subtitle: 'Comprobar presencia en el aula',
                         onTap: () {
                           // TODO: Navigate to beacon detection
                         },

@@ -39,7 +39,7 @@ export async function exportReportExcel(report: AttendanceReportResponse): Promi
   sheet.getCell('A2').value = `${report.data.teacher.name} · Semana ${report.data.week.isoWeek} (${report.data.week.start} a ${report.data.week.end})`;
 
   sheet.addRow([]);
-  sheet.addRow(['Hora', 'Materia', 'Grupo', 'Salón', 'Ciclo', ...days.map((day) => day.label), 'Cumplimiento']);
+  sheet.addRow(['Hora', 'Materia', 'Grupo', 'Salón programado', 'Ciclo', ...days.map((day) => day.label), 'Cumplimiento']);
   sheet.getRow(4).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   sheet.getRow(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC8102E' } };
 
@@ -77,15 +77,15 @@ async function exportRangeReportExcel(report: RangeReportResponse): Promise<void
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet('Rango', { views: [{ state: 'frozen', ySplit: 4 }] });
-  sheet.mergeCells('A1:I1');
+  sheet.mergeCells('A1:J1');
   sheet.getCell('A1').value = 'FACULTAD DE INGENIERIA TAMPICO · Reporte de asistencia por rango';
   sheet.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
   sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF111111' } };
-  sheet.mergeCells('A2:I2');
+  sheet.mergeCells('A2:J2');
   sheet.getCell('A2').value = `${report.data.teacher.name} · ${report.data.range.start} a ${report.data.range.end}`;
 
   sheet.addRow([]);
-  sheet.addRow(['Materia', 'Horario', 'Salón', 'Ciclo', 'Grado', 'Grupo', 'Horas programadas', 'Horas cubiertas', 'Porcentaje de asistencia']);
+  sheet.addRow(['Materia', 'Horario', 'Salón programado', 'Salones utilizados', 'Ciclo', 'Grado', 'Grupo', 'Horas programadas', 'Horas cubiertas', 'Porcentaje de asistencia']);
   sheet.getRow(4).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   sheet.getRow(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC8102E' } };
 
@@ -94,6 +94,7 @@ async function exportRangeReportExcel(report: RangeReportResponse): Promise<void
       reportRow.subject,
       reportRow.rawSchedule || 'Sin horario',
       reportRow.classroom || '—',
+      reportRow.classroomsUsed?.join(', ') || '—',
       reportRow.period,
       reportRow.grade || '-',
       reportRow.groupCode || '-',
@@ -102,15 +103,15 @@ async function exportRangeReportExcel(report: RangeReportResponse): Promise<void
       formatRangeRate(reportRow.attendanceRate),
     ]);
 
-    row.getCell(9).alignment = { horizontal: 'center', vertical: 'middle' };
-    row.getCell(9).font = { bold: true };
+    row.getCell(10).alignment = { horizontal: 'center', vertical: 'middle' };
+    row.getCell(10).font = { bold: true };
     if (reportRow.attendanceRate === 0) {
-      row.getCell(9).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
-      row.getCell(9).font = { bold: true, color: { argb: 'FF000000' } };
+      row.getCell(10).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+      row.getCell(10).font = { bold: true, color: { argb: 'FF000000' } };
     }
   }
 
-  sheet.columns = [{ width: 38 }, { width: 18 }, { width: 14 }, { width: 16 }, { width: 10 }, { width: 10 }, { width: 24 }, { width: 24 }, { width: 22 }];
+  sheet.columns = [{ width: 38 }, { width: 18 }, { width: 18 }, { width: 24 }, { width: 16 }, { width: 10 }, { width: 10 }, { width: 24 }, { width: 24 }, { width: 22 }];
   const buffer = await workbook.xlsx.writeBuffer();
   download(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), rangeFilename(report, 'xlsx'));
 }
@@ -129,7 +130,7 @@ function styleStatusCell(cell: ExcelJS.Cell, status: ReportCellStatus): void {
 function hourCellLabel(cell: ReportCell | undefined, hourIndex: number): string {
   const hourSlot = cell?.hourSlots?.[hourIndex];
   if (!hourSlot) return statusLabels.NOT_SCHEDULED;
-  return `${statusLabels[hourSlot.status]} ${hourSlot.startTime}-${hourSlot.endTime}`;
+  return `${statusLabels[hourSlot.status]} ${hourSlot.startTime}-${hourSlot.endTime}${cell?.actualClassroom ? ` · ${cell.actualClassroom}` : ''}`;
 }
 
 function weeklyHourRows(rows: ReportRow[]) {

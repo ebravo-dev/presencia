@@ -125,7 +125,13 @@ class LocalStorageService {
   bool get hasClassroomBeacon => classroomBeaconUuid.trim().isNotEmpty;
 
   List<AttendanceHistoryEntry> get attendanceHistory {
-    final storedEntries = _profile.get(_attendanceHistoryKey);
+    dynamic storedEntries;
+    try {
+      storedEntries = _profile.get(_attendanceHistoryKey);
+    } catch (_) {
+      // Lightweight test doubles and pre-initialization callers have no box.
+      return const [];
+    }
     if (storedEntries is! List) return const [];
 
     final entries =

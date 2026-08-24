@@ -26,6 +26,7 @@ export const attendanceProjectionSnapshotSchema = z.object({
   professorExternalId: z.string().min(1), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   professorEntryAt: z.iso.datetime({ offset: true }).nullable(),
   professorExitAt: z.iso.datetime({ offset: true }).nullable(),
+  actualClassroom: nullableText.optional(),
   entriesCount: z.number().int().nonnegative(),
   uploadStatus: z.enum(['DRAFT', 'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'SKIPPED']),
   uploadError: nullableText, version: z.number().int().positive(),

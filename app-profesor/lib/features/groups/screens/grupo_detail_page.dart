@@ -67,6 +67,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   DateTime? _entradaProfesor;
   DateTime? _salidaProfesor;
   DateTime _selectedDateTime = DateTime.now();
+  late String _selectedClassroom;
+  late TextEditingController _classroomController;
+  List<String> _availableClassrooms = const [];
+  bool _isLoadingClassrooms = false;
 
   // Controlador para el efecto neón parpadeante en el botón de fecha
   AnimationController? _neonAnimationController;
@@ -110,6 +114,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   @override
   void initState() {
     super.initState();
+    _selectedClassroom = widget.grupo.classroom.trim().toUpperCase();
+    _classroomController = TextEditingController(text: _selectedClassroom);
+    _availableClassrooms = _cachedAvailableClassrooms();
     WidgetsBinding.instance.addObserver(this);
     // Configurar status bar transparente
     SystemChrome.setSystemUIOverlayStyle(
@@ -129,6 +136,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
     // Cargar asistencia existente
     _cargarAsistencia();
+    unawaited(_loadAvailableClassrooms());
 
     // Efecto neón parpadeante si se solicitó
     if (widget.highlightDateSelector) {
@@ -246,6 +254,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     _buttonAnimationController.dispose();
     _studentsAnimationController.dispose();
     _neonAnimationController?.dispose();
+    _classroomController.dispose();
     _scrollController.dispose();
     _bleBeaconService.dispose();
     _studentBeaconSubscription?.cancel();
@@ -859,6 +868,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           ),
           const SizedBox(height: 12),
         ],
+        _buildClassroomPicker(),
+        const SizedBox(height: 12),
         // Botón de Entrada
         Container(
           decoration: BoxDecoration(
@@ -1128,6 +1139,121 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     );
   }
 
+  Widget _buildClassroomPicker() {
+    final palette = context.uatPalette;
+    final locked = _entradaProfesor != null;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: palette.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.meeting_room_rounded,
+                color: widget.gradientColors[0],
+                size: 21,
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  'Salón para tomar asistencia',
+                  style: TextStyle(
+                    color: palette.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (_isLoadingClassrooms)
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: widget.gradientColors[0],
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) => DropdownMenu<String>(
+              controller: _classroomController,
+              width: constraints.maxWidth,
+              enabled: !locked,
+              enableFilter: true,
+              enableSearch: true,
+              requestFocusOnTap: true,
+              label: const Text('Buscar salón'),
+              leadingIcon: const Icon(Icons.search_rounded),
+              trailingIcon: const Icon(Icons.keyboard_arrow_down_rounded),
+              selectedTrailingIcon: const Icon(Icons.keyboard_arrow_up_rounded),
+              dropdownMenuEntries: _availableClassrooms
+                  .map(
+                    (classroom) => DropdownMenuEntry<String>(
+                      value: classroom,
+                      label: classroom,
+                      leadingIcon: const Icon(Icons.location_on_outlined),
+                    ),
+                  )
+                  .toList(),
+              onSelected: (classroom) {
+                if (classroom == null || classroom == _selectedClassroom) {
+                  return;
+                }
+                HapticFeedback.selectionClick();
+                setState(() => _selectedClassroom = classroom);
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            locked
+                ? 'Salón confirmado para esta asistencia.'
+                : 'Escribe para filtrar y selecciona el salón donde estás. Se validará su beacon.',
+            style: TextStyle(
+              color: palette.textSecondary,
+              fontSize: 12,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<String> _cachedAvailableClassrooms() {
+    final classrooms = (_authStorage.getBeacons() ?? const [])
+        .map((beacon) => beacon['classroom']?.toString().trim().toUpperCase())
+        .whereType<String>()
+        .where((classroom) => classroom.isNotEmpty)
+        .toSet();
+    if (_selectedClassroom.isNotEmpty) classrooms.add(_selectedClassroom);
+    final result = classrooms.toList()..sort();
+    return result;
+  }
+
+  Future<void> _loadAvailableClassrooms() async {
+    if (mounted) setState(() => _isLoadingClassrooms = true);
+    final result = await _apiService.listAvailableClassroomBeacons();
+    await result.fold((_) async {}, (beacons) async {
+      await _authStorage.saveBeacons(beacons);
+    });
+    if (!mounted) return;
+    setState(() {
+      _availableClassrooms = _cachedAvailableClassrooms();
+      _isLoadingClassrooms = false;
+    });
+  }
+
   // ── Verificación BLE Beacon para entrada y salida ─────────────
 
   Future<void> _verificarBeaconYMarcarEntrada() async {
@@ -1173,15 +1299,42 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   Future<_BleDialogResult?> _verificarBeaconDelSalon({
     required bool permitirMotivo,
   }) async {
-    // Buscar el UUID del beacon asignado al salón de este grupo
-    final authStorage = AuthStorageService();
-    var beaconUuid = authStorage.getBeaconUuidForClassroom(
-      widget.grupo.classroom,
-    );
+    final typedClassroom = _classroomController.text.trim().toUpperCase();
+    final matchingClassrooms = _availableClassrooms
+        .where(
+          (classroom) =>
+              AuthStorageService.classroomKey(classroom) ==
+              AuthStorageService.classroomKey(typedClassroom),
+        )
+        .toList();
+    if (typedClassroom.isEmpty || matchingClassrooms.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Selecciona un salón de la lista para tomar la asistencia.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return null;
+    }
+    final selectedClassroom = matchingClassrooms.first;
+    if (_selectedClassroom != selectedClassroom && mounted) {
+      setState(() => _selectedClassroom = selectedClassroom);
+    }
 
-    final result = await _apiService.resolveClassroomBeacons(
-      classrooms: [widget.grupo.classroom],
-    );
+    // El salón real puede ser distinto al programado para el grupo.
+    final authStorage = AuthStorageService();
+    var beaconUuid = authStorage.getBeaconUuidForClassroom(selectedClassroom);
+
+    var result = await _apiService.listAvailableClassroomBeacons();
+    if (result.isLeft()) {
+      result = await _apiService.resolveClassroomBeacons(
+        classrooms: [selectedClassroom],
+      );
+    }
     await result.fold((_) async {}, (beacons) async {
       if (beacons.isEmpty) return;
 
@@ -1207,9 +1360,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       }
 
       await authStorage.saveBeacons(merged.values.toList());
-      beaconUuid = authStorage.getBeaconUuidForClassroom(
-        widget.grupo.classroom,
-      );
+      beaconUuid = authStorage.getBeaconUuidForClassroom(selectedClassroom);
     });
 
     final resolvedBeaconUuid = beaconUuid;
@@ -1218,8 +1369,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'No hay beacon asignado al salón "${widget.grupo.classroom}". '
-            'Contacta al administrador.',
+            'No pudimos preparar la verificación del salón '
+            '"$selectedClassroom". Solicita ayuda a administración.',
           ),
           backgroundColor: Colors.orange,
           duration: const Duration(seconds: 4),
@@ -1302,6 +1453,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         _salidaProfesor = registro.horaSalida;
         _entradaVerificada = registro.entradaVerificada;
         _motivoEntrada = registro.motivoEntrada;
+        _selectedClassroom =
+            registro.salonUtilizado?.trim().toUpperCase() ??
+            widget.grupo.classroom.trim().toUpperCase();
+        _classroomController.text = _selectedClassroom;
         _asistencias.clear();
         _asistencias.addAll(
           _normalizarAsistencias(registro.asistenciasAlumnos),
@@ -1321,6 +1476,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       setState(() {
         _entradaProfesor = null;
         _salidaProfesor = null;
+        _selectedClassroom = widget.grupo.classroom.trim().toUpperCase();
+        _classroomController.text = _selectedClassroom;
         _asistencias.clear();
         _automaticallyDetectedStudentKeys.clear();
         _detectedStudentBeaconUuids.clear();
@@ -1390,6 +1547,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       grupoCode: widget.grupo.code,
       grupoGroupLetter: widget.grupo.groupLetter,
       grupoPeriod: widget.grupo.period,
+      salonUtilizado: _selectedClassroom,
     );
 
     await _asistenciaService.guardarAsistencia(registro);
@@ -1513,7 +1671,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Estamos guardando la asistencia\nen la nube...',
+                  'Estamos guardando la asistencia...',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: palette.textSecondary, fontSize: 14),
                 ),
@@ -1534,7 +1692,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       date: _selectedDateTime,
       attendances: attendances,
       groupName: widget.grupo.name,
-      classroom: widget.grupo.classroom,
+      classroom: _selectedClassroom,
       level: widget.grupo.level,
       schedule: widget.grupo.schedule,
     );
@@ -1597,7 +1755,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  debugUpload ? 'Modo debug activo' : '¡Asistencia guardada!',
+                  debugUpload ? 'Modo de prueba' : '¡Asistencia guardada!',
                   style: TextStyle(
                     color: palette.textPrimary,
                     fontSize: 20,
@@ -1607,8 +1765,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                 const SizedBox(height: 12),
                 Text(
                   debugUpload
-                      ? 'La asistencia quedó registrada para reportes.\nNo se envio a UAT/API REST externa.'
-                      : 'La asistencia del profesor y los alumnos\nha sido subida exitosamente a la nube.',
+                      ? 'La asistencia quedó disponible en los reportes de prueba.'
+                      : 'La asistencia del profesor y los alumnos\nse guardó correctamente.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: palette.textSecondary, fontSize: 14),
                 ),
@@ -1681,7 +1839,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'La asistencia fue guardada localmente\npero no se pudo subir a la nube.',
+                  'La asistencia se guardó en este equipo,\npero no pudimos enviarla.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: palette.textSecondary, fontSize: 14),
                 ),
@@ -1924,7 +2082,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No hay alumnos con UUID vinculado en este grupo.'),
+          content: Text(
+            'No hay alumnos listos para la detección automática en este grupo.',
+          ),
           backgroundColor: Colors.orange,
         ),
       );
@@ -1960,7 +2120,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'No hay alumnos con UUID y matrícula válidos en este grupo.',
+            'No pudimos preparar la detección automática de este grupo.',
           ),
           backgroundColor: Colors.orange,
         ),
@@ -2018,7 +2178,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     if (!started) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No se pudo iniciar la detección BLE.'),
+          content: Text('No se pudo iniciar la detección automática.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -2547,7 +2707,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                     Text(
                       _isStudentBeaconScanning
                           ? 'Detectando alumnos'
-                          : 'Beacons de alumnos',
+                          : 'Detección automática',
                       style: TextStyle(
                         color: palette.textPrimary,
                         fontSize: 15,
@@ -2557,8 +2717,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                     const SizedBox(height: 3),
                     Text(
                       _isStudentBeaconScanning
-                          ? '$detectedCount detectados de $linkedCount vinculados'
-                          : '$linkedCount alumnos con UUID vinculado',
+                          ? '$detectedCount detectados de $linkedCount disponibles'
+                          : '$linkedCount alumnos disponibles',
                       style: TextStyle(
                         color: palette.textSecondary,
                         fontSize: 13,
@@ -2593,7 +2753,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                         : Icons.sensors_rounded,
                     size: 18,
                   ),
-                  label: Text(_isStudentBeaconScanning ? 'Parar' : 'Escanear'),
+                  label: Text(_isStudentBeaconScanning ? 'Detener' : 'Iniciar'),
                   style: FilledButton.styleFrom(
                     backgroundColor: _isStudentBeaconScanning
                         ? Colors.red.shade600
@@ -2866,7 +3026,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                   Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      'Todos los alumnos vinculados fueron detectados automáticamente.',
+                      'Todos los alumnos disponibles fueron detectados automáticamente.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: palette.textSecondary,
@@ -2931,7 +3091,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
             ),
           ),
           subtitle: Text(
-            '${students.length} confirmados por Bluetooth',
+            '${students.length} confirmados automáticamente',
             style: TextStyle(color: palette.textSecondary, fontSize: 12),
           ),
           children: List.generate(
@@ -3006,7 +3166,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                             if (automaticallyDetected) ...[
                               const SizedBox(height: 3),
                               Text(
-                                'Detectado y confirmado por Bluetooth',
+                                'Detectado y confirmado automáticamente',
                                 style: TextStyle(
                                   color: widget.gradientColors[0],
                                   fontSize: 11,
@@ -3146,7 +3306,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
   late Animation<double> _pulseAnimation;
 
   _ScanPhase _phase = _ScanPhase.scanning;
-  String _statusText = 'Buscando beacon del salón...';
+  String _statusText = 'Comprobando tu ubicación...';
   String? _lastDeviceFound;
   StreamSubscription<String>? _progressSub;
 
@@ -3179,7 +3339,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
   Future<void> _startScan() async {
     setState(() {
       _phase = _ScanPhase.scanning;
-      _statusText = 'Buscando beacon del salón...';
+      _statusText = 'Comprobando tu ubicación...';
       _lastDeviceFound = null;
     });
 
@@ -3196,7 +3356,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
       case BeaconVerificationResult.detected:
         setState(() {
           _phase = _ScanPhase.success;
-          _statusText = '¡Beacon detectado!';
+          _statusText = '¡Ubicación confirmada!';
         });
         _pulseController.stop();
         HapticFeedback.heavyImpact();
@@ -3211,7 +3371,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
       case BeaconVerificationResult.timeout:
         setState(() {
           _phase = _ScanPhase.failed;
-          _statusText = 'No se detectó el beacon';
+          _statusText = 'No pudimos confirmar tu ubicación';
         });
         _pulseController.stop();
         HapticFeedback.mediumImpact();
@@ -3220,7 +3380,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
       case BeaconVerificationResult.bluetoothUnavailable:
         setState(() {
           _phase = _ScanPhase.failed;
-          _statusText = 'Bluetooth no disponible';
+          _statusText = 'Activa Bluetooth para continuar';
         });
         _pulseController.stop();
         break;
@@ -3228,7 +3388,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
       case BeaconVerificationResult.error:
         setState(() {
           _phase = _ScanPhase.failed;
-          _statusText = 'Error durante el escaneo';
+          _statusText = 'No pudimos comprobar tu ubicación';
         });
         _pulseController.stop();
         break;
@@ -3385,7 +3545,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
         if (_lastDeviceFound != null) ...[
           const SizedBox(height: 8),
           Text(
-            'Último: $_lastDeviceFound',
+            'Se encontró una señal cercana',
             textAlign: TextAlign.center,
             style: TextStyle(color: palette.textTertiary, fontSize: 12),
           ),
@@ -3422,7 +3582,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
         Text(
           widget.permitirMotivo
               ? 'No pudimos verificar tu ubicación.\nPuedes reintentar o indicar un motivo.'
-              : 'No pudimos verificar tu ubicación.\nAcércate al beacon e inténtalo de nuevo.',
+              : 'No pudimos verificar tu ubicación.\nPermanece dentro del salón e inténtalo de nuevo.',
           textAlign: TextAlign.center,
           style: TextStyle(color: palette.textSecondary, fontSize: 14),
         ),
@@ -3578,7 +3738,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
           onPressed: () {
             setState(() {
               _phase = _ScanPhase.failed;
-              _statusText = 'No se detectó el beacon';
+              _statusText = 'No pudimos confirmar tu ubicación';
             });
           },
           child: Text(

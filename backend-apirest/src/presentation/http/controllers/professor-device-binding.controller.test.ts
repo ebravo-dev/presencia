@@ -2,6 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { ProfessorDeviceBindingController } from './professor-device-binding.controller.js';
 
 describe('ProfessorDeviceBindingController', () => {
+  it('lists all registered classroom beacons for the authenticated professor picker', async () => {
+    const response = { data: [{ classroom: 'AULA 101', uuid: '12345678-1234-4234-9234-123456789abc' }] };
+    const controller = new ProfessorDeviceBindingController({
+      listClassroomBeacons: async () => response,
+    } as never);
+
+    await expect(controller.listBeacons()).resolves.toEqual(response);
+  });
+
   it('derives professor identity from the authenticated UAT session', async () => {
     let received: unknown;
     const controller = new ProfessorDeviceBindingController({

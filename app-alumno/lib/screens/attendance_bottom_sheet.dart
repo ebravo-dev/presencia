@@ -521,7 +521,7 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Text(
             _errorMessage ??
-                'No se detectó la confirmación a tiempo. Asegúrate de estar dentro del aula, con Bluetooth encendido y que el profesor tenga activo el pase de lista.',
+                'No recibimos respuesta a tiempo. Asegúrate de estar dentro del aula, con Bluetooth encendido y que el profesor tenga activo el pase de lista.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,

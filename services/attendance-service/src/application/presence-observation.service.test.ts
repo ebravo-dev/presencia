@@ -66,7 +66,7 @@ describe('PresenceObservationService', () => {
 
 const professorResult = {
   attendanceSessionId: 'session-1', externalGroupId: '947699', date: '2026-08-03',
-  professorEntryAt: null, professorExitAt: null, duplicate: false, version: 1,
+  professorEntryAt: null, professorExitAt: null, actualClassroom: null, duplicate: false, version: 1,
 };
 const studentResult = {
   attendanceSessionId: null, externalGroupId: '947699', date: '2026-08-03', matchedCount: 0,

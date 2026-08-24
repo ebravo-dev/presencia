@@ -1,3 +1,4 @@
+import 'package:app_alumno/models/attendance_history_entry.dart';
 import 'package:app_alumno/models/student_academic_profile.dart';
 import 'package:app_alumno/models/student_schedule_entry.dart';
 import 'package:app_alumno/screens/home_screen.dart';
@@ -17,6 +18,9 @@ class _EmptyStorage extends LocalStorageService {
 
   @override
   int get attendanceHistoryCount => 0;
+
+  @override
+  List<AttendanceHistoryEntry> get attendanceHistory => const [];
 }
 
 class _SyncStorage extends _EmptyStorage {
@@ -31,12 +35,16 @@ class _SyncStorage extends _EmptyStorage {
 }
 
 class _ScheduleStorage extends _EmptyStorage {
-  _ScheduleStorage(this.schedule);
+  _ScheduleStorage(this.schedule, {this.history = const []});
 
   final List<StudentScheduleEntry> schedule;
+  final List<AttendanceHistoryEntry> history;
 
   @override
   List<StudentScheduleEntry> get studentSchedule => schedule;
+
+  @override
+  List<AttendanceHistoryEntry> get attendanceHistory => history;
 }
 
 class _RecordingAuth extends StudentAuthService {
@@ -153,14 +161,114 @@ void main() {
     expect(tester.getSize(find.byType(IndexedStack)).height, greaterThan(300));
     expect(find.text('Hola, Alumno'), findsOneWidget);
     expect(find.text('Tu día'), findsOneWidget);
+    expect(
+      tester.widget<Scaffold>(find.byType(Scaffold)).bottomNavigationBar,
+      isNull,
+    );
 
     await tester.tap(find.text('Ver horario completo'));
     await tester.pump();
-    expect(find.text('Datos de UAT'), findsOneWidget);
+    expect(find.text('Mi horario'), findsOneWidget);
 
-    await tester.tap(find.text('Perfil'));
+    await tester.tap(find.byTooltip('Volver al inicio'));
+    await tester.pump();
+    expect(find.text('Hola, Alumno'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Abrir perfil'));
     await tester.pump();
     expect(find.text('Tu información estudiantil'), findsOneWidget);
+    expect(
+      tester
+          .widget<ColoredBox>(find.byKey(const Key('profile-page-background')))
+          .color,
+      const Color(0xFFF7F8FA),
+    );
+    final avatar = tester.widget<Container>(
+      find.byKey(const Key('profile-avatar')),
+    );
+    expect(
+      (avatar.decoration! as BoxDecoration).color,
+      const Color(0xFF003B5C),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('full schedule matches the weekly card layout', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final now = DateTime.now();
+    final storage = _ScheduleStorage(
+      [
+        StudentScheduleEntry(
+          externalGroupId: 'group-registered',
+          subject: 'Fundamentos de programación',
+          classroom: 'Aula 101',
+          slots: [
+            StudentScheduleSlot(
+              weekday: now.weekday,
+              raw: '00:00 - 23:59',
+              startTime: '00:00',
+              endTime: '23:59',
+            ),
+          ],
+        ),
+      ],
+      history: [
+        AttendanceHistoryEntry(
+          recordedAt: now,
+          classId: 'group-registered',
+          className: 'Fundamentos de programación',
+        ),
+      ],
+    );
+    final advertiser = BleAdvertiserService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(Brightness.light),
+        home: HomeScreen(
+          storage: storage,
+          bleService: advertiser,
+          attendanceSession: AttendanceSessionService(
+            storage: storage,
+            advertiser: advertiser,
+          ),
+          deviceBindingService: StudentDeviceBindingService(),
+          profile: const StudentAcademicProfile(
+            matricula: '123456',
+            institutionalEmail: 'alumno@alumnos.uat.edu.mx',
+            displayName: 'Alumno Prueba',
+          ),
+          initialUatSessionId: null,
+          demoMode: false,
+          themeMode: ThemeMode.light,
+          onThemeModeChanged: (_) {},
+          onLogout: () async {},
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Ver horario completo'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Mi horario'), findsOneWidget);
+    expect(find.textContaining('Semana '), findsOneWidget);
+    expect(find.byKey(const Key('full-schedule-day-selector')), findsOneWidget);
+    expect(find.text('Clases de hoy'), findsOneWidget);
+    expect(find.text('00:00 – 23:59'), findsOneWidget);
+    expect(find.byKey(const ValueKey('full-schedule-card-0')), findsOneWidget);
+    expect(find.text('Asistencia registrada'), findsOneWidget);
+    expect(
+      tester
+          .widget<ColoredBox>(find.byKey(const Key('full-schedule-background')))
+          .color,
+      const Color(0xFFF7F8FA),
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -222,78 +330,97 @@ void main() {
         find.byKey(const ValueKey('class-indicator-0-active')),
         findsOneWidget,
       );
+      final carouselTop = tester.getTopLeft(carousel).dy;
+      final selectedCardTop = tester
+          .getTopLeft(find.byKey(const ValueKey('attendance-class-0')))
+          .dy;
+      expect(selectedCardTop - carouselTop, lessThan(10));
 
-      await tester.drag(carousel, const Offset(0, -180));
+      await tester.tap(find.byKey(const ValueKey('attendance-class-1')));
       await tester.pumpAndSettle();
 
       expect(
         find.byKey(const ValueKey('class-indicator-1-active')),
         findsOneWidget,
       );
+      final nextCardTop = tester
+          .getTopLeft(find.byKey(const ValueKey('attendance-class-1')))
+          .dy;
+      expect(nextCardTop - carouselTop, lessThan(10));
       expect(tester.takeException(), isNull);
     },
   );
 
-  testWidgets('attendance fits a compact screen and locks a finished day', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(360, 640);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    'attendance keeps a finished class available on compact screens',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    final advertiser = BleAdvertiserService();
-    final storage = _ScheduleStorage([
-      StudentScheduleEntry(
-        externalGroupId: 'today-1',
-        subject: 'Arquitectura móvil',
-        classroom: 'LAB 1',
-        group: 'A',
-        slots: [
-          StudentScheduleSlot(
-            weekday: DateTime.now().weekday,
-            raw: '00:00 - 00:00',
-            startTime: '00:00',
-            endTime: '00:00',
-          ),
-        ],
-      ),
-    ]);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildAppTheme(Brightness.light),
-        home: HomeScreen(
-          storage: storage,
-          bleService: advertiser,
-          attendanceSession: AttendanceSessionService(
-            storage: storage,
-            advertiser: advertiser,
-          ),
-          deviceBindingService: StudentDeviceBindingService(),
-          profile: const StudentAcademicProfile(
-            matricula: '123456',
-            institutionalEmail: 'alumno@alumnos.uat.edu.mx',
-            displayName: 'Alumno Prueba',
-          ),
-          initialUatSessionId: null,
-          demoMode: false,
-          themeMode: ThemeMode.light,
-          onThemeModeChanged: (_) {},
-          onLogout: () async {},
+      final advertiser = BleAdvertiserService();
+      final storage = _ScheduleStorage([
+        StudentScheduleEntry(
+          externalGroupId: 'today-1',
+          subject: 'Arquitectura móvil',
+          classroom: 'LAB 1',
+          group: 'A',
+          slots: [
+            StudentScheduleSlot(
+              weekday: DateTime.now().weekday,
+              raw: '00:00 - 00:00',
+              startTime: '00:00',
+              endTime: '00:00',
+            ),
+          ],
         ),
-      ),
-    );
-    await tester.pump();
+      ]);
 
-    expect(find.byType(CustomScrollView), findsNothing);
-    expect(
-      find.text('Ya no hay más materias disponibles el día de hoy'),
-      findsOneWidget,
-    );
-    expect(find.text('Jornada terminada'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(Brightness.light),
+          home: HomeScreen(
+            storage: storage,
+            bleService: advertiser,
+            attendanceSession: AttendanceSessionService(
+              storage: storage,
+              advertiser: advertiser,
+            ),
+            deviceBindingService: StudentDeviceBindingService(),
+            profile: const StudentAcademicProfile(
+              matricula: '123456',
+              institutionalEmail: 'alumno@alumnos.uat.edu.mx',
+              displayName: 'Alumno Prueba',
+            ),
+            initialUatSessionId: null,
+            demoMode: false,
+            themeMode: ThemeMode.light,
+            onThemeModeChanged: (_) {},
+            onLogout: () async {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(CustomScrollView), findsNothing);
+      expect(find.text('Arquitectura móvil'), findsOneWidget);
+      expect(
+        find.text('Clase terminada · registro disponible'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('day-finished-banner')), findsOneWidget);
+      expect(
+        find.text('Jornada terminada · El registro sigue disponible'),
+        findsOneWidget,
+      );
+      final registerButton = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Registrar asistencia'),
+      );
+      expect(registerButton.onPressed, isNotNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('profile checks the server before synchronizing information', (
     WidgetTester tester,
@@ -331,10 +458,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Abrir perfil'));
     await tester.pump();
-    await tester.ensureVisible(find.text('Sincronizar con el servidor'));
+    await tester.ensureVisible(find.text('Actualizar información'));
     events.clear();
 
-    await tester.tap(find.text('Sincronizar con el servidor'));
+    await tester.tap(find.text('Actualizar información'));
     await tester.pump();
 
     expect(events, ['online', 'academic', 'device']);
@@ -383,16 +510,16 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Abrir perfil'));
     await tester.pump();
-    await tester.ensureVisible(find.text('Sincronizar con el servidor'));
+    await tester.ensureVisible(find.text('Actualizar información'));
     events.clear();
 
-    await tester.tap(find.text('Sincronizar con el servidor'));
+    await tester.tap(find.text('Actualizar información'));
     await tester.pump();
 
     expect(events, ['online']);
     expect(
       find.text(
-        'Sin conexión con el servidor. Revisa tu internet e inténtalo de nuevo.',
+        'Sin conexión. Revisa tu internet e inténtalo de nuevo.',
       ),
       findsOneWidget,
     );

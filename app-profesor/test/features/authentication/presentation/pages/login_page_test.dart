@@ -68,7 +68,7 @@ void main() {
       );
 
       expect(find.byType(CircularProgressIndicator), findsNWidgets(2));
-      expect(find.text('Verificando credenciales...'), findsOneWidget);
+      expect(find.text('Comprobando tus datos...'), findsOneWidget);
     });
 
     testWidgets('uses the responsive narrow layout', (tester) async {

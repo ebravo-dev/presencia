@@ -89,6 +89,7 @@ function attendanceEvent(snapshot: AttendanceProjectionSnapshot): ProjectionEven
     date: snapshot.date,
     professorEntryAt: snapshot.professorEntryAt,
     professorExitAt: snapshot.professorExitAt,
+    actualClassroom: snapshot.actualClassroom ?? null,
     entriesCount: snapshot.entriesCount,
     uploadStatus: snapshot.uploadStatus,
     uploadError: snapshot.uploadError,

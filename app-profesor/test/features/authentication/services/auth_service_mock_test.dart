@@ -72,7 +72,7 @@ void main() {
         expect(
           result.message,
           equals(
-            'Credenciales inválidas. Verifique su correo institucional UAT.',
+            'Tu usuario o contraseña son incorrectos. Revisa tus datos.',
           ),
         );
       });
@@ -103,7 +103,7 @@ void main() {
         expect(
           result.message,
           equals(
-            'Credenciales inválidas. Verifique su correo institucional UAT.',
+            'Tu usuario o contraseña son incorrectos. Revisa tus datos.',
           ),
         );
       });

@@ -131,7 +131,7 @@ class AttendanceBatchService {
         date: record.fecha,
         attendances: _buildAttendances(record, group),
         groupName: group.name,
-        classroom: group.classroom,
+        classroom: record.salonUtilizado ?? group.classroom,
         level: group.level,
         schedule: group.schedule,
       );
@@ -187,7 +187,7 @@ class AttendanceBatchService {
         date: record.fecha,
         attendances: attendances,
         groupName: group.name,
-        classroom: group.classroom,
+        classroom: record.salonUtilizado ?? group.classroom,
         level: group.level,
         schedule: group.schedule,
       );

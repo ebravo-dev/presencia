@@ -86,6 +86,7 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   fastify.get('/api/uat/profesor/control-asistencia/grupos', { preHandler: authUat }, asistenciaController.gruposProfesor);
   fastify.get('/api/uat/profesor/clases-compartidas', { preHandler: authUat }, sharedClassController.forAuthenticatedTeacher);
   fastify.post('/api/uat/profesor/device-bindings/resolve', { preHandler: authUat }, professorDeviceBindingController.resolve);
+  fastify.get('/api/uat/profesor/beacons', { preHandler: authUat }, professorDeviceBindingController.listBeacons);
   fastify.post('/api/uat/profesor/beacons/resolve', { preHandler: authUat }, professorDeviceBindingController.resolveBeacons);
   fastify.post('/api/uat/profesor/presencia/entrada', { preHandler: authUat }, professorPresenceController.entry);
   fastify.post('/api/uat/profesor/presencia/salida', { preHandler: authUat }, professorPresenceController.exit);

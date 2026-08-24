@@ -1,9 +1,11 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../../../core/theme/uat_colors.dart';
 import '../../../services/api_service.dart';
 import '../../../services/auth_storage_service.dart';
@@ -34,11 +36,11 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
 
   // Steps definition (5 steps matching backend)
   static const List<String> _stepTitles = [
-    'Conectando',
-    'Obteniendo clases',
-    'Clases encontradas',
-    'Recolectando alumnos',
-    'Completado',
+    'Preparando',
+    'Buscando clases',
+    'Organizando clases',
+    'Actualizando listas',
+    'Listo',
   ];
 
   @override
@@ -63,11 +65,11 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
       _error = null;
       _syncStatus = SyncStatusResponse(
         status: 'PENDING',
-        message: 'Conectando con el servidor...',
+        message: 'Preparando la actualización...',
         step: 1,
         totalSteps: 5,
         percentage: 20,
-        stepDescription: 'Conectando con el servidor...',
+        stepDescription: 'Preparando la actualización...',
       );
     });
 
@@ -183,8 +185,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
       // where the failed job will be detected and this error shown again.
       // Session is only cleared when user taps 'Ir al inicio de sesión'.
       setState(() {
-        _error =
-            'Credenciales incorrectas. Verifica tu usuario y contraseña del portal UAT.';
+        _error = 'Tu usuario o contraseña son incorrectos. Revisa tus datos.';
         _syncStatus = null;
         _retryAvailable = false;
         _isCredentialError = true;
@@ -196,7 +197,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
       setState(() {
         _error = event.message.isNotEmpty
             ? event.message
-            : 'Error en la sincronización. Intenta de nuevo.';
+            : 'No pudimos actualizar tus clases. Intenta de nuevo.';
         _syncStatus = null;
         _retryAvailable = true;
         _isCredentialError = false;
@@ -321,7 +322,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
             setState(() {
               _syncStatus = SyncStatusResponse(
                 status: 'NO_SYNC',
-                message: 'No hay sincronizaciones previas',
+                message: 'Aún no has actualizado tus clases',
                 step: 0,
                 totalSteps: 0,
                 percentage: 0,
@@ -335,7 +336,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
       _stopPolling();
       if (!mounted) return;
       setState(() {
-        _error = 'Error: $e';
+        _error = 'No pudimos actualizar tus clases. Intenta de nuevo.';
         _isLoading = false;
       });
     }
@@ -390,11 +391,11 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
       _retryAvailable = false;
       _syncStatus = SyncStatusResponse(
         status: 'PENDING',
-        message: 'Conectando con el servidor...',
+        message: 'Preparando la actualización...',
         step: 1,
         totalSteps: 5,
         percentage: 20,
-        stepDescription: 'Conectando con el servidor...',
+        stepDescription: 'Preparando la actualización...',
       );
     });
 
@@ -445,7 +446,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
       child: Scaffold(
         backgroundColor: UATColors.surface,
         appBar: AppBar(
-          title: const Text('Sincronización'),
+          title: const Text('Actualización de clases'),
           backgroundColor: UATColors.primary,
           foregroundColor: UATColors.onPrimary,
           automaticallyImplyLeading: false, // Remove back button
@@ -508,8 +509,8 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
           // Title based on status
           Text(
             _syncStatus!.isCompleted
-                ? '¡Sincronización completada!'
-                : 'Sincronizando...',
+                ? '¡Clases actualizadas!'
+                : 'Actualizando clases...',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.bold,
               color: UATColors.neutral,
@@ -517,7 +518,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            _syncStatus!.message,
+            _friendlyProgressMessage(_syncStatus!),
             style: TextStyle(color: UATColors.neutral80, fontSize: 14),
           ),
           const SizedBox(height: 32),
@@ -545,7 +546,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
         return _buildStepItem(
           stepNumber: stepNumber,
           title: _stepTitles[index],
-          subtitle: isActive ? _syncStatus?.stepDescription : null,
+          subtitle: isActive ? _friendlyStepDescription(stepNumber) : null,
           isActive: isActive,
           isPast: isPast,
           isFuture: isFuture,
@@ -688,15 +689,14 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
             const SizedBox(height: 16),
             Text(
               'Error',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              style: Theme.of(context).textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: Text(
-                _error!,
+                _friendlyErrorMessage(_error),
                 textAlign: TextAlign.center,
                 style: TextStyle(color: UATColors.neutral80),
               ),
@@ -786,14 +786,13 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
           Icon(Icons.cloud_off, size: 64, color: Colors.grey.shade400),
           const SizedBox(height: 16),
           Text(
-            'Sin sincronizaciones',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            'Sin actualizaciones recientes',
+            style: Theme.of(context).textTheme.titleLarge
+                ?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           Text(
-            'No hay sincronizaciones previas',
+            'Aún no has actualizado tus clases',
             style: TextStyle(color: UATColors.neutral80),
           ),
         ],
@@ -802,7 +801,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   }
 
   Widget _buildFailedState() {
-    final errorMessage = _syncStatus?.error ?? 'Error desconocido';
+    final errorMessage = _syncStatus?.error ?? '';
     final isRetrying = errorMessage.contains('Reintentando');
 
     return Container(
@@ -838,7 +837,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
           const SizedBox(height: 24),
           // Title
           Text(
-            isRetrying ? 'Reintentando...' : 'Error en Sincronización',
+            isRetrying ? 'Reintentando...' : 'No pudimos actualizar',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.bold,
               color: UATColors.neutral,
@@ -853,7 +852,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              errorMessage,
+              _friendlyErrorMessage(errorMessage),
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.red.shade700, fontSize: 14),
             ),
@@ -861,7 +860,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
           const SizedBox(height: 24),
           // Humanized message
           Text(
-            'La página de la UAT puede estar lenta o en mantenimiento.',
+            'La información puede tardar un poco en estar disponible.',
             textAlign: TextAlign.center,
             style: TextStyle(color: UATColors.neutral80, fontSize: 13),
           ),
@@ -923,7 +922,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
                     )
                   : const Icon(Icons.refresh),
               label: Text(
-                _isRetrying ? 'Reintentando...' : 'Reintentar Sincronización',
+                _isRetrying ? 'Reintentando...' : 'Reintentar actualización',
               ),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -959,7 +958,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'La sincronización continúa en la nube. Puedes cerrar la app.',
+                  'La actualización continuará aunque cierres la app.',
                   style: TextStyle(color: Colors.blue.shade800, fontSize: 13),
                 ),
               ),
@@ -968,5 +967,46 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
         ),
       ],
     );
+  }
+
+  String _friendlyProgressMessage(SyncStatusResponse status) {
+    if (status.isCompleted) {
+      return 'Tus clases ya tienen la información más reciente.';
+    }
+    return _friendlyStepDescription(status.step);
+  }
+
+  String _friendlyStepDescription(int step) {
+    switch (step) {
+      case 1:
+        return 'Preparando la actualización...';
+      case 2:
+        return 'Buscando tus clases...';
+      case 3:
+        return 'Organizando la información...';
+      case 4:
+        return 'Actualizando las listas de alumnos...';
+      default:
+        return 'Finalizando la actualización...';
+    }
+  }
+
+  String _friendlyErrorMessage(String? message) {
+    final normalized = message?.toLowerCase() ?? '';
+    if (normalized.contains('contraseña') ||
+        normalized.contains('credencial') ||
+        normalized.contains('unauthorized')) {
+      return 'Tu usuario o contraseña son incorrectos. Revisa tus datos.';
+    }
+    if (normalized.contains('sesión') || normalized.contains('sesion')) {
+      return 'Tu sesión expiró. Inicia sesión de nuevo.';
+    }
+    if (normalized.contains('internet') ||
+        normalized.contains('conexión') ||
+        normalized.contains('conexion') ||
+        normalized.contains('timeout')) {
+      return 'Revisa tu internet e intenta actualizar de nuevo.';
+    }
+    return 'No pudimos actualizar tus clases. Intenta de nuevo.';
   }
 }

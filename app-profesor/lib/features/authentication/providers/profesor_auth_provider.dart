@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dartz/dartz.dart';
+
 import '../../../shared/models/profesor.dart';
 import '../../../shared/models/grupo.dart';
 import '../../../services/api_service.dart';
@@ -401,7 +402,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
             status: ProfesorAuthStatus.sessionExpired,
             profesor: profesor,
             grupos: cachedGrupos,
-            errorMessage: 'Renovando la sesión para sincronizar.',
+            errorMessage: 'Actualizando tu acceso...',
           );
           await relogin();
         }
@@ -510,8 +511,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
           state = state.copyWith(
             status: ProfesorAuthStatus.authenticated,
             token: _authStorage.getToken(),
-            errorMessage:
-                'No se pudo sincronizar; continúas con los datos locales.',
+            errorMessage: 'No pudimos actualizar la información; puedes seguir usando los datos disponibles.',
           );
           return;
         }

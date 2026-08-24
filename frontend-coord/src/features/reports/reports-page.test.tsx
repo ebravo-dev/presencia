@@ -19,7 +19,7 @@ describe('ReportsPage', () => {
           teacher: { id: 't1', name: 'Ada Lovelace', email: 'ada@uat.edu.mx', institutionalCode: 'FI-4829', coordinations: [{ id: 'c1', externalId: '12', name: 'Ciencias Básicas' }] },
           week: { start: '2026-06-29', end: '2026-07-04', isoWeek: 27 },
           summary: { scheduled: 2, taken: 1, missing: 1, future: 0, unknownSchedule: 0, completionRate: 50 },
-          rows: [{ id: 'r1', groupId: 'g1', groupCode: 'A', subject: 'Cálculo', classroom: 'Aula 101', educationLevel: 'Licenciatura', period: '2026-2', startTime: '07:00', endTime: '09:00', rawSchedule: '07:00 - 09:00', completionRate: 50, cells: {
+          rows: [{ id: 'r1', groupId: 'g1', groupCode: 'A', subject: 'Cálculo', classroom: 'Aula 101', classroomsUsed: ['LAB 3'], educationLevel: 'Licenciatura', period: '2026-2', startTime: '07:00', endTime: '09:00', rawSchedule: '07:00 - 09:00', completionRate: 50, cells: {
             monday: cell('2026-06-29', 'TAKEN'), tuesday: cell('2026-06-30', 'NOT_SCHEDULED'), wednesday: cell('2026-07-01', 'MISSING'), thursday: cell('2026-07-02', 'NOT_SCHEDULED'), friday: cell('2026-07-03', 'NOT_SCHEDULED'), saturday: cell('2026-07-04', 'NOT_SCHEDULED'),
           } }],
         },
@@ -36,6 +36,7 @@ describe('ReportsPage', () => {
     expect(screen.getAllByLabelText('Sin clase')).toHaveLength(8);
     expect(screen.getByText('Cumpl.')).toBeInTheDocument();
     expect(screen.getAllByText('50%')).toHaveLength(2);
+    expect(screen.getByText(/Prog\. Aula 101 · Usado LAB 3/)).toBeInTheDocument();
     expect(screen.getByText(/Ciclo 2026-2/)).toBeInTheDocument();
   });
   it('permite cambiar a reporte por rango con columnas agregadas por materia', async () => {
@@ -51,7 +52,7 @@ describe('ReportsPage', () => {
           teacher: { id: 't1', name: 'Ada Lovelace', email: 'ada@uat.edu.mx', institutionalCode: 'FI-4829', coordinations: [{ id: 'c1', externalId: '12', name: 'Ciencias BÃ¡sicas' }] },
           range: { start: '2026-04-01', end: '2026-04-30' },
           summary: { scheduledClassDays: 11, reportedClassDays: 8, missingClassDays: 3, attendanceRate: 72.73 },
-          rows: [{ id: 'r1', groupId: 'g1', groupCode: 'T', grade: '2', subject: 'Calculo', classroom: 'Aula 101', educationLevel: 'Licenciatura', period: '2026-1', startTime: '07:00', endTime: '09:00', rawSchedule: '07:00 - 09:00', scheduledClassDays: 11, reportedClassDays: 8, attendanceRate: 72.73 }],
+          rows: [{ id: 'r1', groupId: 'g1', groupCode: 'T', grade: '2', subject: 'Calculo', classroom: 'Aula 101', classroomsUsed: ['LAB 3'], educationLevel: 'Licenciatura', period: '2026-1', startTime: '07:00', endTime: '09:00', rawSchedule: '07:00 - 09:00', scheduledClassDays: 11, reportedClassDays: 8, attendanceRate: 72.73 }],
         },
         meta: { generatedAt: '2026-07-04T18:00:00Z', timezone: 'America/Mexico_City' },
       })),
@@ -67,6 +68,7 @@ describe('ReportsPage', () => {
     expect(screen.getByText('Grupo')).toBeInTheDocument();
     expect(screen.getByText('Horas cubiertas')).toBeInTheDocument();
     expect(screen.getAllByText('72.73%')).toHaveLength(2);
+    expect(screen.getByText(/Prog\. Aula 101 · Usado LAB 3/)).toBeInTheDocument();
     expect(screen.getByText(/Ciclo 2026-1/)).toBeInTheDocument();
   });
 });
@@ -77,6 +79,7 @@ function cell(date: string, status: 'TAKEN' | 'MISSING' | 'NOT_SCHEDULED') {
     status,
     professorEntryAt: status === 'TAKEN' ? `${date}T07:05:00.000Z` : null,
     professorExitAt: status === 'TAKEN' ? `${date}T08:55:00.000Z` : null,
+    actualClassroom: status === 'TAKEN' ? 'LAB 3' : null,
     scheduledHours: status === 'NOT_SCHEDULED' ? 0 : 2,
     attendedHours: status === 'TAKEN' ? 2 : 0,
     coverageRate: status === 'TAKEN' ? 100 : null,

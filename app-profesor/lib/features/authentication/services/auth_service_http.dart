@@ -66,22 +66,20 @@ class AuthServiceHttp implements AuthService {
         );
       }
 
-      return AuthResult.failure(
-        'Error de autenticacion: ${response.statusMessage}',
-      );
+      return AuthResult.failure('No pudimos iniciar sesión. Revisa tus datos.');
     } on DioException catch (e) {
       Logger.error('Error Dio durante login UAT', e);
-      final data = e.response?.data;
-      if (data is Map && data['message'] != null) {
-        return AuthResult.failure(data['message'].toString());
-      }
       if (e.response?.statusCode == 401) {
-        return AuthResult.failure('Credenciales invalidas.');
+        return AuthResult.failure(
+          'Tu usuario o contraseña son incorrectos. Revisa tus datos.',
+        );
       }
-      return AuthResult.failure('Error de conexion. Verifique su internet.');
+      return AuthResult.failure(
+        'No pudimos conectar. Revisa tu internet e intenta de nuevo.',
+      );
     } catch (e, stackTrace) {
       Logger.error('Error inesperado durante login UAT HTTP', e, stackTrace);
-      return AuthResult.failure('Error inesperado. Intente nuevamente.');
+      return AuthResult.failure('No pudimos iniciar sesión. Intenta de nuevo.');
     }
   }
 

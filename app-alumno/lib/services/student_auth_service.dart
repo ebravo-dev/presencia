@@ -125,7 +125,7 @@ class StudentAuthService {
       final credentials = await storage.readInstitutionalCredentials();
       if (credentials == null) {
         throw const StudentAuthException(
-          'No pudimos acceder a tus datos de UAT. Inicia sesión de nuevo.',
+          'No pudimos acceder a tu información. Inicia sesión de nuevo.',
           authenticationFailed: true,
         );
       }
@@ -139,7 +139,7 @@ class StudentAuthService {
       activeSessionId = session['sessionId']?.toString() ?? '';
       if (activeSessionId.isEmpty) {
         throw const StudentAuthException(
-          'No pudimos actualizar tus datos de UAT. Inténtalo de nuevo.',
+          'No pudimos actualizar tu información. Inténtalo de nuevo.',
         );
       }
 
@@ -195,7 +195,7 @@ class StudentAuthService {
       }
       if (error.authenticationFailed && credentialsWereAccepted) {
         throw const StudentAuthException(
-          'La sesión temporal de UAT expiró. Inténtalo de nuevo.',
+          'Tu sesión expiró. Inténtalo de nuevo.',
         );
       }
       rethrow;
@@ -252,14 +252,14 @@ class StudentAuthService {
         throw StudentAuthException(
           isAuthError
               ? 'No pudimos iniciar sesión. Revisa tus datos.'
-              : 'No pudimos conectar con UAT. Inténtalo de nuevo.',
+              : 'No pudimos conectar. Revisa tu internet e inténtalo de nuevo.',
           authenticationFailed: isAuthError,
         );
       }
 
       if (decoded is! Map<String, dynamic>) {
         throw const StudentAuthException(
-          'No pudimos conectar con UAT. Inténtalo de nuevo.',
+          'No pudimos conectar. Revisa tu internet e inténtalo de nuevo.',
         );
       }
 
@@ -270,7 +270,7 @@ class StudentAuthService {
       throw const StudentAuthException('No hay conexión a internet.');
     } on FormatException {
       throw const StudentAuthException(
-        'No pudimos conectar con UAT. Inténtalo de nuevo.',
+        'No pudimos conectar. Revisa tu internet e inténtalo de nuevo.',
       );
     } catch (_) {
       throw const StudentAuthException(
@@ -301,8 +301,8 @@ class StudentAuthService {
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw StudentAuthException(
           response.statusCode == 401
-              ? 'No pudimos actualizar tus datos de UAT. Inicia sesión de nuevo.'
-              : 'No pudimos actualizar tus datos de UAT. Inténtalo de nuevo.',
+              ? 'No pudimos actualizar tu información. Inicia sesión de nuevo.'
+              : 'No pudimos actualizar tu información. Inténtalo de nuevo.',
           authenticationFailed: response.statusCode == 401,
         );
       }
@@ -322,7 +322,7 @@ class StudentAuthService {
       rethrow;
     } catch (_) {
       throw const StudentAuthException(
-        'No pudimos actualizar tus datos de UAT. Inténtalo de nuevo.',
+        'No pudimos actualizar tu información. Inténtalo de nuevo.',
       );
     } finally {
       client.close(force: true);
@@ -358,7 +358,7 @@ class StudentAuthService {
       final body = await utf8.decodeStream(response);
       if (response.statusCode == 401) {
         throw const StudentAuthException(
-          'No pudimos actualizar tus datos de UAT. Inicia sesión de nuevo.',
+          'No pudimos actualizar tu información. Inicia sesión de nuevo.',
           authenticationFailed: true,
         );
       }

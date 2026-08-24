@@ -231,7 +231,7 @@ class ApiService {
           login['mensaje']?.toString() ?? 'Sesion UAT creada correctamente';
 
       if (sessionId.isEmpty || !authenticated) {
-        return Left(message);
+        return const Left('No pudimos iniciar sesión. Revisa tus datos.');
       }
 
       final profesor = Profesor(
@@ -771,7 +771,7 @@ class ApiService {
     try {
       final idGrupo = int.tryParse(groupId ?? '') ?? int.tryParse(code);
       if (idGrupo == null || idGrupo <= 0) {
-        return const Left('No se pudo identificar el grupo UAT.');
+        return const Left('No pudimos preparar la información del grupo.');
       }
 
       final asistencia = <Map<String, dynamic>>[];
@@ -939,10 +939,7 @@ class ApiService {
   }
 
   String _cleanException(Object error) {
-    final message = error.toString();
-    return message.startsWith('Exception: ')
-        ? message.substring('Exception: '.length)
-        : message;
+    return 'No pudimos completar la operación. Intenta de nuevo.';
   }
 
   Map<String, dynamic> _asMap(Object? value) {
@@ -977,7 +974,7 @@ class ApiService {
 
       final uatSessionId = AuthStorageService().getToken();
       if (uatSessionId == null || uatSessionId.isEmpty) {
-        return const Left('La sesión UAT necesita renovarse');
+        return const Left('Tu sesión expiró. Inicia sesión de nuevo.');
       }
 
       final response = await _presenceDio.post(
@@ -997,14 +994,47 @@ class ApiService {
         );
       }
 
-      return Left(response.data['message'] ?? 'Error obteniendo beacons');
+      return const Left('No pudimos preparar la verificación del aula.');
     } on DioException catch (e) {
       final errorMessage = _handleDioError(e);
       Logger.error('Error obteniendo beacons de salones: $errorMessage', e);
       return Left(errorMessage);
     } catch (e, stackTrace) {
       Logger.error('Error inesperado obteniendo beacons', e, stackTrace);
-      return Left('Error inesperado: ${e.toString()}');
+      return const Left('No pudimos preparar la verificación del aula.');
+    }
+  }
+
+  Future<Either<String, List<Map<String, dynamic>>>>
+  listAvailableClassroomBeacons() async {
+    try {
+      final uatSessionId = AuthStorageService().getToken();
+      if (uatSessionId == null || uatSessionId.isEmpty) {
+        return const Left('Tu sesión expiró. Inicia sesión de nuevo.');
+      }
+
+      final response = await _presenceDio.get(
+        ApiConstants.uatAvailableBeacons,
+        options: Options(headers: {'X-UAT-Session-Id': uatSessionId}),
+      );
+      if (response.statusCode == 200) {
+        final data = response.data['data'] as List<dynamic>? ?? [];
+        return Right(
+          data.map((item) => Map<String, dynamic>.from(item as Map)).toList(),
+        );
+      }
+      return const Left('No pudimos cargar los salones disponibles.');
+    } on DioException catch (e) {
+      final errorMessage = _handleDioError(e);
+      Logger.error('Error obteniendo salones disponibles: $errorMessage', e);
+      return Left(errorMessage);
+    } catch (e, stackTrace) {
+      Logger.error(
+        'Error inesperado obteniendo salones disponibles',
+        e,
+        stackTrace,
+      );
+      return const Left('No pudimos cargar los salones disponibles.');
     }
   }
 
@@ -1038,7 +1068,7 @@ class ApiService {
 
       final uatSessionId = AuthStorageService().getToken();
       if (uatSessionId == null || uatSessionId.isEmpty) {
-        return const Left('La sesión UAT necesita renovarse');
+        return const Left('Tu sesión expiró. Inicia sesión de nuevo.');
       }
 
       final response = await _presenceDio.post(
@@ -1054,7 +1084,7 @@ class ApiService {
         );
       }
 
-      return Left(response.data['message'] ?? 'Error obteniendo UUIDs');
+      return const Left('No pudimos preparar la detección automática.');
     } on DioException catch (e) {
       final errorMessage = _handleDioError(e);
       Logger.error('Error obteniendo UUIDs de alumnos: $errorMessage', e);
@@ -1065,7 +1095,7 @@ class ApiService {
         e,
         stackTrace,
       );
-      return Left('Error inesperado: ${e.toString()}');
+      return const Left('No pudimos preparar la detección automática.');
     }
   }
 
@@ -1097,7 +1127,7 @@ class ApiService {
         return Right(response.data as Map<String, dynamic>);
       }
 
-      return Left(response.data['message'] ?? 'Error registrando entrada');
+      return const Left('No pudimos guardar la entrada. Intenta de nuevo.');
     } on DioException catch (e) {
       final errorMessage = _handleDioError(e);
       Logger.error('Error registrando entrada por beacon: $errorMessage', e);
@@ -1108,7 +1138,7 @@ class ApiService {
         e,
         stackTrace,
       );
-      return Left('Error inesperado: ${e.toString()}');
+      return const Left('No pudimos guardar la entrada. Intenta de nuevo.');
     }
   }
 
@@ -1131,7 +1161,7 @@ class ApiService {
         return Right(response.data as Map<String, dynamic>);
       }
 
-      return Left(response.data['message'] ?? 'Error registrando salida');
+      return const Left('No pudimos guardar la salida. Intenta de nuevo.');
     } on DioException catch (e) {
       final errorMessage = _handleDioError(e);
       Logger.error('Error registrando salida del profesor: $errorMessage', e);
@@ -1142,7 +1172,7 @@ class ApiService {
         e,
         stackTrace,
       );
-      return Left('Error inesperado: ${e.toString()}');
+      return const Left('No pudimos guardar la salida. Intenta de nuevo.');
     }
   }
 
@@ -1162,8 +1192,8 @@ class ApiService {
         return Right(response.data as Map<String, dynamic>);
       }
 
-      return Left(
-        response.data['message'] ?? 'Error registrando beacons de alumnos',
+      return const Left(
+        'No pudimos guardar la detección de los alumnos. Intenta de nuevo.',
       );
     } on DioException catch (e) {
       final errorMessage = _handleDioError(e);
@@ -1175,60 +1205,48 @@ class ApiService {
         e,
         stackTrace,
       );
-      return Left('Error inesperado: ${e.toString()}');
+      return const Left(
+        'No pudimos guardar la detección de los alumnos. Intenta de nuevo.',
+      );
     }
   }
 
   /// Maneja errores de Dio y devuelve mensajes amigables
   String _handleDioError(DioException e) {
-    final data = e.response?.data;
-    String? serverMessage;
-    if (data is Map) {
-      serverMessage =
-          data['message']?.toString() ??
-          data['mensaje']?.toString() ??
-          data['error']?.toString();
-    }
-
     switch (e.type) {
       case DioExceptionType.connectionTimeout:
-        return 'No se pudo conectar al servidor. Verifica tu conexion a internet.';
+        return 'No pudimos conectar. Revisa tu internet e intenta de nuevo.';
       case DioExceptionType.sendTimeout:
-        return 'El tiempo de espera se agoto. Verifica tu conexion a internet.';
+        return 'El envío tardó demasiado. Revisa tu internet e intenta de nuevo.';
       case DioExceptionType.receiveTimeout:
-        return 'El servidor tardo demasiado en responder. Intenta de nuevo mas tarde.';
+        return 'No recibimos respuesta a tiempo. Intenta de nuevo más tarde.';
       case DioExceptionType.badResponse:
         switch (e.response?.statusCode) {
           case 400:
-            return serverMessage ?? 'Los datos enviados no son validos.';
+            return 'Revisa la información e intenta de nuevo.';
           case 401:
-            return serverMessage ??
-                'Sesion expirada. Ingresa nuevamente tus credenciales.';
+            return 'Tu sesión expiró. Inicia sesión de nuevo.';
           case 403:
-            return 'No tienes permisos para realizar esta accion.';
+            return 'No puedes realizar esta acción con tu cuenta.';
           case 404:
-            return 'No se encontro el recurso solicitado.';
+            return 'No encontramos la información solicitada.';
           case 409:
-            return serverMessage ??
-                'Ya hay una operacion en proceso para esta asistencia.';
+            return 'Esta asistencia ya se está enviando.';
           case 500:
-            return serverMessage ??
-                'El servidor esta experimentando problemas. Intenta mas tarde.';
           case 502:
           case 503:
-            return 'El servidor no esta disponible en este momento. Intenta de nuevo mas tarde.';
+            return 'El servicio no está disponible en este momento. Intenta más tarde.';
           case 504:
-            return 'El servidor tardo demasiado en responder. Intenta de nuevo.';
+            return 'No recibimos respuesta a tiempo. Intenta de nuevo.';
           default:
-            return serverMessage ??
-                'Ocurrio un problema con el servidor. Intenta de nuevo mas tarde.';
+            return 'No pudimos completar la operación. Intenta de nuevo más tarde.';
         }
       case DioExceptionType.cancel:
-        return 'La solicitud fue cancelada.';
+        return 'La operación se canceló.';
       case DioExceptionType.connectionError:
-        return 'No se pudo conectar al servidor. Verifica tu conexion a internet.';
+        return 'No pudimos conectar. Revisa tu internet e intenta de nuevo.';
       default:
-        return 'Ocurrio un problema de conexion. Verifica tu internet e intenta de nuevo.';
+        return 'Hubo un problema de conexión. Revisa tu internet e intenta de nuevo.';
     }
   }
 }

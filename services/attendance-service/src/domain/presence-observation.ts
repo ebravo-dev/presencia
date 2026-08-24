@@ -41,6 +41,7 @@ export interface ProfessorPresenceObservationResult {
   readonly date: string;
   readonly professorEntryAt: string | null;
   readonly professorExitAt: string | null;
+  readonly actualClassroom: string | null;
   readonly duplicate: boolean;
   readonly version: number;
 }

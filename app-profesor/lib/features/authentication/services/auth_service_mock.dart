@@ -133,7 +133,7 @@ class AuthServiceMock implements AuthService {
       if (!_mockProfessors.containsKey(normalizedEmail)) {
         Logger.error('Profesor no encontrado en mock data: $normalizedEmail');
         return AuthResult.failure(
-          'Credenciales inválidas. Verifique su correo institucional UAT.',
+          'Tu usuario o contraseña son incorrectos. Revisa tus datos.',
         );
       }
 
@@ -231,7 +231,7 @@ class AuthServiceMock implements AuthService {
       await _simulateNetworkDelay();
 
       if (!await isTokenValid(token)) {
-        return AuthResult.failure('Token inválido o expirado');
+        return AuthResult.failure('Tu sesión expiró. Inicia sesión de nuevo.');
       }
 
       // Generar nuevo token (en real se haría con el backend)
@@ -243,7 +243,9 @@ class AuthServiceMock implements AuthService {
       );
     } catch (e, stackTrace) {
       Logger.error('Error refrescando token', e, stackTrace);
-      return AuthResult.failure('Error al refrescar token');
+      return AuthResult.failure(
+        'No pudimos renovar tu sesión. Intenta de nuevo.',
+      );
     }
   }
 

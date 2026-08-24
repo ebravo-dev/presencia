@@ -176,7 +176,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(height: 32),
                             Text(
-                              '¿Problemas técnicos? Contacta con administración',
+                              '¿Necesitas ayuda? Contacta con administración',
                               textAlign: TextAlign.center,
                               style: theme.textTheme.labelSmall,
                             ),

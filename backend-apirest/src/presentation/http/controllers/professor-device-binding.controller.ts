@@ -6,6 +6,13 @@ import { parsePayload, professorBeaconResolveSchema, professorDeviceBindingResol
 export class ProfessorDeviceBindingController {
   constructor(private readonly attendance: AttendanceServiceCommandClient | undefined) {}
 
+  listBeacons = async () => {
+    if (!this.attendance) {
+      throw new ApiError(503, 'ATTENDANCE_SERVICE_REQUIRED', 'Attendance Service no está disponible.');
+    }
+    return this.attendance.listClassroomBeacons();
+  };
+
   resolve = async (request: FastifyRequest) => {
     if (!this.attendance) {
       throw new ApiError(503, 'ATTENDANCE_SERVICE_REQUIRED', 'Attendance Service no está disponible.');

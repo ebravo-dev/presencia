@@ -57,6 +57,9 @@ class AsistenciaRegistro extends HiveObject {
   @HiveField(16)
   final String? grupoPeriod; // e.g. "2025-1"
 
+  @HiveField(17)
+  final String? salonUtilizado; // Salón validado por el beacon para esta toma
+
   AsistenciaRegistro({
     required this.id,
     required this.grupoId,
@@ -75,6 +78,7 @@ class AsistenciaRegistro extends HiveObject {
     this.grupoCode,
     this.grupoGroupLetter,
     this.grupoPeriod,
+    this.salonUtilizado,
   });
 
   AsistenciaRegistro copyWith({
@@ -95,6 +99,7 @@ class AsistenciaRegistro extends HiveObject {
     String? grupoCode,
     String? grupoGroupLetter,
     String? grupoPeriod,
+    String? salonUtilizado,
   }) {
     return AsistenciaRegistro(
       id: id ?? this.id,
@@ -115,6 +120,7 @@ class AsistenciaRegistro extends HiveObject {
       grupoCode: grupoCode ?? this.grupoCode,
       grupoGroupLetter: grupoGroupLetter ?? this.grupoGroupLetter,
       grupoPeriod: grupoPeriod ?? this.grupoPeriod,
+      salonUtilizado: salonUtilizado ?? this.salonUtilizado,
     );
   }
 }

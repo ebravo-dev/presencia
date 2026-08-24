@@ -95,6 +95,7 @@ model AttendanceProjection {
   date                DateTime @db.Date
   professorEntryAt    DateTime? @map("professor_entry_at")
   professorExitAt     DateTime? @map("professor_exit_at")
+  actualClassroom     String?  @map("actual_classroom")
   uploadStatus        String   @default("PENDING") @map("upload_status")
   uploadError         String?  @map("upload_error")
   version             Int

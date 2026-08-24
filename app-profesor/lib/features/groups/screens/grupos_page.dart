@@ -962,7 +962,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
             const SizedBox(height: 12),
             Text(
               groupsNotice ??
-                  'Si iniciaste sincronización, revisa el progreso abajo.',
+                  'Si solicitaste una actualización, revisa el progreso abajo.',
               style: TextStyle(fontSize: 16, color: palette.textSecondary),
               textAlign: TextAlign.center,
             ),
@@ -975,7 +975,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
               },
               icon: const Icon(Icons.cloud_sync, color: Colors.blueAccent),
               label: const Text(
-                'Revisar sincronización',
+                'Revisar actualización',
                 style: TextStyle(
                   color: Colors.blueAccent,
                   fontSize: 16,
@@ -1492,7 +1492,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text(
-            'Sube las asistencias pendientes antes de sincronizar ciclo.',
+            'Envía las asistencias pendientes antes de actualizar tus clases.',
           ),
           backgroundColor: Colors.orange.shade700,
           behavior: SnackBarBehavior.floating,
@@ -1531,7 +1531,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 const Icon(Icons.sync_rounded, color: Colors.blueAccent),
                 const SizedBox(width: 12),
                 Text(
-                  'Sincronizar Ciclo',
+                  'Actualizar clases',
                   style: TextStyle(color: palette.textPrimary),
                 ),
               ],
@@ -1541,7 +1541,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Se descargarán tus clases actualizadas del portal UAT.',
+                    'Buscaremos la información más reciente de tus clases.',
                     style: TextStyle(
                       fontSize: 14,
                       color: palette.textSecondary,
@@ -1568,7 +1568,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Las asistencias ya tomadas se conservarán. Solo se actualizarán tus clases con la información del portal.',
+                            'Las asistencias ya tomadas se conservarán. Solo se actualizará la información de tus clases.',
                             style: TextStyle(
                               fontSize: 13,
                               color: Colors.orange,
@@ -1583,7 +1583,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                     const CircularProgressIndicator(color: Colors.blueAccent),
                     const SizedBox(height: 8),
                     Text(
-                      'Solicitando sincronización...',
+                      'Preparando actualización...',
                       style: TextStyle(
                         color: palette.textSecondary,
                         fontSize: 12,
@@ -1634,7 +1634,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                   backgroundColor: Colors.blueAccent,
                   foregroundColor: Colors.white,
                 ),
-                child: const Text('Sincronizar'),
+                child: const Text('Actualizar'),
               ),
             ],
           );
@@ -1667,7 +1667,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 const Icon(Icons.sync_rounded, color: Colors.blueAccent),
                 const SizedBox(width: 12),
                 Text(
-                  'Sincronizar Ciclo',
+                  'Actualizar clases',
                   style: TextStyle(color: palette.textPrimary),
                 ),
               ],
@@ -1677,7 +1677,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Ingresa tu contraseña de la UAT para descargar tus clases actualizadas.',
+                    'Ingresa tu contraseña institucional para actualizar tus clases.',
                     style: TextStyle(
                       fontSize: 14,
                       color: palette.textSecondary,
@@ -1704,7 +1704,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Las asistencias ya tomadas se conservarán. Solo se actualizarán tus clases con la información del portal.',
+                            'Las asistencias ya tomadas se conservarán. Solo se actualizará la información de tus clases.',
                             style: TextStyle(
                               fontSize: 13,
                               color: Colors.orange,
@@ -1722,7 +1722,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                       obscureText: obscureText,
                       style: TextStyle(color: palette.textPrimary),
                       decoration: InputDecoration(
-                        hintText: 'Contraseña UAT',
+                        hintText: 'Contraseña institucional',
                         hintStyle: TextStyle(color: palette.textTertiary),
                         filled: true,
                         fillColor: palette.surface,
@@ -1765,7 +1765,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                     const CircularProgressIndicator(color: Colors.blueAccent),
                     const SizedBox(height: 8),
                     Text(
-                      'Solicitando sincronización...',
+                      'Preparando actualización...',
                       style: TextStyle(
                         color: palette.textSecondary,
                         fontSize: 12,
@@ -1818,7 +1818,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                   backgroundColor: Colors.blueAccent,
                   foregroundColor: Colors.white,
                 ),
-                child: const Text('Sincronizar'),
+                child: const Text('Actualizar'),
               ),
             ],
           );
@@ -1915,11 +1915,11 @@ class _GruposPageState extends ConsumerState<GruposPage>
                             color: Colors.blueAccent,
                           ),
                           title: Text(
-                            'Sincronizar Ciclo',
+                            'Actualizar clases',
                             style: TextStyle(color: palette.textPrimary),
                           ),
                           subtitle: Text(
-                            'Descargar clases actualizadas del portal',
+                            'Consultar la información más reciente',
                             style: TextStyle(
                               color: palette.textSecondary,
                               fontSize: 12,
@@ -1940,7 +1940,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                             style: TextStyle(color: palette.textPrimary),
                           ),
                           subtitle: Text(
-                            'Eliminar asistencias guardadas localmente',
+                            'Eliminar asistencias de este equipo',
                             style: TextStyle(
                               color: palette.textSecondary,
                               fontSize: 12,
@@ -2083,7 +2083,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
             ],
           ),
           content: Text(
-            '¿Estás seguro de que quieres eliminar todas las asistencias guardadas localmente?\n\nEsto solo afecta las asistencias no sincronizadas.',
+            '¿Estás seguro de que quieres eliminar las asistencias guardadas en este equipo?\n\nEsto solo afecta las asistencias que aún no se han enviado.',
             style: TextStyle(fontSize: 16, color: palette.textSecondary),
           ),
           actions: [

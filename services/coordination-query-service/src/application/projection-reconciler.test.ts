@@ -17,7 +17,7 @@ describe('ProjectionReconciler', () => {
       }],
       attendance: async () => [{
         attendanceSessionId: 'session-1', externalGroupId: '947699', professorExternalId: '308127',
-        date: '2026-08-02', professorEntryAt: null, professorExitAt: null, entriesCount: 22,
+        date: '2026-08-02', professorEntryAt: null, professorExitAt: null, actualClassroom: null, entriesCount: 22,
         uploadStatus: 'COMPLETED' as const, uploadError: null, version: 1, observedAt: '2026-08-02T13:00:00.000Z',
       }],
     };

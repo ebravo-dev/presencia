@@ -12,8 +12,9 @@ describe('CoordinationReportService', () => {
       summary: { scheduled: 4, taken: 4, missing: 0, completionRate: 100 },
       rows: [{
         subject: 'Arquitectura',
+        classroom: 'A1', classroomsUsed: ['LAB-02'],
         startTime: '08:00', endTime: '12:00',
-        cells: { monday: { status: 'TAKEN', scheduledHours: 4, attendedHours: 4, workedMinutes: 240, workedHours: 4, portalSyncStatus: 'COMPLETED' } },
+        cells: { monday: { status: 'TAKEN', actualClassroom: 'LAB-02', scheduledHours: 4, attendedHours: 4, workedMinutes: 240, workedHours: 4, portalSyncStatus: 'COMPLETED' } },
       }],
     });
   });
@@ -104,6 +105,7 @@ function repository(cycle = { externalId: '151', name: '2026 - 2 VERANO' }): Coo
           attendanceRecords: [{
             attendanceSessionId: 'attendance-1', date: new Date('2026-07-27T00:00:00.000Z'),
             professorEntryAt: new Date('2026-07-27T14:00:00.000Z'), professorExitAt: new Date('2026-07-27T18:00:00.000Z'),
+            actualClassroom: 'LAB-02',
             uploadStatus: 'COMPLETED', uploadError: null,
           }],
         }],
@@ -128,6 +130,7 @@ function attendanceWindowRepository(entryAt: string | null): CoordinationQueryRe
           attendanceRecords: entryAt ? [{
             attendanceSessionId: 'attendance-window', date: new Date('2026-08-03T00:00:00.000Z'),
             professorEntryAt: new Date(entryAt), professorExitAt: null,
+            actualClassroom: 'A1',
             uploadStatus: 'COMPLETED', uploadError: null,
           }] : [],
         }],

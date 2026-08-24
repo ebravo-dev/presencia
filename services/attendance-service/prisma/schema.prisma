@@ -85,6 +85,7 @@ model AttendanceSession {
   roomBeaconRssi      Int?                  @map("room_beacon_rssi")
   roomBeaconDistance  Float?                @map("room_beacon_distance")
   roomBeaconAddress   String?               @map("room_beacon_address")
+  actualClassroom     String?               @map("actual_classroom")
   uploadStatus        AttendanceUploadStatus @default(DRAFT) @map("upload_status")
   uploadError         String?               @map("upload_error")
   uploadedAt          DateTime?             @map("uploaded_at")

@@ -63,7 +63,7 @@ export async function exportReportPdf(report: AttendanceReportResponse): Promise
     head: [['Horario / Materia', ...days.map((day, index) => `${day.label}\n${formatDay(addDays(report.data.week.start, index))}`), 'Cumpl.\nSemana']],
     body: weeklyRows.map(({ row, hourIndex }) => [
       hourIndex === 0
-        ? `${row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : row.rawSchedule}\n${row.subject}\nGrupo ${row.groupCode}${row.classroom ? ` · ${row.classroom}` : ''} · Ciclo ${row.period}`
+        ? `${row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : row.rawSchedule}\n${row.subject}\nGrupo ${row.groupCode} · Prog. ${row.classroom || '-'} · Usado ${formatClassrooms(row.classroomsUsed)} · Ciclo ${row.period}`
         : '',
       ...days.map((day) => row.cells[day.key]?.hourSlots?.[hourIndex]?.status ?? 'NOT_SCHEDULED'),
       hourIndex === 0 ? formatRate(row.completionRate) : '',
@@ -150,7 +150,7 @@ async function exportRangeReportPdf(report: RangeReportResponse): Promise<void> 
     theme: 'grid',
     head: [['Materia', 'Grado', 'Grupo', 'Horas\nprogramadas', 'Horas\ncubiertas', 'Porcentaje\nde asistencia']],
     body: report.data.rows.map((row) => [
-      `${row.subject}\n${row.rawSchedule || 'Sin horario'}${row.classroom ? ` · ${row.classroom}` : ''} · Ciclo ${row.period}`,
+      `${row.subject}\n${row.rawSchedule || 'Sin horario'} · Prog. ${row.classroom || '-'} · Usado ${formatClassrooms(row.classroomsUsed)} · Ciclo ${row.period}`,
       row.grade || '-',
       row.groupCode || '-',
       row.scheduledClassDays,
@@ -258,6 +258,7 @@ function formatDate(value: string) { return new Date(value).toLocaleDateString('
 function formatRange(start: string, end: string) { return `${formatDay(start)} – ${formatDay(end)}`; }
 function formatRate(value: number | null | undefined) { return value == null ? 'N/D' : `${value}%`; }
 function formatRangeRate(value: number | null | undefined) { return value == null ? 'N/D' : `${value.toFixed(2)}%`; }
+function formatClassrooms(classrooms?: string[]) { return classrooms?.length ? classrooms.join(', ') : '-'; }
 function isRangeReport(report: AttendanceReportResponse): report is RangeReportResponse { return 'range' in report.data; }
 function filename(report: WeeklyReportResponse) { return `asistencia-${report.data.teacher.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')}-semana-${report.data.week.isoWeek}.pdf`; }
 function rangeFilename(report: RangeReportResponse) { return `asistencia-${report.data.teacher.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')}-${report.data.range.start}-a-${report.data.range.end}.pdf`; }

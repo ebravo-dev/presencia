@@ -363,11 +363,11 @@ async function testApp(options: {
     }),
     observeProfessorEntry: async (input: { externalGroupId: string; attendanceDate: string }) => ({
       attendanceSessionId: 'session-1', externalGroupId: input.externalGroupId, date: input.attendanceDate,
-      professorEntryAt: now.toISOString(), professorExitAt: null, duplicate: false, version: 1,
+      professorEntryAt: now.toISOString(), professorExitAt: null, actualClassroom: 'AULA A-101', duplicate: false, version: 1,
     }),
     observeProfessorExit: async (input: { externalGroupId: string; attendanceDate: string }) => ({
       attendanceSessionId: 'session-1', externalGroupId: input.externalGroupId, date: input.attendanceDate,
-      professorEntryAt: null, professorExitAt: now.toISOString(), duplicate: false, version: 1,
+      professorEntryAt: null, professorExitAt: now.toISOString(), actualClassroom: null, duplicate: false, version: 1,
     }),
     observeStudentPresence: async (input: { externalGroupId: string; attendanceDate: string }) => ({
       attendanceSessionId: 'session-1', externalGroupId: input.externalGroupId, date: input.attendanceDate,
