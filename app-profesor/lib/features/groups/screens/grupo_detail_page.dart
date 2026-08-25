@@ -937,7 +937,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                               ? 'Marcar Entrada'
                               : '${_entradaEsTardia(_entradaProfesor!) ? 'Entrada tardía' : 'Entrada'}: ${_getFormattedDate(_entradaProfesor!)} ${_formatTime(_entradaProfesor!)}',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.9),
+                            color: palette.textPrimary,
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                           ),
@@ -1031,9 +1031,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                               ? 'Marcar Salida'
                               : 'Salida: ${_getFormattedDate(_salidaProfesor!)} ${_formatTime(_salidaProfesor!)}',
                           style: TextStyle(
-                            color: _entradaProfesor == null
-                                ? Colors.white.withValues(alpha: 0.5)
-                                : Colors.white.withValues(alpha: 0.9),
+                            color: palette.textPrimary,
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                           ),
@@ -1113,9 +1111,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                         child: Text(
                           'Subir Asistencia',
                           style: TextStyle(
-                            color: _puedeSubirAsistencia()
-                                ? Colors.white.withValues(alpha: 0.9)
-                                : Colors.white.withValues(alpha: 0.5),
+                            color: palette.textPrimary,
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                           ),
