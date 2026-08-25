@@ -68,6 +68,41 @@ describe('SuperUser database administration', () => {
   });
 });
 
+describe('SuperUser student beacon administration', () => {
+  it('links the UUID generated on iOS to the normalized student matricula', async () => {
+    let requestBody: unknown;
+    server.use(
+      http.get('/api/superUsuario/auth/me', () => HttpResponse.json({ data: { user: { role: 'SUPER_USER' } } })),
+      http.get('/api/superUsuario/coordinadores', () => HttpResponse.json({ data: [], meta: { generatedAt: '2026-08-16T00:00:00.000Z' } })),
+      http.get('/api/superUsuario/alumnos-vinculados', () => HttpResponse.json({ data: [] })),
+      http.post('/api/superUsuario/alumnos-vinculados', async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          data: {
+            id: 'binding-1', matricula: '2251330008',
+            attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+            deviceBindingId: null, platform: 'ios', deviceInfo: 'Beacon iOS manual',
+            bindingVersion: 1, active: true, createdAt: '2026-08-25T12:00:00.000Z',
+            updatedAt: '2026-08-25T12:00:00.000Z', students: [],
+          },
+        }, { status: 201 });
+      }),
+    );
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Alumnos vinculados' }));
+    await user.type(screen.getByLabelText('Matrícula'), '2251330008');
+    await user.type(screen.getByLabelText('UUID del beacon iOS'), '12345678-1234-4234-9234-123456789ABC');
+    await user.click(screen.getByRole('button', { name: 'Vincular alumno' }));
+
+    await waitFor(() => expect(requestBody).toEqual({
+      matricula: '2251330008', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+    }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Alumno 2251330008 vinculado correctamente.');
+  });
+});
+
 function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },

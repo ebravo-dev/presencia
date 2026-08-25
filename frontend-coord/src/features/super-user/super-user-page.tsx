@@ -463,15 +463,88 @@ function BeaconAdmin() {
 function StudentBindingAdmin() {
   const queryClient = useQueryClient();
   const [studentSearch, setStudentSearch] = useState('');
+  const [matricula, setMatricula] = useState('');
+  const [attendanceUuid, setAttendanceUuid] = useState('');
+  const [savedMatricula, setSavedMatricula] = useState('');
   const debouncedStudentSearch = useDebounce(studentSearch);
   const bindings = useQuery({ queryKey: ['super-user', 'bindings', debouncedStudentSearch], queryFn: () => superUserApi.studentDeviceBindings({ q: debouncedStudentSearch || undefined }), refetchInterval: REFRESH_INTERVAL_MS });
+  const save = useMutation({
+    mutationFn: () => superUserApi.createStudentDeviceBinding({
+      matricula: matricula.trim().toUpperCase(),
+      attendanceUuid: attendanceUuid.trim().toLowerCase(),
+    }),
+    onSuccess: async (response) => {
+      setSavedMatricula(response.data.matricula);
+      setMatricula('');
+      setAttendanceUuid('');
+      await queryClient.invalidateQueries({ queryKey: ['super-user', 'bindings'] });
+    },
+  });
   const remove = useMutation({ mutationFn: superUserApi.deleteStudentDeviceBinding, onSuccess: () => queryClient.invalidateQueries({ queryKey: ['super-user', 'bindings'] }) });
 
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    setSavedMatricula('');
+    save.mutate();
+  };
+
   return (
-    <Card className="overflow-hidden">
-      <div className="flex flex-col gap-3 border-b border-slate-200 p-5 dark:border-[#1f2229] sm:flex-row sm:items-end sm:justify-between"><div><h2 className="font-bold">Alumnos vinculados</h2><p className="text-sm text-slate-500">Matrícula y UUID estable generado por la app de alumnos.</p></div><label className="relative block sm:w-80"><Link2 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} /><input className="field pl-9" value={studentSearch} onChange={(event) => setStudentSearch(event.target.value)} placeholder="Buscar matrícula" /></label></div>
-      {bindings.isLoading ? <div className="p-5"><Skeleton className="h-32" /></div> : !bindings.data?.data.length ? <div className="p-5"><EmptyState icon={<Link2 />} title="Sin alumnos vinculados" description="Los alumnos aparecerán cuando vinculen su celular desde la app." /></div> : <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-[#15181d]"><tr><th className="px-5 py-3">Matrícula</th><th className="px-5 py-3">UUID</th><th className="px-5 py-3">Alumno / grupo</th><th className="px-5 py-3">Dispositivo</th><th className="px-5 py-3 text-right">Acciones</th></tr></thead><tbody>{bindings.data.data.map((binding) => <tr key={binding.id} className="border-t border-slate-100 dark:border-[#1f2229]"><td className="px-5 py-3 font-semibold">{binding.matricula}</td><td className="px-5 py-3 font-mono text-xs">{binding.attendanceUuid}</td><td className="px-5 py-3">{binding.students.length ? binding.students.map((student) => <div key={student.id} className="mb-1 last:mb-0"><b>{student.name}</b><p className="text-xs text-slate-500">{student.group.name} · {student.group.classroom || 'Sin salón'} · {student.group.professor.name}</p></div>) : <span className="text-slate-400">No aparece en grupos sincronizados</span>}</td><td className="px-5 py-3">{binding.platform || '-'}<p className="text-xs text-slate-500">{binding.deviceInfo || ''}</p></td><td className="px-5 py-3 text-right"><Button variant="ghost" onClick={() => remove.mutate(binding.matricula)}><Trash2 size={16} /></Button></td></tr>)}</tbody></table></div>}
-    </Card>
+    <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
+      <Card className="p-5">
+        <div className="mb-4 flex items-center gap-3">
+          <div className="rounded-xl bg-red-50 p-2.5 text-[#C8102E]"><Link2 size={21} /></div>
+          <div>
+            <h2 className="font-bold">Vincular alumno por UUID</h2>
+            <p className="text-sm text-slate-500">Alta temporal para un beacon emulado en iOS.</p>
+          </div>
+        </div>
+        <form className="space-y-3" onSubmit={submit}>
+          <label className="block text-sm font-semibold">
+            Matrícula
+            <input
+              className="field mt-1"
+              value={matricula}
+              onChange={(event) => setMatricula(event.target.value.toUpperCase())}
+              placeholder="2251330008"
+              maxLength={40}
+              autoCapitalize="characters"
+              required
+            />
+          </label>
+          <label className="block text-sm font-semibold">
+            UUID del beacon iOS
+            <input
+              className="field mt-1 font-mono"
+              value={attendanceUuid}
+              onChange={(event) => setAttendanceUuid(event.target.value)}
+              placeholder="12345678-1234-4234-9234-123456789abc"
+              maxLength={36}
+              required
+            />
+          </label>
+          <p className="text-xs leading-relaxed text-slate-500">
+            La matrícula enlaza el UUID con el alumno del padrón y sus grupos. Si la matrícula ya tiene un vínculo, este registro lo actualizará.
+          </p>
+          <Button type="submit" disabled={save.isPending}>
+            <PlusCircle size={16} />{save.isPending ? 'Vinculando...' : 'Vincular alumno'}
+          </Button>
+          {savedMatricula && <p role="status" className="text-sm font-semibold text-emerald-700">Alumno {savedMatricula} vinculado correctamente.</p>}
+          {save.isError && <p role="alert" className="text-sm font-semibold text-red-600">{apiErrorMessage(save.error, 'No se pudo vincular el alumno. Revisa la matrícula y el formato del UUID.')}</p>}
+        </form>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-slate-200 p-5 dark:border-[#1f2229] sm:flex-row sm:items-end sm:justify-between">
+          <div><h2 className="font-bold">Alumnos vinculados</h2><p className="text-sm text-slate-500">Matrícula y UUID usados para el pase automático.</p></div>
+          <label className="relative block sm:w-80">
+            <span className="sr-only">Buscar matrícula</span>
+            <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
+            <input className="field pl-9" value={studentSearch} onChange={(event) => setStudentSearch(event.target.value)} placeholder="Buscar matrícula" />
+          </label>
+        </div>
+        {bindings.isLoading ? <div className="p-5"><Skeleton className="h-32" /></div> : !bindings.data?.data.length ? <div className="p-5"><EmptyState icon={<Link2 />} title="Sin alumnos vinculados" description="Registra aquí el UUID del beacon iOS o espera a que un alumno vincule su celular desde la app." /></div> : <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-[#15181d]"><tr><th className="px-5 py-3">Matrícula</th><th className="px-5 py-3">UUID</th><th className="px-5 py-3">Alumno / grupo</th><th className="px-5 py-3">Dispositivo</th><th className="px-5 py-3 text-right">Acciones</th></tr></thead><tbody>{bindings.data.data.map((binding) => <tr key={binding.id} className="border-t border-slate-100 dark:border-[#1f2229]"><td className="px-5 py-3 font-semibold">{binding.matricula}</td><td className="px-5 py-3 font-mono text-xs">{binding.attendanceUuid}</td><td className="px-5 py-3">{binding.students.length ? binding.students.map((student) => <div key={student.id} className="mb-1 last:mb-0"><b>{student.name}</b><p className="text-xs text-slate-500">{student.group.name} · {student.group.classroom || 'Sin salón'} · {student.group.professor.name}</p></div>) : <span className="text-slate-400">Pendiente de aparecer en un grupo sincronizado</span>}</td><td className="px-5 py-3">{binding.platform || '-'}<p className="text-xs text-slate-500">{binding.deviceInfo || ''}</p></td><td className="px-5 py-3 text-right"><Button variant="ghost" aria-label={`Desvincular ${binding.matricula}`} onClick={() => remove.mutate(binding.matricula)}><Trash2 size={16} /></Button></td></tr>)}</tbody></table></div>}
+      </Card>
+    </div>
   );
 }
 

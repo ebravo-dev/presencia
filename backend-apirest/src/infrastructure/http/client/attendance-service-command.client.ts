@@ -30,6 +30,24 @@ export class AttendanceServiceCommandClient implements AttendanceBindingClient {
     });
   }
 
+  replaceStudentDeviceBinding(input: {
+    matricula: string;
+    attendanceUuid: string;
+    deviceBindingId?: string | null;
+    platform?: 'android' | 'ios' | null;
+    deviceInfo?: string | null;
+    actorIdentityId: string;
+    actorRole: 'COORDINATOR' | 'SUPER_USER';
+    reason: string;
+    correlationId: string;
+  }): Promise<{ data: StudentDeviceBindingValue }> {
+    return this.request(`/internal/v1/attendance/device-bindings/${encodeURIComponent(input.matricula)}`, {
+      method: 'PUT',
+      correlationId: input.correlationId,
+      body: withoutCorrelationId(input),
+    });
+  }
+
   async unbindStudentDevice(input: {
     matricula: string;
     actorIdentityId: string;
@@ -214,6 +232,18 @@ export interface ClassroomBeaconResponse {
 export interface AttendanceSettingsResponse {
   teacherAttendanceToleranceMinutes: number;
   updatedAt: string | null;
+}
+
+export interface StudentDeviceBindingValue {
+  id: string;
+  matricula: string;
+  attendanceUuid: string;
+  deviceBindingId: string | null;
+  platform: string | null;
+  deviceInfo: string | null;
+  bindingVersion: number;
+  active: boolean;
+  updatedAt: string;
 }
 
 interface ClassroomBeaconInput {

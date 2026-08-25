@@ -49,6 +49,44 @@ describe('Attendance HTTP API', () => {
     await app.close();
   });
 
+  it('accepts an audited manual iOS beacon binding without a native device id', async () => {
+    let command: Record<string, unknown> | undefined;
+    const app = await testApp({
+      replaceBinding: async (input) => {
+        command = input as Record<string, unknown>;
+        return {
+          binding: {
+            id: 'binding-manual', matricula: '2251330008',
+            attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+            deviceBindingId: null, platform: 'ios', deviceInfo: 'Beacon iOS manual',
+            bindingVersion: 1, active: true, updatedAt: new Date('2026-08-02T12:00:00.000Z'),
+          },
+          created: true,
+          duplicate: false,
+        };
+      },
+    });
+    const response = await app.inject({
+      method: 'PUT', url: '/internal/v1/attendance/device-bindings/2251330008',
+      headers: { 'x-internal-service-token': token, 'x-correlation-id': 'manual-binding-1' },
+      payload: {
+        matricula: '2251330008', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+        platform: 'ios', deviceInfo: 'Beacon iOS manual', actorIdentityId: 'super-1',
+        actorRole: 'SUPER_USER', reason: 'Alta manual de beacon iOS para alumno.',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({
+      matricula: '2251330008', deviceBindingId: null, platform: 'ios', active: true,
+    });
+    expect(command).toMatchObject({
+      matricula: '2251330008', deviceBindingId: null, platform: 'ios',
+      actorIdentityId: 'super-1', actorRole: 'SUPER_USER', correlationId: 'manual-binding-1',
+    });
+    await app.close();
+  });
+
   it('lets the student app refresh only its exact active binding through the public route', async () => {
     const app = await testApp();
     const initial = await app.inject({
@@ -315,6 +353,7 @@ describe('Attendance HTTP API', () => {
 async function testApp(options: {
   debugMode?: boolean;
   capture?: (input: unknown) => Promise<unknown>;
+  replaceBinding?: (input: unknown) => Promise<unknown>;
   resetDemoData?: () => Promise<void>;
 } = {}) {
   const now = new Date('2026-08-02T12:00:00.000Z');
@@ -345,6 +384,7 @@ async function testApp(options: {
       recentBindings: [], recentBeacons: [],
     }),
     bindInitial: async () => ({ binding, created: true, duplicate: false }),
+    replaceBinding: options.replaceBinding ?? (async () => ({ binding, created: true, duplicate: false })),
     bindingByMatricula: async () => binding,
     resolveDeviceBindings: async () => ({ data: [], missing: [] }),
     listClassroomBeacons: async () => [],

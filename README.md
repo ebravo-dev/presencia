@@ -124,6 +124,9 @@ automáticamente los tokens heredados de Hive.
   sin bloquear el flujo de asistencia mientras actualiza los datos académicos.
 - El dashboard de coordinación autoriza cambios de celular revocando el vínculo
   actual; el nuevo UUID sólo se registra en el siguiente login estudiantil.
+- El panel de superusuario también permite registrar manualmente la matrícula y
+  el UUID de un beacon emulado en iOS; Attendance lo vincula de forma auditada
+  al mismo padrón utilizado por el pase automático.
 
 ## Referencias
 

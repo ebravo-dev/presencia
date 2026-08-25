@@ -37,6 +37,10 @@ const coordinatorCreateSchema = z.object({
 const coordinatorUpdateSchema = coordinatorCreateSchema.partial().extend({ disabled: z.boolean().optional() });
 const beaconSchema = z.object({ classroom: z.string().trim().min(1), uuid: z.string().trim().min(8) });
 const beaconUpdateSchema = beaconSchema.partial();
+const studentBeaconBindingSchema = z.object({
+  matricula: z.string().trim().min(1).max(40),
+  attendanceUuid: z.string().trim().uuid(),
+}).strict();
 const scheduleSlotSchema = z.object({
   startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
   endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
@@ -270,6 +274,25 @@ export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async
   fastify.get('/api/superUsuario/alumnos-vinculados', async (request) => {
     const { q } = request.query as { q?: string };
     return attendanceService.listStudentDeviceBindings({ q });
+  });
+  fastify.post('/api/superUsuario/alumnos-vinculados', async (request, reply) => {
+    const parsed = studentBeaconBindingSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: 'INVALID_STUDENT_BEACON_BINDING',
+        message: 'Captura una matrícula y un UUID válido para vincular al alumno.',
+      });
+    }
+    const input = parsed.data;
+    const result = await attendanceService.replaceStudentDeviceBinding({
+      matricula: input.matricula.trim().toUpperCase(),
+      attendanceUuid: input.attendanceUuid.trim().toLowerCase(),
+      deviceBindingId: null,
+      platform: 'ios',
+      deviceInfo: 'Beacon iOS registrado manualmente por super usuario.',
+      ...actor(request.superUser?.id, request.id, 'Alta manual de beacon iOS para alumno desde super usuario.'),
+    });
+    return reply.code(201).send(result);
   });
   fastify.delete<{ Params: { matricula: string } }>('/api/superUsuario/alumnos-vinculados/:matricula', async (request, reply) => {
     await attendanceService.unbindStudentDevice({

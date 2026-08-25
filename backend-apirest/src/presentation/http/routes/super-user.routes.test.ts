@@ -14,6 +14,9 @@ import {
 describe('superUserRoutes', () => {
   it('keeps the public contract while delegating beacon writes with the Identity actor', async () => {
     const createBeacon = vi.fn(async () => ({ data: { id: 'beacon-1', classroom: 'AULA 1', uuid: '12345678' } }));
+    const replaceStudentDeviceBinding = vi.fn(async (input: { matricula: string; attendanceUuid: string }) => ({
+      data: { id: 'binding-1', matricula: input.matricula, attendanceUuid: input.attendanceUuid },
+    }));
     const createStaffAccount = vi.fn(async () => ({ data: { id: 'staff-1' } }));
     const cycleStatus = { data: {
       active: { externalId: 152, year: 2026, term: 3, name: '2026 - 3 OTOÑO', revision: 1, updatedAt: '2026-08-05T00:00:00.000Z', updatedByIdentityId: null },
@@ -29,7 +32,7 @@ describe('superUserRoutes', () => {
         logout: async () => undefined,
       } as never,
       identityService: { createStaffAccount } as never,
-      attendanceService: { createClassroomBeacon: createBeacon } as never,
+      attendanceService: { createClassroomBeacon: createBeacon, replaceStudentDeviceBinding } as never,
       attendanceCapture: {} as never,
       academicService: { activeAcademicCycle: vi.fn(async () => cycleStatus), changeActiveAcademicCycle } as never,
       coordinationQuery: {} as never,
@@ -51,6 +54,26 @@ describe('superUserRoutes', () => {
     expect(response.statusCode).toBe(201);
     expect(createBeacon).toHaveBeenCalledWith(expect.objectContaining({
       actorIdentityId: 'identity-super', actorRole: 'SUPER_USER',
+    }));
+    const invalidStudentBinding = await app.inject({
+      method: 'POST', url: '/api/superUsuario/alumnos-vinculados',
+      headers: { cookie: 'super_user_session=identity-token' },
+      payload: { matricula: '2251330008', attendanceUuid: 'uuid-invalido' },
+    });
+    expect(invalidStudentBinding.statusCode).toBe(400);
+    expect(invalidStudentBinding.json()).toMatchObject({ error: 'INVALID_STUDENT_BEACON_BINDING' });
+    const studentBindingResponse = await app.inject({
+      method: 'POST', url: '/api/superUsuario/alumnos-vinculados',
+      headers: { cookie: 'super_user_session=identity-token' },
+      payload: {
+        matricula: ' 2251330008 ', attendanceUuid: '12345678-1234-4234-9234-123456789ABC',
+      },
+    });
+    expect(studentBindingResponse.statusCode).toBe(201);
+    expect(replaceStudentDeviceBinding).toHaveBeenCalledWith(expect.objectContaining({
+      matricula: '2251330008', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+      deviceBindingId: null, platform: 'ios', actorIdentityId: 'identity-super', actorRole: 'SUPER_USER',
+      reason: 'Alta manual de beacon iOS para alumno desde super usuario.',
     }));
     const staffResponse = await app.inject({
       method: 'POST', url: '/api/superUsuario/coordinadores',

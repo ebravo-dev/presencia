@@ -43,6 +43,9 @@ export const superUserApi = {
   updateBeacon: async (id: string, input: Partial<{ classroom: string; uuid: string }>) => (await superApi.put<{ data: Beacon }>(`/superUsuario/beacons/${id}`, input)).data,
   deleteBeacon: async (id: string) => { await superApi.delete(`/superUsuario/beacons/${id}`); },
   studentDeviceBindings: async (params: { q?: string }) => (await superApi.get<{ data: StudentDeviceBinding[] }>('/superUsuario/alumnos-vinculados', { params })).data,
+  createStudentDeviceBinding: async (input: { matricula: string; attendanceUuid: string }) => (
+    await superApi.post<{ data: StudentDeviceBinding }>('/superUsuario/alumnos-vinculados', input)
+  ).data,
   deleteStudentDeviceBinding: async (matricula: string) => { await superApi.delete(`/superUsuario/alumnos-vinculados/${encodeURIComponent(matricula)}`); },
   debugStatus: async () => (await superApi.get<DebugStatusResponse>('/superUsuario/debug/status')).data,
   debugCatalog: async () => (await superApi.get<DebugCatalogResponse>('/superUsuario/debug/catalog')).data,

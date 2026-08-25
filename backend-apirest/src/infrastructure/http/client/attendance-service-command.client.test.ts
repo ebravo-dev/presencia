@@ -49,6 +49,30 @@ describe('AttendanceServiceCommandClient', () => {
     expect(JSON.parse(String(request?.body))).toMatchObject({ actorIdentityId: 'coord-1', actorRole: 'COORDINATOR' });
   });
 
+  it('writes a manual student UUID through the audited replacement endpoint', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: { id: 'binding-1', matricula: '2251330008', attendanceUuid: '12345678-1234-4234-9234-123456789abc' },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    const client = new AttendanceServiceCommandClient('http://attendance-service:3400', 'x'.repeat(32));
+
+    await client.replaceStudentDeviceBinding({
+      matricula: '2251330008', attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+      deviceBindingId: null, platform: 'ios', deviceInfo: 'Beacon iOS manual',
+      actorIdentityId: 'super-1', actorRole: 'SUPER_USER', reason: 'Alta manual de beacon iOS para alumno.',
+      correlationId: 'request-manual-1',
+    });
+
+    const [url, request] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe('http://attendance-service:3400/internal/v1/attendance/device-bindings/2251330008');
+    expect(request?.method).toBe('PUT');
+    expect(request?.headers).toMatchObject({ 'x-correlation-id': 'request-manual-1' });
+    expect(JSON.parse(String(request?.body))).toMatchObject({
+      matricula: '2251330008', deviceBindingId: null, platform: 'ios',
+      actorIdentityId: 'super-1', actorRole: 'SUPER_USER',
+    });
+    expect(JSON.parse(String(request?.body))).not.toHaveProperty('correlationId');
+  });
+
   it('reads authoritative device bindings with an encoded filter', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ data: [] }), {
       status: 200, headers: { 'content-type': 'application/json' },

@@ -34,10 +34,15 @@ export const resolveDeviceBindingsSchema = z.object({
   professorExternalId: z.string().trim().min(1).max(160),
   matriculas: z.array(z.string().trim().min(1).max(40)).min(1).max(1_000),
 });
-export const coordinatorBindingSchema = deviceBindingSchema.extend({
+export const coordinatorBindingSchema = z.object({
+  matricula: z.string().trim().min(1).max(40),
+  attendanceUuid: z.uuid(),
+  deviceBindingId: z.uuid().nullable().optional(),
+  platform: z.enum(['android', 'ios']).nullable().optional(),
+  deviceInfo: z.string().trim().max(500).nullable().optional(),
   actorIdentityId: z.string().trim().min(1).max(160), actorRole: z.enum(['COORDINATOR', 'SUPER_USER']),
   reason: z.string().trim().min(8).max(500),
-});
+}).strict();
 export const coordinatorUnbindSchema = z.object({
   actorIdentityId: z.string().trim().min(1).max(160), actorRole: z.enum(['COORDINATOR', 'SUPER_USER']),
   reason: z.string().trim().min(8).max(500),
