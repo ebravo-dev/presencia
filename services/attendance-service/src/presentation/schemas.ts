@@ -43,6 +43,18 @@ export const coordinatorBindingSchema = z.object({
   actorIdentityId: z.string().trim().min(1).max(160), actorRole: z.enum(['COORDINATOR', 'SUPER_USER']),
   reason: z.string().trim().min(8).max(500),
 }).strict();
+export const professorBindingSchema = z.object({
+  externalGroupId: z.string().trim().min(1).max(160),
+  professorExternalId: z.string().trim().min(1).max(160),
+  matricula: z.string().trim().min(1).max(40),
+  attendanceUuid: z.uuid(),
+  deviceBindingId: z.null().optional(),
+  platform: z.literal('ios'),
+  deviceInfo: z.string().trim().max(500).nullable().optional(),
+  actorIdentityId: z.string().trim().min(1).max(160),
+  actorRole: z.literal('PROFESSOR'),
+  reason: z.string().trim().min(8).max(500),
+}).strict();
 export const coordinatorUnbindSchema = z.object({
   actorIdentityId: z.string().trim().min(1).max(160), actorRole: z.enum(['COORDINATOR', 'SUPER_USER']),
   reason: z.string().trim().min(8).max(500),

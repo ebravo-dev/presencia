@@ -89,6 +89,7 @@ function repositoryStub(): AttendanceRepository {
     async markUploadResult() { return true; },
     async capture() { throw new Error('unexpected'); },
     async bindInitial() { throw new Error('unexpected'); },
+    async bindByProfessor() { throw new Error('unexpected'); },
     async replaceBinding() { throw new Error('unexpected'); },
     async unbind() { return false; },
     async bindingByMatricula() { return null; },

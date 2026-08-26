@@ -18,6 +18,12 @@ export const professorDeviceBindingResolveSchema = z.object({
   matriculas: z.array(z.string().trim().min(1).max(40)).min(1).max(1_000),
 });
 
+export const professorDeviceBindingCreateSchema = z.object({
+  externalGroupId: z.string().trim().min(1).max(160),
+  matricula: z.string().trim().min(1).max(40),
+  attendanceUuid: z.string().trim().uuid(),
+}).strict();
+
 export const professorBeaconResolveSchema = z.object({
   classrooms: z.array(z.string().trim().min(1).max(160)).min(1).max(1_000),
 });

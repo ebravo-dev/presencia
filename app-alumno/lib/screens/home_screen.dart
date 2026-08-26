@@ -586,56 +586,77 @@ class _AttendancePageState extends State<_AttendancePage> {
   static const _orange = Color(0xFFD65F05);
   static const _lightBackground = Color(0xFFF7F8FA);
   static const _carouselViewportFraction = .25;
-  static const _carouselTrailingSlots = 3;
+  static const _carouselPreviousCardPeek = 26.0;
 
-  late PageController _pageController;
-  int? _silentPageChange;
+  late final ScrollController _classScrollController;
+  double _carouselItemExtent = 0;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(
-      initialPage: widget.selectedClass,
-      viewportFraction: _carouselViewportFraction,
-    );
+    _classScrollController = ScrollController();
   }
 
   @override
   void didUpdateWidget(covariant _AttendancePage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.schedule, widget.schedule)) {
-      _pageController.dispose();
-      _pageController = PageController(
-        initialPage: widget.selectedClass,
-        viewportFraction: _carouselViewportFraction,
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _alignClass(widget.selectedClass, animated: false);
+      });
     }
   }
 
   @override
   void dispose() {
-    _pageController.dispose();
+    _classScrollController.dispose();
     super.dispose();
   }
 
   void _selectClass(int index) {
     if (index == widget.selectedClass) return;
-    if (_silentPageChange == index) {
-      _silentPageChange = null;
-    } else {
-      _silentPageChange = null;
-      unawaited(HapticFeedback.selectionClick());
-    }
+    unawaited(HapticFeedback.selectionClick());
     widget.onSelectClass(index);
   }
 
   void _moveToClass(int index) {
-    if (!_pageController.hasClients) return;
-    _pageController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-    );
+    _selectClass(index);
+    _alignClass(index);
+  }
+
+  void _alignClass(int index, {bool animated = true}) {
+    if (!_classScrollController.hasClients || _carouselItemExtent <= 0) return;
+    final target =
+        (index * _carouselItemExtent -
+                (index > 0 ? _carouselPreviousCardPeek : 0))
+            .clamp(0.0, _classScrollController.position.maxScrollExtent);
+    if ((_classScrollController.offset - target).abs() < .5) return;
+    if (animated) {
+      unawaited(
+        _classScrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+        ),
+      );
+    } else {
+      _classScrollController.jumpTo(target);
+    }
+  }
+
+  bool _handleClassScrollEnd(
+    ScrollEndNotification notification,
+    int classCount,
+  ) {
+    if (classCount == 0 || _carouselItemExtent <= 0) return false;
+    final index =
+        ((_classScrollController.offset + _carouselPreviousCardPeek) /
+                _carouselItemExtent)
+            .round()
+            .clamp(0, classCount - 1);
+    _selectClass(index);
+    _alignClass(index);
+    return false;
   }
 
   @override
@@ -662,18 +683,6 @@ class _AttendancePageState extends State<_AttendancePage> {
         : widget.hasError
         ? 'Intentar de nuevo'
         : 'Registrar asistencia';
-
-    if (todayClasses.isNotEmpty &&
-        _pageController.hasClients &&
-        (_pageController.page?.round() ?? effectiveSelectedClass) !=
-            effectiveSelectedClass) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _pageController.hasClients) {
-          _silentPageChange = effectiveSelectedClass;
-          _pageController.jumpToPage(effectiveSelectedClass);
-        }
-      });
-    }
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -743,28 +752,51 @@ class _AttendancePageState extends State<_AttendancePage> {
                       : Row(
                           children: [
                             Expanded(
-                              child: PageView.builder(
-                                key: const Key('attendance-class-carousel'),
-                                controller: _pageController,
-                                scrollDirection: Axis.vertical,
-                                padEnds: false,
-                                physics: const BouncingScrollPhysics(),
-                                itemCount:
-                                    todayClasses.length +
-                                    _carouselTrailingSlots,
-                                onPageChanged: _selectClass,
-                                itemBuilder: (context, index) {
-                                  if (index >= todayClasses.length) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  return GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    onTap: () => _moveToClass(index),
-                                    child: _ClassCard(
-                                      key: ValueKey('attendance-class-$index'),
-                                      occurrence: todayClasses[index],
-                                      selected: index == effectiveSelectedClass,
-                                      now: now,
+                              child: LayoutBuilder(
+                                builder: (context, carouselConstraints) {
+                                  _carouselItemExtent =
+                                      carouselConstraints.maxHeight *
+                                      _carouselViewportFraction;
+                                  final trailingSpace =
+                                      (carouselConstraints.maxHeight -
+                                              _carouselItemExtent -
+                                              _carouselPreviousCardPeek)
+                                          .clamp(0.0, double.infinity);
+                                  return NotificationListener<
+                                    ScrollEndNotification
+                                  >(
+                                    onNotification: (notification) =>
+                                        _handleClassScrollEnd(
+                                          notification,
+                                          todayClasses.length,
+                                        ),
+                                    child: ListView.builder(
+                                      key: const Key(
+                                        'attendance-class-carousel',
+                                      ),
+                                      controller: _classScrollController,
+                                      scrollDirection: Axis.vertical,
+                                      physics: const BouncingScrollPhysics(),
+                                      padding: EdgeInsets.only(
+                                        bottom: trailingSpace,
+                                      ),
+                                      itemExtent: _carouselItemExtent,
+                                      itemCount: todayClasses.length,
+                                      itemBuilder: (context, index) {
+                                        return GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onTap: () => _moveToClass(index),
+                                          child: _ClassCard(
+                                            key: ValueKey(
+                                              'attendance-class-$index',
+                                            ),
+                                            occurrence: todayClasses[index],
+                                            selected:
+                                                index == effectiveSelectedClass,
+                                            now: now,
+                                          ),
+                                        );
+                                      },
                                     ),
                                   );
                                 },

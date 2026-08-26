@@ -272,84 +272,93 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'attendance classes use a vertical carousel and update its dots',
-    (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(390, 780);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets('attendance keeps the previous class above the selected class', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 780);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
 
-      final weekday = DateTime.now().weekday;
-      final storage = _ScheduleStorage([
-        for (var index = 0; index < 3; index++)
-          StudentScheduleEntry(
-            externalGroupId: 'today-$index',
-            subject: 'Materia ${index + 1}',
-            classroom: 'Aula ${index + 1}',
-            slots: [
-              StudentScheduleSlot(
-                weekday: weekday,
-                raw: 'Horario ${index + 1}',
-              ),
-            ],
-          ),
-      ]);
-      final advertiser = BleAdvertiserService();
-
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: buildAppTheme(Brightness.light),
-          home: HomeScreen(
-            storage: storage,
-            bleService: advertiser,
-            attendanceSession: AttendanceSessionService(
-              storage: storage,
-              advertiser: advertiser,
-            ),
-            deviceBindingService: StudentDeviceBindingService(),
-            profile: const StudentAcademicProfile(
-              matricula: '123456',
-              institutionalEmail: 'alumno@alumnos.uat.edu.mx',
-              displayName: 'Jared Castillo',
-            ),
-            initialUatSessionId: null,
-            demoMode: false,
-            themeMode: ThemeMode.light,
-            onThemeModeChanged: (_) {},
-            onLogout: () async {},
-          ),
+    final weekday = DateTime.now().weekday;
+    final storage = _ScheduleStorage([
+      for (var index = 0; index < 3; index++)
+        StudentScheduleEntry(
+          externalGroupId: 'today-$index',
+          subject: 'Materia ${index + 1}',
+          classroom: 'Aula ${index + 1}',
+          slots: [
+            StudentScheduleSlot(weekday: weekday, raw: 'Horario ${index + 1}'),
+          ],
         ),
-      );
-      await tester.pump();
+    ]);
+    final advertiser = BleAdvertiserService();
 
-      final carousel = find.byKey(const Key('attendance-class-carousel'));
-      expect(carousel, findsOneWidget);
-      expect(tester.widget<PageView>(carousel).scrollDirection, Axis.vertical);
-      expect(
-        find.byKey(const ValueKey('class-indicator-0-active')),
-        findsOneWidget,
-      );
-      final carouselTop = tester.getTopLeft(carousel).dy;
-      final selectedCardTop = tester
-          .getTopLeft(find.byKey(const ValueKey('attendance-class-0')))
-          .dy;
-      expect(selectedCardTop - carouselTop, lessThan(10));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(Brightness.light),
+        home: HomeScreen(
+          storage: storage,
+          bleService: advertiser,
+          attendanceSession: AttendanceSessionService(
+            storage: storage,
+            advertiser: advertiser,
+          ),
+          deviceBindingService: StudentDeviceBindingService(),
+          profile: const StudentAcademicProfile(
+            matricula: '123456',
+            institutionalEmail: 'alumno@alumnos.uat.edu.mx',
+            displayName: 'Jared Castillo',
+          ),
+          initialUatSessionId: null,
+          demoMode: false,
+          themeMode: ThemeMode.light,
+          onThemeModeChanged: (_) {},
+          onLogout: () async {},
+        ),
+      ),
+    );
+    await tester.pump();
 
-      await tester.tap(find.byKey(const ValueKey('attendance-class-1')));
-      await tester.pumpAndSettle();
+    final carousel = find.byKey(const Key('attendance-class-carousel'));
+    expect(carousel, findsOneWidget);
+    expect(tester.widget<ListView>(carousel).scrollDirection, Axis.vertical);
+    expect(
+      find.byKey(const ValueKey('class-indicator-0-active')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('attendance-class-1')));
+    await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const ValueKey('class-indicator-1-active')),
-        findsOneWidget,
-      );
-      final nextCardTop = tester
-          .getTopLeft(find.byKey(const ValueKey('attendance-class-1')))
-          .dy;
-      expect(nextCardTop - carouselTop, lessThan(10));
-      expect(tester.takeException(), isNull);
-    },
-  );
+    expect(
+      find.byKey(const ValueKey('class-indicator-1-active')),
+      findsOneWidget,
+    );
+    final previousCardTop = tester
+        .getTopLeft(find.byKey(const ValueKey('attendance-class-0')))
+        .dy;
+    final selectedCardTop = tester
+        .getTopLeft(find.byKey(const ValueKey('attendance-class-1')))
+        .dy;
+    final carouselTop = tester.getTopLeft(carousel).dy;
+    final previousCardBottom = tester
+        .getBottomRight(find.byKey(const ValueKey('attendance-class-0')))
+        .dy;
+    expect(selectedCardTop - carouselTop, lessThan(40));
+    expect(previousCardTop, lessThan(carouselTop));
+    expect(previousCardBottom, greaterThan(carouselTop));
+    expect(previousCardTop, lessThan(selectedCardTop));
+    expect(previousCardBottom, lessThanOrEqualTo(selectedCardTop + 10));
+
+    await tester.drag(carousel, const Offset(0, -90));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('class-indicator-2-active')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'attendance keeps a finished class available on compact screens',
@@ -518,9 +527,7 @@ void main() {
 
     expect(events, ['online']);
     expect(
-      find.text(
-        'Sin conexión. Revisa tu internet e inténtalo de nuevo.',
-      ),
+      find.text('Sin conexión. Revisa tu internet e inténtalo de nuevo.'),
       findsOneWidget,
     );
     await tester.pumpAndSettle();

@@ -1,6 +1,6 @@
 import type { AttendanceRepository } from '../domain/attendance.repository.js';
 import { AttendanceDomainError } from '../domain/attendance.js';
-import type { BindDeviceCommand, ReplaceDeviceBindingCommand } from '../domain/device-binding.js';
+import type { BindDeviceCommand, ProfessorBindDeviceCommand, ReplaceDeviceBindingCommand } from '../domain/device-binding.js';
 import type { BindingTokenClaims } from '../infrastructure/binding-token.js';
 
 export class DeviceBindingService {
@@ -49,6 +49,26 @@ export class DeviceBindingService {
     return this.repository.resolveDeviceBindings({
       professorExternalId: input.professorExternalId.trim(),
       matriculas: [...new Set(input.matriculas.map((value) => value.trim().toUpperCase()).filter(Boolean))],
+    });
+  }
+
+  bindByProfessor(command: ProfessorBindDeviceCommand) {
+    if (command.actorRole !== 'PROFESSOR') {
+      throw new AttendanceDomainError('PROFESSOR_ROLE_REQUIRED', 'Se requiere una sesión válida de profesor.');
+    }
+    if (!command.externalGroupId.trim() || !command.professorExternalId.trim()) {
+      throw new AttendanceDomainError('PROFESSOR_GROUP_REQUIRED', 'El grupo y el profesor son obligatorios.');
+    }
+    if (command.reason.trim().length < 8) {
+      throw new AttendanceDomainError('BINDING_CHANGE_REASON_REQUIRED', 'El alta requiere un motivo auditable.');
+    }
+    return this.repository.bindByProfessor({
+      ...normalize(command),
+      externalGroupId: command.externalGroupId.trim(),
+      professorExternalId: command.professorExternalId.trim(),
+      actorIdentityId: command.actorIdentityId.trim(),
+      actorRole: 'PROFESSOR',
+      reason: command.reason.trim(),
     });
   }
 

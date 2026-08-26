@@ -29,6 +29,33 @@ describe('ProfessorDeviceBindingController', () => {
     expect(received).toEqual({ professorExternalId: '308127', matriculas: ['9900000001'] });
   });
 
+  it('binds only within the requested group using the authenticated professor identity', async () => {
+    let received: unknown;
+    const controller = new ProfessorDeviceBindingController({
+      bindStudentDeviceByProfessor: async (input: unknown) => {
+        received = input;
+        return { data: { id: 'binding-1', matricula: '2251330008' } };
+      },
+    } as never);
+    await expect(controller.bind({
+      id: 'request-professor-1',
+      body: {
+        externalGroupId: '947699', matricula: ' 2251330008 ',
+        attendanceUuid: '12345678-1234-4234-9234-123456789ABC',
+      },
+      uatSession: {
+        username: 'profesor@uat.edu.mx', identitySession: { identityId: 'identity-professor-1' },
+        login: { parametros: { Id_Plantilla_AdmonUAT: '308127' } },
+      },
+    } as never)).resolves.toMatchObject({ data: { matricula: '2251330008' } });
+    expect(received).toMatchObject({
+      externalGroupId: '947699', professorExternalId: '308127', matricula: '2251330008',
+      attendanceUuid: '12345678-1234-4234-9234-123456789abc', deviceBindingId: null,
+      platform: 'ios', actorIdentityId: 'identity-professor-1', actorRole: 'PROFESSOR',
+      correlationId: 'request-professor-1',
+    });
+  });
+
   it('fails closed when Attendance Service is not configured', async () => {
     const controller = new ProfessorDeviceBindingController(undefined);
     await expect(controller.resolve({

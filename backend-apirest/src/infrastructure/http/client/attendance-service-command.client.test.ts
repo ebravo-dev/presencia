@@ -99,6 +99,30 @@ describe('AttendanceServiceCommandClient', () => {
     });
   });
 
+  it('forwards a professor-scoped student UUID with its audit identity', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: { id: 'binding-1', matricula: '2251330008', attendanceUuid: '12345678-1234-4234-9234-123456789abc' },
+    }), { status: 201, headers: { 'content-type': 'application/json' } }));
+    const client = new AttendanceServiceCommandClient('http://attendance-service:3400', 'x'.repeat(32));
+
+    await client.bindStudentDeviceByProfessor({
+      externalGroupId: '947699', professorExternalId: '308127', matricula: '2251330008',
+      attendanceUuid: '12345678-1234-4234-9234-123456789abc', deviceBindingId: null,
+      platform: 'ios', deviceInfo: 'Beacon iOS registrado por profesor', actorIdentityId: 'identity-professor-1',
+      actorRole: 'PROFESSOR', reason: 'Alta desde la lista del grupo.', correlationId: 'request-professor-1',
+    });
+
+    const [url, request] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe('http://attendance-service:3400/internal/v1/attendance/device-bindings/professor');
+    expect(request?.method).toBe('POST');
+    expect(request?.headers).toMatchObject({ 'x-correlation-id': 'request-professor-1' });
+    expect(JSON.parse(String(request?.body))).toMatchObject({
+      externalGroupId: '947699', professorExternalId: '308127', matricula: '2251330008',
+      actorIdentityId: 'identity-professor-1', actorRole: 'PROFESSOR',
+    });
+    expect(JSON.parse(String(request?.body))).not.toHaveProperty('correlationId');
+  });
+
   it('writes audited beacon commands to Attendance Service', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       data: { id: 'beacon-1', classroom: 'AULA 101' },

@@ -87,6 +87,44 @@ describe('Attendance HTTP API', () => {
     await app.close();
   });
 
+  it('accepts a professor-scoped binding through the private command', async () => {
+    let command: Record<string, unknown> | undefined;
+    const app = await testApp({
+      bindByProfessor: async (input) => {
+        command = input as Record<string, unknown>;
+        return {
+          binding: {
+            id: 'binding-professor', matricula: '2251330008',
+            attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+            deviceBindingId: null, platform: 'ios', deviceInfo: 'Beacon iOS registrado por profesor',
+            bindingVersion: 1, active: true, updatedAt: new Date('2026-08-02T12:00:00.000Z'),
+          },
+          created: true,
+          duplicate: false,
+        };
+      },
+    });
+    const response = await app.inject({
+      method: 'POST', url: '/internal/v1/attendance/device-bindings/professor',
+      headers: { 'x-internal-service-token': token, 'x-correlation-id': 'professor-binding-1' },
+      payload: {
+        externalGroupId: '947699', professorExternalId: '308127', matricula: '2251330008',
+        attendanceUuid: '12345678-1234-4234-9234-123456789abc', deviceBindingId: null,
+        platform: 'ios', deviceInfo: 'Beacon iOS registrado por profesor',
+        actorIdentityId: 'identity-professor-1', actorRole: 'PROFESSOR',
+        reason: 'Alta solicitada por el profesor responsable del grupo.',
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(command).toMatchObject({
+      externalGroupId: '947699', professorExternalId: '308127', matricula: '2251330008',
+      attendanceUuid: '12345678-1234-4234-9234-123456789abc', actorRole: 'PROFESSOR',
+      correlationId: 'professor-binding-1',
+    });
+    await app.close();
+  });
+
   it('lets the student app refresh only its exact active binding through the public route', async () => {
     const app = await testApp();
     const initial = await app.inject({
@@ -353,6 +391,7 @@ describe('Attendance HTTP API', () => {
 async function testApp(options: {
   debugMode?: boolean;
   capture?: (input: unknown) => Promise<unknown>;
+  bindByProfessor?: (input: unknown) => Promise<unknown>;
   replaceBinding?: (input: unknown) => Promise<unknown>;
   resetDemoData?: () => Promise<void>;
 } = {}) {
@@ -384,6 +423,7 @@ async function testApp(options: {
       recentBindings: [], recentBeacons: [],
     }),
     bindInitial: async () => ({ binding, created: true, duplicate: false }),
+    bindByProfessor: options.bindByProfessor ?? (async () => ({ binding, created: true, duplicate: false })),
     replaceBinding: options.replaceBinding ?? (async () => ({ binding, created: true, duplicate: false })),
     bindingByMatricula: async () => binding,
     resolveDeviceBindings: async () => ({ data: [], missing: [] }),

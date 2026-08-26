@@ -80,6 +80,30 @@ describe('DeviceBindingService', () => {
       matriculas: ['9900000001', '2251330008'],
     });
   });
+
+  it('normalizes a professor binding and preserves its exact group scope', async () => {
+    const repository = repositoryStub();
+    let received: unknown;
+    repository.bindByProfessor = async (command) => {
+      received = command;
+      throw new Error('stop');
+    };
+    const service = new DeviceBindingService(repository);
+
+    await expect(service.bindByProfessor({
+      externalGroupId: ' 947699 ', professorExternalId: ' 308127 ',
+      matricula: ' 2251330008 ', attendanceUuid: '12345678-1234-4234-9234-123456789ABC',
+      deviceBindingId: null, platform: 'ios', deviceInfo: ' Beacon iOS manual ',
+      actorIdentityId: ' identity-professor-1 ', actorRole: 'PROFESSOR',
+      reason: ' Alta solicitada por el profesor. ', correlationId: 'request-professor-1',
+    })).rejects.toThrow('stop');
+    expect(received).toMatchObject({
+      externalGroupId: '947699', professorExternalId: '308127', matricula: '2251330008',
+      attendanceUuid: '12345678-1234-4234-9234-123456789abc', deviceBindingId: null,
+      platform: 'ios', deviceInfo: 'Beacon iOS manual', actorIdentityId: 'identity-professor-1',
+      actorRole: 'PROFESSOR', reason: 'Alta solicitada por el profesor.',
+    });
+  });
 });
 
 function repositoryStub(): AttendanceRepository {
@@ -90,6 +114,7 @@ function repositoryStub(): AttendanceRepository {
     async markUploadResult() { return true; },
     async capture() { throw new Error('unexpected'); },
     async bindInitial() { throw new Error('unexpected'); },
+    async bindByProfessor() { throw new Error('unexpected'); },
     async replaceBinding() { throw new Error('unexpected'); },
     async unbind() { return false; },
     async bindingByMatricula() { return null; },

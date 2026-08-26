@@ -127,6 +127,10 @@ automáticamente los tokens heredados de Hive.
 - El panel de superusuario también permite registrar manualmente la matrícula y
   el UUID de un beacon emulado en iOS; Attendance lo vincula de forma auditada
   al mismo padrón utilizado por el pase automático.
+- En la lista de alumnos de cada grupo, la app del profesor muestra el alta por
+  UUID sólo para matrículas aún no vinculadas. Attendance comprueba que el
+  profesor sea titular o sustituto autorizado y no permite reemplazar vínculos
+  activos desde esta ruta.
 
 ## Referencias
 

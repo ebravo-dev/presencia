@@ -1,5 +1,5 @@
 import type { AcademicGroupAccessGrantInput, AttendanceRosterSnapshot, CaptureAttendanceCommand, CaptureAttendanceResult } from './attendance.js';
-import type { BindDeviceCommand, BindDeviceResult, ReplaceDeviceBindingCommand } from './device-binding.js';
+import type { BindDeviceCommand, BindDeviceResult, ProfessorBindDeviceCommand, ReplaceDeviceBindingCommand } from './device-binding.js';
 import type {
   BeaconActor,
   ClassroomBeaconValue,
@@ -44,6 +44,7 @@ export interface AttendanceRepository {
   }): Promise<boolean>;
   capture(command: CaptureAttendanceCommand, requestHash: string): Promise<CaptureAttendanceResult>;
   bindInitial(command: BindDeviceCommand): Promise<BindDeviceResult>;
+  bindByProfessor(command: ProfessorBindDeviceCommand): Promise<BindDeviceResult>;
   replaceBinding(command: ReplaceDeviceBindingCommand): Promise<BindDeviceResult>;
   unbind(command: {
     matricula: string; actorIdentityId: string; actorRole: 'COORDINATOR' | 'SUPER_USER';

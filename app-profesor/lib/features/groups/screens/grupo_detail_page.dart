@@ -19,6 +19,10 @@ import '../../../core/utils/utils.dart';
 
 import '../../../services/auth_storage_service.dart';
 
+final RegExp _canonicalUuidPattern = RegExp(
+  r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+);
+
 class GrupoDetailPage extends StatefulWidget {
   final Grupo grupo;
   final List<Color> gradientColors;
@@ -26,6 +30,7 @@ class GrupoDetailPage extends StatefulWidget {
   final String horario;
   final String dias;
   final List<Grupo>? todosLosGrupos;
+  final ApiService? apiService;
 
   /// Fecha inicial para mostrar (si viene de "Mostrar en pantalla")
   final DateTime? initialDate;
@@ -44,6 +49,7 @@ class GrupoDetailPage extends StatefulWidget {
     required this.horario,
     required this.dias,
     this.todosLosGrupos,
+    this.apiService,
     this.initialDate,
     this.highlightDateSelector = false,
     this.highlightColor,
@@ -82,7 +88,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
   // Servicio de almacenamiento local
   final AsistenciaLocalService _asistenciaService = AsistenciaLocalService();
-  final ApiService _apiService = ApiService();
+  late final ApiService _apiService;
 
   // Servicio de verificación BLE beacon
   final BleBeaconVerificationService _bleBeaconService =
@@ -94,6 +100,11 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   Future<void> _studentDetectionQueue = Future<void>.value();
   bool _isStudentBeaconScanning = false;
   bool _isLoadingStudentBeaconBindings = false;
+  bool _isLoadingStudentBindingStatus = false;
+  bool _studentBindingStatusLoaded = false;
+  String? _studentBindingStatusError;
+  final Set<String> _linkedStudentMatriculas = {};
+  final Set<String> _studentBindingsBeingSaved = {};
   Map<String, String> _studentKeyByBeaconUuid = {};
   final Set<String> _detectedStudentBeaconUuids = {};
   final Set<String> _automaticallyDetectedStudentKeys = {};
@@ -114,6 +125,14 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   @override
   void initState() {
     super.initState();
+    _apiService = widget.apiService ?? ApiService();
+    _linkedStudentMatriculas.addAll(
+      widget.grupo.students
+          .where((student) => student.beaconUuid?.trim().isNotEmpty ?? false)
+          .map((student) => student.matricula?.trim().toUpperCase())
+          .whereType<String>()
+          .where((matricula) => matricula.isNotEmpty),
+    );
     _selectedClassroom = widget.grupo.classroom.trim().toUpperCase();
     _classroomController = TextEditingController(text: _selectedClassroom);
     _availableClassrooms = _cachedAvailableClassrooms();
@@ -790,6 +809,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           onTap: () {
             HapticFeedback.lightImpact();
             setState(() => _selectedTab = 1);
+            unawaited(_refreshStudentBindingStatuses());
           },
         ),
       ],
@@ -1968,6 +1988,122 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     return uuid.replaceAll('-', '').trim().toLowerCase();
   }
 
+  Future<void> _refreshStudentBindingStatuses({bool force = false}) async {
+    if (_isLoadingStudentBindingStatus ||
+        (_studentBindingStatusLoaded && !force)) {
+      return;
+    }
+    final matriculas = widget.grupo.students
+        .map((student) => student.matricula?.trim().toUpperCase())
+        .whereType<String>()
+        .where((matricula) => matricula.isNotEmpty)
+        .toSet()
+        .toList();
+    if (matriculas.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _studentBindingStatusLoaded = true;
+          _studentBindingStatusError = null;
+        });
+      }
+      return;
+    }
+
+    setState(() {
+      _isLoadingStudentBindingStatus = true;
+      _studentBindingStatusError = null;
+    });
+    final result = await _apiService.resolveStudentDeviceBindings(
+      matriculas: matriculas,
+    );
+    if (!mounted) return;
+
+    result.fold(
+      (error) => setState(() {
+        _isLoadingStudentBindingStatus = false;
+        _studentBindingStatusLoaded = false;
+        _studentBindingStatusError = error;
+      }),
+      (bindings) => setState(() {
+        _linkedStudentMatriculas
+          ..clear()
+          ..addAll(
+            widget.grupo.students
+                .where(
+                  (student) => student.beaconUuid?.trim().isNotEmpty ?? false,
+                )
+                .map((student) => student.matricula?.trim().toUpperCase())
+                .whereType<String>()
+                .where((matricula) => matricula.isNotEmpty),
+          )
+          ..addAll(
+            bindings
+                .map(
+                  (binding) =>
+                      binding['matricula']?.toString().trim().toUpperCase(),
+                )
+                .whereType<String>()
+                .where((matricula) => matricula.isNotEmpty),
+          );
+        _isLoadingStudentBindingStatus = false;
+        _studentBindingStatusLoaded = true;
+        _studentBindingStatusError = null;
+      }),
+    );
+  }
+
+  Future<void> _bindStudentUuid(Alumno alumno) async {
+    final matricula = alumno.matricula?.trim().toUpperCase();
+    if (matricula == null || matricula.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Este alumno no tiene una matrícula válida.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final attendanceUuid = await _showStudentUuidDialog(alumno, matricula);
+    if (!mounted || attendanceUuid == null) return;
+
+    setState(() => _studentBindingsBeingSaved.add(matricula));
+    final result = await _apiService.bindStudentDeviceByProfessor(
+      externalGroupId: widget.grupo.id,
+      matricula: matricula,
+      attendanceUuid: attendanceUuid,
+    );
+    if (!mounted) return;
+
+    String? failure;
+    result.fold(
+      (error) => failure = error,
+      (_) => _linkedStudentMatriculas.add(matricula),
+    );
+    setState(() => _studentBindingsBeingSaved.remove(matricula));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          failure ?? 'UUID vinculado correctamente a la matrícula $matricula.',
+        ),
+        backgroundColor: failure == null ? Colors.green : Colors.red,
+      ),
+    );
+    if (failure != null) {
+      unawaited(_refreshStudentBindingStatuses(force: true));
+    }
+  }
+
+  Future<String?> _showStudentUuidDialog(Alumno alumno, String matricula) {
+    return showDialog<String>(
+      context: context,
+      builder: (_) => _StudentUuidBindingDialog(
+        studentName: alumno.name,
+        matricula: matricula,
+      ),
+    );
+  }
+
   Future<Map<String, String>> _loadStudentBeaconBindingsForScan() async {
     final fallback = <String, String>{};
 
@@ -2941,6 +3077,45 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           ),
           const SizedBox(height: 12),
         ],
+        if (_isLoadingStudentBindingStatus) ...[
+          LinearProgressIndicator(
+            minHeight: 3,
+            color: widget.gradientColors[0],
+            backgroundColor: palette.border,
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (_studentBindingStatusError != null) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.orange.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.sync_problem_rounded, color: Colors.orange),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'No pudimos consultar qué alumnos ya tienen UUID.',
+                    style: TextStyle(
+                      color: palette.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () =>
+                      unawaited(_refreshStudentBindingStatuses(force: true)),
+                  child: const Text('Reintentar'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         // Botón de pasar lista con Bluetooth
         _buildStudentBeaconScanControls(),
         const SizedBox(height: 12),
@@ -3111,6 +3286,15 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     final puedeMarcar = _puedeMarcarAsistenciaAlumnos();
     final canToggle = puedeMarcar && !automaticallyDetected;
     final palette = context.uatPalette;
+    final matricula = alumno.matricula?.trim().toUpperCase();
+    final hasMatricula = matricula != null && matricula.isNotEmpty;
+    final hasBinding =
+        hasMatricula && _linkedStudentMatriculas.contains(matricula);
+    final isSavingBinding =
+        hasMatricula && _studentBindingsBeingSaved.contains(matricula);
+    final canRegisterBinding =
+        hasMatricula && _studentBindingStatusLoaded && !hasBinding;
+    final canManageBinding = hasBinding || canRegisterBinding;
 
     return Container(
       color: palette.surface,
@@ -3138,7 +3322,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           child: Column(
             children: [
               Opacity(
-                opacity: puedeMarcar ? 1.0 : 0.5,
+                opacity: puedeMarcar || canManageBinding ? 1.0 : 0.5,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -3167,6 +3351,66 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                                   color: widget.gradientColors[0],
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                            if (hasBinding) ...[
+                              const SizedBox(height: 7),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.link_rounded,
+                                    color: Colors.green.shade600,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    'UUID vinculado',
+                                    style: TextStyle(
+                                      color: Colors.green.shade600,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ] else if (canRegisterBinding) ...[
+                              const SizedBox(height: 9),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: OutlinedButton.icon(
+                                  key: ValueKey('bind-student-uuid-$matricula'),
+                                  onPressed: isSavingBinding
+                                      ? null
+                                      : () =>
+                                            unawaited(_bindStudentUuid(alumno)),
+                                  style: OutlinedButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
+                                    foregroundColor: widget.gradientColors[0],
+                                    side: BorderSide(
+                                      color: widget.gradientColors[0]
+                                          .withValues(alpha: 0.55),
+                                    ),
+                                  ),
+                                  icon: isSavingBinding
+                                      ? SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: widget.gradientColors[0],
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.add_link_rounded,
+                                          size: 18,
+                                        ),
+                                  label: Text(
+                                    isSavingBinding
+                                        ? 'Vinculando...'
+                                        : 'Dar de alta UUID',
+                                  ),
                                 ),
                               ),
                             ],
@@ -3231,6 +3475,93 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   }
 
   // Esta función _verificarAsistenciaProfesor fue eliminada porque no se usa
+}
+
+class _StudentUuidBindingDialog extends StatefulWidget {
+  final String studentName;
+  final String matricula;
+
+  const _StudentUuidBindingDialog({
+    required this.studentName,
+    required this.matricula,
+  });
+
+  @override
+  State<_StudentUuidBindingDialog> createState() =>
+      _StudentUuidBindingDialogState();
+}
+
+class _StudentUuidBindingDialogState extends State<_StudentUuidBindingDialog> {
+  final TextEditingController _controller = TextEditingController();
+  String? _validationError;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final uuid = _controller.text.trim().toLowerCase();
+    if (!_canonicalUuidPattern.hasMatch(uuid)) {
+      setState(() => _validationError = 'Captura un UUID válido.');
+      return;
+    }
+    Navigator.of(context).pop(uuid);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Dar de alta por UUID'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.studentName,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 2),
+            Text('Matrícula ${widget.matricula}'),
+            const SizedBox(height: 16),
+            TextField(
+              key: const ValueKey('student-uuid-field'),
+              controller: _controller,
+              autofocus: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              maxLength: 36,
+              onSubmitted: (_) => _submit(),
+              decoration: InputDecoration(
+                labelText: 'UUID del beacon iOS',
+                hintText: '12345678-1234-4234-9234-123456789abc',
+                errorText: _validationError,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'El UUID quedará vinculado a esta matrícula y estará disponible para el pase automático.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          key: const ValueKey('confirm-student-uuid-binding'),
+          onPressed: _submit,
+          icon: const Icon(Icons.link_rounded),
+          label: const Text('Vincular'),
+        ),
+      ],
+    );
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════

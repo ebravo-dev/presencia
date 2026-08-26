@@ -17,7 +17,7 @@ import {
   deleteClassroomBeaconSchema, deviceBindingSchema, importClassroomBeaconsSchema, resolveClassroomBeaconsSchema,
   resolveAuthorizedClassroomBeaconsSchema, resolveDeviceBindingsSchema, rosterSnapshotSchema, updateClassroomBeaconSchema,
   professorEntryObservationSchema, professorExitObservationSchema, studentPresenceObservationSchema,
-  attendanceSettingsUpdateSchema,
+  attendanceSettingsUpdateSchema, professorBindingSchema,
 } from './schemas.js';
 
 const purgeDataSchema = z.object({ confirmation: z.literal('PURGE_ALL_DATA') }).strict();
@@ -116,6 +116,15 @@ export async function buildAttendanceApp(options: {
   app.post('/internal/v1/attendance/device-bindings/resolve', { preHandler: internal }, async (request) => {
     const parsed = resolveDeviceBindingsSchema.parse(request.body);
     return options.bindings.resolveForProfessor(parsed);
+  });
+
+  app.post('/internal/v1/attendance/device-bindings/professor', {
+    preHandler: internal,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const parsed = professorBindingSchema.parse(request.body);
+    const result = await options.bindings.bindByProfessor({ ...parsed, correlationId: correlationId(request) });
+    return reply.code(result.created ? 201 : 200).send({ data: result.binding });
   });
 
   app.get('/internal/v1/attendance/classroom-beacons', { preHandler: internal }, async () => ({
@@ -245,9 +254,11 @@ export async function buildAttendanceApp(options: {
       const conflict = [
         'IDEMPOTENCY_KEY_REUSED', 'ATTENDANCE_UPLOAD_IN_PROGRESS', 'DEVICE_BINDING_CHANGE_REQUIRES_COORDINATOR',
         'DEVICE_IDENTIFIER_ALREADY_BOUND', 'CLASSROOM_BEACON_NOT_CONFIGURED', 'ROOM_BEACON_MISMATCH',
-        'PROFESSOR_ENTRY_OUTSIDE_WINDOW',
+        'PROFESSOR_ENTRY_OUTSIDE_WINDOW', 'STUDENT_DEVICE_ALREADY_BOUND',
       ];
-      const forbidden = ['PROFESSOR_GROUP_FORBIDDEN', 'DEVICE_BINDING_TOKEN_MISMATCH'].includes(error.code);
+      const forbidden = [
+        'PROFESSOR_GROUP_FORBIDDEN', 'PROFESSOR_STUDENT_FORBIDDEN', 'DEVICE_BINDING_TOKEN_MISMATCH',
+      ].includes(error.code);
       const notFound = error.code === 'ATTENDANCE_GROUP_NOT_FOUND';
       const unauthorized = error.code === 'DEVICE_BINDING_TOKEN_REVOKED';
       return reply.code(conflict.includes(error.code) ? 409 : forbidden ? 403 : unauthorized ? 401 : notFound ? 404 : 400).send({ error: error.code, message: error.message });

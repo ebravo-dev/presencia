@@ -86,6 +86,24 @@ export class AttendanceServiceCommandClient implements AttendanceBindingClient {
     });
   }
 
+  bindStudentDeviceByProfessor(input: {
+    externalGroupId: string;
+    professorExternalId: string;
+    matricula: string;
+    attendanceUuid: string;
+    deviceBindingId: null;
+    platform: 'ios';
+    deviceInfo: string;
+    actorIdentityId: string;
+    actorRole: 'PROFESSOR';
+    reason: string;
+    correlationId: string;
+  }): Promise<{ data: StudentDeviceBindingValue }> {
+    return this.request('/internal/v1/attendance/device-bindings/professor', {
+      method: 'POST', correlationId: input.correlationId, body: withoutCorrelationId(input),
+    });
+  }
+
   listClassroomBeacons(): Promise<{ data: ClassroomBeaconResponse[] }> {
     return this.request('/internal/v1/attendance/classroom-beacons', { method: 'GET' });
   }

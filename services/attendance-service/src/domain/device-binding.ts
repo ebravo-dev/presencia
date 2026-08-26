@@ -25,6 +25,14 @@ export interface ReplaceDeviceBindingCommand extends BindDeviceCommand {
   readonly reason: string;
 }
 
+export interface ProfessorBindDeviceCommand extends BindDeviceCommand {
+  readonly externalGroupId: string;
+  readonly professorExternalId: string;
+  readonly actorIdentityId: string;
+  readonly actorRole: 'PROFESSOR';
+  readonly reason: string;
+}
+
 export interface BindDeviceResult {
   readonly binding: DeviceBindingValue;
   readonly created: boolean;

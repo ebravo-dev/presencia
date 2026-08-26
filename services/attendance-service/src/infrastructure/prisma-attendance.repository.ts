@@ -15,6 +15,7 @@ import {
   type BindDeviceCommand,
   type BindDeviceResult,
   type DeviceBindingValue,
+  type ProfessorBindDeviceCommand,
   type ReplaceDeviceBindingCommand,
 } from '../domain/device-binding.js';
 import {
@@ -650,6 +651,68 @@ export class PrismaAttendanceRepository implements AttendanceRepository {
 
   async bindInitial(command: BindDeviceCommand): Promise<BindDeviceResult> {
     return this.withTransactionRetry(() => this.bindInitialOnce(command));
+  }
+
+  async bindByProfessor(command: ProfessorBindDeviceCommand): Promise<BindDeviceResult> {
+    return this.withTransactionRetry(() => this.bindByProfessorOnce(command));
+  }
+
+  private async bindByProfessorOnce(command: ProfessorBindDeviceCommand): Promise<BindDeviceResult> {
+    return this.prisma.$transaction(async (transaction) => {
+      const group = await transaction.attendanceRosterGroup.findUnique({
+        where: { externalGroupId: command.externalGroupId },
+        select: { id: true, externalGroupId: true, professorExternalId: true, active: true },
+      });
+      const professorAuthorized = group?.active && (
+        group.professorExternalId === command.professorExternalId
+        || await this.hasActiveGroupAccess(transaction, group.externalGroupId, command.professorExternalId)
+      );
+      if (!group || !professorAuthorized) {
+        throw new AttendanceDomainError(
+          'PROFESSOR_STUDENT_FORBIDDEN',
+          'Sólo puedes vincular alumnos de tus grupos activos.',
+        );
+      }
+      const rosterStudent = await transaction.attendanceRosterStudent.findUnique({
+        where: { groupId_matricula: { groupId: group.id, matricula: command.matricula } },
+        select: { active: true },
+      });
+      if (!rosterStudent?.active) {
+        throw new AttendanceDomainError(
+          'PROFESSOR_STUDENT_FORBIDDEN',
+          'Sólo puedes vincular alumnos de tus grupos activos.',
+        );
+      }
+
+      const existing = await transaction.studentDeviceBinding.findUnique({ where: { matricula: command.matricula } });
+      if (existing?.active) {
+        const duplicate = existing.attendanceUuid === command.attendanceUuid
+          && existing.deviceBindingId === (command.deviceBindingId ?? null);
+        if (duplicate) return { binding: bindingValue(existing), created: false, duplicate: true };
+        throw new AttendanceDomainError(
+          'STUDENT_DEVICE_ALREADY_BOUND',
+          'El alumno ya tiene un UUID activo. Sólo coordinación puede reemplazarlo.',
+        );
+      }
+
+      await this.assertDeviceIdentifiersAvailable(transaction, command, existing?.id);
+      const binding = existing
+        ? await transaction.studentDeviceBinding.update({
+          where: { id: existing.id },
+          data: { ...bindingData(command), active: true, bindingVersion: { increment: 1 } },
+        })
+        : await transaction.studentDeviceBinding.create({ data: bindingData(command) });
+      await this.auditBinding(transaction, binding, {
+        action: existing ? 'REBOUND_BY_PROFESSOR' : 'BOUND_BY_PROFESSOR',
+        actorIdentityId: command.actorIdentityId,
+        actorRole: command.actorRole,
+        reason: command.reason,
+        correlationId: command.correlationId,
+        previousValue: existing ? bindingJson(existing) : null,
+      });
+      await this.deviceBindingEvent(transaction, binding, 'attendance.device_bound.v1', command.correlationId);
+      return { binding: bindingValue(binding), created: !existing, duplicate: false };
+    }, { isolationLevel: 'Serializable' });
   }
 
   private async bindInitialOnce(command: BindDeviceCommand): Promise<BindDeviceResult> {

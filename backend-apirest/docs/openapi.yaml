@@ -694,6 +694,27 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /api/uat/profesor/device-bindings:
+    post:
+      summary: Da de alta el UUID de un alumno del grupo autenticado
+      description: >
+        Attendance valida de forma transaccional que el profesor sea titular o
+        sustituto autorizado del grupo y que la matrícula pertenezca a su padrón
+        activo. Un profesor no puede reemplazar un UUID que ya esté activo.
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProfessorDeviceBindingCreateRequest" }
+      responses:
+        "200": { description: Vínculo creado o solicitud idempotente }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /api/uat/profesor/beacons/resolve:
     post:
       summary: Resuelve beacons de salones pertenecientes al profesor
@@ -1157,6 +1178,14 @@ components:
         missing:
           type: array
           items: { type: string }
+    ProfessorDeviceBindingCreateRequest:
+      type: object
+      required: [externalGroupId, matricula, attendanceUuid]
+      additionalProperties: false
+      properties:
+        externalGroupId: { type: string, minLength: 1, maxLength: 160 }
+        matricula: { type: string, minLength: 1, maxLength: 40 }
+        attendanceUuid: { type: string, format: uuid }
     ProfessorBeaconResolveRequest:
       type: object
       required: [classrooms]
