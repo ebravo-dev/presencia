@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/attendance_history_entry.dart';
 import '../services/local_storage_service.dart';
+import '../utils/subject_name.dart';
 
 const _background = Color(0xFF0B0F14);
 const _panel = Color(0xFF111923);
@@ -137,18 +138,23 @@ class _HistoryEntryCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  entry.className ?? 'Pase de lista confirmado',
+                  subjectDisplayName(
+                    entry.className,
+                    fallback: 'Pase de lista confirmado',
+                  ),
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                if (entry.group != null || entry.classroom != null) ...[
+                if (groupDisplayName(entry.group) != null ||
+                    entry.classroom != null) ...[
                   const SizedBox(height: 3),
                   Text(
                     [
-                      if (entry.group != null) 'Grupo ${entry.group}',
+                      if (groupDisplayName(entry.group) != null)
+                        'Grupo ${groupDisplayName(entry.group)}',
                       if (entry.classroom != null) 'Aula ${entry.classroom}',
                     ].join(' · '),
                     style: const TextStyle(

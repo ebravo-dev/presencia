@@ -73,6 +73,7 @@ const debugClassUpdateSchema = z.object({
 }).refine((value) => Object.keys(value).length > 0);
 const debugSettingsSchema = z.object({ teacherAttendanceToleranceMinutes: z.number().int().min(0).max(120) });
 const debugMembershipSchema = z.object({ studentId: z.string().uuid() });
+const debugRegisteredMembershipSchema = z.object({ matricula: z.string().trim().min(1).max(40) }).strict();
 const debugAttendanceSimulationSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   entries: z.array(z.object({
@@ -317,6 +318,11 @@ export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
     return demoPortal.catalog();
   });
+  fastify.get('/api/superUsuario/debug/registered-students', async (_request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    const result = await identityService.listRegisteredStudents();
+    return { ...result, meta: { generatedAt: new Date().toISOString() } };
+  });
   fastify.get('/api/superUsuario/debug/settings', async (_request, reply) => {
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
     const { data } = await demoPortal.status();
@@ -419,6 +425,20 @@ export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async
     if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
     const { studentId } = debugMembershipSchema.parse(request.body);
     const result = await demoPortal.addStudentToClass(request.params.id, studentId);
+    const sync = await synchronizeAfterDemoMutation(
+      { demoPortal, academicService, attendanceService }, request.superUser?.id, request.id, request.log,
+    );
+    return reply.code(201).send(withSynchronizationMeta(result, sync));
+  });
+  fastify.post<{ Params: { id: string } }>('/api/superUsuario/debug/classes/:id/registered-students', async (request, reply) => {
+    if (!env.PRESENCIA_DEBUG_MODE) return debugDisabled(reply);
+    const { matricula } = debugRegisteredMembershipSchema.parse(request.body);
+    const { data: student } = await identityService.registeredStudentByMatricula(matricula);
+    const result = await demoPortal.addRegisteredStudentToClass(request.params.id, {
+      matricula: student.matricula,
+      email: student.email,
+      name: student.name,
+    });
     const sync = await synchronizeAfterDemoMutation(
       { demoPortal, academicService, attendanceService }, request.superUser?.id, request.id, request.log,
     );
@@ -929,7 +949,7 @@ export async function synchronizeDemoCatalog(
     });
   }
 
-  for (const student of status.students) {
+  for (const student of status.students.filter(({ origin }) => origin !== 'REGISTERED')) {
     await services.academicService.publishStudentSnapshot({
       snapshotId: demoSnapshotId('student', student.id, status.updatedAt),
       correlationId,

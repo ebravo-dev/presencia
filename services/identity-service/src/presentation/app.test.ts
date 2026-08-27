@@ -99,6 +99,48 @@ describe('Identity HTTP API', () => {
     await enabled.close();
   });
 
+  it('lists and resolves previously authenticated students only in demo mode', async () => {
+    const student = {
+      id: 'student-identity-1', kind: 'STUDENT', role: 'STUDENT',
+      institutionalIdentifier: '2251330008', email: 'alumno@alumnos.uat.edu.mx',
+      displayName: 'Alumno Registrado', disabledAt: null,
+      lastAuthenticatedAt: new Date('2026-08-27T10:00:00.000Z'),
+    } as const;
+    const app = await buildIdentityApp({
+      env: identityEnvSchema.parse({
+        NODE_ENV: 'test', INTERNAL_API_TOKEN: internalToken, PRESENCIA_DEBUG_MODE: true,
+      }),
+      sessions: {
+        listRegisteredStudents: async () => [student],
+        registeredStudentByMatricula: async (matricula: string) => matricula.trim().toUpperCase() === student.institutionalIdentifier ? student : null,
+      } as never,
+      readiness: { check: async () => ({ database: true, redis: true }) },
+    });
+
+    const list = await app.inject({
+      method: 'GET', url: '/internal/v1/identities/students',
+      headers: { 'x-internal-service-token': internalToken },
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toEqual({ data: [{
+      id: student.id, matricula: '2251330008', email: student.email,
+      name: 'Alumno Registrado', lastAuthenticatedAt: '2026-08-27T10:00:00.000Z',
+    }] });
+
+    const found = await app.inject({
+      method: 'GET', url: '/internal/v1/identities/students/2251330008',
+      headers: { 'x-internal-service-token': internalToken },
+    });
+    expect(found.statusCode).toBe(200);
+    const missing = await app.inject({
+      method: 'GET', url: '/internal/v1/identities/students/NO-EXISTE',
+      headers: { 'x-internal-service-token': internalToken },
+    });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json()).toMatchObject({ error: 'REGISTERED_STUDENT_NOT_FOUND' });
+    await app.close();
+  });
+
   it('purges all identities only with internal auth and explicit confirmation', async () => {
     let purges = 0;
     const app = await buildIdentityApp({

@@ -40,6 +40,14 @@ export interface StaffSessionGrant {
   expiresAt: string;
 }
 
+export interface RegisteredStudentIdentity {
+  id: string;
+  matricula: string;
+  email: string | null;
+  name: string;
+  lastAuthenticatedAt: string;
+}
+
 export class IdentityServiceClient {
   constructor(
     private readonly baseUrl: string,
@@ -96,6 +104,14 @@ export class IdentityServiceClient {
 
   listStaffAccounts(): Promise<{ data: StaffIdentityUser[]; meta: { generatedAt: string } }> {
     return this.request('/internal/v1/staff/accounts', { method: 'GET' });
+  }
+
+  listRegisteredStudents(): Promise<{ data: RegisteredStudentIdentity[] }> {
+    return this.request('/internal/v1/identities/students', { method: 'GET' });
+  }
+
+  registeredStudentByMatricula(matricula: string): Promise<{ data: RegisteredStudentIdentity }> {
+    return this.request(`/internal/v1/identities/students/${encodeURIComponent(matricula)}`, { method: 'GET' });
   }
 
   createStaffAccount(input: { email: string; name: string; password: string; role?: string } & StaffAuditInput) {

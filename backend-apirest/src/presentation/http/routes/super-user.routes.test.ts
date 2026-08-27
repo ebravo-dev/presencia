@@ -111,6 +111,17 @@ describe('superUserRoutes', () => {
     });
     expect(disabledMutation.statusCode).toBe(404);
     expect(disabledMutation.json()).toMatchObject({ error: 'DEBUG_MODE_DISABLED' });
+    const disabledRegisteredStudents = await app.inject({
+      method: 'GET', url: '/api/superUsuario/debug/registered-students',
+      headers: { cookie: 'super_user_session=identity-token' },
+    });
+    expect(disabledRegisteredStudents.statusCode).toBe(404);
+    const disabledRegisteredAssignment = await app.inject({
+      method: 'POST', url: '/api/superUsuario/debug/classes/class-1/registered-students',
+      headers: { cookie: 'super_user_session=identity-token' },
+      payload: { matricula: '2251330008' },
+    });
+    expect(disabledRegisteredAssignment.statusCode).toBe(404);
     const disabledReset = await app.inject({
       method: 'DELETE', url: '/api/superUsuario/debug/data',
       headers: { cookie: 'super_user_session=identity-token' },
@@ -296,6 +307,19 @@ describe('superUserRoutes', () => {
       synchronization: { status: 'PENDING', attempts: 3, error: 'ACADEMIC_SERVICE_UNAVAILABLE' },
     });
     expect(logger.error).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the real academic profile untouched when a registered student joins a demo roster', async () => {
+    const status = demoStatus();
+    status.students[0]!.origin = 'REGISTERED';
+    const publishStudentSnapshot = vi.fn();
+    await synchronizeDemoCatalog({
+      demoPortal: { status: vi.fn(async () => ({ data: status })) } as never,
+      academicService: { publishProfessorSnapshot: vi.fn(), publishStudentSnapshot } as never,
+      attendanceService: { listClassroomBeacons: vi.fn(async () => ({ data: [] })), applyRoster: vi.fn() } as never,
+    }, 'super-user-id', 'correlation-registered-student');
+
+    expect(publishStudentSnapshot).not.toHaveBeenCalled();
   });
 });
 

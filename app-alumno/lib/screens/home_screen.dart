@@ -13,6 +13,7 @@ import '../services/local_storage_service.dart';
 import '../services/student_auth_service.dart';
 import '../services/student_device_binding_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/subject_name.dart';
 import 'attendance_bottom_sheet.dart';
 import 'history_screen.dart';
 
@@ -484,7 +485,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         isActive: _isActive,
         isChecking: _isChecking,
         confirmed: _confirmed,
-        confirmedClassName: _confirmation?.classDisplayName,
+        confirmedClassName: _confirmation?.materia ?? _confirmation?.className,
         hasError: _hasError,
         onSelectClass: (index) => setState(() => _selectedClass = index),
         onRegister: _openAttendanceSheet,
@@ -1693,7 +1694,7 @@ class _ClassCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        occurrence.entry.subject,
+                        subjectDisplayName(occurrence.entry.subject),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
@@ -1817,7 +1818,7 @@ class _AttendanceConfirmedBanner extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: Text(
-            'Asistencia confirmada · ${className ?? 'Clase registrada'}',
+            'Asistencia confirmada · ${subjectDisplayName(className, fallback: 'Clase registrada')}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
@@ -1893,7 +1894,8 @@ class _FullScheduleCard extends StatelessWidget {
       selectedDate.day,
     );
     final today = DateTime(now.year, now.month, now.day);
-    final isFree = occurrence.entry.subject.trim().toLowerCase() == 'libre';
+    final isFree =
+        subjectDisplayName(occurrence.entry.subject).toLowerCase() == 'libre';
 
     late final _FullScheduleState state;
     if (registered) {
@@ -2007,7 +2009,7 @@ class _FullScheduleCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  occurrence.entry.subject,
+                  subjectDisplayName(occurrence.entry.subject),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
@@ -2224,9 +2226,16 @@ bool _attendanceMatches(
     return historyClassId == scheduleClassId;
   }
 
-  final historyClassName = history.className?.trim().toLowerCase();
-  return historyClassName?.isNotEmpty == true &&
-      historyClassName == occurrence.entry.subject.trim().toLowerCase();
+  final historyClassName = subjectDisplayName(
+    history.className,
+    fallback: '',
+  ).toLowerCase();
+  return historyClassName.isNotEmpty &&
+      historyClassName ==
+          subjectDisplayName(
+            occurrence.entry.subject,
+            fallback: '',
+          ).toLowerCase();
 }
 
 bool _isSameCalendarDay(DateTime left, DateTime right) =>

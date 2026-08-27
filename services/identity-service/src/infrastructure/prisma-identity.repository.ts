@@ -43,6 +43,24 @@ export class PrismaIdentityRepository implements IdentityRepository {
     return this.prisma.identity.findUnique({ where: { id } });
   }
 
+  listRegisteredStudents(): Promise<Identity[]> {
+    return this.prisma.identity.findMany({
+      where: { kind: 'STUDENT', disabledAt: null },
+      orderBy: [{ lastAuthenticatedAt: 'desc' }, { institutionalIdentifier: 'asc' }],
+    });
+  }
+
+  findRegisteredStudentByMatricula(matricula: string): Promise<Identity | null> {
+    return this.prisma.identity.findUnique({
+      where: {
+        kind_institutionalIdentifier: {
+          kind: 'STUDENT',
+          institutionalIdentifier: matricula.trim().toUpperCase(),
+        },
+      },
+    });
+  }
+
   async resetDemoIdentities(): Promise<string[]> {
     return this.prisma.$transaction(async (transaction) => {
       const identities = await transaction.identity.findMany({

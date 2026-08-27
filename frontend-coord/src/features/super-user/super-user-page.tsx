@@ -590,6 +590,7 @@ function DebugAdmin() {
   const [teacherForm, setTeacherForm] = useState({ email: 'nuevo.profesor.demo@uat.edu.mx', name: 'Nuevo Profesor Demo', password: '' });
   const [studentForm, setStudentForm] = useState({ matricula: 'DEMO0002', email: 'nuevo.alumno.demo@alumnos.uat.edu.mx', name: 'Nuevo Alumno Demo', password: '', careerName: 'Ingeniería Demo' });
   const [selectedStudents, setSelectedStudents] = useState<Record<string, string>>({});
+  const [selectedRegisteredStudents, setSelectedRegisteredStudents] = useState<Record<string, string>>({});
   const [simulationDate, setSimulationDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [simulationStatus, setSimulationStatus] = useState<'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED'>('PRESENT');
   const [showResetConfirmation, setShowResetConfirmation] = useState(false);
@@ -598,6 +599,7 @@ function DebugAdmin() {
   const status = useQuery({ queryKey: ['super-user', 'debug', 'status'], queryFn: superUserApi.debugStatus, refetchInterval: REFRESH_INTERVAL_MS });
   const debugEnabled = status.data?.data.enabled === true;
   const catalog = useQuery({ queryKey: ['super-user', 'debug', 'catalog'], queryFn: superUserApi.debugCatalog, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
+  const registeredStudents = useQuery({ queryKey: ['super-user', 'debug', 'registered-students'], queryFn: superUserApi.debugRegisteredStudents, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
   const classes = useQuery({ queryKey: ['super-user', 'debug', 'classes'], queryFn: superUserApi.debugClasses, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
   const attendance = useQuery({ queryKey: ['super-user', 'debug', 'attendance'], queryFn: superUserApi.debugStudentAttendance, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
   const logs = useQuery({ queryKey: ['super-user', 'debug', 'logs'], queryFn: superUserApi.debugFlowLogs, refetchInterval: REFRESH_INTERVAL_MS, enabled: debugEnabled });
@@ -627,6 +629,13 @@ function DebugAdmin() {
     mutationFn: ({ classId, studentId }: { classId: string; studentId: string }) => superUserApi.addDebugStudentToClass(classId, studentId),
     onSuccess: refreshAfterMutation,
   });
+  const addRegisteredStudent = useMutation({
+    mutationFn: ({ classId, matricula }: { classId: string; matricula: string }) => superUserApi.addRegisteredStudentToDebugClass(classId, matricula),
+    onSuccess: async (response, { classId }) => {
+      setSelectedRegisteredStudents((current) => ({ ...current, [classId]: '' }));
+      await refreshAfterMutation(response);
+    },
+  });
   const removeStudent = useMutation({
     mutationFn: ({ classId, studentId }: { classId: string; studentId: string }) => superUserApi.removeDebugStudentFromClass(classId, studentId),
     onSuccess: refreshAfterMutation,
@@ -642,6 +651,7 @@ function DebugAdmin() {
       setShowResetConfirmation(false);
       setResetConfirmation('');
       setSelectedStudents({});
+      setSelectedRegisteredStudents({});
       resetClassEditor();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['super-user'] }),
@@ -995,7 +1005,7 @@ function DebugAdmin() {
 
       <Card className="p-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div><h2 className="font-bold">Padrón y simulación de asistencia</h2><p className="text-sm text-slate-500">Asigna alumnos a cada materia y genera una captura interna sin escribir en UAT.</p></div>
+          <div><h2 className="font-bold">Padrón y simulación de asistencia</h2><p className="text-sm text-slate-500">Asigna alumnos demo o alumnos que ya iniciaron sesión en el sistema y genera una captura interna sin escribir en UAT.</p></div>
           <div className="flex flex-wrap gap-3">
             <label className="text-xs font-bold uppercase text-slate-500">Fecha<input type="date" className="field mt-1" value={simulationDate} onChange={(event) => setSimulationDate(event.target.value)} /></label>
             <label className="text-xs font-bold uppercase text-slate-500">Estado<select className="field mt-1" value={simulationStatus} onChange={(event) => setSimulationStatus(event.target.value as typeof simulationStatus)}><option value="PRESENT">Presente</option><option value="ABSENT">Ausente</option><option value="LATE">Retardo</option><option value="EXCUSED">Justificado</option></select></label>
@@ -1004,6 +1014,9 @@ function DebugAdmin() {
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {classes.data?.data.map((item) => {
             const available = (catalog.data?.data.students ?? []).filter((student) => !item.students.some((assigned) => assigned.id === student.id));
+            const availableRegistered = (registeredStudents.data?.data ?? []).filter((student) => (
+              !item.students.some((assigned) => assigned.matricula === student.matricula)
+            ));
             return (
               <div key={item.id} className="rounded-xl border border-slate-200 p-4 dark:border-[#2e3138]">
                 <div className="flex flex-wrap items-start justify-between gap-3"><div><b>{item.name}</b><p className="text-xs text-slate-500">{item.code} · {item.professor.name}</p></div><Button type="button" onClick={() => simulateAttendance.mutate(item)} disabled={!item.students.length || simulateAttendance.isPending}><Play size={15} />Simular {item.students.length}</Button></div>
@@ -1011,10 +1024,26 @@ function DebugAdmin() {
                   {item.students.map((student) => <span key={student.id} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs dark:bg-[#15181d]">{student.name}<button type="button" className="text-slate-500 hover:text-red-600" aria-label={`Quitar ${student.name}`} onClick={() => removeStudent.mutate({ classId: item.id, studentId: student.id })}>×</button></span>)}
                   {!item.students.length && <span className="text-xs text-slate-400">Sin alumnos asignados.</span>}
                 </div>
-                <div className="mt-3 flex gap-2"><select className="field" value={selectedStudents[item.id] ?? ''} onChange={(event) => setSelectedStudents((current) => ({ ...current, [item.id]: event.target.value }))}><option value="">Selecciona alumno</option>{available.map((student) => <option key={student.id} value={student.id}>{student.name} · {student.matricula}</option>)}</select><Button type="button" variant="secondary" disabled={!selectedStudents[item.id] || addStudent.isPending} onClick={() => {
+                <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/60 p-3 dark:border-blue-950 dark:bg-blue-950/10">
+                  <label className="block text-xs font-bold uppercase text-blue-800 dark:text-blue-300">
+                    Alumno ya registrado
+                    <select className="field mt-1" aria-label={`Alumno registrado para ${item.name}`} value={selectedRegisteredStudents[item.id] ?? ''} onChange={(event) => setSelectedRegisteredStudents((current) => ({ ...current, [item.id]: event.target.value }))}>
+                      <option value="">Selecciona por matrícula</option>
+                      {availableRegistered.map((student) => <option key={student.id} value={student.matricula}>{student.name} · {student.matricula}</option>)}
+                    </select>
+                  </label>
+                  <div className="mt-2 flex items-center justify-between gap-3">
+                    <p className="text-xs text-slate-500">Aparecen quienes ya iniciaron sesión al menos una vez.</p>
+                    <Button type="button" variant="secondary" disabled={!selectedRegisteredStudents[item.id] || addRegisteredStudent.isPending} onClick={() => {
+                      const matricula = selectedRegisteredStudents[item.id];
+                      if (matricula) addRegisteredStudent.mutate({ classId: item.id, matricula });
+                    }}><PlusCircle size={15} />Asignar registrado</Button>
+                  </div>
+                </div>
+                <div className="mt-3 flex gap-2"><select className="field" aria-label={`Alumno demo para ${item.name}`} value={selectedStudents[item.id] ?? ''} onChange={(event) => setSelectedStudents((current) => ({ ...current, [item.id]: event.target.value }))}><option value="">Selecciona alumno demo</option>{available.map((student) => <option key={student.id} value={student.id}>{student.name} · {student.matricula}</option>)}</select><Button type="button" variant="secondary" disabled={!selectedStudents[item.id] || addStudent.isPending} onClick={() => {
                   const studentId = selectedStudents[item.id];
                   if (studentId) addStudent.mutate({ classId: item.id, studentId });
-                }}><PlusCircle size={15} />Asignar</Button></div>
+                }}><PlusCircle size={15} />Asignar demo</Button></div>
               </div>
             );
           })}
@@ -1022,6 +1051,8 @@ function DebugAdmin() {
         </div>
         {simulateAttendance.isError && <p className="mt-3 text-sm font-semibold text-red-600">No se pudo simular la asistencia. Revisa el padrón y vuelve a sincronizar.</p>}
         {addStudent.isError && <p className="mt-3 text-sm font-semibold text-red-600">{apiErrorMessage(addStudent.error, 'No se pudo asignar el alumno a la materia.')}</p>}
+        {registeredStudents.isError && <p className="mt-3 text-sm font-semibold text-red-600">No se pudieron consultar los alumnos registrados.</p>}
+        {addRegisteredStudent.isError && <p className="mt-3 text-sm font-semibold text-red-600">{apiErrorMessage(addRegisteredStudent.error, 'No se pudo asignar el alumno registrado a la materia debug.')}</p>}
       </Card>
 
       <div className="grid gap-4 xl:grid-cols-2">

@@ -40,4 +40,27 @@ describe('DemoCatalogService', () => {
     })).rejects.toMatchObject({ code: 'DEMO_BEACON_ASSIGNMENT_CONFLICT' });
     expect(JSON.stringify(await service.snapshot())).not.toContain('passwordHash');
   });
+
+  it('imports an already registered student into a debug class without duplicating the catalog entry', async () => {
+    const service = new DemoCatalogService(new MemoryDemoPortalRepository(), env);
+    await service.initialize();
+    const teacher = await service.createTeacher({ email: 'teacher.demo@uat.edu.mx', name: 'Teacher Demo', password: 'teacher-password' });
+    const item = await service.createClass({
+      professorId: teacher.id, code: 'DEMO-201', groupLetter: 'A', name: 'Debug class', classroom: 'D-201',
+      period: '2026-3', beaconUuid: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', schedule: {}, studentIds: [],
+    });
+
+    const assigned = await service.addRegisteredStudentToClass(item.id, {
+      matricula: '2251330008', email: null, name: 'Alumno Registrado',
+    });
+    expect(assigned.students).toMatchObject([{ matricula: '2251330008', name: 'Alumno Registrado' }]);
+    await service.addRegisteredStudentToClass(item.id, {
+      matricula: '2251330008', email: 'alumno@alumnos.uat.edu.mx', name: 'Alumno Registrado',
+    });
+    const snapshot = await service.snapshot();
+    expect(snapshot.students).toHaveLength(1);
+    expect(snapshot.students[0]?.email).toBe('alumno@alumnos.uat.edu.mx');
+    expect(snapshot.classes[0]?.students).toHaveLength(1);
+    await expect(service.authenticateStudent('2251330008', 'demo-password')).resolves.toMatchObject({ matricula: '2251330008' });
+  });
 });

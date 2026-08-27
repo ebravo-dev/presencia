@@ -7,6 +7,7 @@ import { DemoCatalogError } from './catalog.service.js';
 import type { DemoPortalEnv } from './config.js';
 import {
   classStudentSchema, createDemoClassSchema, createDemoStudentSchema, createDemoTeacherSchema,
+  registeredStudentMembershipSchema,
   simulateAttendanceSchema,
   updateDemoClassSchema, updateDemoSettingsSchema, updateDemoStudentSchema, updateDemoTeacherSchema,
 } from './model.js';
@@ -80,6 +81,12 @@ export async function buildDemoPortalApp(options: {
   app.post('/internal/v1/demo/classes/:id/students', { preHandler: internal }, async (request, reply) => {
     const { studentId } = classStudentSchema.parse(request.body);
     return reply.code(201).send({ data: await options.catalog.addStudentToClass((request.params as { id: string }).id, studentId) });
+  });
+  app.post('/internal/v1/demo/classes/:id/registered-students', { preHandler: internal }, async (request, reply) => {
+    const student = registeredStudentMembershipSchema.parse(request.body);
+    return reply.code(201).send({
+      data: await options.catalog.addRegisteredStudentToClass((request.params as { id: string }).id, student),
+    });
   });
   app.delete('/internal/v1/demo/classes/:id/students/:studentId', { preHandler: internal }, async (request, reply) => {
     const { id, studentId } = request.params as { id: string; studentId: string };

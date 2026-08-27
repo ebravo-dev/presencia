@@ -51,6 +51,14 @@ export class AuthenticatedSessionService {
     await this.sessions.revoke(claims.sessionId, claims.sub);
   }
 
+  listRegisteredStudents(): Promise<Identity[]> {
+    return this.identities.listRegisteredStudents();
+  }
+
+  registeredStudentByMatricula(matricula: string): Promise<Identity | null> {
+    return this.identities.findRegisteredStudentByMatricula(matricula);
+  }
+
   async resetDemoIdentities(): Promise<number> {
     const identityIds = await this.identities.resetDemoIdentities();
     await this.sessions.revokeIdentities(identityIds);

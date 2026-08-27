@@ -9,12 +9,9 @@ import '../services/attendance_session_service.dart';
 import '../services/ble_advertiser_service.dart';
 import '../services/local_storage_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/subject_name.dart';
 
-enum AttendanceSheetStatus {
-  scanning,
-  timeout,
-  success,
-}
+enum AttendanceSheetStatus { scanning, timeout, success }
 
 class AttendanceBottomSheet extends StatefulWidget {
   const AttendanceBottomSheet({
@@ -213,7 +210,9 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final surfaceColor = dark ? const Color(0xFF1E1E22) : Colors.white;
-    final borderColor = dark ? const Color(0xFF2C2C32) : const Color(0xFFE5E7EB);
+    final borderColor = dark
+        ? const Color(0xFF2C2C32)
+        : const Color(0xFFE5E7EB);
 
     return Container(
       decoration: BoxDecoration(
@@ -242,7 +241,9 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 20),
                   decoration: BoxDecoration(
-                    color: dark ? const Color(0xFF4A4A52) : const Color(0xFFD1D5DB),
+                    color: dark
+                        ? const Color(0xFF4A4A52)
+                        : const Color(0xFFD1D5DB),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -277,10 +278,15 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
   // ESTADO: ESCANEANDO / CARGANDO
   // ==========================================
   Widget _buildScanningState(BuildContext context, bool dark) {
-    final primaryColor = dark ? const Color(0xFF5DC2F0) : const Color(0xFFD65F05);
-    final subjectName = widget.currentOccurrence?.entry.subject ?? 'Clase actual';
+    final primaryColor = dark
+        ? const Color(0xFF5DC2F0)
+        : const Color(0xFFD65F05);
+    final subjectName = subjectDisplayName(
+      widget.currentOccurrence?.entry.subject,
+      fallback: 'Clase actual',
+    );
     final classroom = widget.currentOccurrence?.entry.classroom;
-    final group = widget.currentOccurrence?.entry.group;
+    final group = groupDisplayName(widget.currentOccurrence?.entry.group);
 
     String statusText = 'Buscando aula y registrando asistencia...';
     if (_lastSnapshot?.state == AttendanceSessionState.checkingRoom) {
@@ -291,7 +297,8 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
       statusText = 'Aula detectada. Transmitiendo...';
     }
 
-    final progressRatio = (_remainingSeconds / widget.timeoutDuration.inSeconds).clamp(0.0, 1.0);
+    final progressRatio = (_remainingSeconds / widget.timeoutDuration.inSeconds)
+        .clamp(0.0, 1.0);
 
     return Column(
       key: const ValueKey('attendance_state_scanning'),
@@ -337,7 +344,9 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
                 height: 92,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: dark ? const Color(0xFF26262B) : const Color(0xFFF3F4F6),
+                  color: dark
+                      ? const Color(0xFF26262B)
+                      : const Color(0xFFF3F4F6),
                   boxShadow: [
                     BoxShadow(
                       color: primaryColor.withValues(alpha: .2),
@@ -349,11 +358,7 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      Icons.sensors_rounded,
-                      color: primaryColor,
-                      size: 26,
-                    ),
+                    Icon(Icons.sensors_rounded, color: primaryColor, size: 26),
                     const SizedBox(height: 2),
                     Text(
                       '${_remainingSeconds}s',
@@ -416,7 +421,11 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
                   color: primaryColor.withValues(alpha: .12),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(Icons.school_rounded, color: primaryColor, size: 20),
+                child: Icon(
+                  Icons.school_rounded,
+                  color: primaryColor,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -435,14 +444,17 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
                     const SizedBox(height: 2),
                     Text(
                       [
-                        if (classroom != null && classroom.isNotEmpty) classroom,
+                        if (classroom != null && classroom.isNotEmpty)
+                          classroom,
                         if (group != null && group.isNotEmpty) 'Grupo $group',
                       ].join(' · ').ifEmpty('Horario escolar'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
-                        color: dark ? const Color(0xFF9CA3AF) : const Color(0xFF6B7280),
+                        color: dark
+                            ? const Color(0xFF9CA3AF)
+                            : const Color(0xFF6B7280),
                       ),
                     ),
                   ],
@@ -461,17 +473,16 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
           child: TextButton(
             onPressed: _cancel,
             style: TextButton.styleFrom(
-              foregroundColor: dark ? const Color(0xFF9CA3AF) : const Color(0xFF6B7280),
+              foregroundColor: dark
+                  ? const Color(0xFF9CA3AF)
+                  : const Color(0xFF6B7280),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
             ),
             child: const Text(
               'Cancelar',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
             ),
           ),
         ),
@@ -498,7 +509,10 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: errorColor.withValues(alpha: .12),
-            border: Border.all(color: errorColor.withValues(alpha: .3), width: 2),
+            border: Border.all(
+              color: errorColor.withValues(alpha: .3),
+              width: 2,
+            ),
           ),
           child: const Icon(
             Icons.timer_off_rounded,
@@ -544,7 +558,9 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
                   onPressed: _cancel,
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(
-                      color: dark ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+                      color: dark
+                          ? const Color(0xFF374151)
+                          : const Color(0xFFD1D5DB),
                     ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
@@ -571,10 +587,7 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
                   icon: const Icon(Icons.refresh_rounded, size: 20),
                   label: const Text(
                     'Reintentar',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                   ),
                   style: FilledButton.styleFrom(
                     backgroundColor: retryColor,
@@ -598,13 +611,18 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
   // ==========================================
   Widget _buildSuccessState(BuildContext context, bool dark) {
     const successColor = AppColors.success;
-    final subjectName = _confirmedData?.materia ??
-        _confirmedData?.className ??
-        widget.currentOccurrence?.entry.subject ??
-        'Clase registrada';
+    final subjectName = subjectDisplayName(
+      _confirmedData?.materia ??
+          _confirmedData?.className ??
+          widget.currentOccurrence?.entry.subject,
+      fallback: 'Clase registrada',
+    );
 
-    final group = _confirmedData?.group ?? widget.currentOccurrence?.entry.group;
-    final classroom = _confirmedData?.classroom ?? widget.currentOccurrence?.entry.classroom;
+    final group = groupDisplayName(
+      _confirmedData?.group ?? widget.currentOccurrence?.entry.group,
+    );
+    final classroom =
+        _confirmedData?.classroom ?? widget.currentOccurrence?.entry.classroom;
 
     return Column(
       key: const ValueKey('attendance_state_success'),
@@ -618,7 +636,10 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: successColor.withValues(alpha: .14),
-            border: Border.all(color: successColor.withValues(alpha: .4), width: 3),
+            border: Border.all(
+              color: successColor.withValues(alpha: .4),
+              width: 3,
+            ),
             boxShadow: [
               BoxShadow(
                 color: successColor.withValues(alpha: .3),
@@ -669,7 +690,9 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: dark ? const Color(0xFF86EFAC) : const Color(0xFF15803D),
+                  color: dark
+                      ? const Color(0xFF86EFAC)
+                      : const Color(0xFF15803D),
                   letterSpacing: .5,
                 ),
               ),
@@ -689,13 +712,16 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
                 const SizedBox(height: 6),
                 Text(
                   [
-                    if (classroom != null && classroom.isNotEmpty) 'Aula $classroom',
+                    if (classroom != null && classroom.isNotEmpty)
+                      'Aula $classroom',
                     if (group != null && group.isNotEmpty) 'Grupo $group',
                   ].join(' · '),
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: dark ? const Color(0xFFBBF7D0) : const Color(0xFF166534),
+                    color: dark
+                        ? const Color(0xFFBBF7D0)
+                        : const Color(0xFF166534),
                   ),
                 ),
               ],
@@ -725,7 +751,9 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: dark ? const Color(0xFF9CA3AF) : const Color(0xFF6B7280),
+                  color: dark
+                      ? const Color(0xFF9CA3AF)
+                      : const Color(0xFF6B7280),
                 ),
               ),
             ],
@@ -738,10 +766,7 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
 
 /// CustomPainter para generar las ondas expansivas de radar
 class _RadarWavesPainter extends CustomPainter {
-  _RadarWavesPainter({
-    required this.animationValue,
-    required this.waveColor,
-  });
+  _RadarWavesPainter({required this.animationValue, required this.waveColor});
 
   final double animationValue;
   final Color waveColor;

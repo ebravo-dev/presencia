@@ -67,6 +67,12 @@ export const updateDemoClassSchema = demoClassSchemaBase.omit({ professorId: tru
 
 export const classStudentSchema = z.object({ studentId: z.string().uuid() });
 
+export const registeredStudentMembershipSchema = z.object({
+  matricula: z.string().trim().min(1).max(40).transform((value) => value.toUpperCase()),
+  email: z.email().nullable().optional(),
+  name: z.string().trim().min(1).max(240),
+}).strict();
+
 export const simulateAttendanceSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   entries: z.array(z.object({
@@ -98,6 +104,7 @@ export interface DemoStudent {
   passwordHash: string;
   attendanceUuid: string;
   careerName: string;
+  origin?: 'DEMO' | 'REGISTERED';
   createdAt: string;
   updatedAt: string;
 }
@@ -153,3 +160,4 @@ export type CreateDemoStudentInput = z.input<typeof createDemoStudentSchema>;
 export type UpdateDemoStudentInput = z.input<typeof updateDemoStudentSchema>;
 export type CreateDemoClassInput = z.input<typeof createDemoClassSchema>;
 export type UpdateDemoClassInput = z.input<typeof updateDemoClassSchema>;
+export type RegisteredStudentMembershipInput = z.input<typeof registeredStudentMembershipSchema>;

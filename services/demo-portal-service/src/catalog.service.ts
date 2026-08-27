@@ -3,8 +3,10 @@ import { promisify } from 'node:util';
 import type { DemoPortalEnv } from './config.js';
 import {
   createDemoClassSchema, createDemoStudentSchema, createDemoTeacherSchema,
+  registeredStudentMembershipSchema,
   type CreateDemoClassInput, type CreateDemoStudentInput, type CreateDemoTeacherInput,
   type DemoClass, type DemoPortalState, type DemoStudent, type DemoTeacher,
+  type RegisteredStudentMembershipInput,
   type UpdateDemoClassInput, type UpdateDemoStudentInput, type UpdateDemoTeacherInput,
   updateDemoClassSchema, updateDemoStudentSchema, updateDemoTeacherSchema,
 } from './model.js';
@@ -76,7 +78,7 @@ export class DemoCatalogService {
         id: randomUUID(), uatStudentId: state.nextStudentUatId++, matricula: parsed.matricula,
         email: parsed.email, name: parsed.name, passwordHash: await hashPassword(parsed.password),
         attendanceUuid: parsed.attendanceUuid ?? stableUuid(`student:${parsed.matricula}`),
-        careerName: parsed.careerName, createdAt: now, updatedAt: now,
+        careerName: parsed.careerName, origin: 'DEMO', createdAt: now, updatedAt: now,
       };
       state.students.push(student);
       return publicStudent(student);
@@ -164,6 +166,37 @@ export class DemoCatalogService {
       const item = required(state.classes.find(({ id }) => id === classId), 'DEMO_CLASS_NOT_FOUND', 'Materia demo no encontrada.');
       required(state.students.find(({ id }) => id === studentId), 'DEMO_STUDENT_NOT_FOUND', 'Alumno demo no encontrado.');
       item.studentIds = [...new Set([...item.studentIds, studentId])];
+      item.updatedAt = new Date().toISOString();
+      return publicClass(item, state);
+    });
+  }
+
+  async addRegisteredStudentToClass(classId: string, input: RegisteredStudentMembershipInput) {
+    const parsed = registeredStudentMembershipSchema.parse(input);
+    return this.change(async (state) => {
+      const item = required(state.classes.find(({ id }) => id === classId), 'DEMO_CLASS_NOT_FOUND', 'Materia demo no encontrada.');
+      let student = state.students.find(({ matricula }) => matricula === parsed.matricula);
+      if (!student) {
+        const now = new Date().toISOString();
+        const email = parsed.email ?? registeredStudentEmail(parsed.matricula);
+        assertStudentAvailable(state, parsed.matricula, email);
+        student = {
+          id: randomUUID(), uatStudentId: state.nextStudentUatId++, matricula: parsed.matricula,
+          email, name: parsed.name,
+          passwordHash: await hashPassword(this.env.PRESENCIA_DEMO_DEFAULT_PASSWORD),
+          attendanceUuid: stableUuid(`student:${parsed.matricula}`), careerName: 'Carrera registrada en UAT',
+          origin: 'REGISTERED', createdAt: now, updatedAt: now,
+        };
+        state.students.push(student);
+      } else {
+        const email = parsed.email ?? student.email;
+        assertStudentAvailable(state, student.matricula, email, student.id);
+        student.name = parsed.name;
+        student.email = email;
+        student.origin = 'REGISTERED';
+        student.updatedAt = new Date().toISOString();
+      }
+      item.studentIds = [...new Set([...item.studentIds, student.id])];
       item.updatedAt = new Date().toISOString();
       return publicClass(item, state);
     });
@@ -270,7 +303,7 @@ export class DemoCatalogService {
       id: randomUUID(), uatStudentId: state.nextStudentUatId++, matricula: 'DEMO0001',
       email: 'alumno.demo@alumnos.uat.edu.mx', name: 'Alumno Demo',
       passwordHash: await hashPassword(this.env.PRESENCIA_DEMO_DEFAULT_PASSWORD),
-      attendanceUuid: stableUuid('student:DEMO0001'), careerName: 'Ingeniería Demo', createdAt: now, updatedAt: now,
+      attendanceUuid: stableUuid('student:DEMO0001'), careerName: 'Ingeniería Demo', origin: 'DEMO', createdAt: now, updatedAt: now,
     };
     state.teachers.push(teacher);
     state.students.push(student);
@@ -373,4 +406,9 @@ function stableUuid(value: string): string {
   bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
   const hex = bytes.toString('hex');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function registeredStudentEmail(matricula: string): string {
+  const key = createHash('sha256').update(matricula).digest('hex').slice(0, 20);
+  return `registered-${key}@demo.invalid`;
 }

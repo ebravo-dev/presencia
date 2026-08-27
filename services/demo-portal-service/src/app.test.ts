@@ -60,4 +60,22 @@ describe('demo portal HTTP compatibility', () => {
     expect(response.json().data.deleted).toMatchObject({ teachers: 1, students: 1, classes: 1 });
     expect(await catalog.snapshot()).toMatchObject({ teachers: [], students: [], classes: [], attendanceWrites: [] });
   });
+
+  it('adds a registered student to an existing demo class through the private API', async () => {
+    const catalog = new DemoCatalogService(new MemoryDemoPortalRepository(), env);
+    await catalog.initialize();
+    app = await buildDemoPortalApp({ env, catalog, ready: async () => true });
+    const item = (await catalog.snapshot()).classes[0]!;
+
+    const response = await app.inject({
+      method: 'POST', url: `/internal/v1/demo/classes/${item.id}/registered-students`,
+      headers: { 'x-internal-service-token': env.INTERNAL_API_TOKEN },
+      payload: { matricula: '2251330008', email: null, name: 'Alumno Registrado' },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().data.students).toEqual(expect.arrayContaining([
+      expect.objectContaining({ matricula: '2251330008', name: 'Alumno Registrado' }),
+    ]));
+  });
 });

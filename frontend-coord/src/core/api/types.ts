@@ -218,6 +218,14 @@ export interface DebugStudent {
   updatedAt: string;
 }
 
+export interface RegisteredStudent {
+  id: string;
+  matricula: string;
+  email: string | null;
+  name: string;
+  lastAuthenticatedAt: string;
+}
+
 export interface DebugCatalogResponse {
   data: {
     enabled: boolean;

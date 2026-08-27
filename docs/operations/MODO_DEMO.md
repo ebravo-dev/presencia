@@ -50,6 +50,9 @@ autenticación de las aplicaciones móviles.
 2. Inicia sesión en las apps con cuentas institucionales UAT válidas. El
    backend autentica y consulta los portales reales, informa que la aplicación
    está en demo y la app del profesor puede usar detección de salón simulada.
+   Desde ese momento el alumno aparece como **Alumno ya registrado** en el
+   padrón de cada materia debug del panel de superusuario y se puede asignar
+   por matrícula sin volver a capturar sus datos.
 3. Si necesitas datos totalmente controlados para una presentación sin usar
    las apps, crea profesores, alumnos, materias y padrones ficticios desde el
    panel y pulsa **Sincronizar datos**.
@@ -76,6 +79,7 @@ responden `404 DEBUG_MODE_DISABLED` cuando el flag está apagado:
 | Estado y catálogo | `GET /api/superUsuario/debug/status`, `GET /api/superUsuario/debug/catalog` |
 | Profesores | `GET/POST /api/superUsuario/debug/teachers`, `PUT/DELETE /api/superUsuario/debug/teachers/:id` |
 | Alumnos | `GET/POST /api/superUsuario/debug/students`, `PUT/DELETE /api/superUsuario/debug/students/:id` |
+| Alumnos registrados | `GET /api/superUsuario/debug/registered-students`, `POST /api/superUsuario/debug/classes/:id/registered-students` |
 | Materias | `GET/POST /api/superUsuario/debug/classes`, `PUT/DELETE /api/superUsuario/debug/classes/:id` |
 | Padrón | `POST /api/superUsuario/debug/classes/:id/students`, `DELETE /api/superUsuario/debug/classes/:id/students/:studentId` |
 | Prueba | `POST /api/superUsuario/debug/classes/:id/simulate-attendance`, `POST /api/superUsuario/debug/synchronize` |

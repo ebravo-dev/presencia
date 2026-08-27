@@ -1,5 +1,5 @@
 import { api, superApi } from './client';
-import type { ActiveAcademicCycleResponse, Assignment, AttendanceSettingsResponse, Beacon, CoordinatorAccount, CoordinatorUser, DatabaseCatalogResponse, DatabasePurgeResponse, DatabaseTargetId, DebugCatalogResponse, DebugClassResponse, DebugFlowLogsResponse, DebugMutationResponse, DebugScheduleInput, DebugSettingsResponse, DebugStatusResponse, DebugStudent, DebugStudentAttendanceResponse, DebugTeacher, InfrastructureSummaryResponse, OverviewResponse, ProfessorOption, RangeReportResponse, SharedClassAssignment, StudentDeviceBinding, SuperUser, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
+import type { ActiveAcademicCycleResponse, Assignment, AttendanceSettingsResponse, Beacon, CoordinatorAccount, CoordinatorUser, DatabaseCatalogResponse, DatabasePurgeResponse, DatabaseTargetId, DebugCatalogResponse, DebugClassResponse, DebugFlowLogsResponse, DebugMutationResponse, DebugScheduleInput, DebugSettingsResponse, DebugStatusResponse, DebugStudent, DebugStudentAttendanceResponse, DebugTeacher, InfrastructureSummaryResponse, OverviewResponse, ProfessorOption, RangeReportResponse, RegisteredStudent, SharedClassAssignment, StudentDeviceBinding, SuperUser, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
 
 export const coordinationApi = {
   login: async (input: { email: string; password: string }) => (await api.post<{ data: { user: CoordinatorUser; expiresAt: string } }>('/coordinacion/auth/login', input)).data,
@@ -49,6 +49,7 @@ export const superUserApi = {
   deleteStudentDeviceBinding: async (matricula: string) => { await superApi.delete(`/superUsuario/alumnos-vinculados/${encodeURIComponent(matricula)}`); },
   debugStatus: async () => (await superApi.get<DebugStatusResponse>('/superUsuario/debug/status')).data,
   debugCatalog: async () => (await superApi.get<DebugCatalogResponse>('/superUsuario/debug/catalog')).data,
+  debugRegisteredStudents: async () => (await superApi.get<{ data: RegisteredStudent[]; meta: { generatedAt: string } }>('/superUsuario/debug/registered-students')).data,
   createDebugTeacher: async (input: { email: string; name: string; password: string }) => (await superApi.post<DebugMutationResponse<DebugTeacher>>('/superUsuario/debug/teachers', input)).data,
   updateDebugTeacher: async (id: string, input: Partial<{ email: string; name: string; password: string }>) => (await superApi.put<DebugMutationResponse<DebugTeacher>>(`/superUsuario/debug/teachers/${id}`, input)).data,
   deleteDebugTeacher: async (id: string) => (await superApi.delete<DebugMutationResponse<{ deleted: true }> | undefined>(`/superUsuario/debug/teachers/${id}`)).data,
@@ -82,6 +83,9 @@ export const superUserApi = {
   }>) => (await superApi.put<DebugMutationResponse<DebugClassResponse['data'][number]>>(`/superUsuario/debug/classes/${id}`, input)).data,
   deleteDebugClass: async (id: string) => (await superApi.delete<DebugMutationResponse<{ deleted: true }> | undefined>(`/superUsuario/debug/classes/${id}`)).data,
   addDebugStudentToClass: async (classId: string, studentId: string) => (await superApi.post<DebugMutationResponse<unknown>>(`/superUsuario/debug/classes/${classId}/students`, { studentId })).data,
+  addRegisteredStudentToDebugClass: async (classId: string, matricula: string) => (
+    await superApi.post<DebugMutationResponse<unknown>>(`/superUsuario/debug/classes/${classId}/registered-students`, { matricula })
+  ).data,
   removeDebugStudentFromClass: async (classId: string, studentId: string) => (await superApi.delete<DebugMutationResponse<{ deleted: true }> | undefined>(`/superUsuario/debug/classes/${classId}/students/${studentId}`)).data,
   synchronizeDebugCatalog: async () => (await superApi.post<{ data: { teachers: number; students: number; classes: number } }>('/superUsuario/debug/synchronize')).data,
   resetDebugData: async () => (await superApi.delete<{ data: {

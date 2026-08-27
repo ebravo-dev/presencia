@@ -102,6 +102,20 @@ export async function buildIdentityApp(options: IdentityAppOptions) {
     return reply.code(204).send();
   });
 
+  app.get('/internal/v1/identities/students', { preHandler: requireInternal }, async (_request, reply) => {
+    if (!options.env.PRESENCIA_DEBUG_MODE) return reply.code(404).send({ error: 'DEMO_MODE_DISABLED' });
+    return { data: (await options.sessions.listRegisteredStudents()).map(registeredStudentResponse) };
+  });
+
+  app.get('/internal/v1/identities/students/:matricula', { preHandler: requireInternal }, async (request, reply) => {
+    if (!options.env.PRESENCIA_DEBUG_MODE) return reply.code(404).send({ error: 'DEMO_MODE_DISABLED' });
+    const { matricula } = request.params as { matricula: string };
+    const student = await options.sessions.registeredStudentByMatricula(matricula);
+    return student
+      ? { data: registeredStudentResponse(student) }
+      : reply.code(404).send({ error: 'REGISTERED_STUDENT_NOT_FOUND', message: 'El alumno no se ha registrado en el sistema.' });
+  });
+
   app.post('/internal/v1/staff/sessions', {
     preHandler: requireInternal,
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
@@ -215,6 +229,22 @@ function sessionResponse(result: {
     sessionId: result.sessionId,
     accessToken: result.accessToken,
     expiresAt: result.expiresAt,
+  };
+}
+
+function registeredStudentResponse(student: {
+  id: string;
+  institutionalIdentifier: string;
+  email: string | null;
+  displayName: string;
+  lastAuthenticatedAt: Date;
+}) {
+  return {
+    id: student.id,
+    matricula: student.institutionalIdentifier,
+    email: student.email,
+    name: student.displayName,
+    lastAuthenticatedAt: student.lastAuthenticatedAt.toISOString(),
   };
 }
 

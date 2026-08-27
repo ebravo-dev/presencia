@@ -17,6 +17,7 @@ export interface DemoPortalStudent {
   name: string;
   attendanceUuid: string;
   careerName: string;
+  origin?: 'DEMO' | 'REGISTERED';
   createdAt: string;
   updatedAt: string;
 }
@@ -97,6 +98,11 @@ export class DemoPortalClient {
   }>) { return this.request<{ data: DemoPortalClass }>(`/internal/v1/demo/classes/${encodeURIComponent(id)}`, { method: 'PUT', body: input }); }
   deleteClass(id: string) { return this.request<void>(`/internal/v1/demo/classes/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
   addStudentToClass(classId: string, studentId: string) { return this.request<{ data: DemoPortalClass }>(`/internal/v1/demo/classes/${encodeURIComponent(classId)}/students`, { method: 'POST', body: { studentId } }); }
+  addRegisteredStudentToClass(classId: string, student: { matricula: string; email: string | null; name: string }) {
+    return this.request<{ data: DemoPortalClass }>(`/internal/v1/demo/classes/${encodeURIComponent(classId)}/registered-students`, {
+      method: 'POST', body: student,
+    });
+  }
   removeStudentFromClass(classId: string, studentId: string) { return this.request<void>(`/internal/v1/demo/classes/${encodeURIComponent(classId)}/students/${encodeURIComponent(studentId)}`, { method: 'DELETE' }); }
   simulateAttendance(classId: string, input: {
     date: string;

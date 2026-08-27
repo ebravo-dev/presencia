@@ -103,6 +103,61 @@ describe('SuperUser student beacon administration', () => {
   });
 });
 
+describe('SuperUser debug roster administration', () => {
+  it('assigns a previously registered student to a debug class by matricula', async () => {
+    let requestBody: unknown;
+    const debugClass = {
+      id: 'debug-class-1', externalGroupId: '990001', code: 'DEBUG-101', groupLetter: 'DBG',
+      period: '2026-3', name: 'Materia Debug', level: 'DEBUG', classroom: 'DEBUG-101',
+      beaconUuid: '11111111-2222-4333-8444-555555555555', schedule: {},
+      professor: { id: 'teacher-1', name: 'Profesor Demo', institutionalEmail: 'profesor@uat.edu.mx' },
+      students: [], attendanceRecords: [],
+    };
+    server.use(
+      http.get('/api/superUsuario/auth/me', () => HttpResponse.json({ data: { user: { role: 'SUPER_USER' } } })),
+      http.get('/api/superUsuario/coordinadores', () => HttpResponse.json({ data: [], meta: { generatedAt: '2026-08-27T10:00:00.000Z' } })),
+      http.get('/api/superUsuario/debug/status', () => HttpResponse.json({
+        data: {
+          enabled: true, period: '2026-3', settings: { teacherAttendanceToleranceMinutes: 10 },
+          apiRestPolicy: 'Modo demo aislado.',
+        },
+        meta: { generatedAt: '2026-08-27T10:00:00.000Z' },
+      })),
+      http.get('/api/superUsuario/debug/catalog', () => HttpResponse.json({
+        data: { enabled: true, settings: { teacherAttendanceToleranceMinutes: 10 }, teachers: [], students: [], classes: [], attendanceWrites: [], updatedAt: '2026-08-27T10:00:00.000Z' },
+      })),
+      http.get('/api/superUsuario/debug/registered-students', () => HttpResponse.json({
+        data: [{
+          id: 'identity-student-1', matricula: '2251330008', email: null,
+          name: 'Alumno Registrado', lastAuthenticatedAt: '2026-08-27T09:00:00.000Z',
+        }],
+        meta: { generatedAt: '2026-08-27T10:00:00.000Z' },
+      })),
+      http.get('/api/superUsuario/debug/classes', () => HttpResponse.json({
+        data: [debugClass], meta: { generatedAt: '2026-08-27T10:00:00.000Z' },
+      })),
+      http.get('/api/superUsuario/debug/student-attendance', () => HttpResponse.json({ data: [], meta: { generatedAt: '2026-08-27T10:00:00.000Z' } })),
+      http.get('/api/superUsuario/debug/flow-logs', () => HttpResponse.json({ data: { syncJobs: [], attendanceRecords: [], recentBindings: [] } })),
+      http.post('/api/superUsuario/debug/classes/debug-class-1/registered-students', async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          data: debugClass,
+          meta: { synchronization: { status: 'COMPLETED', attempts: 1, error: null } },
+        }, { status: 201 });
+      }),
+    );
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Debug' }));
+    const selector = await screen.findByRole('combobox', { name: 'Alumno registrado para Materia Debug' });
+    await user.selectOptions(selector, '2251330008');
+    await user.click(screen.getByRole('button', { name: 'Asignar registrado' }));
+
+    await waitFor(() => expect(requestBody).toEqual({ matricula: '2251330008' }));
+  });
+});
+
 function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },

@@ -60,6 +60,8 @@ const fakeIdentities: IdentityRepository = {
       lastAuthenticatedAt: new Date(),
     } : null;
   },
+  async listRegisteredStudents() { return []; },
+  async findRegisteredStudentByMatricula() { return null; },
   async resetDemoIdentities() { return ['identity-1']; },
   async purgeAllIdentities() { return ['identity-1']; },
 };
