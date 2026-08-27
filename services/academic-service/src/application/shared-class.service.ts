@@ -1,4 +1,5 @@
 import type {
+  AuthorizedSharedClassAssignmentDetail,
   SharedClassActor,
   SharedClassInput,
   LegacySharedClassImportRecord,
@@ -53,8 +54,9 @@ export class SharedClassService {
   }
 }
 
-function toProfessorClass(record: SharedClassAssignmentDetail) {
+function toProfessorClass(record: AuthorizedSharedClassAssignmentDetail) {
   const source = record.sourceAssignment;
+  const students = record.students;
   const classCode = source.subject.code ?? source.externalGroupId;
   const groupLetter = source.groupCode ?? '';
   return {
@@ -67,8 +69,13 @@ function toProfessorClass(record: SharedClassAssignmentDetail) {
     level: source.educationLevel,
     classroom: source.classroom ?? '',
     schedule: source.schedule,
-    students: [],
-    studentsCount: 0,
+    students: students.map((student, index) => ({
+      id: student.uatStudentId?.toString() ?? student.matricula,
+      matricula: student.matricula,
+      number: student.listNumber ?? index + 1,
+      name: student.name,
+    })),
+    studentsCount: students.length,
     source: 'SHARED',
     isShared: true,
     isSubstitute: true,

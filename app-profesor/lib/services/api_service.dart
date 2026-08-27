@@ -421,7 +421,9 @@ class ApiService {
       }
       for (final sharedGroup in sharedGroups) {
         final idGrupo = int.tryParse(sharedGroup.id);
-        final roster = idGrupo == null
+        final roster = sharedGroup.students.isNotEmpty
+            ? (students: sharedGroup.students, available: true)
+            : idGrupo == null
             ? (students: const <Alumno>[], available: false)
             : await _loadAlumnosForGroup(
                 sessionId: sessionId,

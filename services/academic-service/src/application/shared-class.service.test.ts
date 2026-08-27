@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { SharedClassAssignmentDetail, SharedClassRepository } from '../domain/shared-class.js';
+import type { AuthorizedSharedClassAssignmentDetail, SharedClassRepository } from '../domain/shared-class.js';
 import { SharedClassService } from './shared-class.service.js';
 
 describe('SharedClassService', () => {
@@ -22,6 +22,8 @@ describe('SharedClassService', () => {
     expect(result.data[0]).toMatchObject({
       id: '947699', code: 'SW-101', groupLetter: 'A', source: 'SHARED', isSubstitute: true,
       sharedAssignmentId: 'shared-1', primaryProfessor: { name: 'Profesor Titular' },
+      students: [{ id: '515722', matricula: 'A001', number: 7, name: 'Alumno Demo' }],
+      studentsCount: 1,
     });
   });
 
@@ -51,7 +53,7 @@ const actor = {
   reason: 'Baja desde coordinación.', correlationId: 'request-1',
 };
 
-const assignment: SharedClassAssignmentDetail = {
+const assignment: AuthorizedSharedClassAssignmentDetail = {
   id: 'shared-1', sourceAssignmentId: 'group-1', assignedTeacherId: 'teacher-2',
   schoolCycleYear: 2026, schoolCycleTerm: 2, active: true, notes: null,
   createdAt: new Date('2026-08-03T12:00:00.000Z'), updatedAt: new Date('2026-08-03T12:00:00.000Z'),
@@ -67,6 +69,7 @@ const assignment: SharedClassAssignmentDetail = {
     id: 'teacher-2', externalId: '308128', institutionalCode: '308128',
     name: 'Profesor Sustituto', email: 'sustituto@uat.edu.mx',
   },
+  students: [{ matricula: 'A001', name: 'Alumno Demo', uatStudentId: 515722, listNumber: 7 }],
 };
 
 function repositoryStub(overrides: Partial<SharedClassRepository> = {}): SharedClassRepository {

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma, type PrismaClient } from '../generated/prisma/index.js';
 import type {
+  AuthorizedSharedClassAssignmentDetail,
   SharedClassActor,
   SharedClassAssignmentDetail,
   SharedClassInput,
@@ -17,7 +18,24 @@ const sharedClassInclude = {
   assignedTeacher: true,
 } as const;
 
+const authorizedSharedClassInclude = {
+  group: {
+    include: {
+      teacher: true,
+      cycle: true,
+      subject: true,
+      coordination: true,
+      enrollments: {
+        where: { active: true },
+        orderBy: [{ listNumber: 'asc' }, { name: 'asc' }],
+      },
+    },
+  },
+  assignedTeacher: true,
+} satisfies Prisma.AcademicSharedClassAssignmentInclude;
+
 type SharedClassRecord = Prisma.AcademicSharedClassAssignmentGetPayload<{ include: typeof sharedClassInclude }>;
+type AuthorizedSharedClassRecord = Prisma.AcademicSharedClassAssignmentGetPayload<{ include: typeof authorizedSharedClassInclude }>;
 
 export class PrismaSharedClassRepository implements SharedClassRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -43,7 +61,7 @@ export class PrismaSharedClassRepository implements SharedClassRepository {
     return records.map(sharedClassValue);
   }
 
-  async listForTeacher(identity: string, cycle?: { year: number; term: number }): Promise<SharedClassAssignmentDetail[]> {
+  async listForTeacher(identity: string, cycle?: { year: number; term: number }): Promise<AuthorizedSharedClassAssignmentDetail[]> {
     const normalized = identity.trim();
     const records = await this.prisma.academicSharedClassAssignment.findMany({
       where: {
@@ -58,10 +76,10 @@ export class PrismaSharedClassRepository implements SharedClassRepository {
         },
         group: { active: true },
       },
-      include: sharedClassInclude,
+      include: authorizedSharedClassInclude,
       orderBy: { updatedAt: 'desc' },
     });
-    return records.map(sharedClassValue);
+    return records.map(authorizedSharedClassValue);
   }
 
   async create(input: SharedClassInput & SharedClassActor): Promise<SharedClassAssignmentDetail> {
@@ -360,6 +378,18 @@ function sharedClassValue(record: SharedClassRecord): SharedClassAssignmentDetai
     schoolCycleYear: record.schoolCycleYear, schoolCycleTerm: record.schoolCycleTerm,
     active: record.active, notes: record.notes, createdAt: record.createdAt, updatedAt: record.updatedAt,
     sourceAssignment: groupValue(record.group), assignedTeacher: teacherValue(record.assignedTeacher),
+  };
+}
+
+function authorizedSharedClassValue(record: AuthorizedSharedClassRecord): AuthorizedSharedClassAssignmentDetail {
+  return {
+    ...sharedClassValue(record),
+    students: record.group.enrollments.map((student) => ({
+      matricula: student.matricula,
+      name: student.name,
+      uatStudentId: student.uatStudentId,
+      listNumber: student.listNumber,
+    })),
   };
 }
 

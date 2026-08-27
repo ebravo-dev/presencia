@@ -85,10 +85,19 @@ export interface SharedClassAssignmentDetail {
   assignedTeacher: SharedClassTeacher;
 }
 
+export interface AuthorizedSharedClassAssignmentDetail extends SharedClassAssignmentDetail {
+  students: Array<{
+    matricula: string;
+    name: string;
+    uatStudentId: number | null;
+    listNumber: number | null;
+  }>;
+}
+
 export interface SharedClassRepository {
   listOptions(): Promise<{ teachers: SharedClassTeacher[]; assignments: SharedClassSourceAssignment[] }>;
   list(): Promise<SharedClassAssignmentDetail[]>;
-  listForTeacher(identity: string, cycle?: { year: number; term: number }): Promise<SharedClassAssignmentDetail[]>;
+  listForTeacher(identity: string, cycle?: { year: number; term: number }): Promise<AuthorizedSharedClassAssignmentDetail[]>;
   create(input: SharedClassInput & SharedClassActor): Promise<SharedClassAssignmentDetail>;
   update(id: string, input: Partial<SharedClassInput> & SharedClassActor): Promise<SharedClassAssignmentDetail>;
   delete(id: string, actor: SharedClassActor): Promise<void>;

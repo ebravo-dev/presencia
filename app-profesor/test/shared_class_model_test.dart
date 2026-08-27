@@ -12,7 +12,14 @@ void main() {
       'group': 'RC.SEED-Z',
       'classroom': 'LAB-01',
       'name': 'Clase compartida',
-      'students': <Object>[],
+      'students': [
+        {
+          'id': '500000',
+          'matricula': 'DEMO0001',
+          'number': 1,
+          'name': 'Alumno Demo',
+        },
+      ],
       'schedule': {
         'monday': [
           {'raw': '10:00-11:00', 'startTime': '10:00', 'endTime': '11:00'},
@@ -20,7 +27,7 @@ void main() {
         ],
         'tuesday': <Object>[],
       },
-      'studentsCount': 0,
+      'studentsCount': 1,
       'source': 'SHARED',
       'isShared': true,
       'sharedAssignmentId': 'shared-1',
@@ -29,6 +36,9 @@ void main() {
 
     expect(grupo.esCompartida, isTrue);
     expect(grupo.profesorTitular, 'Profesor Titular');
+    expect(grupo.students, hasLength(1));
+    expect(grupo.students.single.matricula, 'DEMO0001');
+    expect(grupo.students.single.name, 'Alumno Demo');
     expect(grupo.schedule?['monday'], '10:00-11:00; 11:00-12:00');
     expect(grupo.horario, '10:00-12:00');
     expect(grupo.horarioParaDia(DateTime.monday), '10:00-12:00');
