@@ -3,7 +3,6 @@ import type { UatService } from '../../../application/services/uat.service.js';
 import type { AttendanceCaptureClient } from '../../../infrastructure/http/client/attendance-capture.client.js';
 import type { AttendanceUploadService } from '../../../application/services/attendance-upload.service.js';
 import { ApiError } from '../../../errors/api-error.js';
-import { env } from '../../../config/env.js';
 import {
   asistenciaGrupoQuerySchema,
   gruposProfesorQuerySchema,
@@ -60,14 +59,6 @@ export class AsistenciaController {
         status: attendance.sn_asistencia ? 'PRESENT' : 'ABSENT',
       })),
     });
-    if (env.PRESENCIA_DEBUG_MODE) {
-      await this.uatService.registrarAsistencias(
-        request.uatSession.id,
-        body.Id_Grupo,
-        body.Fec_Ini,
-        body.Asistencia,
-      );
-    }
     if (capture.data.uploadStatus === 'PENDING') {
       await this.attendanceUploads.submit({
         ownerUsername: request.uatSession.username,

@@ -3,14 +3,11 @@ import { AsistenciaController } from './asistencia.controller.js';
 
 describe('AsistenciaController', () => {
   it('cuts the existing Flutter route over to the durable Attendance Service capture', async () => {
-    let directUatCalled = false;
     let captured: unknown;
     let enqueued: unknown;
     let wakes = 0;
     const controller = new AsistenciaController(
-      {
-        registrarAsistencias: async () => { directUatCalled = true; return {}; },
-      } as never,
+      {} as never,
       {
         capture: async (input: unknown) => {
           captured = input;
@@ -43,7 +40,6 @@ describe('AsistenciaController', () => {
       },
     } as never);
 
-    expect(directUatCalled).toBe(false);
     expect(captured).toEqual({
       correlationId: 'request-1',
       externalGroupId: '947699',
@@ -91,13 +87,13 @@ describe('AsistenciaController', () => {
     } as never)).rejects.toMatchObject({ code: 'ATTENDANCE_MULTIPLE_DAYS' });
   });
 
-  it('does not create a UAT job for a delegated shared-class capture', async () => {
+  it('does not create a UAT job when Attendance Service marks a demo capture as SKIPPED', async () => {
     const submit = vi.fn(async () => ({ id: 'unexpected' }));
     const wake = vi.fn();
     const controller = new AsistenciaController(
       {} as never,
       { capture: async () => ({ data: {
-        attendanceSessionId: 'attendance-shared', externalGroupId: '947699', date: '2026-08-02',
+        attendanceSessionId: 'attendance-demo', externalGroupId: '947699', date: '2026-08-02',
         entriesCount: 1, uploadStatus: 'SKIPPED', duplicate: false, version: 1,
       } }) } as never,
       { submit } as never,
@@ -105,13 +101,13 @@ describe('AsistenciaController', () => {
     );
 
     await controller.guardar({
-      id: 'request-shared',
+      id: 'request-demo',
       body: {
         ClientRecordId: '947699_2026-08-02', Id_Grupo: 947699, Fec_Ini: '27/07/2026',
         Asistencia: [{ id_alumno: 515722, num_pase_lista: 1, num_dia: 7, sn_asistencia: true }],
       },
       uatSession: {
-        username: 'substitute@uat.edu.mx', credentialCipher: 'encrypted', login: { parametros: {} },
+        username: 'profesor@uat.edu.mx', credentialCipher: 'encrypted', login: { parametros: {} },
       },
     } as never);
 

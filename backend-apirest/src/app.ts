@@ -134,7 +134,7 @@ export async function buildApp() {
     fastify.log,
   );
   if (env.PRESENCIA_DEBUG_MODE) {
-    fastify.log.warn({ demoPortal: env.PRESENCIA_DEMO_PORTAL_URL }, 'Modo demo activo: UAT real aislada y worker de subida externa deshabilitado.');
+    fastify.log.warn('Modo demo activo: login y consultas conectados a UAT; worker de subida de asistencias deshabilitado.');
   } else {
     await attendanceUploadWorker.start();
   }

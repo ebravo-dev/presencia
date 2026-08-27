@@ -10,10 +10,8 @@ import type {
   UatDataResponse,
   UatDesItem,
   UatExamenItem,
-  UatAsistenciaAlumnoInput,
   UatAsistenciaGrupoParams,
   UatAsistenciaGrupoResponse,
-  UatGuardaAsistenciasResponse,
   UatHorarioItem,
   UatLoginResponse,
   UatNivelEducativoItem,
@@ -194,19 +192,6 @@ export class UatService {
       const asistencia = await session.client.getAsistenciaGrupo(params);
       return this.toUatObjectResponse('BuscaAsistenciaGrupo', params, asistencia);
     });
-  }
-
-  async registrarAsistencias(
-    sessionId: string,
-    idGrupo: number,
-    fechaInicio: string,
-    asistencias: UatAsistenciaAlumnoInput[],
-  ): Promise<UatGuardaAsistenciasResponse> {
-    return this.withSession(sessionId, (session) => session.client.guardaAsistencias({
-      Id_Grupo: idGrupo,
-      Fec_Ini: fechaInicio,
-      Asistencia: JSON.stringify(asistencias),
-    }));
   }
 
   private async withSession<TResult>(

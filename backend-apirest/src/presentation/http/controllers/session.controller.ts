@@ -37,7 +37,7 @@ export class SessionController {
         }),
       );
       if (env.PRESENCIA_DEBUG_MODE) {
-        request.log.info({ sessionId: session.id }, 'Modo demo activo: cosecha encolada desde el portal simulado.');
+        request.log.info({ sessionId: session.id }, 'Modo demo activo: cosecha UAT encolada; las asistencias no se subiran.');
       }
     } catch (error) {
       request.log.error({ err: error, sessionId: session.id }, 'No fue posible despachar la cosecha post-autenticacion.');

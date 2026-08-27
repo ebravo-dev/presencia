@@ -131,8 +131,10 @@ El login de coordinación y superusuario, sus sesiones revocables y las cuentas
 del personal pertenecen a Identity. El BFF conserva `/api/coordinacion/auth/*`
 y `/api/superUsuario/*`; delega beacons y vinculaciones a Attendance. El modo
 demo nuevo se activa con `PRESENCIA_DEBUG_MODE=true` exclusivamente en un
-proyecto aislado con `DEPLOYMENT_ENVIRONMENT=demo`. El panel administra cuentas
-ficticias, materias, padrones y simulaciones; consulta [MODO_DEMO.md](MODO_DEMO.md).
+proyecto aislado con `DEPLOYMENT_ENVIRONMENT=demo`. Las apps siguen autenticando
+y consultando UAT, pero Attendance marca las capturas como `SKIPPED` y el BFF no
+inicia el worker de subida. El panel conserva el catálogo ficticio y las
+simulaciones controladas; consulta [MODO_DEMO.md](MODO_DEMO.md).
 
 El dashboard divide el shell en chunks cacheables y carga los exportadores de
 Excel/PDF sólo cuando se solicitan, reduciendo el JavaScript inicial servido por

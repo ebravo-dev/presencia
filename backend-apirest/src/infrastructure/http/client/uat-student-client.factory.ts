@@ -14,7 +14,9 @@ export class UatStudentClientFactory {
 
   private fromJar(jar: CookieJar): UatStudentPortalClientPort {
     return new UatStudentPortalClient({
-      baseUrl: env.PRESENCIA_DEBUG_MODE ? env.PRESENCIA_DEMO_PORTAL_URL : env.UAT_ALUMNOS_BASE_URL,
+      // Student authentication remains connected to UAT in demo mode. The
+      // attendance write policy is enforced downstream by Attendance Service.
+      baseUrl: env.UAT_ALUMNOS_BASE_URL,
       timeoutMs: env.UAT_HTTP_TIMEOUT_MS,
       jar,
     });
