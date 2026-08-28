@@ -35,6 +35,19 @@ class PermissionService {
     );
   }
 
+  /// Requests the scan and foreground location permissions required by
+  /// standard iBeacon ranging. It is kept separate from the GATT permission so
+  /// denying Location never disables Android students using the Presencia app.
+  static Future<bool> requestStudentIBeaconPermissions() async {
+    if (kIsWeb) return false;
+    final statuses = await _platformBluetoothPermissions().request();
+    return statuses.values.every(
+      (status) =>
+          status == PermissionStatus.granted ||
+          status == PermissionStatus.limited,
+    );
+  }
+
   /// Check if Bluetooth permissions are granted
   static Future<bool> hasBluetoothPermissions() async {
     final permissions = _platformBluetoothPermissions();

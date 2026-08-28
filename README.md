@@ -131,6 +131,9 @@ automáticamente los tokens heredados de Hive.
   UUID sólo para matrículas aún no vinculadas. Attendance comprueba que el
   profesor sea titular o sustituto autorizado y no permite reemplazar vínculos
   activos desde esta ruta.
+- Durante el pase automático, los vínculos manuales sin identidad de dispositivo
+  se detectan como iBeacon estándar (para emuladores externos de iPhone); los
+  vínculos creados por `app-alumno` conservan el escaneo y la confirmación GATT.
 
 ## Referencias
 

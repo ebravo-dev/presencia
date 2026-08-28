@@ -97,6 +97,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       StudentAttendanceBleService();
   StreamSubscription<List<StudentAttendanceDetection>>?
   _studentBeaconSubscription;
+  StreamSubscription<List<StudentAttendanceDetection>>?
+  _studentIBeaconSubscription;
   Future<void> _studentDetectionQueue = Future<void>.value();
   bool _isStudentBeaconScanning = false;
   bool _isLoadingStudentBeaconBindings = false;
@@ -277,8 +279,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     _scrollController.dispose();
     _bleBeaconService.dispose();
     _studentBeaconSubscription?.cancel();
+    _studentIBeaconSubscription?.cancel();
     _studentScanCountdownTimer?.cancel();
     _studentBeaconService.stopScanning();
+    _studentBeaconService.stopIBeaconScanning();
     super.dispose();
   }
 
@@ -2104,7 +2108,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     );
   }
 
-  Future<Map<String, String>> _loadStudentBeaconBindingsForScan() async {
+  Future<
+    ({Map<String, String> studentKeysByUuid, Set<String> externalIBeaconUuids})
+  >
+  _loadStudentBeaconBindingsForScan() async {
     final fallback = <String, String>{};
 
     for (final alumno in widget.grupo.students) {
@@ -2127,7 +2134,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         .where((matricula) => matricula.isNotEmpty)
         .toSet()
         .toList();
-    if (matriculas.isEmpty) return fallback;
+    if (matriculas.isEmpty) {
+      return (studentKeysByUuid: fallback, externalIBeaconUuids: <String>{});
+    }
 
     final result = await _apiService.resolveStudentDeviceBindings(
       matriculas: matriculas,
@@ -2136,10 +2145,11 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     return result.fold(
       (error) {
         Logger.info('[StudentBeaconScan] Usando UUIDs cacheados: $error');
-        return fallback;
+        return (studentKeysByUuid: fallback, externalIBeaconUuids: <String>{});
       },
       (bindings) {
         final resolved = <String, String>{};
+        final externalIBeaconUuids = <String>{};
         final studentKeysByMatricula = {
           for (final alumno in widget.grupo.students)
             if (alumno.matricula?.trim().isNotEmpty ?? false)
@@ -2161,10 +2171,21 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           final normalized = _normalizeBeaconUuid(beaconUuid);
           if (normalized.isEmpty) continue;
           resolved[normalized] = studentKey;
+          if (bindingUsesExternalIBeacon(binding)) {
+            externalIBeaconUuids.add(normalized);
+          }
         }
 
-        if (resolved.isEmpty) return fallback;
-        return resolved;
+        if (resolved.isEmpty) {
+          return (
+            studentKeysByUuid: fallback,
+            externalIBeaconUuids: <String>{},
+          );
+        }
+        return (
+          studentKeysByUuid: resolved,
+          externalIBeaconUuids: externalIBeaconUuids,
+        );
       },
     );
   }
@@ -2186,27 +2207,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       _isLoadingStudentBeaconBindings = true;
     });
 
-    final granted =
-        await PermissionService.requestStudentAttendanceBlePermissions();
+    final scanPlan = await _loadStudentBeaconBindingsForScan();
     if (!mounted) return;
-
-    if (!granted) {
-      setState(() {
-        _isLoadingStudentBeaconBindings = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Activa los permisos de Bluetooth para detectar alumnos.',
-          ),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    final bindings = await _loadStudentBeaconBindingsForScan();
-    if (!mounted) return;
+    final bindings = scanPlan.studentKeysByUuid;
 
     if (bindings.isEmpty) {
       setState(() {
@@ -2238,6 +2241,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       final matricula = student?.matricula?.trim().toUpperCase();
       if (matricula == null || matricula.isEmpty) continue;
       scannableBindings[binding.key] = binding.value;
+      if (scanPlan.externalIBeaconUuids.contains(binding.key)) continue;
       confirmationsByUuid[binding.key] = StudentAttendanceGattConfirmation(
         matricula: matricula,
         materia: widget.grupo.subject,
@@ -2245,7 +2249,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       );
     }
 
-    if (confirmationsByUuid.isEmpty) {
+    final externalIBeaconUuids = scanPlan.externalIBeaconUuids
+        .where(scannableBindings.containsKey)
+        .toSet();
+    if (confirmationsByUuid.isEmpty && externalIBeaconUuids.isEmpty) {
       setState(() {
         _isLoadingStudentBeaconBindings = false;
       });
@@ -2260,19 +2267,100 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       return;
     }
 
+    final gattPermissionGranted = confirmationsByUuid.isNotEmpty
+        ? await PermissionService.requestStudentAttendanceBlePermissions()
+        : false;
+    if (!mounted) return;
+    final iBeaconPermissionGranted = externalIBeaconUuids.isNotEmpty
+        ? await PermissionService.requestStudentIBeaconPermissions()
+        : false;
+    if (!mounted) return;
+
+    if (!gattPermissionGranted && !iBeaconPermissionGranted) {
+      setState(() {
+        _isLoadingStudentBeaconBindings = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            externalIBeaconUuids.isNotEmpty
+                ? 'Activa Ubicación para detectar los iPhone registrados.'
+                : 'Activa Bluetooth para detectar alumnos.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (externalIBeaconUuids.isNotEmpty && !iBeaconPermissionGranted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Sin Ubicación no se detectarán iPhone externos; Android seguirá funcionando.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    } else if (confirmationsByUuid.isNotEmpty && !gattPermissionGranted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Sin Bluetooth no se detectarán alumnos con nuestra app; iBeacon seguirá funcionando.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
+
     await _studentBeaconSubscription?.cancel();
+    await _studentIBeaconSubscription?.cancel();
     _studentKeyByBeaconUuid = scannableBindings;
-    _studentBeaconSubscription = _studentBeaconService.detectionsStream.listen(
-      _enqueueStudentBeaconDetections,
-    );
+    _studentBeaconSubscription = gattPermissionGranted
+        ? _studentBeaconService.detectionsStream.listen(
+            _enqueueStudentBeaconDetections,
+          )
+        : null;
+    _studentIBeaconSubscription = iBeaconPermissionGranted
+        ? _studentBeaconService.iBeaconDetectionsStream.listen(
+            _enqueueStudentBeaconDetections,
+          )
+        : null;
 
     _bleBeaconService.cancelScan();
-    bool started = false;
-    try {
-      started = await _studentBeaconService.startScanning(
-        confirmationsByUuid: confirmationsByUuid,
-      );
-    } on PlatformException catch (error) {
+    var gattStarted = false;
+    var iBeaconStarted = false;
+    PlatformException? startError;
+
+    if (gattPermissionGranted && confirmationsByUuid.isNotEmpty) {
+      try {
+        gattStarted = await _studentBeaconService.startScanning(
+          confirmationsByUuid: confirmationsByUuid,
+        );
+      } on PlatformException catch (error) {
+        startError = error;
+        Logger.info(
+          '[StudentBeaconScan] GATT no disponible: ${error.code} ${error.message}',
+        );
+      }
+    }
+
+    if (iBeaconPermissionGranted && externalIBeaconUuids.isNotEmpty) {
+      try {
+        iBeaconStarted = await _studentBeaconService.startIBeaconScanning(
+          uuids: externalIBeaconUuids,
+        );
+      } on PlatformException catch (error) {
+        startError ??= error;
+        Logger.info(
+          '[StudentBeaconScan] iBeacon no disponible: ${error.code} ${error.message}',
+        );
+      }
+    }
+
+    final started = gattStarted || iBeaconStarted;
+    if (!started && startError != null) {
+      final error = startError;
       Logger.info(
         '[StudentBeaconScan] No se pudo iniciar BLE: ${error.code} ${error.message}',
       );
@@ -2284,7 +2372,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              error.code == 'BLUETOOTH_OFF'
+              externalIBeaconUuids.isNotEmpty && confirmationsByUuid.isEmpty
+                  ? 'Activa Ubicación para detectar los iPhone registrados.'
+                  : error.code == 'BLUETOOTH_OFF'
                   ? 'Activa Bluetooth para detectar alumnos.'
                   : 'Activa el permiso de Bluetooth en Configuración.',
             ),
@@ -2294,6 +2384,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       }
       await _studentBeaconSubscription?.cancel();
       _studentBeaconSubscription = null;
+      await _studentIBeaconSubscription?.cancel();
+      _studentIBeaconSubscription = null;
       return;
     }
     if (!mounted) return;
@@ -2316,6 +2408,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       );
       await _studentBeaconSubscription?.cancel();
       _studentBeaconSubscription = null;
+      await _studentIBeaconSubscription?.cancel();
+      _studentIBeaconSubscription = null;
     }
   }
 
@@ -2346,8 +2440,13 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     _studentScanEndsAt = null;
     await _studentBeaconSubscription?.cancel();
     _studentBeaconSubscription = null;
+    await _studentIBeaconSubscription?.cancel();
+    _studentIBeaconSubscription = null;
     await _studentDetectionQueue;
-    await _studentBeaconService.stopScanning();
+    await Future.wait([
+      _studentBeaconService.stopScanning(),
+      _studentBeaconService.stopIBeaconScanning(),
+    ]);
     _studentKeyByBeaconUuid = {};
     if (mounted) {
       setState(() {
@@ -2377,7 +2476,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       return;
     }
 
-    final studentsByUuid = <String, String>{};
+    final gattStudentsByUuid = <String, String>{};
     final previousAttendance = <String, ({bool existed, bool? wasPresent})>{};
     final newlyDetectedUuids = <String>{};
     final newlyAutomaticStudentKeys = <String>{};
@@ -2386,7 +2485,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       final normalized = _normalizeBeaconUuid(detection.uuid);
       final studentKey = _studentKeyByBeaconUuid[normalized];
       if (studentKey == null) continue;
-      studentsByUuid[normalized] = studentKey;
+      if (detection.requiresGattConfirmation) {
+        gattStudentsByUuid[normalized] = studentKey;
+      }
       if (_detectedStudentBeaconUuids.contains(normalized)) continue;
 
       previousAttendance.putIfAbsent(
@@ -2461,7 +2562,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       }
     }
 
-    for (final entry in studentsByUuid.entries) {
+    for (final entry in gattStudentsByUuid.entries) {
       if (_asistencias[entry.value] != true) continue;
       try {
         final confirmationStarted = await _studentBeaconService
@@ -2850,7 +2951,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                     Text(
                       _isStudentBeaconScanning
                           ? '$detectedCount detectados de $linkedCount disponibles'
-                          : '$linkedCount alumnos disponibles',
+                          : '$linkedCount alumnos disponibles · Android y iBeacon',
                       style: TextStyle(
                         color: palette.textSecondary,
                         fontSize: 13,
