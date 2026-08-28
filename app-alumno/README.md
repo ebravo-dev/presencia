@@ -4,7 +4,7 @@ Aplicación Flutter de Presencia para Android e iOS.
 
 ## Configuración del backend
 
-La app usa `https://dashboarduat.452111.xyz` de forma predeterminada. La
+La app usa `https://dashboarduat.presenciauat.fit` de forma predeterminada. La
 configuración de producción también está disponible en `env.production.json`:
 
 ```bash
