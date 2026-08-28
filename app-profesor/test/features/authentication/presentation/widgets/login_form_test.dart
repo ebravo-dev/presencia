@@ -46,13 +46,13 @@ void main() {
       await tester.pumpWidget(createTestWidget());
 
       expect(find.byKey(const Key('email_field')), findsOneWidget);
-      expect(find.text('Email institucional'), findsOneWidget);
+      expect(find.text('Correo institucional'), findsOneWidget);
       expect(find.byKey(const Key('password_field')), findsOneWidget);
       expect(find.text('Contraseña'), findsOneWidget);
       expect(find.byKey(const Key('login_button')), findsOneWidget);
-      expect(find.text('Iniciar Sesión'), findsOneWidget);
+      expect(find.text('Iniciar sesión'), findsOneWidget);
       expect(
-        find.text('Usa tu email y contraseña institucional'),
+        find.text('Usa tu correo y contraseña institucional'),
         findsOneWidget,
       );
     });
@@ -64,7 +64,7 @@ void main() {
       expect(form.validate(), isFalse);
       await tester.pump();
 
-      expect(find.text('Por favor ingresa tu email'), findsOneWidget);
+      expect(find.text('Ingresa tu correo'), findsOneWidget);
       expect(find.text('Por favor ingresa tu contraseña'), findsOneWidget);
     });
 
@@ -77,7 +77,7 @@ void main() {
       expect(form.validate(), isFalse);
       await tester.pump();
 
-      expect(find.text('Por favor ingresa un email válido'), findsOneWidget);
+      expect(find.text('Ingresa un correo válido'), findsOneWidget);
       expect(
         find.text('La contraseña debe tener al menos 4 caracteres'),
         findsOneWidget,

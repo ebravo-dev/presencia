@@ -142,7 +142,7 @@ class AuthServiceMock implements AuthService {
       // Verificar contraseña
       if (professorData['password'] != password) {
         Logger.error('Contraseña incorrecta para: $normalizedEmail');
-        return AuthResult.failure('Contraseña incorrecta. Intente nuevamente.');
+        return AuthResult.failure('Contraseña incorrecta. Intenta de nuevo.');
       }
 
       final user = professorData['user'] as User;
@@ -157,7 +157,7 @@ class AuthServiceMock implements AuthService {
       return AuthResult.success(user: user, token: token, groups: groups);
     } catch (e, stackTrace) {
       Logger.error('Error durante login mock', e, stackTrace);
-      return AuthResult.failure('Error inesperado. Intente nuevamente.');
+      return AuthResult.failure('No pudimos iniciar sesión. Intenta de nuevo.');
     }
   }
 
@@ -176,7 +176,7 @@ class AuthServiceMock implements AuthService {
       );
     } catch (e, stackTrace) {
       Logger.error('Error durante logout mock', e, stackTrace);
-      return AuthResult.failure('Error al cerrar sesión');
+      return AuthResult.failure('No pudimos cerrar sesión. Intenta de nuevo.');
     }
   }
 

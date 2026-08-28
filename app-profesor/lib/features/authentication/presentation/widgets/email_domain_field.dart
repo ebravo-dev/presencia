@@ -171,8 +171,8 @@ class _EmailDomainFieldState extends State<EmailDomainField> {
       focusNode: _focusNode,
       enabled: widget.enabled,
       decoration: InputDecoration(
-        labelText: 'Email institucional',
-        hintText: 'profesor.apellido@d  o  profesor.apellido@u',
+        labelText: 'Correo institucional',
+        hintText: 'nombre.apellido@uat.edu.mx',
         prefixIcon: Icon(
           Icons.alternate_email,
           color: UATColors.neutral80,

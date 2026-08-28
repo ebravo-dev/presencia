@@ -173,7 +173,7 @@ class _ProfesorLoginFormState extends ConsumerState<ProfesorLoginForm> {
                 AutofillHints.username,
               ],
               decoration: InputDecoration(
-                labelText: 'Email institucional',
+                labelText: 'Correo institucional',
                 hintText: 'ejemplo@uat.edu.mx',
                 labelStyle: const TextStyle(color: UATColors.neutral80),
                 floatingLabelStyle: const TextStyle(color: UATColors.primary),
@@ -204,10 +204,10 @@ class _ProfesorLoginFormState extends ConsumerState<ProfesorLoginForm> {
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
-                  return 'Por favor ingresa tu email';
+                  return 'Ingresa tu correo';
                 }
                 if (!value.contains('@')) {
-                  return 'Por favor ingresa un email válido';
+                  return 'Ingresa un correo válido';
                 }
                 return null;
               },
@@ -319,7 +319,7 @@ class _ProfesorLoginFormState extends ConsumerState<ProfesorLoginForm> {
                             ),
                           ),
                         )
-                      : const Text('Iniciar Sesión', key: ValueKey('login')),
+                      : const Text('Iniciar sesión', key: ValueKey('login')),
                 ),
               ),
             ),
@@ -328,7 +328,7 @@ class _ProfesorLoginFormState extends ConsumerState<ProfesorLoginForm> {
 
             // Help text
             Text(
-              'Usa tu email y contraseña institucional',
+              'Usa tu correo y contraseña institucional',
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(color: UATColors.neutral80),

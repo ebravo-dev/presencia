@@ -404,7 +404,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Las listas sólo se envían cuando pulsas Subir. Si falla la conexión, permanecen guardadas en este celular.',
+                      'Las listas solo se envían cuando pulsas “Enviar asistencias”. Si falla la conexión, permanecen guardadas en este celular.',
                       style: TextStyle(
                         color: Colors.blue.shade400,
                         fontSize: 13,
@@ -824,7 +824,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${_pendientes.length} registro${_pendientes.length == 1 ? '' : 's'} por subir',
+                            '${_pendientes.length} registro${_pendientes.length == 1 ? '' : 's'} por enviar',
                             style: TextStyle(
                               color: palette.textSecondary,
                               fontSize: 14,
@@ -1002,7 +1002,7 @@ class _CalendarModalState extends State<_CalendarModal> {
             Padding(
               padding: const EdgeInsets.all(20),
               child: Text(
-                'Calendario de Asistencias',
+                'Calendario de asistencias',
                 style: TextStyle(
                   color: palette.textPrimary,
                   fontSize: 20,
@@ -1464,7 +1464,7 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
             child: Text(
-              'Asistencias Pendientes',
+              'Asistencias pendientes',
               style: TextStyle(
                 color: palette.textPrimary,
                 fontSize: 20,
@@ -1695,7 +1695,7 @@ class _PendingDetailsModalState extends State<_PendingDetailsModal> {
                   grupo.horarioParaDia(registro.fecha.weekday) ??
                   grupo.horarioValido ??
                   '00:00-00:00',
-              dias: grupo.diasClaseAgrupados ?? 'N/A',
+              dias: grupo.diasClaseAgrupados ?? 'Sin horario',
               todosLosGrupos: widget.todosLosGrupos,
               initialDate: registro.fecha,
               highlightDateSelector: true,
@@ -1860,7 +1860,7 @@ class _PendingRegistroDetailPage extends StatelessWidget {
                       Expanded(
                         child: Text(
                           hasSnapshot
-                              ? 'Cambios desde la última subida'
+                              ? 'Cambios desde el último envío'
                               : 'Lista marcada',
                           style: TextStyle(
                             color: palette.textPrimary,

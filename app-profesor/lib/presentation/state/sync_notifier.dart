@@ -37,7 +37,7 @@ class SyncNotifier extends StateNotifier<SyncState> {
       state = SyncState(
         stage: SyncStage.completed,
         grupos: grupos,
-        message: 'Datos sincronizados',
+        message: 'Información actualizada',
       );
     } catch (e) {
       state = SyncState(stage: SyncStage.failed, message: e.toString());

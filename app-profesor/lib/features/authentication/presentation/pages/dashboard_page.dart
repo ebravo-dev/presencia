@@ -13,7 +13,7 @@ class DashboardPage extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dashboard'),
+        title: const Text('Inicio'),
         backgroundColor: Colors.blue.shade600,
         foregroundColor: Colors.white,
         actions: [
@@ -26,7 +26,7 @@ class DashboardPage extends ConsumerWidget {
                   children: [
                     Icon(Icons.logout),
                     SizedBox(width: 8),
-                    Text('Cerrar Sesión'),
+                    Text('Cerrar sesión'),
                   ],
                 ),
               ),
@@ -108,7 +108,7 @@ class DashboardPage extends ConsumerWidget {
 
                   // Quick Actions
                   Text(
-                    'Acciones Rápidas',
+                    'Acciones rápidas',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -124,7 +124,7 @@ class DashboardPage extends ConsumerWidget {
                     children: [
                       _ActionCard(
                         icon: Icons.group,
-                        title: 'Mis Grupos',
+                        title: 'Mis grupos',
                         subtitle: 'Ver grupos asignados',
                         onTap: () {
                           // TODO: Navigate to groups
@@ -132,14 +132,14 @@ class DashboardPage extends ConsumerWidget {
                       ),
                       _ActionCard(
                         icon: Icons.check_circle,
-                        title: 'Tomar Asistencia',
+                        title: 'Tomar asistencia',
                         subtitle: 'Marcar asistencia',
                         onTap: () {
                           // TODO: Navigate to attendance
                         },
                       ),
                       _ActionCard(
-                        icon: Icons.bluetooth,
+                        icon: Icons.location_on_outlined,
                         title: 'Confirmar ubicación',
                         subtitle: 'Comprobar presencia en el aula',
                         onTap: () {
@@ -163,7 +163,7 @@ class DashboardPage extends ConsumerWidget {
                   if (authState.groups != null &&
                       authState.groups!.isNotEmpty) ...[
                     Text(
-                      'Mis Grupos (${authState.groups!.length})',
+                      'Mis grupos (${authState.groups!.length})',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),

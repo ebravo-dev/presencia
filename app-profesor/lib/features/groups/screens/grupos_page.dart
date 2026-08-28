@@ -419,7 +419,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeInOut,
                   child: Text(
-                    'Mis Clases',
+                    'Mis clases',
                     style: TextStyle(
                       color: palette.textPrimary,
                       fontSize: 34,
@@ -637,7 +637,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                                 // Text
                                 Expanded(
                                   child: Text(
-                                    'Asistencias pendientes por subir',
+                                    'Asistencias pendientes por enviar',
                                     style: TextStyle(
                                       color: palette.textPrimary.withValues(
                                         alpha: 0.92,
@@ -1204,20 +1204,23 @@ class _GruposPageState extends ConsumerState<GruposPage>
                       await Navigator.of(context).push(
                         PageRouteBuilder(
                           pageBuilder:
-                              (context, animation, secondaryAnimation) =>
-                                  GrupoDetailPage(
-                                    grupo: grupo,
-                                    gradientColors: gradientColors,
-                                    accentColor: accentColor,
-                                    horario:
-                                        grupo.horarioParaDia(
-                                          DateTime.now().weekday,
-                                        ) ??
-                                        grupo.horarioValido ??
-                                        '00:00-00:00',
-                                    dias: grupo.diasClaseAgrupados ?? 'N/A',
-                                    todosLosGrupos: todosLosGrupos,
-                                  ),
+                              (
+                                context,
+                                animation,
+                                secondaryAnimation,
+                              ) => GrupoDetailPage(
+                                grupo: grupo,
+                                gradientColors: gradientColors,
+                                accentColor: accentColor,
+                                horario:
+                                    grupo.horarioParaDia(
+                                      DateTime.now().weekday,
+                                    ) ??
+                                    grupo.horarioValido ??
+                                    '00:00-00:00',
+                                dias: grupo.diasClaseAgrupados ?? 'Sin horario',
+                                todosLosGrupos: todosLosGrupos,
+                              ),
                           transitionDuration: const Duration(milliseconds: 400),
                           reverseTransitionDuration: const Duration(
                             milliseconds: 350,
@@ -1936,7 +1939,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                             color: Colors.orange,
                           ),
                           title: Text(
-                            'Borrar Caché de Asistencias',
+                            'Borrar asistencias guardadas',
                             style: TextStyle(color: palette.textPrimary),
                           ),
                           subtitle: Text(
@@ -1989,7 +1992,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                         ListTile(
                           leading: const Icon(Icons.logout, color: Colors.red),
                           title: const Text(
-                            'Cerrar Sesión',
+                            'Cerrar sesión',
                             style: TextStyle(color: Colors.red),
                           ),
                           onTap: () {
@@ -2027,7 +2030,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
               const Icon(Icons.logout_rounded, color: Colors.red),
               const SizedBox(width: 12),
               Text(
-                'Cerrar Sesión',
+                'Cerrar sesión',
                 style: TextStyle(color: palette.textPrimary),
               ),
             ],
@@ -2053,7 +2056,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Cerrar Sesión'),
+              child: const Text('Cerrar sesión'),
             ),
           ],
         );
@@ -2077,7 +2080,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
               const Icon(Icons.delete_sweep, color: Colors.orange),
               const SizedBox(width: 12),
               Text(
-                'Borrar Caché',
+                'Borrar asistencias guardadas',
                 style: TextStyle(color: palette.textPrimary),
               ),
             ],
@@ -2103,7 +2106,7 @@ class _GruposPageState extends ConsumerState<GruposPage>
                 backgroundColor: Colors.orange,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Borrar Caché'),
+              child: const Text('Borrar asistencias'),
             ),
           ],
         );
@@ -2119,21 +2122,21 @@ class _GruposPageState extends ConsumerState<GruposPage>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Caché de asistencias eliminado correctamente'),
+            content: Text('Se borraron las asistencias guardadas'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
             duration: Duration(seconds: 2),
           ),
         );
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al limpiar caché: $e'),
+          const SnackBar(
+            content: Text('No pudimos borrar las asistencias guardadas.'),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 3),
+            duration: Duration(seconds: 3),
           ),
         );
       }

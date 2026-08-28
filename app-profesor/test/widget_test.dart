@@ -40,8 +40,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Universidad Autónoma de Tamaulipas'), findsOneWidget);
-    expect(find.text('Sistema de Asistencia Profesores'), findsOneWidget);
-    expect(find.text('Email institucional'), findsOneWidget);
+    expect(find.text('Sistema de asistencia para profesores'), findsOneWidget);
+    expect(find.text('Correo institucional'), findsOneWidget);
     expect(find.text('Contraseña'), findsOneWidget);
   });
 }

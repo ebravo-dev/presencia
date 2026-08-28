@@ -361,7 +361,7 @@ class ApiService {
       final profesor = AuthStorageService().getProfesor();
       final idPlantilla = int.tryParse(profesor?.id ?? '');
       if (idPlantilla == null || idPlantilla <= 0) {
-        return const Left('No se encontro el Id_Plantilla del profesor.');
+        return const Left('No pudimos encontrar la información del profesor.');
       }
 
       final requestOptions = Options(headers: {'X-UAT-Session-Id': sessionId});
@@ -1139,7 +1139,7 @@ class ApiService {
         return Right(_asMap(envelope['data']));
       }
 
-      return const Left('No pudimos vincular el UUID del alumno.');
+      return const Left('No pudimos dar de alta al alumno.');
     } on DioException catch (e) {
       final responseMessage = _asMap(
         e.response?.data,
@@ -1151,7 +1151,7 @@ class ApiService {
       return Left(errorMessage);
     } catch (e, stackTrace) {
       Logger.error('Error inesperado vinculando UUID de alumno', e, stackTrace);
-      return const Left('No pudimos vincular el UUID del alumno.');
+      return const Left('No pudimos dar de alta al alumno.');
     }
   }
 

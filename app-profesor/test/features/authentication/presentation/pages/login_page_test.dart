@@ -51,12 +51,14 @@ void main() {
 
       expect(find.byIcon(Icons.school_rounded), findsOneWidget);
       expect(find.text('Universidad Autónoma de Tamaulipas'), findsOneWidget);
-      expect(find.text('Sistema de Asistencia Profesores'), findsOneWidget);
-      expect(find.text('Acceso Profesores'), findsOneWidget);
+      expect(
+        find.text('Sistema de asistencia para profesores'),
+        findsOneWidget,
+      );
+      expect(find.text('Acceso de profesores'), findsOneWidget);
       expect(find.byKey(const Key('email_field')), findsOneWidget);
       expect(find.byKey(const Key('password_field')), findsOneWidget);
       expect(find.byKey(const Key('login_button')), findsOneWidget);
-      expect(find.text('v1.0.0'), findsOneWidget);
     });
 
     testWidgets('shows loading state while authenticating', (tester) async {
@@ -95,7 +97,7 @@ void main() {
       expect(find.byType(SingleChildScrollView), findsNothing);
       expect(find.text('Universidad Autónoma\nde Tamaulipas'), findsOneWidget);
       expect(
-        find.text('Sistema de Asistencia para Profesores'),
+        find.text('Sistema de asistencia para profesores'),
         findsOneWidget,
       );
     });

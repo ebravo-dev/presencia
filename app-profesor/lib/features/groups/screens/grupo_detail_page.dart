@@ -984,7 +984,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                       Expanded(
                         child: Text(
                           _entradaProfesor == null
-                              ? 'Marcar Entrada'
+                              ? 'Marcar entrada'
                               : '${_entradaEsTardia(_entradaProfesor!) ? 'Entrada tardía' : 'Entrada'}: ${_getFormattedDate(_entradaProfesor!)} ${_formatTime(_entradaProfesor!)}',
                           style: TextStyle(
                             color: palette.textPrimary,
@@ -1078,7 +1078,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                       Expanded(
                         child: Text(
                           _salidaProfesor == null
-                              ? 'Marcar Salida'
+                              ? 'Marcar salida'
                               : 'Salida: ${_getFormattedDate(_salidaProfesor!)} ${_formatTime(_salidaProfesor!)}',
                           style: TextStyle(
                             color: palette.textPrimary,
@@ -1159,7 +1159,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                       // Texto
                       Expanded(
                         child: Text(
-                          'Subir Asistencia',
+                          'Enviar asistencia',
                           style: TextStyle(
                             color: palette.textPrimary,
                             fontSize: 18,
@@ -1264,7 +1264,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           Text(
             locked
                 ? 'Salón confirmado para esta asistencia.'
-                : 'Escribe para filtrar y selecciona el salón donde estás. Se validará su beacon.',
+                : 'Busca y selecciona el salón donde estás. Confirmaremos tu ubicación antes de continuar.',
             style: TextStyle(
               color: palette.textSecondary,
               fontSize: 12,
@@ -1720,7 +1720,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'Subiendo asistencia',
+                  'Enviando asistencia',
                   style: TextStyle(
                     color: palette.textPrimary,
                     fontSize: 18,
@@ -1888,7 +1888,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'No se pudo subir',
+                  'No pudimos enviar la asistencia',
                   style: TextStyle(
                     color: palette.textPrimary,
                     fontSize: 20,
@@ -2121,7 +2121,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       setState(() => _studentBindingsBeingSaved.remove(matricula));
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No se pudo guardar el UUID en este dispositivo.'),
+          content: Text('No pudimos guardar la información en este celular.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -2161,8 +2161,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       SnackBar(
         content: Text(
           failure == null
-              ? 'UUID guardado en el celular y vinculado a $matricula.'
-              : 'UUID guardado en el celular. Se sincronizará al subir la asistencia.',
+              ? 'El alumno con matrícula $matricula quedó listo para la detección automática.'
+              : 'La información se guardó en este celular y se enviará junto con la asistencia.',
         ),
         backgroundColor: failure == null ? Colors.green : Colors.orange,
       ),
@@ -2384,8 +2384,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         SnackBar(
           content: Text(
             externalIBeaconUuids.isNotEmpty
-                ? 'Activa Ubicación para detectar los iPhone registrados.'
-                : 'Activa Bluetooth para detectar alumnos.',
+                ? 'Permite el acceso a tu ubicación para detectar a los alumnos.'
+                : 'Activa Bluetooth para detectar a los alumnos.',
           ),
           backgroundColor: Colors.orange,
         ),
@@ -2397,7 +2397,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Sin Ubicación no se detectarán iPhone externos; Android seguirá funcionando.',
+            'Algunos alumnos no podrán detectarse hasta que permitas el acceso a tu ubicación.',
           ),
           backgroundColor: Colors.orange,
         ),
@@ -2406,7 +2406,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Sin Bluetooth no se detectarán alumnos con nuestra app; iBeacon seguirá funcionando.',
+            'Algunos alumnos no podrán detectarse hasta que permitas el acceso a dispositivos cercanos.',
           ),
           backgroundColor: Colors.orange,
         ),
@@ -2473,10 +2473,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           SnackBar(
             content: Text(
               externalIBeaconUuids.isNotEmpty && confirmationsByUuid.isEmpty
-                  ? 'Activa Ubicación para detectar los iPhone registrados.'
+                  ? 'Permite el acceso a tu ubicación para detectar a los alumnos.'
                   : error.code == 'BLUETOOTH_OFF'
-                  ? 'Activa Bluetooth para detectar alumnos.'
-                  : 'Activa el permiso de Bluetooth en Configuración.',
+                  ? 'Activa Bluetooth para iniciar la detección.'
+                  : 'Permite el acceso a dispositivos cercanos desde Configuración.',
             ),
             backgroundColor: Colors.orange,
           ),
@@ -3026,8 +3026,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                 ),
                 child: Icon(
                   _isStudentBeaconScanning
-                      ? Icons.bluetooth_searching_rounded
-                      : Icons.bluetooth_connected_rounded,
+                      ? Icons.person_search_rounded
+                      : Icons.sensors_rounded,
                   color: widget.gradientColors[0],
                   size: 24,
                 ),
@@ -3051,7 +3051,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                     Text(
                       _isStudentBeaconScanning
                           ? '$detectedCount detectados de $linkedCount disponibles'
-                          : '$linkedCount alumnos disponibles · Android y iBeacon',
+                          : linkedCount == 1
+                          ? '1 alumno disponible'
+                          : '$linkedCount alumnos disponibles',
                       style: TextStyle(
                         color: palette.textSecondary,
                         fontSize: 13,
@@ -3178,7 +3180,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           ),
           const SizedBox(width: 8),
           Text(
-            'Escaneo sin límite de tiempo',
+            'Detección sin límite de tiempo',
             style: TextStyle(color: palette.textSecondary, fontSize: 13),
           ),
         ],
@@ -3300,7 +3302,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'No pudimos consultar qué alumnos ya tienen UUID.',
+                    'No pudimos consultar qué alumnos están listos para la detección.',
                     style: TextStyle(
                       color: palette.textSecondary,
                       fontSize: 13,
@@ -3561,13 +3563,13 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
-                                    Icons.link_rounded,
+                                    Icons.check_circle_outline_rounded,
                                     color: Colors.green.shade600,
                                     size: 16,
                                   ),
                                   const SizedBox(width: 5),
                                   Text(
-                                    'UUID vinculado',
+                                    'Listo para detección',
                                     style: TextStyle(
                                       color: Colors.green.shade600,
                                       fontSize: 12,
@@ -3604,13 +3606,13 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                                           ),
                                         )
                                       : const Icon(
-                                          Icons.add_link_rounded,
+                                          Icons.person_add_alt_1_rounded,
                                           size: 18,
                                         ),
                                   label: Text(
                                     isSavingBinding
-                                        ? 'Vinculando...'
-                                        : 'Dar de alta UUID',
+                                        ? 'Guardando...'
+                                        : 'Dar de alta',
                                   ),
                                 ),
                               ),
@@ -3705,7 +3707,9 @@ class _StudentUuidBindingDialogState extends State<_StudentUuidBindingDialog> {
   void _submit() {
     final uuid = _controller.text.trim().toLowerCase();
     if (!_canonicalUuidPattern.hasMatch(uuid)) {
-      setState(() => _validationError = 'Captura un UUID válido.');
+      setState(
+        () => _validationError = 'Revisa el código e inténtalo de nuevo.',
+      );
       return;
     }
     Navigator.of(context).pop(uuid);
@@ -3714,7 +3718,7 @@ class _StudentUuidBindingDialogState extends State<_StudentUuidBindingDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Dar de alta por UUID'),
+      title: const Text('Dar de alta'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -3736,14 +3740,14 @@ class _StudentUuidBindingDialogState extends State<_StudentUuidBindingDialog> {
               maxLength: 36,
               onSubmitted: (_) => _submit(),
               decoration: InputDecoration(
-                labelText: 'UUID del beacon iOS',
+                labelText: 'Código de asistencia',
                 hintText: '12345678-1234-4234-9234-123456789abc',
                 errorText: _validationError,
               ),
             ),
             const SizedBox(height: 4),
             const Text(
-              'El UUID quedará vinculado a esta matrícula y estará disponible para el pase automático.',
+              'Ingresa el código de asistencia del alumno. Al guardarlo, quedará listo para la detección automática.',
               style: TextStyle(fontSize: 12),
             ),
           ],
@@ -3757,8 +3761,8 @@ class _StudentUuidBindingDialogState extends State<_StudentUuidBindingDialog> {
         FilledButton.icon(
           key: const ValueKey('confirm-student-uuid-binding'),
           onPressed: _submit,
-          icon: const Icon(Icons.link_rounded),
-          label: const Text('Vincular'),
+          icon: const Icon(Icons.save_outlined),
+          label: const Text('Guardar'),
         ),
       ],
     );
@@ -3991,7 +3995,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
               shape: BoxShape.circle,
             ),
             child: Icon(
-              Icons.bluetooth_searching_rounded,
+              Icons.location_searching_rounded,
               color: widget.gradientColors[0],
               size: 44,
             ),
@@ -4020,7 +4024,7 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
             shape: BoxShape.circle,
           ),
           child: const Icon(
-            Icons.bluetooth_disabled_rounded,
+            Icons.location_off_rounded,
             color: Colors.orange,
             size: 44,
           ),

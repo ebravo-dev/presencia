@@ -59,7 +59,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       Logger.error('Error verificando estado de auth', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.unauthenticated,
-        errorMessage: 'Error verificando autenticación',
+        errorMessage: 'No pudimos comprobar tu acceso.',
       );
     }
   }
@@ -86,7 +86,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
       } else {
         state = state.copyWith(
           status: AuthStatus.error,
-          errorMessage: result.message ?? 'Error desconocido durante login',
+          errorMessage:
+              result.message ?? 'No pudimos iniciar sesión. Revisa tus datos.',
         );
 
         Logger.error('Login fallido: ${result.message}');
@@ -95,7 +96,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       Logger.error('Excepción durante login', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Error inesperado durante login',
+        errorMessage: 'No pudimos iniciar sesión. Intenta de nuevo.',
       );
     }
   }

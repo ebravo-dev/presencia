@@ -71,9 +71,7 @@ void main() {
         expect(result.token, isNull);
         expect(
           result.message,
-          equals(
-            'Tu usuario o contraseña son incorrectos. Revisa tus datos.',
-          ),
+          equals('Tu usuario o contraseña son incorrectos. Revisa tus datos.'),
         );
       });
 
@@ -90,7 +88,7 @@ void main() {
         expect(result.token, isNull);
         expect(
           result.message,
-          equals('Contraseña incorrecta. Intente nuevamente.'),
+          equals('Contraseña incorrecta. Intenta de nuevo.'),
         );
       });
 
@@ -102,9 +100,7 @@ void main() {
         expect(result.isSuccess, isFalse);
         expect(
           result.message,
-          equals(
-            'Tu usuario o contraseña son incorrectos. Revisa tus datos.',
-          ),
+          equals('Tu usuario o contraseña son incorrectos. Revisa tus datos.'),
         );
       });
 
@@ -119,7 +115,7 @@ void main() {
         expect(result.isSuccess, isFalse);
         expect(
           result.message,
-          equals('Contraseña incorrecta. Intente nuevamente.'),
+          equals('Contraseña incorrecta. Intenta de nuevo.'),
         );
       });
 

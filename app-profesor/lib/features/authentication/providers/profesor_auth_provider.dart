@@ -150,7 +150,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
       Logger.error('Error inesperado en login', e, stackTrace);
       state = state.copyWith(
         status: ProfesorAuthStatus.error,
-        errorMessage: 'Error inesperado durante el login',
+        errorMessage: 'No pudimos iniciar sesión. Intenta de nuevo.',
       );
     }
   }
@@ -227,7 +227,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
               isLoadingGroups: false,
               groupsNotice:
                   'No se pudo verificar el ciclo actual. Estas son las '
-                  'últimas clases guardadas en el dispositivo.',
+                  'últimas clases guardadas en este equipo.',
             );
           } else {
             state = state.copyWith(
@@ -299,7 +299,7 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
           isLoadingGroups: false,
           groupsNotice:
               'No se pudo verificar el ciclo actual. Estas son las últimas '
-              'clases guardadas en el dispositivo.',
+              'clases guardadas en este equipo.',
         );
       } else {
         state = state.copyWith(

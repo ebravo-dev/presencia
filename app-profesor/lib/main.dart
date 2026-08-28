@@ -303,7 +303,7 @@ class _DebugModeOverlay extends StatelessWidget {
                     ],
                   ),
                   child: const Text(
-                    'MODO DEBUG · REPORTES · SIN UAT',
+                    'VERSIÓN DE PRUEBA · SIN ENVÍO INSTITUCIONAL',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Color(0xFF111827),

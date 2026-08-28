@@ -48,10 +48,10 @@ class _LoginFormState extends ConsumerState<LoginForm> {
             enabled: !authState.isLoading,
             validator: (value) {
               if (value == null || value.trim().isEmpty) {
-                return 'Por favor ingrese su usuario';
+                return 'Ingresa tu correo';
               }
               if (!value.contains('@')) {
-                return 'Debe incluir un dominio válido';
+                return 'Ingresa un correo institucional válido';
               }
               final username = value.split('@')[0];
               if (username.length < 3) {
@@ -108,7 +108,7 @@ class _LoginFormState extends ConsumerState<LoginForm> {
             ),
             validator: (value) {
               if (value == null || value.trim().isEmpty) {
-                return 'Por favor ingrese su contraseña';
+                return 'Ingresa tu contraseña';
               }
               if (value.trim().length < 6) {
                 return 'La contraseña debe tener al menos 6 caracteres';
@@ -177,7 +177,7 @@ class _LoginFormState extends ConsumerState<LoginForm> {
                       ),
                     )
                   : const Text(
-                      'Iniciar Sesión',
+                      'Iniciar sesión',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,

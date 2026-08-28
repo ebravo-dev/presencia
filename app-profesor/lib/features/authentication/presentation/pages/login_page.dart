@@ -73,7 +73,7 @@ class LoginPage extends ConsumerWidget {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Sistema de Asistencia para Profesores',
+                  'Sistema de asistencia para profesores',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: Colors.grey.shade600,
                     fontWeight: FontWeight.w400,
@@ -129,7 +129,7 @@ class LoginPage extends ConsumerWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Sistema de Asistencia Profesores',
+              'Sistema de asistencia para profesores',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: UATColors.neutral80,
                 fontWeight: FontWeight.w400,
@@ -140,13 +140,6 @@ class LoginPage extends ConsumerWidget {
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 400),
               child: _buildLoginCard(context, authState),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'v1.0.0',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: Colors.grey.shade400),
             ),
           ],
         ),
@@ -198,7 +191,7 @@ class LoginPage extends ConsumerWidget {
             child: Column(
               children: [
                 Text(
-                  'Acceso Profesores',
+                  'Acceso de profesores',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w600,
                     color: UATColors.neutral,
@@ -206,7 +199,7 @@ class LoginPage extends ConsumerWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Inicia sesión o regístrate con tu cuenta institucional',
+                  'Inicia sesión con tu cuenta institucional',
                   style: Theme.of(
                     context,
                   ).textTheme.bodySmall?.copyWith(color: UATColors.neutral80),

@@ -51,12 +51,12 @@
 		<string>bluetooth-central</string>
 	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Se necesita Bluetooth para detectar alumnos cercanos y pasar lista automáticamente.</string>
+	<string>Permite el acceso a dispositivos cercanos para tomar asistencia automáticamente.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Se necesita Bluetooth para detectar alumnos cercanos y pasar lista automáticamente.</string>
+	<string>Permite el acceso a dispositivos cercanos para tomar asistencia automáticamente.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Se necesita ubicación para detectar beacons del salón de clases.</string>
+	<string>Permite el acceso a tu ubicación para confirmar que estás en el salón.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Se necesita ubicación para detectar beacons del salón de clases.</string>
+	<string>Permite el acceso a tu ubicación para confirmar que estás en el salón.</string>
 </dict>
 </plist>

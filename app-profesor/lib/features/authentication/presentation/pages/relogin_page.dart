@@ -77,7 +77,7 @@ class _ReloginPageState extends ConsumerState<ReloginPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Tu contraseña guardada ya no es válida. Si la cambiaste, ingresa la nueva para continuar.',
+                    'Necesitamos que ingreses de nuevo tu contraseña para continuar.',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                   ),
@@ -213,7 +213,7 @@ class _ReloginPageState extends ConsumerState<ReloginPage> {
                                 .logout();
                           },
                     child: Text(
-                      'Cerrar sesión completamente',
+                      'Cerrar sesión',
                       style: TextStyle(color: Colors.grey[500], fontSize: 13),
                     ),
                   ),

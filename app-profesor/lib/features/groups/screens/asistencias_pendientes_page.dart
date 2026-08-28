@@ -278,7 +278,7 @@ class _AsistenciasPendientesPageState
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'No se encontraron alumnos para subir. Verifica los datos del grupo.',
+              'No encontramos alumnos en esta lista. Revisa la información del grupo.',
             ),
             backgroundColor: Colors.orange,
             behavior: SnackBarBehavior.floating,
@@ -455,7 +455,7 @@ class _AsistenciasPendientesPageState
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          'Asistencias Pendientes',
+          'Asistencias pendientes',
           style: TextStyle(
             color: palette.textPrimary,
             fontSize: 18,
@@ -630,7 +630,7 @@ class _AsistenciasPendientesPageState
           ),
           const SizedBox(height: 8),
           Text(
-            'No hay asistencias pendientes de subir',
+            'No hay asistencias pendientes de enviar',
             style: TextStyle(color: palette.textSecondary, fontSize: 14),
           ),
         ],
@@ -854,7 +854,7 @@ class _AsistenciasPendientesPageState
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            'ASISTENCIA ALUMNOS',
+                            'ASISTENCIA DE ALUMNOS',
                             style: TextStyle(
                               color: palette.textSecondary,
                               fontSize: 11,

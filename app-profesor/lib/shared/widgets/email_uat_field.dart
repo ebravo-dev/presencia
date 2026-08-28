@@ -120,8 +120,8 @@ class _EmailUATFieldState extends State<EmailUATField> {
         enableSuggestions: true,
         autofillHints: const [AutofillHints.email],
         decoration: const InputDecoration(
-          labelText: 'Email institucional',
-          hintText: 'Escribe tu usuario (ej: profesor.apellido)',
+          labelText: 'Correo institucional',
+          hintText: 'Ejemplo: nombre.apellido',
           prefixIcon: Icon(Icons.email_outlined),
         ),
         validator: widget.validator,
