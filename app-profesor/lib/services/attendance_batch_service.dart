@@ -1,8 +1,11 @@
 import '../data/models/uat_asistencia_model.dart';
+import '../core/utils/utils.dart';
+import '../shared/models/alumno.dart';
 import '../shared/models/asistencia_registro.dart';
 import '../shared/models/grupo.dart';
 import 'api_service.dart';
 import 'asistencia_local_service.dart';
+import 'auth_storage_service.dart';
 
 class PreparedAttendanceBatch {
   final List<Map<String, dynamic>> payload;
@@ -33,12 +36,15 @@ class DebugAttendanceBatchResult {
 class AttendanceBatchService {
   final ApiService _apiService;
   final AsistenciaLocalService _localService;
+  final AuthStorageService _authStorage;
 
   AttendanceBatchService({
     ApiService? apiService,
     AsistenciaLocalService? localService,
+    AuthStorageService? authStorage,
   }) : _apiService = apiService ?? ApiService(),
-       _localService = localService ?? AsistenciaLocalService();
+       _localService = localService ?? AsistenciaLocalService(),
+       _authStorage = authStorage ?? AuthStorageService();
 
   PreparedAttendanceBatch prepare(
     List<AsistenciaRegistro> records,
@@ -58,31 +64,16 @@ class AttendanceBatchService {
         continue;
       }
 
-      final students = <String, ({int id, int listNumber})>{};
-      for (final entry in group.students.asMap().entries) {
-        final student = entry.value;
-        final id = int.tryParse(student.id ?? '');
-        if (id == null || id <= 0) continue;
-        final mapped = (id: id, listNumber: entry.key + 1);
-        students[student.id!] = mapped;
-        students[student.number.toString()] = mapped;
-        final matricula = student.matricula;
-        if (matricula != null && matricula.isNotEmpty) {
-          students[matricula.trim().toUpperCase()] = mapped;
-        }
-      }
-
-      final attendances = <Map<String, dynamic>>[];
-      record.asistenciasAlumnos.forEach((key, present) {
-        final student = students[key] ?? students[key.trim().toUpperCase()];
-        if (student == null) return;
-        attendances.add({
-          'id_alumno': student.id,
-          'num_pase_lista': student.listNumber,
-          'num_dia': record.fecha.weekday,
-          'sn_asistencia': present,
-        });
-      });
+      final attendances = _buildAttendances(record, group)
+          .map(
+            (item) => {
+              'id_alumno': item['id_alumno'],
+              'num_pase_lista': item['num_pase_lista'],
+              'num_dia': item['num_dia'],
+              'sn_asistencia': item['sn_asistencia'],
+            },
+          )
+          .toList(growable: false);
       if (attendances.isEmpty) {
         skipped++;
         continue;
@@ -159,6 +150,11 @@ class AttendanceBatchService {
     required List<AsistenciaRegistro> records,
     required List<Grupo> groups,
   }) async {
+    // Las altas de UUID se pueden usar localmente desde el primer momento.
+    // Al pulsar "Subir" aprovechamos la conexión para confirmar las que
+    // quedaron pendientes, sin bloquear el envío de la lista.
+    await syncPendingStudentBindings();
+
     var accepted = 0;
     var skipped = 0;
     var failed = 0;
@@ -210,6 +206,38 @@ class AttendanceBatchService {
     );
   }
 
+  Future<void> syncPendingStudentBindings() async {
+    final pendingBindings = _authStorage.getPendingStudentDeviceBindings();
+    for (final binding in pendingBindings) {
+      final groupId = binding['externalGroupId']?.toString().trim() ?? '';
+      final matricula = binding['matricula']?.toString().trim() ?? '';
+      final uuid = binding['attendanceUuid']?.toString().trim() ?? '';
+      if (groupId.isEmpty || matricula.isEmpty || uuid.isEmpty) continue;
+
+      final result = await _apiService.bindStudentDeviceByProfessor(
+        externalGroupId: groupId,
+        matricula: matricula,
+        attendanceUuid: uuid,
+      );
+      await result.fold(
+        (error) async {
+          Logger.error(
+            'El UUID de $matricula sigue pendiente de sincronización: $error',
+          );
+        },
+        (response) async {
+          await _authStorage.saveStudentDeviceBinding(
+            externalGroupId: groupId,
+            matricula: matricula,
+            attendanceUuid: uuid,
+            pendingSync: false,
+            deviceBindingId: response['deviceBindingId']?.toString(),
+          );
+        },
+      );
+    }
+  }
+
   /// Completes the local record only when it still matches the snapshot that
   /// was accepted by the server. Later edits remain pending as a new revision.
   Future<bool> markCompletedIfUnchanged(String clientRecordId) async {
@@ -252,38 +280,38 @@ class AttendanceBatchService {
     AsistenciaRegistro record,
     Grupo group,
   ) {
-    final students = <String, ({String id, int? numericId, int listNumber})>{};
+    if (record.asistenciasAlumnos.isEmpty) return const [];
+
+    final attendances = <Map<String, dynamic>>[];
     for (final entry in group.students.asMap().entries) {
       final student = entry.value;
       final id = student.id;
       if (id == null || id.isEmpty) continue;
       final parsedId = int.tryParse(id);
-      final mapped = (
-        id: id,
-        numericId: parsedId != null && parsedId > 0 ? parsedId : null,
-        listNumber: entry.key + 1,
-      );
-      students[id] = mapped;
-      students[student.number.toString()] = mapped;
-      final matricula = student.matricula;
-      if (matricula != null && matricula.isNotEmpty) {
-        students[matricula.trim().toUpperCase()] = mapped;
-      }
-    }
-
-    final attendances = <Map<String, dynamic>>[];
-    record.asistenciasAlumnos.forEach((key, present) {
-      final student = students[key] ?? students[key.trim().toUpperCase()];
-      if (student == null) return;
+      final present = _attendanceForStudent(record, student);
       attendances.add({
-        'studentId': student.id,
-        if (student.numericId != null) 'id_alumno': student.numericId,
-        'num_pase_lista': student.listNumber,
+        'studentId': id,
+        if (parsedId != null && parsedId > 0) 'id_alumno': parsedId,
+        'num_pase_lista': entry.key + 1,
         'num_dia': record.fecha.weekday,
         'sn_asistencia': present,
         'status': present ? 'PRESENT' : 'ABSENT',
       });
-    });
+    }
     return attendances;
+  }
+
+  bool _attendanceForStudent(AsistenciaRegistro record, Alumno student) {
+    final matricula = student.matricula?.toString().trim().toUpperCase();
+    final id = student.id?.toString().trim();
+    final number = student.number.toString();
+    for (final key in [matricula, id, number]) {
+      if (key != null &&
+          key.isNotEmpty &&
+          record.asistenciasAlumnos.containsKey(key)) {
+        return record.asistenciasAlumnos[key] ?? false;
+      }
+    }
+    return false;
   }
 }

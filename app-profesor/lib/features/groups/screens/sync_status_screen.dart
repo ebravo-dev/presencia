@@ -737,11 +737,10 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
               width: 240,
               child: _isCredentialError
                   ? ElevatedButton.icon(
-                      onPressed: () {
-                        // NOW clear everything and redirect to login
-                        _authStorage.setSyncInProgress(false);
-                        ref.read(profesorAuthProvider.notifier).logout();
-                        context.go('/login');
+                      onPressed: () async {
+                        // logout limpia el indicador y el resto de la sesión;
+                        // el router navega al login al terminar la limpieza local.
+                        await ref.read(profesorAuthProvider.notifier).logout();
                       },
                       icon: const Icon(Icons.login),
                       label: const Text('Ir al inicio de sesión'),

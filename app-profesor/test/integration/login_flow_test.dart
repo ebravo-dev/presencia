@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:appprofesoresuniversidad/services/auth_storage_service.dart';
 import 'package:appprofesoresuniversidad/services/api_service.dart';
 import 'package:appprofesoresuniversidad/features/authentication/providers/profesor_auth_provider.dart';
+import 'package:appprofesoresuniversidad/main.dart' as app;
 import 'package:appprofesoresuniversidad/shared/models/profesor.dart';
 import 'package:appprofesoresuniversidad/shared/models/grupo.dart';
 
@@ -86,6 +88,42 @@ void main() {
       expect(savedProfesor?.name, 'Test Profesor');
       expect(savedProfesor?.institutionalEmail, 'test@uat.edu.mx');
     });
+
+    test(
+      'guarda UUIDs de alumnos localmente hasta su sincronización',
+      () async {
+        await authStorage.saveStudentDeviceBinding(
+          externalGroupId: '947699',
+          matricula: ' 2251330008 ',
+          attendanceUuid: '12345678-1234-4234-9234-123456789ABC',
+        );
+
+        final cached = authStorage.getStudentDeviceBindings(
+          matriculas: const ['2251330008'],
+        );
+        expect(cached, hasLength(1));
+        expect(cached.single['matricula'], '2251330008');
+        expect(
+          cached.single['attendanceUuid'],
+          '12345678-1234-4234-9234-123456789abc',
+        );
+        expect(cached.single['pendingSync'], isTrue);
+
+        await authStorage.saveStudentDeviceBinding(
+          externalGroupId: '947699',
+          matricula: '2251330008',
+          attendanceUuid: '12345678-1234-4234-9234-123456789abc',
+          pendingSync: false,
+          deviceBindingId: 'binding-1',
+        );
+
+        expect(authStorage.getPendingStudentDeviceBindings(), isEmpty);
+        expect(
+          authStorage.getStudentDeviceBindings().single['deviceBindingId'],
+          'binding-1',
+        );
+      },
+    );
 
     test('Escenario 3: Auto-login con JWT guardado válido', () async {
       // Arrange
@@ -265,42 +303,237 @@ void main() {
       container.dispose();
     });
 
-    test('logout revoca la sesión remota antes de limpiar el equipo', () async {
-      const validToken = 'uat-session-activa';
+    test(
+      'logout limpia el equipo sin esperar a la revocación remota',
+      () async {
+        const validToken = 'uat-session-activa';
+        final testProfesor = Profesor(
+          id: '123',
+          name: 'Test Profesor',
+          institutionalEmail: 'test@uat.edu.mx',
+        );
+        await authStorage.saveSession(
+          token: validToken,
+          profesor: testProfesor,
+        );
+        final apiService = MockApiService();
+        when(() => apiService.getGruposProfesor(validToken)).thenAnswer(
+          (_) async => const Right(
+            ProfesorGroupsData(
+              grupos: <Grupo>[],
+              beacons: <Map<String, dynamic>>[],
+              cycle: AcademicCycleContext(
+                externalId: 152,
+                year: 2026,
+                term: 3,
+                name: '2026 - 3 OTOÑO',
+              ),
+            ),
+          ),
+        );
+        final remoteLogout = Completer<Either<String, bool>>();
+        when(
+          () => apiService.logoutProfesor(validToken),
+        ).thenAnswer((_) => remoteLogout.future);
+        final notifier = ProfesorAuthNotifier(apiService, authStorage);
+
+        await notifier.checkStoredSession();
+        await authStorage.cacheUatPasswordForProcess('contraseña-protegida');
+        await authStorage.setSyncInProgress(true);
+        await authStorage.saveBeacons(const [
+          {'classroom': 'A1', 'uuid': 'beacon-de-prueba'},
+        ]);
+        final logout = notifier.logout();
+        await untilCalled(() => apiService.logoutProfesor(validToken));
+
+        verify(() => apiService.logoutProfesor(validToken)).called(1);
+        expect(notifier.state.status, ProfesorAuthStatus.unauthenticated);
+        expect(authStorage.hasActiveSession(), isFalse);
+        expect(authStorage.getProfesor(), isNull);
+        expect(authStorage.getGrupos(), isNull);
+        expect(authStorage.getBeacons(), isNull);
+        expect(authStorage.getCachedUatPassword(), isNull);
+        expect(authStorage.isSyncInProgress(), isFalse);
+
+        remoteLogout.complete(const Right(true));
+        await logout;
+      },
+    );
+
+    test(
+      'un 401 tardío no revive la pantalla de contraseña tras logout',
+      () async {
+        const validToken = 'uat-session-activa';
+        final testProfesor = Profesor(
+          id: '123',
+          name: 'Test Profesor',
+          institutionalEmail: 'test@uat.edu.mx',
+        );
+        await authStorage.saveSession(
+          token: validToken,
+          profesor: testProfesor,
+        );
+
+        final apiService = MockApiService();
+        when(
+          () => apiService.logoutProfesor(validToken),
+        ).thenAnswer((_) async => const Right(true));
+        final notifier = ProfesorAuthNotifier(apiService, authStorage);
+
+        await notifier.logout();
+        notifier.markSessionExpired();
+
+        expect(notifier.state.status, ProfesorAuthStatus.unauthenticated);
+        expect(notifier.state.profesor, isNull);
+        expect(authStorage.hasActiveSession(), isFalse);
+      },
+    );
+
+    test(
+      'el router recibe el cambio de reautenticación a sesión cerrada',
+      () async {
+        const validToken = 'uat-session-activa';
+        final testProfesor = Profesor(
+          id: '123',
+          name: 'Test Profesor',
+          institutionalEmail: 'test@uat.edu.mx',
+        );
+        await authStorage.saveSession(
+          token: validToken,
+          profesor: testProfesor,
+        );
+
+        final apiService = MockApiService();
+        when(() => apiService.getGruposProfesor(validToken)).thenAnswer(
+          (_) async => const Right(
+            ProfesorGroupsData(
+              grupos: <Grupo>[],
+              beacons: <Map<String, dynamic>>[],
+              cycle: AcademicCycleContext(
+                externalId: 152,
+                year: 2026,
+                term: 3,
+                name: '2026 - 3 OTOÑO',
+              ),
+            ),
+          ),
+        );
+        final container = ProviderContainer(
+          overrides: [apiServiceProvider.overrideWithValue(apiService)],
+        );
+        final routeListenable = container.read(app.authStateListenableProvider);
+        final notifier = container.read(profesorAuthProvider.notifier);
+        await notifier.checkStoredSession();
+        notifier.markSessionExpired();
+        expect(notifier.state.status, ProfesorAuthStatus.sessionExpired);
+
+        var routerNotifications = 0;
+        routeListenable.addListener(() => routerNotifications++);
+        await notifier.logout();
+
+        expect(notifier.state.status, ProfesorAuthStatus.unauthenticated);
+        expect(routerNotifications, greaterThan(0));
+        container.dispose();
+      },
+    );
+
+    test(
+      'token expirado sin credencial protegida va al login completo',
+      () async {
+        const expiredToken =
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2MDAwMDAwMDB9.test';
+        final testProfesor = Profesor(
+          id: '123',
+          name: 'Test Profesor',
+          institutionalEmail: 'test@uat.edu.mx',
+        );
+        await authStorage.saveSession(
+          token: expiredToken,
+          profesor: testProfesor,
+        );
+
+        final apiService = MockApiService();
+        final notifier = ProfesorAuthNotifier(apiService, authStorage);
+
+        await notifier.checkStoredSession();
+
+        expect(notifier.state.status, ProfesorAuthStatus.unauthenticated);
+        expect(notifier.state.isSessionExpired, isFalse);
+        expect(authStorage.hasActiveSession(), isFalse);
+        verifyNever(
+          () => apiService.loginProfesor(
+            email: any(named: 'email'),
+            password: any(named: 'password'),
+          ),
+        );
+      },
+    );
+
+    test('sólo una contraseña rechazada abre la reautenticación', () async {
+      const expiredToken =
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2MDAwMDAwMDB9.test';
       final testProfesor = Profesor(
         id: '123',
         name: 'Test Profesor',
         institutionalEmail: 'test@uat.edu.mx',
       );
-      await authStorage.saveSession(token: validToken, profesor: testProfesor);
+      await authStorage.saveSession(
+        token: expiredToken,
+        profesor: testProfesor,
+      );
+      await authStorage.cacheUatPasswordForProcess('contraseña-anterior');
 
       final apiService = MockApiService();
-      when(() => apiService.getGruposProfesor(validToken)).thenAnswer(
-        (_) async => const Right(
-          ProfesorGroupsData(
-            grupos: <Grupo>[],
-            beacons: <Map<String, dynamic>>[],
-            cycle: AcademicCycleContext(
-              externalId: 152,
-              year: 2026,
-              term: 3,
-              name: '2026 - 3 OTOÑO',
-            ),
-          ),
-        ),
-      );
       when(
-        () => apiService.logoutProfesor(validToken),
-      ).thenAnswer((_) async => const Right(true));
+        () => apiService.loginProfesor(
+          email: testProfesor.institutionalEmail,
+          password: 'contraseña-anterior',
+        ),
+      ).thenAnswer((_) async => const Left('Credenciales inválidas'));
+      when(() => apiService.lastLoginCredentialsRejected).thenReturn(true);
       final notifier = ProfesorAuthNotifier(apiService, authStorage);
 
       await notifier.checkStoredSession();
-      await notifier.logout();
 
-      verify(() => apiService.logoutProfesor(validToken)).called(1);
-      expect(notifier.state.status, ProfesorAuthStatus.unauthenticated);
-      expect(authStorage.hasActiveSession(), isFalse);
+      expect(notifier.state.status, ProfesorAuthStatus.sessionExpired);
+      expect(notifier.state.profesor?.id, testProfesor.id);
+      expect(notifier.state.token, isNull);
+      expect(notifier.state.errorMessage, contains('contraseña'));
     });
+
+    test(
+      'una falla de red al renovar no abre la pantalla de contraseña',
+      () async {
+        const expiredToken =
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2MDAwMDAwMDB9.test';
+        final testProfesor = Profesor(
+          id: '123',
+          name: 'Test Profesor',
+          institutionalEmail: 'test@uat.edu.mx',
+        );
+        await authStorage.saveSession(
+          token: expiredToken,
+          profesor: testProfesor,
+        );
+        await authStorage.cacheUatPasswordForProcess('contraseña-vigente');
+
+        final apiService = MockApiService();
+        when(
+          () => apiService.loginProfesor(
+            email: testProfesor.institutionalEmail,
+            password: 'contraseña-vigente',
+          ),
+        ).thenAnswer((_) async => const Left('Sin conexión'));
+        when(() => apiService.lastLoginCredentialsRejected).thenReturn(false);
+        final notifier = ProfesorAuthNotifier(apiService, authStorage);
+
+        await notifier.checkStoredSession();
+
+        expect(notifier.state.status, ProfesorAuthStatus.authenticated);
+        expect(notifier.state.isSessionExpired, isFalse);
+        expect(notifier.state.profesor?.id, testProfesor.id);
+      },
+    );
 
     test(
       'login nuevo no rescata clases antiguas si falla el ciclo actual',

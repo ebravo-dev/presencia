@@ -25,6 +25,8 @@ class AuthStorageService {
   static const String _syncInProgressKey = 'sync_in_progress';
   static const String _legacyPasswordKey = 'encrypted_password';
   static const String _beaconsKey = 'beacons_data';
+  static const String _studentDeviceBindingsKey =
+      'student_device_bindings_data';
   static const String _attendanceToleranceKey =
       'teacher_attendance_tolerance_minutes';
 
@@ -37,6 +39,12 @@ class AuthStorageService {
   Box? _box;
   String? _cachedToken;
   String? _cachedUatPassword;
+  int _sessionGeneration = 0;
+
+  /// Cambia cada vez que la sesión local se invalida. Permite que una
+  /// renovación que ya estaba en vuelo no vuelva a guardar una sesión después
+  /// de que la persona cerró sesión.
+  int get sessionGeneration => _sessionGeneration;
 
   Future<void> init() async {
     try {
@@ -162,23 +170,74 @@ class AuthStorageService {
   }
 
   Future<void> clearSession() async {
+    _sessionGeneration++;
+    _cachedToken = null;
+    _cachedUatPassword = null;
+
+    // Cada almacén se limpia de forma independiente. Así, un fallo puntual de
+    // Keychain/Keystore no impide borrar la identidad y los datos de sesión de
+    // Hive (y viceversa).
+    for (final key in const [
+      _secureTokenKey,
+      _secureMainBackendTokenKey,
+      _secureUatPasswordKey,
+    ]) {
+      try {
+        await _secureStorage.delete(key: key);
+      } catch (e, stackTrace) {
+        Logger.error(
+          'Error al eliminar la clave segura de sesión: $key',
+          e,
+          stackTrace,
+        );
+      }
+    }
+
+    try {
+      await _box?.deleteAll(const [
+        _legacyTokenKey,
+        _legacyMainBackendTokenKey,
+        _profesorKey,
+        _gruposKey,
+        _syncInProgressKey,
+        _legacyPasswordKey,
+        _beaconsKey,
+        _studentDeviceBindingsKey,
+      ]);
+    } catch (e, stackTrace) {
+      Logger.error(
+        'Error al limpiar los datos locales de sesión',
+        e,
+        stackTrace,
+      );
+    }
+
+    Logger.info('Sesion local eliminada completamente');
+  }
+
+  /// Invalida únicamente el identificador de sesión. La identidad y los datos
+  /// locales se conservan para solicitar una contraseña nueva sólo cuando el
+  /// backend rechazó la credencial guardada.
+  Future<void> clearToken() async {
+    _sessionGeneration++;
+    _cachedToken = null;
     try {
       await _secureStorage.delete(key: _secureTokenKey);
-      await _secureStorage.delete(key: _secureMainBackendTokenKey);
-      await _secureStorage.delete(key: _secureUatPasswordKey);
-      await _box?.delete(_legacyTokenKey);
-      await _box?.delete(_legacyMainBackendTokenKey);
-      await _box?.delete(_profesorKey);
-      await _box?.delete(_gruposKey);
-      await _box?.delete(_syncInProgressKey);
-      await _box?.delete(_legacyPasswordKey);
-      await _box?.delete(_beaconsKey);
-      Logger.info('Sesion eliminada correctamente');
     } catch (e, stackTrace) {
-      Logger.error('Error al limpiar sesion', e, stackTrace);
-    } finally {
-      _cachedToken = null;
-      _cachedUatPassword = null;
+      Logger.error(
+        'Error al eliminar el identificador de sesión',
+        e,
+        stackTrace,
+      );
+    }
+    try {
+      await _box?.delete(_legacyTokenKey);
+    } catch (e, stackTrace) {
+      Logger.error(
+        'Error al eliminar el identificador heredado',
+        e,
+        stackTrace,
+      );
     }
   }
 
@@ -312,6 +371,114 @@ class AuthStorageService {
       return _box?.get('last_email') as String?;
     } catch (e) {
       return null;
+    }
+  }
+
+  /// Guarda en el dispositivo la relación matrícula/UUID usada para el pase
+  /// de lista. [pendingSync] indica que el alta todavía debe confirmarse en el
+  /// backend, pero la relación ya puede utilizarse sin conexión.
+  Future<void> saveStudentDeviceBinding({
+    required String externalGroupId,
+    required String matricula,
+    required String attendanceUuid,
+    bool pendingSync = true,
+    String? deviceBindingId,
+  }) async {
+    final normalizedMatricula = matricula.trim().toUpperCase();
+    final normalizedUuid = attendanceUuid.trim().toLowerCase();
+    if (normalizedMatricula.isEmpty || normalizedUuid.isEmpty) return;
+
+    final bindings = _studentBindingsByMatricula();
+    final previous = bindings[normalizedMatricula];
+    bindings[normalizedMatricula] = {
+      if (previous != null) ...previous,
+      'externalGroupId': externalGroupId.trim(),
+      'matricula': normalizedMatricula,
+      'attendanceUuid': normalizedUuid,
+      'deviceBindingId': deviceBindingId,
+      'pendingSync': pendingSync,
+      'updatedAt': DateTime.now().toUtc().toIso8601String(),
+    };
+    await _saveStudentBindings(bindings);
+    Logger.info(
+      'UUID de alumno guardado localmente para $normalizedMatricula'
+      '${pendingSync ? ' (pendiente)' : ''}',
+    );
+  }
+
+  /// Incorpora vínculos confirmados por el servidor sin pisar un alta local
+  /// más reciente que todavía esté pendiente de sincronizar.
+  Future<void> cacheResolvedStudentDeviceBindings(
+    List<Map<String, dynamic>> resolvedBindings,
+  ) async {
+    final bindings = _studentBindingsByMatricula();
+    for (final raw in resolvedBindings) {
+      final matricula = raw['matricula']?.toString().trim().toUpperCase() ?? '';
+      final uuid = raw['attendanceUuid']?.toString().trim().toLowerCase() ?? '';
+      if (matricula.isEmpty || uuid.isEmpty) continue;
+
+      final previous = bindings[matricula];
+      if (previous?['pendingSync'] == true &&
+          previous?['attendanceUuid']?.toString() != uuid) {
+        continue;
+      }
+      bindings[matricula] = {
+        if (previous != null) ...previous,
+        ...raw,
+        'matricula': matricula,
+        'attendanceUuid': uuid,
+        'pendingSync': false,
+        'updatedAt': DateTime.now().toUtc().toIso8601String(),
+      };
+    }
+    await _saveStudentBindings(bindings);
+  }
+
+  List<Map<String, dynamic>> getStudentDeviceBindings({
+    Iterable<String>? matriculas,
+  }) {
+    final allowed = matriculas
+        ?.map((value) => value.trim().toUpperCase())
+        .where((value) => value.isNotEmpty)
+        .toSet();
+    return _studentBindingsByMatricula().entries
+        .where((entry) => allowed == null || allowed.contains(entry.key))
+        .map((entry) => Map<String, dynamic>.from(entry.value))
+        .toList(growable: false);
+  }
+
+  List<Map<String, dynamic>> getPendingStudentDeviceBindings() {
+    return getStudentDeviceBindings()
+        .where((binding) => binding['pendingSync'] == true)
+        .toList(growable: false);
+  }
+
+  Map<String, Map<String, dynamic>> _studentBindingsByMatricula() {
+    try {
+      final rawJson = _box?.get(_studentDeviceBindingsKey) as String?;
+      if (rawJson == null || rawJson.isEmpty) return {};
+      final decoded = jsonDecode(rawJson);
+      if (decoded is! Map) return {};
+      return decoded.map((key, value) {
+        final binding = value is Map
+            ? Map<String, dynamic>.from(value)
+            : <String, dynamic>{};
+        return MapEntry(key.toString().trim().toUpperCase(), binding);
+      });
+    } catch (e, stackTrace) {
+      Logger.error('Error al obtener UUIDs locales de alumnos', e, stackTrace);
+      return {};
+    }
+  }
+
+  Future<void> _saveStudentBindings(
+    Map<String, Map<String, dynamic>> bindings,
+  ) async {
+    try {
+      await _box?.put(_studentDeviceBindingsKey, jsonEncode(bindings));
+    } catch (e, stackTrace) {
+      Logger.error('Error al guardar UUIDs locales de alumnos', e, stackTrace);
+      rethrow;
     }
   }
 

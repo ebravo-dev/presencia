@@ -4,7 +4,7 @@ import '../../providers/profesor_auth_provider.dart';
 import '../../../../core/theme/uat_theme.dart';
 
 /// Pantalla de re-autenticación ligera.
-/// Se muestra cuando el JWT expiró pero el profesor ya tiene datos locales.
+/// Se muestra cuando UAT rechazó la contraseña protegida del profesor.
 /// Solo pide la contraseña — el email viene pre-llenado y es de solo lectura.
 class ReloginPage extends ConsumerStatefulWidget {
   const ReloginPage({super.key});
@@ -68,7 +68,7 @@ class _ReloginPageState extends ConsumerState<ReloginPage> {
 
                   // Título
                   Text(
-                    'Sesión expirada',
+                    'Actualiza tu acceso',
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
@@ -77,7 +77,7 @@ class _ReloginPageState extends ConsumerState<ReloginPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Ingresa tu contraseña para continuar.\nTus datos locales están seguros.',
+                    'Tu contraseña guardada ya no es válida. Si la cambiaste, ingresa la nueva para continuar.',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                   ),
@@ -207,8 +207,11 @@ class _ReloginPageState extends ConsumerState<ReloginPage> {
                   TextButton(
                     onPressed: isLoading
                         ? null
-                        : () =>
-                              ref.read(profesorAuthProvider.notifier).logout(),
+                        : () async {
+                            await ref
+                                .read(profesorAuthProvider.notifier)
+                                .logout();
+                          },
                     child: Text(
                       'Cerrar sesión completamente',
                       style: TextStyle(color: Colors.grey[500], fontSize: 13),

@@ -18,6 +18,7 @@ import '../../../core/utils/attendance_window.dart';
 import '../../../core/utils/utils.dart';
 
 import '../../../services/auth_storage_service.dart';
+import '../../../services/attendance_batch_service.dart';
 
 final RegExp _canonicalUuidPattern = RegExp(
   r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
@@ -107,6 +108,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   String? _studentBindingStatusError;
   final Set<String> _linkedStudentMatriculas = {};
   final Set<String> _studentBindingsBeingSaved = {};
+  final Map<String, Map<String, dynamic>> _cachedStudentBindings = {};
   Map<String, String> _studentKeyByBeaconUuid = {};
   final Set<String> _detectedStudentBeaconUuids = {};
   final Set<String> _automaticallyDetectedStudentKeys = {};
@@ -128,6 +130,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   void initState() {
     super.initState();
     _apiService = widget.apiService ?? ApiService();
+    _loadCachedStudentBindings();
     _linkedStudentMatriculas.addAll(
       widget.grupo.students
           .where((student) => student.beaconUuid?.trim().isNotEmpty ?? false)
@@ -244,6 +247,29 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         _studentsAnimationController.forward();
       }
     });
+  }
+
+  void _loadCachedStudentBindings() {
+    final matriculas = widget.grupo.students
+        .map((student) => student.matricula?.trim().toUpperCase())
+        .whereType<String>()
+        .where((matricula) => matricula.isNotEmpty)
+        .toSet();
+    _cachedStudentBindings
+      ..clear()
+      ..addEntries(
+        _authStorage
+            .getStudentDeviceBindings(matriculas: matriculas)
+            .map((binding) {
+              final matricula = binding['matricula']
+                  ?.toString()
+                  .trim()
+                  .toUpperCase();
+              return MapEntry(matricula ?? '', binding);
+            })
+            .where((entry) => entry.key.isNotEmpty),
+      );
+    _linkedStudentMatriculas.addAll(_cachedStudentBindings.keys);
   }
 
   void _scrollListener() {
@@ -1510,32 +1536,37 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     return '${widget.grupo.id}_${_selectedDateTime.year}-${_selectedDateTime.month}-${_selectedDateTime.day}';
   }
 
-  List<Map<String, dynamic>> _buildAttendancesForUpload() {
-    final studentIdMap = <String, String>{};
-    for (final student in widget.grupo.students) {
-      final studentId = student.id;
-      if (studentId != null && studentId.isNotEmpty) {
-        studentIdMap[studentId] = studentId;
-        studentIdMap[student.number.toString()] = studentId;
-        if (student.matricula != null) {
-          studentIdMap[student.matricula!.trim().toUpperCase()] = studentId;
-        }
-      }
+  Map<String, bool> _snapshotCompletoDeAsistencia() {
+    if (_asistencias.isEmpty) return const {};
+    final snapshot = <String, bool>{};
+    for (final alumno in widget.grupo.students) {
+      final key = _alumnoKey(alumno);
+      snapshot[key] = _asistencias[key] ?? false;
     }
+    // Conserva entradas heredadas aunque la lista local haya cambiado.
+    for (final entry in _asistencias.entries) {
+      snapshot.putIfAbsent(entry.key, () => entry.value);
+    }
+    return snapshot;
+  }
 
+  List<Map<String, dynamic>> _buildAttendancesForUpload() {
+    if (_asistencias.isEmpty) return const [];
+    final snapshot = _snapshotCompletoDeAsistencia();
     final attendances = <Map<String, dynamic>>[];
-    _asistencias.forEach((key, present) {
-      final studentId =
-          studentIdMap[key] ?? studentIdMap[key.trim().toUpperCase()];
-      if (studentId == null) return;
+    for (final entry in widget.grupo.students.asMap().entries) {
+      final student = entry.value;
+      final studentId = student.id;
+      if (studentId == null || studentId.isEmpty) continue;
+      final present = snapshot[_alumnoKey(student)] ?? false;
 
       attendances.add({
         'studentId': studentId,
-        'num_pase_lista': 1,
+        'num_pase_lista': entry.key + 1,
         'num_dia': _selectedDateTime.weekday,
         'sn_asistencia': present,
       });
-    });
+    }
 
     return attendances;
   }
@@ -1556,7 +1587,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       fecha: _selectedDateTime,
       horaEntrada: _entradaProfesor,
       horaSalida: _salidaProfesor,
-      asistenciasAlumnos: Map.from(_asistencias),
+      asistenciasAlumnos: _snapshotCompletoDeAsistencia(),
       sincronizado: false,
       fechaCreacion: existente?.fechaCreacion ?? DateTime.now(),
       fechaActualizacion: DateTime.now(),
@@ -1632,6 +1663,13 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       }
       return;
     }
+
+    await AttendanceBatchService(
+      apiService: _apiService,
+      localService: _asistenciaService,
+      authStorage: _authStorage,
+    ).syncPendingStudentBindings();
+    if (!mounted) return;
 
     // La presencia del profesor se envía únicamente cuando se verifica la
     // entrada o la salida. Repetirla al subir alumnos usaría la hora actual del
@@ -1947,19 +1985,18 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     return _esFechaHoy() && _esDiaDeClase();
   }
 
-  // Para alumnos: permite marcar en cualquier fecha si es día de clase
+  // La asistencia de alumnos es independiente de que el profesor haya marcado
+  // entrada o salida. Solo se restringen fechas futuras y días sin clase.
   bool _puedeMarcarAsistenciaAlumnos() {
-    return _esDiaDeClase();
-  }
-
-  bool _puedeEscanearAlumnos() {
     return AttendanceWindow.canTakeStudentAttendanceForDate(
-      widget.horario,
       selectedDate: _selectedDateTime,
       now: DateTime.now(),
       isClassDay: _esDiaDeClase(),
-      toleranceMinutes: ApiConstants.teacherAttendanceToleranceMinutes,
     );
+  }
+
+  bool _puedeEscanearAlumnos() {
+    return _puedeMarcarAsistenciaAlumnos();
   }
 
   String _mensajeEscaneoNoDisponible() {
@@ -1976,7 +2013,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     if (!_esDiaDeClase()) {
       return 'La fecha seleccionada no corresponde a un día de clase de esta materia.';
     }
-    return 'La asistencia de hoy solo puede escanearse dentro del horario de la clase.';
+    return 'No se puede tomar asistencia para la fecha seleccionada.';
   }
 
   bool _puedeSubirAsistencia() {
@@ -2015,44 +2052,43 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
     setState(() {
       _isLoadingStudentBindingStatus = true;
+      // El caché local es suficiente para administrar altas sin conexión.
+      _studentBindingStatusLoaded = true;
       _studentBindingStatusError = null;
     });
     final result = await _apiService.resolveStudentDeviceBindings(
       matriculas: matriculas,
     );
-    if (!mounted) return;
-
-    result.fold(
-      (error) => setState(() {
-        _isLoadingStudentBindingStatus = false;
-        _studentBindingStatusLoaded = false;
-        _studentBindingStatusError = error;
-      }),
-      (bindings) => setState(() {
-        _linkedStudentMatriculas
-          ..clear()
-          ..addAll(
-            widget.grupo.students
-                .where(
-                  (student) => student.beaconUuid?.trim().isNotEmpty ?? false,
-                )
-                .map((student) => student.matricula?.trim().toUpperCase())
-                .whereType<String>()
-                .where((matricula) => matricula.isNotEmpty),
-          )
-          ..addAll(
-            bindings
-                .map(
-                  (binding) =>
-                      binding['matricula']?.toString().trim().toUpperCase(),
-                )
-                .whereType<String>()
-                .where((matricula) => matricula.isNotEmpty),
-          );
-        _isLoadingStudentBindingStatus = false;
-        _studentBindingStatusLoaded = true;
-        _studentBindingStatusError = null;
-      }),
+    await result.fold(
+      (error) async {
+        if (!mounted) return;
+        setState(() {
+          _isLoadingStudentBindingStatus = false;
+          _studentBindingStatusLoaded = true;
+          _studentBindingStatusError = error;
+        });
+      },
+      (bindings) async {
+        await _authStorage.cacheResolvedStudentDeviceBindings(bindings);
+        if (!mounted) return;
+        setState(() {
+          _linkedStudentMatriculas
+            ..clear()
+            ..addAll(
+              widget.grupo.students
+                  .where(
+                    (student) => student.beaconUuid?.trim().isNotEmpty ?? false,
+                  )
+                  .map((student) => student.matricula?.trim().toUpperCase())
+                  .whereType<String>()
+                  .where((matricula) => matricula.isNotEmpty),
+            );
+          _loadCachedStudentBindings();
+          _isLoadingStudentBindingStatus = false;
+          _studentBindingStatusLoaded = true;
+          _studentBindingStatusError = null;
+        });
+      },
     );
   }
 
@@ -2072,6 +2108,31 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     if (!mounted || attendanceUuid == null) return;
 
     setState(() => _studentBindingsBeingSaved.add(matricula));
+    try {
+      // Primero se confirma en el almacenamiento local. Así el profesor puede
+      // usar este UUID para pasar lista aunque la red falle a continuación.
+      await _authStorage.saveStudentDeviceBinding(
+        externalGroupId: widget.grupo.id,
+        matricula: matricula,
+        attendanceUuid: attendanceUuid,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _studentBindingsBeingSaved.remove(matricula));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo guardar el UUID en este dispositivo.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _linkedStudentMatriculas.add(matricula);
+      _loadCachedStudentBindings();
+    });
+
     final result = await _apiService.bindStudentDeviceByProfessor(
       externalGroupId: widget.grupo.id,
       matricula: matricula,
@@ -2080,22 +2141,32 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     if (!mounted) return;
 
     String? failure;
-    result.fold(
-      (error) => failure = error,
-      (_) => _linkedStudentMatriculas.add(matricula),
+    await result.fold(
+      (error) async {
+        failure = error;
+      },
+      (response) async {
+        await _authStorage.saveStudentDeviceBinding(
+          externalGroupId: widget.grupo.id,
+          matricula: matricula,
+          attendanceUuid: attendanceUuid,
+          pendingSync: false,
+          deviceBindingId: response['deviceBindingId']?.toString(),
+        );
+      },
     );
+    if (!mounted) return;
     setState(() => _studentBindingsBeingSaved.remove(matricula));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          failure ?? 'UUID vinculado correctamente a la matrícula $matricula.',
+          failure == null
+              ? 'UUID guardado en el celular y vinculado a $matricula.'
+              : 'UUID guardado en el celular. Se sincronizará al subir la asistencia.',
         ),
-        backgroundColor: failure == null ? Colors.green : Colors.red,
+        backgroundColor: failure == null ? Colors.green : Colors.orange,
       ),
     );
-    if (failure != null) {
-      unawaited(_refreshStudentBindingStatuses(force: true));
-    }
   }
 
   Future<String?> _showStudentUuidDialog(Alumno alumno, String matricula) {
@@ -2113,6 +2184,12 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   >
   _loadStudentBeaconBindingsForScan() async {
     final fallback = <String, String>{};
+    final fallbackExternalIBeaconUuids = <String>{};
+    final studentKeysByMatricula = {
+      for (final alumno in widget.grupo.students)
+        if (alumno.matricula?.trim().isNotEmpty ?? false)
+          alumno.matricula!.trim().toUpperCase(): _alumnoKey(alumno),
+    };
 
     for (final alumno in widget.grupo.students) {
       final beaconUuid = alumno.beaconUuid;
@@ -2128,6 +2205,24 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       fallback[normalized] = _alumnoKey(alumno);
     }
 
+    _loadCachedStudentBindings();
+    for (final binding in _cachedStudentBindings.values) {
+      final matricula = binding['matricula']?.toString().trim().toUpperCase();
+      final beaconUuid = binding['attendanceUuid']?.toString();
+      final studentKey = matricula == null
+          ? null
+          : studentKeysByMatricula[matricula];
+      if (studentKey == null || beaconUuid == null || beaconUuid.isEmpty) {
+        continue;
+      }
+      final normalized = _normalizeBeaconUuid(beaconUuid);
+      if (normalized.isEmpty) continue;
+      fallback[normalized] = studentKey;
+      if (bindingUsesExternalIBeacon(binding)) {
+        fallbackExternalIBeaconUuids.add(normalized);
+      }
+    }
+
     final matriculas = widget.grupo.students
         .map((alumno) => alumno.matricula?.trim().toUpperCase())
         .whereType<String>()
@@ -2135,7 +2230,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         .toSet()
         .toList();
     if (matriculas.isEmpty) {
-      return (studentKeysByUuid: fallback, externalIBeaconUuids: <String>{});
+      return (
+        studentKeysByUuid: fallback,
+        externalIBeaconUuids: fallbackExternalIBeaconUuids,
+      );
     }
 
     final result = await _apiService.resolveStudentDeviceBindings(
@@ -2143,20 +2241,22 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     );
 
     return result.fold(
-      (error) {
+      (error) async {
         Logger.info('[StudentBeaconScan] Usando UUIDs cacheados: $error');
-        return (studentKeysByUuid: fallback, externalIBeaconUuids: <String>{});
+        return (
+          studentKeysByUuid: fallback,
+          externalIBeaconUuids: fallbackExternalIBeaconUuids,
+        );
       },
-      (bindings) {
-        final resolved = <String, String>{};
-        final externalIBeaconUuids = <String>{};
-        final studentKeysByMatricula = {
-          for (final alumno in widget.grupo.students)
-            if (alumno.matricula?.trim().isNotEmpty ?? false)
-              alumno.matricula!.trim().toUpperCase(): _alumnoKey(alumno),
-        };
+      (bindings) async {
+        await _authStorage.cacheResolvedStudentDeviceBindings(bindings);
+        _loadCachedStudentBindings();
+        final resolved = Map<String, String>.from(fallback);
+        final externalIBeaconUuids = Set<String>.from(
+          fallbackExternalIBeaconUuids,
+        );
 
-        for (final binding in bindings) {
+        for (final binding in _cachedStudentBindings.values) {
           final matricula = binding['matricula']?.toString();
           final beaconUuid = binding['attendanceUuid']?.toString();
           if (matricula == null ||
@@ -2179,7 +2279,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         if (resolved.isEmpty) {
           return (
             studentKeysByUuid: fallback,
-            externalIBeaconUuids: <String>{},
+            externalIBeaconUuids: fallbackExternalIBeaconUuids,
           );
         }
         return (

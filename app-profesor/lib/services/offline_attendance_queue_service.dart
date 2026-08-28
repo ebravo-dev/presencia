@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import '../core/utils/utils.dart';
 import '../shared/models/grupo.dart';
 import 'api_service.dart';
@@ -39,22 +37,20 @@ class OfflineAttendanceQueueService {
     localService: _asistenciaService,
   );
 
-  Timer? _timer;
   bool _syncing = false;
 
+  /// Conservado por compatibilidad. La cola ya no se ejecuta al iniciar la
+  /// app ni por temporizador: el profesor debe pulsar explícitamente "Subir".
   void start({Duration interval = const Duration(seconds: 45)}) {
-    _timer?.cancel();
-    scheduleMicrotask(syncPendingNow);
-    _timer = Timer.periodic(interval, (_) => syncPendingNow());
-    Logger.info('Cola offline de asistencias iniciada');
+    Logger.info('Cola offline en modo manual');
   }
 
   void stop() {
-    _timer?.cancel();
-    _timer = null;
     Logger.info('Cola offline de asistencias detenida');
   }
 
+  /// Debe invocarse únicamente como consecuencia de una acción explícita del
+  /// profesor. Nunca se llama automáticamente por conectividad o temporizador.
   Future<OfflineAttendanceQueueResult> syncPendingNow() async {
     if (_syncing) {
       return const OfflineAttendanceQueueResult(

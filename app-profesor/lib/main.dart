@@ -6,7 +6,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'services/database_service.dart';
 import 'services/auth_storage_service.dart';
 import 'services/asistencia_local_service.dart';
-import 'services/offline_attendance_queue_service.dart';
 import 'core/constants/app_constants.dart';
 import 'core/constants/api_constants.dart';
 import 'core/permissions/permission_service.dart';
@@ -39,8 +38,6 @@ void main() async {
     await DatabaseService().init();
     Logger.info('App initialization completed');
 
-    OfflineAttendanceQueueService().start();
-
     // Request Bluetooth permissions at startup.
     PermissionService.requestBluetoothPermissions().then((granted) {
       Logger.info('Bluetooth permissions: ${granted ? "granted" : "denied"}');
@@ -62,15 +59,13 @@ final authStateListenableProvider = Provider<AuthStateNotifier>((ref) {
 
 class AuthStateNotifier extends ChangeNotifier {
   final Ref _ref;
-  bool _lastAuthState = false;
 
   AuthStateNotifier(this._ref) {
     _ref.listen<ProfesorAuthState>(profesorAuthProvider, (previous, next) {
-      final newAuthState = next.isAuthenticated;
-      final sessionExpired = next.isSessionExpired;
-      // Notificar al router en cambios de autenticación o expiración
-      if (_lastAuthState != newAuthState || sessionExpired) {
-        _lastAuthState = newAuthState;
+      // El router necesita enterarse también de sessionExpired ->
+      // unauthenticated. Comparar sólo el booleano de autenticación dejaba la
+      // pantalla de contraseña abierta después de cerrar sesión completamente.
+      if (previous?.status != next.status) {
         notifyListeners();
       }
     }, fireImmediately: true);
@@ -95,7 +90,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isOnSyncStatus = state.matchedLocation == '/sync-status';
       final isSyncInProgress = authStorage.isSyncInProgress();
 
-      // Sesión expirada — ir a re-login ligero (conserva datos locales)
+      // Mantener la ruta actual durante una operación de login o renovación.
+      // El siguiente estado terminal decidirá el destino correcto.
+      if (authState.status == ProfesorAuthStatus.initial ||
+          authState.status == ProfesorAuthStatus.loading) {
+        return null;
+      }
+
+      // Sólo se usa cuando el backend rechazó la contraseña guardada.
       if (isSessionExpired && !isRelogging) {
         return '/relogin';
       }

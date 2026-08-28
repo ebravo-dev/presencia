@@ -75,7 +75,6 @@ void main() {
     test('allows a past class day for a retroactive student correction', () {
       expect(
         AttendanceWindow.canTakeStudentAttendanceForDate(
-          '08:00-10:00',
           selectedDate: DateTime(2026, 8, 14),
           now: DateTime(2026, 8, 16, 18),
           isClassDay: true,
@@ -87,7 +86,6 @@ void main() {
     test('rejects future dates and dates without class', () {
       expect(
         AttendanceWindow.canTakeStudentAttendanceForDate(
-          '08:00-10:00',
           selectedDate: DateTime(2026, 8, 17),
           now: DateTime(2026, 8, 16, 9),
           isClassDay: true,
@@ -96,7 +94,6 @@ void main() {
       );
       expect(
         AttendanceWindow.canTakeStudentAttendanceForDate(
-          '08:00-10:00',
           selectedDate: DateTime(2026, 8, 14),
           now: DateTime(2026, 8, 16, 9),
           isClassDay: false,
@@ -105,29 +102,24 @@ void main() {
       );
     });
 
-    test(
-      'keeps the schedule window restriction when selected day is today',
-      () {
-        expect(
-          AttendanceWindow.canTakeStudentAttendanceForDate(
-            '08:00-10:00',
-            selectedDate: DateTime(2026, 8, 16),
-            now: DateTime(2026, 8, 16, 9),
-            isClassDay: true,
-          ),
-          isTrue,
-        );
-        expect(
-          AttendanceWindow.canTakeStudentAttendanceForDate(
-            '08:00-10:00',
-            selectedDate: DateTime(2026, 8, 16),
-            now: DateTime(2026, 8, 16, 18),
-            isClassDay: true,
-          ),
-          isFalse,
-        );
-      },
-    );
+    test('does not reuse the professor attendance window for students', () {
+      expect(
+        AttendanceWindow.canTakeStudentAttendanceForDate(
+          selectedDate: DateTime(2026, 8, 16),
+          now: DateTime(2026, 8, 16, 9),
+          isClassDay: true,
+        ),
+        isTrue,
+      );
+      expect(
+        AttendanceWindow.canTakeStudentAttendanceForDate(
+          selectedDate: DateTime(2026, 8, 16),
+          now: DateTime(2026, 8, 16, 18),
+          isClassDay: true,
+        ),
+        isTrue,
+      );
+    });
 
     test('classifies the complete 07:00-08:00 window with 10 minutes', () {
       const schedule = '07:00-08:00';

@@ -404,7 +404,7 @@ class _UploadManagementPageState extends State<UploadManagementPage> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'El envío continuará aunque cierres la app. Los registros se actualizarán cuando tengas internet.',
+                      'Las listas sólo se envían cuando pulsas Subir. Si falla la conexión, permanecen guardadas en este celular.',
                       style: TextStyle(
                         color: Colors.blue.shade400,
                         fontSize: 13,

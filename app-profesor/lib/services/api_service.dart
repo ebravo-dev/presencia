@@ -133,7 +133,7 @@ class ApiService {
   late final Dio _presenceDio;
   Future<String?>? _refreshInFlight;
   bool _lastLoginCredentialsRejected = false;
-  bool _lastRefreshNeedsPassword = false;
+  bool _lastRefreshCredentialsRejected = false;
 
   bool get lastLoginCredentialsRejected => _lastLoginCredentialsRejected;
 
@@ -189,7 +189,10 @@ class ApiService {
                 return;
               }
             }
-            if (_lastRefreshNeedsPassword) {
+            // La pantalla para volver a escribir la contraseña sólo debe
+            // aparecer cuando UAT rechazó explícitamente la credencial
+            // guardada, no por una expiración normal ni por falta de red.
+            if (_lastRefreshCredentialsRejected) {
               (_onSessionExpired ?? _globalSessionExpiredHandler)?.call();
             }
           }
@@ -231,6 +234,7 @@ class ApiService {
           login['mensaje']?.toString() ?? 'Sesion UAT creada correctamente';
 
       if (sessionId.isEmpty || !authenticated) {
+        _lastLoginCredentialsRejected = !authenticated;
         return const Left('No pudimos iniciar sesión. Revisa tus datos.');
       }
 
@@ -265,8 +269,9 @@ class ApiService {
   }
 
   Future<String?> _refreshBackendApiRestSession() async {
-    _lastRefreshNeedsPassword = false;
+    _lastRefreshCredentialsRejected = false;
     final authStorage = AuthStorageService();
+    final sessionGeneration = authStorage.sessionGeneration;
     final profesor = authStorage.getProfesor();
     final password = authStorage.getCachedUatPassword();
 
@@ -274,9 +279,8 @@ class ApiService {
         profesor.institutionalEmail.isEmpty ||
         password == null ||
         password.isEmpty) {
-      _lastRefreshNeedsPassword = true;
       Logger.error(
-        'No se pudo renovar sesion UAT: falta profesor o credencial efimera.',
+        'No se pudo renovar sesion UAT: falta profesor o credencial protegida.',
       );
       return null;
     }
@@ -292,10 +296,16 @@ class ApiService {
     String? refreshedToken;
     await result.fold(
       (error) async {
-        _lastRefreshNeedsPassword = _lastLoginCredentialsRejected;
+        _lastRefreshCredentialsRejected = _lastLoginCredentialsRejected;
         Logger.error('No se pudo renovar sesion UAT: $error');
       },
       (login) async {
+        if (authStorage.sessionGeneration != sessionGeneration) {
+          Logger.info(
+            'Se descartó una renovación terminada después del cierre de sesión.',
+          );
+          return;
+        }
         refreshedToken = login.token;
         await authStorage.saveToken(login.token);
         await authStorage.saveProfesor(login.profesor);
@@ -320,6 +330,7 @@ class ApiService {
     try {
       final response = await _presenceDio.delete(
         '${ApiConstants.uatSessions}/$sessionId',
+        options: Options(extra: {'skipAutoUatRefresh': true}),
       );
       return Right(_asMap(response.data)['deleted'] == true);
     } on DioException catch (error) {

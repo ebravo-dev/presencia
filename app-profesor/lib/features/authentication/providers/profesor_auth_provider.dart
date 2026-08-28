@@ -13,7 +13,9 @@ enum ProfesorAuthStatus {
   loading,
   authenticated,
   unauthenticated,
-  sessionExpired, // token caducó — datos locales intactos, sólo se pide re-login
+  // Nombre heredado. Este estado se usa únicamente cuando el backend rechazó
+  // la contraseña guardada y se necesita que el profesor capture la nueva.
+  sessionExpired,
   error,
 }
 
@@ -84,6 +86,8 @@ final authStorageServiceProvider = Provider<AuthStorageService>((ref) {
 class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
   final ApiService _apiService;
   final AuthStorageService _authStorage;
+  bool _isLoggingOut = false;
+  Future<void>? _tokenClearInFlight;
 
   ProfesorAuthNotifier(this._apiService, this._authStorage)
     : super(const ProfesorAuthState());
@@ -352,8 +356,9 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     return result;
   }
 
-  /// Verificar si existe una sesión almacenada y restaurarla.
-  /// Valida la expiración del JWT antes de restaurar como "autenticado".
+  /// Verificar si existe una sesión almacenada y restaurarla. Una expiración
+  /// normal se renueva en silencio; sólo un rechazo explícito de la contraseña
+  /// conduce a la pantalla de re-autenticación.
   Future<void> checkStoredSession() async {
     try {
       Logger.info('Verificando sesión almacenada');
@@ -368,20 +373,15 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
           final tokenValido = _authStorage.isTokenValid();
 
           if (!tokenValido) {
-            // Token expirado — conservar datos locales, pedir re-auth
             Logger.info(
-              '⚠️ Token expirado para ${profesor.nombreCompleto} — solicitando re-login',
+              'Token expirado para ${profesor.nombreCompleto}; renovando en segundo plano',
             );
-            // Guardar solo el profesor (sin token) para mostrar en relogin
             state = ProfesorAuthState(
-              status: ProfesorAuthStatus.sessionExpired,
+              status: ProfesorAuthStatus.authenticated,
               profesor: profesor,
               grupos: cachedGrupos,
-              token: null,
-              errorMessage:
-                  'Tu sesión expiró. Ingresa tu contraseña para continuar.',
+              token: token,
             );
-            // Reintentar automáticamente con la credencial cifrada.
             await relogin();
             return;
           }
@@ -399,10 +399,9 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
         } else {
           Logger.info('Identidad local disponible; renovando la sesión UAT');
           state = ProfesorAuthState(
-            status: ProfesorAuthStatus.sessionExpired,
+            status: ProfesorAuthStatus.authenticated,
             profesor: profesor,
             grupos: cachedGrupos,
-            errorMessage: 'Actualizando tu acceso...',
           );
           await relogin();
         }
@@ -432,41 +431,75 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
     }
   }
 
-  /// Cerrar sesión
-  Future<void> logout() async {
-    Logger.info('Cerrando sesión del profesor');
-    final token = state.token ?? _authStorage.getToken();
-    if (token != null && token.isNotEmpty) {
-      final result = await _apiService.logoutProfesor(token);
-      result.fold(
-        (error) => Logger.error(
-          'La sesión local se cerrará aunque no se pudo revocar la remota: $error',
-        ),
-        (_) {},
-      );
+  Future<void> _clearLocalSession() async {
+    final tokenClear = _tokenClearInFlight;
+    if (tokenClear != null) {
+      await tokenClear;
+      if (identical(_tokenClearInFlight, tokenClear)) {
+        _tokenClearInFlight = null;
+      }
     }
     await _authStorage.clearSession();
     state = const ProfesorAuthState(status: ProfesorAuthStatus.unauthenticated);
   }
 
-  /// Marcar sesión como expirada (llamado por el interceptor 401 de Dio).
-  /// Conserva datos locales (profesor, grupos) para mostrar info al usuario,
-  /// sólo invalida el token.
+  /// Cerrar sesión. La sesión local se elimina antes de intentar la revocación
+  /// remota para que una falla de red nunca deje al profesor dentro de la app.
+  Future<void> logout() async {
+    if (_isLoggingOut) return;
+    _isLoggingOut = true;
+    Logger.info('Cerrando sesión del profesor');
+    final token = state.token ?? _authStorage.getToken();
+    try {
+      await _clearLocalSession();
+
+      if (token != null && token.isNotEmpty) {
+        final result = await _apiService.logoutProfesor(token);
+        result.fold(
+          (error) => Logger.error(
+            'La sesión local se cerró aunque no se pudo revocar la remota: $error',
+          ),
+          (_) {},
+        );
+      }
+    } finally {
+      _isLoggingOut = false;
+    }
+  }
+
+  /// Solicitar una contraseña nueva después de que el backend rechazó la
+  /// credencial protegida. Los 401 por expiración normal se renuevan antes de
+  /// llegar aquí.
   void markSessionExpired() {
-    if (state.status == ProfesorAuthStatus.sessionExpired) return; // ya marcado
-    Logger.info('⚠️ Sesión expirada — solicitando re-autenticación');
-    // Borrar token del storage pero conservar el resto
-    _authStorage.saveToken('');
+    if (_isLoggingOut ||
+        state.status == ProfesorAuthStatus.unauthenticated ||
+        state.status == ProfesorAuthStatus.initial ||
+        (state.profesor ?? _authStorage.getProfesor()) == null) {
+      Logger.info('Se ignoró un 401 recibido después del cierre de sesión.');
+      return;
+    }
+    if (state.status == ProfesorAuthStatus.sessionExpired) return;
+    Logger.info('La contraseña guardada fue rechazada; solicitando la nueva.');
+    _tokenClearInFlight = _authStorage.clearToken();
     state = state.copyWith(
       status: ProfesorAuthStatus.sessionExpired,
       token: null,
-      errorMessage: 'Tu sesión expiró. Vuelve a ingresar tu contraseña.',
+      errorMessage:
+          'La contraseña guardada ya no es válida. Ingresa tu contraseña actual.',
     );
   }
 
   /// Re-autenticación ligera con la credencial cifrada o con
   /// una contraseña nueva ingresada por la persona usuaria.
   Future<void> relogin({String? plainPassword}) async {
+    final tokenClear = _tokenClearInFlight;
+    if (tokenClear != null) {
+      await tokenClear;
+      if (identical(_tokenClearInFlight, tokenClear)) {
+        _tokenClearInFlight = null;
+      }
+    }
+
     final profesor = state.profesor ?? _authStorage.getProfesor();
     if (profesor == null) {
       // No hay datos de profesor — logout completo
@@ -492,10 +525,10 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
       // Reusar la credencial protegida por Keychain/Keystore.
       final cachedPassword = _authStorage.getCachedUatPassword();
       if (cachedPassword == null || cachedPassword.isEmpty) {
-        state = state.copyWith(
-          status: ProfesorAuthStatus.sessionExpired,
-          errorMessage: 'Ingresa tu contraseña para continuar.',
+        Logger.info(
+          'No hay una credencial guardada para renovar; se cerrará la sesión local.',
         );
+        await _clearLocalSession();
         return;
       }
       result = await _apiService.loginProfesor(
@@ -511,13 +544,17 @@ class ProfesorAuthNotifier extends StateNotifier<ProfesorAuthState> {
           state = state.copyWith(
             status: ProfesorAuthStatus.authenticated,
             token: _authStorage.getToken(),
-            errorMessage: 'No pudimos actualizar la información; puedes seguir usando los datos disponibles.',
+            errorMessage:
+                'No pudimos actualizar la información; puedes seguir usando los datos disponibles.',
           );
           return;
         }
+        await _authStorage.clearToken();
         state = state.copyWith(
           status: ProfesorAuthStatus.sessionExpired,
-          errorMessage: error,
+          token: null,
+          errorMessage:
+              'La contraseña no es válida. Si la cambiaste, ingresa la nueva.',
         );
       },
       (loginResponse) async {

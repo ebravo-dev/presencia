@@ -43,12 +43,10 @@ class AttendanceWindow {
     return canMarkEntry(schedule, now, toleranceMinutes: toleranceMinutes);
   }
 
-  static bool canTakeStudentAttendanceForDate(
-    String schedule, {
+  static bool canTakeStudentAttendanceForDate({
     required DateTime selectedDate,
     required DateTime now,
     required bool isClassDay,
-    int toleranceMinutes = 10,
   }) {
     if (!isClassDay) return false;
 
@@ -58,10 +56,7 @@ class AttendanceWindow {
       selectedDate.day,
     );
     final today = DateTime(now.year, now.month, now.day);
-    if (selectedDay.isAfter(today)) return false;
-    if (selectedDay.isBefore(today)) return true;
-
-    return canTakeAttendance(schedule, now, toleranceMinutes: toleranceMinutes);
+    return !selectedDay.isAfter(today);
   }
 
   static ProfessorArrivalStatus arrivalStatus(
