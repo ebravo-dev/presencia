@@ -223,7 +223,9 @@ class UatRepositoryImpl implements IUatRepository {
       normalized['id_alumno'] =
           int.tryParse(normalized['studentId']?.toString() ?? '') ?? 0;
     }
-    normalized['num_pase_lista'] ??= 1;
+    // UAT interprets this field as the pass/class number for the day. This app
+    // currently models one pass per group/day, so never reuse a roster index.
+    normalized['num_pase_lista'] = 1;
     normalized['num_dia'] ??= date.weekday;
     if (!normalized.containsKey('sn_asistencia')) {
       normalized['sn_asistencia'] =

@@ -19,6 +19,21 @@ describe('AttendanceUploadService', () => {
     expect(captured[0]?.idempotencyKey).toBe(captured[1]?.idempotencyKey);
     expect(captured[0]?.records.map((item) => item.clientRecordId)).toEqual(['local-1', 'local-2']);
   });
+
+  it('normaliza el pase UAT y no confunde el número de lista del alumno', async () => {
+    const captured: CreateAttendanceUploadBatchInput[] = [];
+    const service = new AttendanceUploadService(fakeRepository(captured));
+    const input = record('local-1', 11, 515722);
+    input.attendances[0]!.num_pase_lista = 6;
+
+    await service.submit({
+      ownerUsername: 'profesor@uat.edu.mx',
+      credentialCipher: 'cipher',
+      records: [input],
+    });
+
+    expect(captured[0]?.records[0]?.attendances[0]?.num_pase_lista).toBe(1);
+  });
 });
 
 function record(clientRecordId: string, idGrupo: number, idAlumno: number) {

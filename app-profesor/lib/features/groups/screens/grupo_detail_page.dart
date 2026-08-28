@@ -1554,15 +1554,15 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     if (_asistencias.isEmpty) return const [];
     final snapshot = _snapshotCompletoDeAsistencia();
     final attendances = <Map<String, dynamic>>[];
-    for (final entry in widget.grupo.students.asMap().entries) {
-      final student = entry.value;
+    for (final student in widget.grupo.students) {
       final studentId = student.id;
       if (studentId == null || studentId.isEmpty) continue;
       final present = snapshot[_alumnoKey(student)] ?? false;
 
       attendances.add({
         'studentId': studentId,
-        'num_pase_lista': entry.key + 1,
+        // The current UI captures the first pass of the selected day.
+        'num_pase_lista': 1,
         'num_dia': _selectedDateTime.weekday,
         'sn_asistencia': present,
       });

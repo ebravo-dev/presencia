@@ -31,7 +31,7 @@ export function buildUatAttendancePayload(input: {
     const unmatchedIdentities: string[] = [];
     const payload: UatAsistenciaAlumnoInput[] = [];
 
-    for (const [index, attendance] of input.attendances.entries()) {
+    for (const attendance of input.attendances) {
         const student = studentsById.get(attendance.studentId);
         if (!student) {
             unmatchedIdentities.push(attendance.studentId);
@@ -60,7 +60,8 @@ export function buildUatAttendancePayload(input: {
 
         payload.push({
             id_alumno: portalStudent.Id_Alumno,
-            num_pase_lista: portalStudent.Num_Lista ?? student.listNumber ?? index + 1,
+            // UAT expects the pass/class number for this day, not Num_Lista.
+            num_pase_lista: 1,
             num_dia: input.day,
             sn_asistencia: attendance.status === 'PRESENT' || attendance.status === 'LATE',
         });

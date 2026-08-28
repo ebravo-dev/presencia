@@ -45,7 +45,7 @@ void main() {
     ]);
   });
 
-  test('completa la lista local y envía ausentes aunque sólo se marcó uno', () {
+  test('completa la lista y usa el mismo pase UAT para todos los alumnos', () {
     final service = AttendanceBatchService();
     final group = Grupo(
       id: '947699',
@@ -78,7 +78,7 @@ void main() {
       },
       {
         'id_alumno': 371592,
-        'num_pase_lista': 2,
+        'num_pase_lista': 1,
         'num_dia': 1,
         'sn_asistencia': false,
       },

@@ -283,8 +283,7 @@ class AttendanceBatchService {
     if (record.asistenciasAlumnos.isEmpty) return const [];
 
     final attendances = <Map<String, dynamic>>[];
-    for (final entry in group.students.asMap().entries) {
-      final student = entry.value;
+    for (final student in group.students) {
       final id = student.id;
       if (id == null || id.isEmpty) continue;
       final parsedId = int.tryParse(id);
@@ -292,7 +291,9 @@ class AttendanceBatchService {
       attendances.add({
         'studentId': id,
         if (parsedId != null && parsedId > 0) 'id_alumno': parsedId,
-        'num_pase_lista': entry.key + 1,
+        // UAT uses this as the pass/class number for the day, not the
+        // student's position in the roster. The app captures one daily pass.
+        'num_pase_lista': 1,
         'num_dia': record.fecha.weekday,
         'sn_asistencia': present,
         'status': present ? 'PRESENT' : 'ABSENT',

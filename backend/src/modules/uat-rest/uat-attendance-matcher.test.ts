@@ -32,8 +32,8 @@ describe('buildUatAttendancePayload', () => {
         });
 
         expect(payload).toEqual([
-            { id_alumno: 501, num_pase_lista: 4, num_dia: 3, sn_asistencia: true },
-            { id_alumno: 902, num_pase_lista: 9, num_dia: 3, sn_asistencia: false },
+            { id_alumno: 501, num_pase_lista: 1, num_dia: 3, sn_asistencia: true },
+            { id_alumno: 902, num_pase_lista: 1, num_dia: 3, sn_asistencia: false },
         ]);
     });
 
@@ -48,7 +48,7 @@ describe('buildUatAttendancePayload', () => {
         });
 
         expect(payload).toEqual([
-            { id_alumno: 501, num_pase_lista: 4, num_dia: 2, sn_asistencia: true },
+            { id_alumno: 501, num_pase_lista: 1, num_dia: 2, sn_asistencia: true },
         ]);
     });
 

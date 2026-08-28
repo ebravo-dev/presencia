@@ -789,8 +789,7 @@ class ApiService {
       }
 
       final asistencia = <Map<String, dynamic>>[];
-      for (final entry in attendances.asMap().entries) {
-        final item = entry.value;
+      for (final item in attendances) {
         final idAlumno =
             int.tryParse(
               item['id_alumno']?.toString() ??
@@ -803,10 +802,8 @@ class ApiService {
         if (idAlumno <= 0) continue;
         asistencia.add({
           'id_alumno': idAlumno,
-          'num_pase_lista':
-              int.tryParse(item['num_pase_lista']?.toString() ?? '') ??
-              int.tryParse(item['numPaseLista']?.toString() ?? '') ??
-              entry.key + 1,
+          // UAT expects the daily pass number here, never the roster index.
+          'num_pase_lista': 1,
           'num_dia':
               int.tryParse(item['num_dia']?.toString() ?? '') ?? date.weekday,
           'sn_asistencia':
