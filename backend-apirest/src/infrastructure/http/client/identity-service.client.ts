@@ -10,6 +10,8 @@ export interface CreateVerifiedIdentitySessionInput {
   readonly source: 'UAT_TEACHER' | 'UAT_STUDENT';
   readonly correlationId: string;
   readonly deviceId?: string;
+  readonly devicePlatform?: 'android' | 'ios';
+  readonly deviceInfo?: string;
 }
 
 interface IdentityServiceResponse {
@@ -45,6 +47,17 @@ export interface RegisteredStudentIdentity {
   matricula: string;
   email: string | null;
   name: string;
+  lastAuthenticatedAt: string;
+}
+
+export interface RegisteredProfessorIdentity {
+  id: string;
+  externalId: string;
+  email: string | null;
+  name: string;
+  deviceBindingId: string | null;
+  platform: string | null;
+  deviceInfo: string | null;
   lastAuthenticatedAt: string;
 }
 
@@ -114,6 +127,17 @@ export class IdentityServiceClient {
     return this.request(`/internal/v1/identities/students/${encodeURIComponent(matricula)}`, { method: 'GET' });
   }
 
+  listRegisteredProfessors(): Promise<{ data: RegisteredProfessorIdentity[]; meta: { generatedAt: string } }> {
+    return this.request('/internal/v1/identities/professors', { method: 'GET' });
+  }
+
+  async clearProfessorDeviceBinding(institutionalIdentifier: string, input: StaffAuditInput): Promise<void> {
+    await this.request(`/internal/v1/identities/professors/${encodeURIComponent(institutionalIdentifier)}/device`, {
+      method: 'DELETE',
+      body: input,
+    });
+  }
+
   createStaffAccount(input: { email: string; name: string; password: string; role?: string } & StaffAuditInput) {
     return this.request<{ data: StaffIdentityUser }>('/internal/v1/staff/accounts', { method: 'POST', body: input });
   }
@@ -164,9 +188,14 @@ export class IdentityServiceClient {
     const payload = response.status === 204 ? undefined : await response.json().catch(() => undefined);
     if (!response.ok) {
       const body = payload && typeof payload === 'object' ? payload as Record<string, unknown> : undefined;
-      throw new ApiError(response.status, typeof body?.error === 'string' ? body.error : 'IDENTITY_SERVICE_ERROR', `Identity Service respondió ${response.status}.`, {
+      throw new ApiError(
+        response.status,
+        typeof body?.error === 'string' ? body.error : 'IDENTITY_SERVICE_ERROR',
+        typeof body?.message === 'string' ? body.message : `Identity Service respondió ${response.status}.`,
+        {
         status: response.status,
-      });
+        },
+      );
     }
     return payload as T;
   }

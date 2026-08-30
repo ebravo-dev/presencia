@@ -178,6 +178,17 @@ export interface StudentDeviceBinding {
   }>;
 }
 
+export interface ProfessorDeviceBinding {
+  id: string;
+  externalId: string;
+  email: string | null;
+  name: string;
+  deviceBindingId: string | null;
+  platform: string | null;
+  deviceInfo: string | null;
+  lastAuthenticatedAt: string;
+}
+
 export interface DebugStatusResponse {
   data: {
     enabled: boolean;

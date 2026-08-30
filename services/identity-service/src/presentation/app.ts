@@ -17,6 +17,11 @@ import {
 } from './schemas.js';
 
 const purgeDataSchema = z.object({ confirmation: z.literal('PURGE_ALL_DATA') }).strict();
+const professorDeviceUnbindSchema = z.object({
+  actorIdentityId: z.string().trim().min(1).max(160),
+  correlationId: z.string().trim().min(1).max(128),
+  reason: z.string().trim().min(1).max(500),
+}).strict();
 
 export interface IdentityReadiness {
   check(): Promise<{ database: boolean; redis: boolean }>;
@@ -107,6 +112,20 @@ export async function buildIdentityApp(options: IdentityAppOptions) {
     return { data: (await options.sessions.listRegisteredStudents()).map(registeredStudentResponse) };
   });
 
+  app.get('/internal/v1/identities/professors', { preHandler: requireInternal }, async () => ({
+    data: (await options.sessions.listRegisteredProfessors()).map(registeredProfessorResponse),
+    meta: { generatedAt: new Date().toISOString() },
+  }));
+
+  app.delete('/internal/v1/identities/professors/:institutionalIdentifier/device', { preHandler: requireInternal }, async (request, reply) => {
+    const { institutionalIdentifier } = request.params as { institutionalIdentifier: string };
+    const input = professorDeviceUnbindSchema.parse(request.body);
+    const deleted = await options.sessions.clearProfessorDeviceBinding(institutionalIdentifier, input);
+    return deleted
+      ? reply.code(204).send()
+      : reply.code(404).send({ error: 'REGISTERED_PROFESSOR_NOT_FOUND', message: 'El profesor no se ha registrado en el sistema.' });
+  });
+
   app.get('/internal/v1/identities/students/:matricula', { preHandler: requireInternal }, async (request, reply) => {
     if (!options.env.PRESENCIA_DEBUG_MODE) return reply.code(404).send({ error: 'DEMO_MODE_DISABLED' });
     const { matricula } = request.params as { matricula: string };
@@ -192,6 +211,12 @@ export async function buildIdentityApp(options: IdentityAppOptions) {
     if (error instanceof Error && ['INVALID_STAFF_CREDENTIALS', 'INVALID_SUPER_USER_PASSWORD'].includes(error.message)) {
       return reply.code(401).send({ error: error.message });
     }
+    if (error instanceof Error && error.message === 'DEVICE_BINDING_CONFLICT') {
+      return reply.code(409).send({
+        error: 'DEVICE_BINDING_CONFLICT',
+        message: 'Esta cuenta ya está vinculada a otro celular. Solicita autorización de cambio a coordinación.',
+      });
+    }
     if (errorCode(error) === 'P2002') return reply.code(409).send({ error: 'STAFF_ACCOUNT_EXISTS' });
     if (errorCode(error) === 'P2025') return reply.code(404).send({ error: 'STAFF_ACCOUNT_NOT_FOUND' });
     if (typeof error === 'object' && error !== null && 'issues' in error) {
@@ -245,6 +270,28 @@ function registeredStudentResponse(student: {
     email: student.email,
     name: student.displayName,
     lastAuthenticatedAt: student.lastAuthenticatedAt.toISOString(),
+  };
+}
+
+function registeredProfessorResponse(professor: {
+  id: string;
+  institutionalIdentifier: string;
+  email: string | null;
+  displayName: string;
+  deviceBindingId?: string | null;
+  devicePlatform?: string | null;
+  deviceInfo?: string | null;
+  lastAuthenticatedAt: Date;
+}) {
+  return {
+    id: professor.id,
+    externalId: professor.institutionalIdentifier,
+    email: professor.email,
+    name: professor.displayName,
+    deviceBindingId: professor.deviceBindingId ?? null,
+    platform: professor.devicePlatform ?? null,
+    deviceInfo: professor.deviceInfo ?? null,
+    lastAuthenticatedAt: professor.lastAuthenticatedAt.toISOString(),
   };
 }
 

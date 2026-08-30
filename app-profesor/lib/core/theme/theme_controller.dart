@@ -8,7 +8,7 @@ final themeControllerProvider =
     });
 
 class ThemeController extends StateNotifier<ThemeMode> {
-  ThemeController() : super(ThemeMode.dark);
+  ThemeController() : super(ThemeMode.light);
 
   static const _boxName = 'uat_theme_preferences';
   static const _themeModeKey = 'theme_mode';
@@ -17,7 +17,7 @@ class ThemeController extends StateNotifier<ThemeMode> {
     final box = await _openBox();
     final storedMode = box.get(_themeModeKey);
 
-    state = storedMode == 'light' ? ThemeMode.light : ThemeMode.dark;
+    state = storedMode == 'dark' ? ThemeMode.dark : ThemeMode.light;
   }
 
   Future<void> setLightMode(bool enabled) {

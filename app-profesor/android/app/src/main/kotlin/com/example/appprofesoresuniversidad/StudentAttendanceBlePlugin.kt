@@ -19,6 +19,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -164,8 +165,8 @@ class StudentAttendanceBlePlugin(
         handledUuids.clear()
         inFlightUuids.clear()
 
-        val scanner = bluetoothAdapter?.bluetoothLeScanner
-            ?: throw IllegalStateException("Bluetooth no disponible")
+        val scanner = waitForBluetoothLeScanner()
+            ?: throw IllegalStateException("Bluetooth no disponible o apagado")
         val filters = listOf(
             ScanFilter.Builder().setServiceUuid(ParcelUuid(SERVICE_UUID)).build()
         )
@@ -469,6 +470,26 @@ class StudentAttendanceBlePlugin(
         if (missing.isNotEmpty()) {
             throw SecurityException("Permisos faltantes: ${missing.joinToString()}")
         }
+    }
+
+    private fun waitForBluetoothLeScanner(timeoutMs: Long = 3_000L): android.bluetooth.le.BluetoothLeScanner? {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        var lastState: Int? = null
+
+        while (SystemClock.elapsedRealtime() <= deadline) {
+            val adapter = bluetoothAdapter
+            lastState = adapter?.state
+            if (adapter?.state == BluetoothAdapter.STATE_ON) {
+                adapter.bluetoothLeScanner?.let { scanner ->
+                    Log.i(TAG, "Bluetooth LE scanner ready")
+                    return scanner
+                }
+            }
+            Thread.sleep(100L)
+        }
+
+        Log.w(TAG, "Bluetooth LE scanner not ready after ${timeoutMs}ms; adapterState=$lastState")
+        return null
     }
 
     private fun hasPermission(permission: String): Boolean {

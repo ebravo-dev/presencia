@@ -1,5 +1,5 @@
 import { api, superApi } from './client';
-import type { ActiveAcademicCycleResponse, Assignment, AttendanceSettingsResponse, Beacon, CoordinatorAccount, CoordinatorUser, DatabaseCatalogResponse, DatabasePurgeResponse, DatabaseTargetId, DebugCatalogResponse, DebugClassResponse, DebugFlowLogsResponse, DebugMutationResponse, DebugScheduleInput, DebugSettingsResponse, DebugStatusResponse, DebugStudent, DebugStudentAttendanceResponse, DebugTeacher, InfrastructureSummaryResponse, OverviewResponse, ProfessorOption, RangeReportResponse, RegisteredStudent, SharedClassAssignment, StudentDeviceBinding, SuperUser, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
+import type { ActiveAcademicCycleResponse, Assignment, AttendanceSettingsResponse, Beacon, CoordinatorAccount, CoordinatorUser, DatabaseCatalogResponse, DatabasePurgeResponse, DatabaseTargetId, DebugCatalogResponse, DebugClassResponse, DebugFlowLogsResponse, DebugMutationResponse, DebugScheduleInput, DebugSettingsResponse, DebugStatusResponse, DebugStudent, DebugStudentAttendanceResponse, DebugTeacher, InfrastructureSummaryResponse, OverviewResponse, ProfessorDeviceBinding, ProfessorOption, RangeReportResponse, RegisteredStudent, SharedClassAssignment, StudentDeviceBinding, SuperUser, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
 
 export const coordinationApi = {
   login: async (input: { email: string; password: string }) => (await api.post<{ data: { user: CoordinatorUser; expiresAt: string } }>('/coordinacion/auth/login', input)).data,
@@ -11,6 +11,8 @@ export const coordinationApi = {
   infrastructureSummary: async () => (await api.get<InfrastructureSummaryResponse>('/coordinacion/infraestructura/resumen')).data,
   studentDeviceBindings: async (params: { q?: string }) => (await api.get<{ data: StudentDeviceBinding[] }>('/coordinacion/infraestructura/alumnos-vinculados', { params })).data,
   authorizeStudentDeviceChange: async (matricula: string) => { await api.delete(`/coordinacion/infraestructura/alumnos-vinculados/${encodeURIComponent(matricula)}`); },
+  professorDeviceBindings: async (params: { q?: string }) => (await api.get<{ data: ProfessorDeviceBinding[] }>('/coordinacion/infraestructura/profesores-vinculados', { params })).data,
+  authorizeProfessorDeviceChange: async (externalId: string) => { await api.delete(`/coordinacion/infraestructura/profesores-vinculados/${encodeURIComponent(externalId)}`); },
   teachers: async (params: { search?: string; coordinationId?: string; page: number; pageSize: number }) => (await api.get<TeachersResponse>('/coordinacion/profesores', { params })).data,
   assignments: async (teacherId: string) => (await api.get<TeacherAssignmentsResponse>(`/coordinacion/profesores/${teacherId}/asignaciones`)).data,
   weeklyReport: async (params: { teacherId: string; weekStart: string }) => (await api.get<WeeklyReportResponse>('/coordinacion/reportes/asistencia-semanal', { params })).data,

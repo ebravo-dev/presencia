@@ -1,5 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
+import type { IdentityServiceClient } from '../../../infrastructure/http/client/identity-service.client.js';
 import type { AcademicServiceClient } from '../../../infrastructure/http/client/academic-service.client.js';
 import type { CoordinationQueryClient } from '../../../infrastructure/http/client/coordination-query.client.js';
 import { ApiError } from '../../../errors/api-error.js';
@@ -20,6 +21,7 @@ export class CoordinationController {
     private readonly academicService: AcademicServiceClient,
     private readonly attendanceServiceCommands: AttendanceServiceCommandClient,
     private readonly coordinationQuery: CoordinationQueryClient,
+    private readonly identityService: IdentityServiceClient,
   ) {}
 
   overview = async (_request: FastifyRequest, reply: FastifyReply) => {
@@ -138,6 +140,31 @@ export class CoordinationController {
       actorRole: 'COORDINATOR',
       reason: 'Desvinculación solicitada desde el dashboard de coordinación.',
       correlationId: request.id,
+    });
+    return reply.code(204).send();
+  };
+
+  professorDeviceBindings = async (request: FastifyRequest<{ Querystring: { q?: string } }>, reply: FastifyReply) => {
+    const result = await this.identityService.listRegisteredProfessors();
+    const query = request.query.q?.trim().toLowerCase();
+    const data = query
+      ? result.data.filter((professor) => [
+        professor.externalId,
+        professor.email ?? '',
+        professor.name,
+        professor.deviceBindingId ?? '',
+        professor.deviceInfo ?? '',
+      ].some((value) => value.toLowerCase().includes(query)))
+      : result.data;
+    return reply.send({ ...result, data });
+  };
+
+  deleteProfessorDeviceBinding = async (request: FastifyRequest<{ Params: { externalId: string } }>, reply: FastifyReply) => {
+    const coordinator = requireCoordinator(request);
+    await this.identityService.clearProfessorDeviceBinding(request.params.externalId, {
+      actorIdentityId: coordinator.id,
+      correlationId: request.id,
+      reason: 'Desvinculación de celular de profesor solicitada desde el dashboard de coordinación.',
     });
     return reply.code(204).send();
   };

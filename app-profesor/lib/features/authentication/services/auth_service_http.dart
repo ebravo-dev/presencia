@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../../../core/utils/utils.dart';
+import '../../../services/auth_storage_service.dart';
 import '../models/auth_models.dart';
 import '../services/auth_service.dart';
 
@@ -26,10 +29,18 @@ class AuthServiceHttp implements AuthService {
   Future<AuthResult> login(String email, String password) async {
     try {
       Logger.info('Iniciando login UAT HTTP para: $email');
+      final storage = AuthStorageService();
+      final deviceBindingId = await storage.ensureProfessorDeviceIdentity();
 
       final response = await _dio.post(
         ApiConstants.uatSessions,
-        data: {'username': email, 'password': password},
+        data: {
+          'username': email,
+          'password': password,
+          'deviceBindingId': deviceBindingId,
+          'platform': Platform.operatingSystem,
+          'deviceInfo': Platform.operatingSystemVersion,
+        },
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {

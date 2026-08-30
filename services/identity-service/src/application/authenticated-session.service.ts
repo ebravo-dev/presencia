@@ -6,6 +6,8 @@ import { IdentityTokenService } from './token.service.js';
 
 export interface CreateAuthenticatedSessionInput extends ResolveVerifiedIdentityInput {
   readonly deviceId?: string | undefined;
+  readonly devicePlatform?: string | undefined;
+  readonly deviceInfo?: string | undefined;
 }
 
 export class AuthenticatedSessionService {
@@ -55,8 +57,22 @@ export class AuthenticatedSessionService {
     return this.identities.listRegisteredStudents();
   }
 
+  listRegisteredProfessors(): Promise<Identity[]> {
+    return this.identities.listRegisteredProfessors();
+  }
+
   registeredStudentByMatricula(matricula: string): Promise<Identity | null> {
     return this.identities.findRegisteredStudentByMatricula(matricula);
+  }
+
+  async clearProfessorDeviceBinding(
+    institutionalIdentifier: string,
+    input: { actorIdentityId: string; correlationId: string; reason: string },
+  ): Promise<boolean> {
+    const identityId = await this.identities.clearProfessorDeviceBinding(institutionalIdentifier, input);
+    if (!identityId) return false;
+    await this.sessions.revokeIdentities([identityId]);
+    return true;
   }
 
   async resetDemoIdentities(): Promise<number> {

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -29,6 +30,8 @@ class AuthStorageService {
       'student_device_bindings_data';
   static const String _attendanceToleranceKey =
       'teacher_attendance_tolerance_minutes';
+  static const String _professorDeviceBindingIdKey =
+      'professor_device_binding_id';
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -324,6 +327,21 @@ class AuthStorageService {
         : ApiConstants.defaultTeacherAttendanceToleranceMinutes;
   }
 
+  String getProfessorDeviceBindingId() {
+    return _box?.get(_professorDeviceBindingIdKey, defaultValue: '')
+            as String? ??
+        '';
+  }
+
+  Future<String> ensureProfessorDeviceIdentity() async {
+    final current = getProfessorDeviceBindingId();
+    if (current.isNotEmpty) return current;
+
+    final bindingId = _uuidV4();
+    await _box?.put(_professorDeviceBindingIdKey, bindingId);
+    return bindingId;
+  }
+
   Future<void> cacheUatPasswordForProcess(String password) async {
     _cachedUatPassword = password;
     await _secureStorage.write(key: _secureUatPasswordKey, value: password);
@@ -372,6 +390,21 @@ class AuthStorageService {
     } catch (e) {
       return null;
     }
+  }
+
+  String _uuidV4() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    String hex(int value) => value.toRadixString(16).padLeft(2, '0');
+    final chars = bytes.map(hex).join();
+    return '${chars.substring(0, 8)}-'
+        '${chars.substring(8, 12)}-'
+        '${chars.substring(12, 16)}-'
+        '${chars.substring(16, 20)}-'
+        '${chars.substring(20)}';
   }
 
   /// Guarda en el dispositivo la relación matrícula/UUID usada para el pase

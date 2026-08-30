@@ -15,6 +15,9 @@ model Identity {
   institutionalIdentifier String         @map("institutional_identifier")
   email                   String?
   displayName             String         @map("display_name")
+  deviceBindingId         String?        @map("device_binding_id")
+  devicePlatform          String?        @map("device_platform")
+  deviceInfo              String?        @map("device_info")
   disabledAt              DateTime?      @map("disabled_at")
   lastAuthenticatedAt     DateTime        @map("last_authenticated_at")
   createdAt               DateTime        @default(now()) @map("created_at")
@@ -24,6 +27,7 @@ model Identity {
   staffCredential StaffCredential?
 
   @@unique([kind, institutionalIdentifier])
+  @@index([kind, deviceBindingId])
   @@index([email])
   @@index([role, disabledAt])
   @@map("identities")

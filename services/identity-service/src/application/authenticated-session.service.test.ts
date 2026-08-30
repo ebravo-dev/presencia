@@ -44,6 +44,9 @@ const fakeIdentities: IdentityRepository = {
       institutionalIdentifier: input.institutionalIdentifier,
       email: input.email ?? null,
       displayName: input.displayName,
+      deviceBindingId: input.deviceId ?? null,
+      devicePlatform: input.devicePlatform ?? null,
+      deviceInfo: input.deviceInfo ?? null,
       disabledAt: null,
       lastAuthenticatedAt: new Date(),
     };
@@ -56,12 +59,17 @@ const fakeIdentities: IdentityRepository = {
       institutionalIdentifier: '9900000001',
       email: null,
       displayName: 'Alumno Prueba',
+      deviceBindingId: 'device-1',
+      devicePlatform: null,
+      deviceInfo: null,
       disabledAt: null,
       lastAuthenticatedAt: new Date(),
     } : null;
   },
   async listRegisteredStudents() { return []; },
+  async listRegisteredProfessors() { return []; },
   async findRegisteredStudentByMatricula() { return null; },
+  async clearProfessorDeviceBinding() { return null; },
   async resetDemoIdentities() { return ['identity-1']; },
   async purgeAllIdentities() { return ['identity-1']; },
 };

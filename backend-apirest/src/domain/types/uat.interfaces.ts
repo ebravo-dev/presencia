@@ -8,6 +8,9 @@ export interface JsonRecord {
 export interface UatCredentials {
   username: string;
   password: string;
+  deviceBindingId?: string;
+  platform?: 'android' | 'ios';
+  deviceInfo?: string;
 }
 
 export interface UatProfesorConsultaParams extends JsonRecord {

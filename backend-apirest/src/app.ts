@@ -316,6 +316,7 @@ export async function buildApp() {
     academicServiceClient,
     attendanceServiceCommands,
     coordinationQuery,
+    identityService: identityServiceClient,
   });
 
   const webDist = resolve(env.COORDINATION_WEB_DIST || resolve(process.cwd(), '../frontend-coord/dist'));

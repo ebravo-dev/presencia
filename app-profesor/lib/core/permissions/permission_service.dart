@@ -65,9 +65,9 @@ class PermissionService {
   static List<Permission> _platformBluetoothPermissions() {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return [
-        Permission.bluetooth,
         Permission.bluetoothScan,
         Permission.bluetoothConnect,
+        Permission.bluetoothAdvertise,
         Permission.location,
       ];
     }
@@ -82,7 +82,6 @@ class PermissionService {
   static List<Permission> _platformStudentBlePermissions() {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return [
-        Permission.bluetooth,
         Permission.bluetoothScan,
         Permission.bluetoothConnect,
       ];

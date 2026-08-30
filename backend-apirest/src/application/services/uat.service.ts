@@ -50,6 +50,11 @@ export class UatService {
       displayName: login.parametros?.Txt_Usuario_AdmonUAT?.trim() || institutionalCode || credentials.username.trim(),
       source: 'UAT_TEACHER',
       correlationId: context.correlationId ?? randomUUID(),
+      ...(credentials.deviceBindingId ? {
+        deviceId: credentials.deviceBindingId,
+        devicePlatform: credentials.platform,
+        deviceInfo: credentials.deviceInfo,
+      } : {}),
     });
     const now = new Date();
     const session: StoredUatSession = {

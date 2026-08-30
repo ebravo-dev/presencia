@@ -3,6 +3,7 @@ import type { CoordinatorAuthService } from '../../../application/services/coord
 import type { AcademicServiceClient } from '../../../infrastructure/http/client/academic-service.client.js';
 import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
 import type { CoordinationQueryClient } from '../../../infrastructure/http/client/coordination-query.client.js';
+import type { IdentityServiceClient } from '../../../infrastructure/http/client/identity-service.client.js';
 import { CoordinationController } from '../controllers/coordination.controller.js';
 import { coordinationRouteSchemas } from '../schemas/coordination.schemas.js';
 import { buildCoordinatorAuthHook } from '../hooks/coordinator-auth.hook.js';
@@ -12,11 +13,12 @@ export interface CoordinationRoutesOptions {
   academicServiceClient: AcademicServiceClient;
   attendanceServiceCommands: AttendanceServiceCommandClient;
   coordinationQuery: CoordinationQueryClient;
+  identityService: IdentityServiceClient;
 }
 
 export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> = async (
   fastify,
-  { authService, academicServiceClient, attendanceServiceCommands, coordinationQuery },
+  { authService, academicServiceClient, attendanceServiceCommands, coordinationQuery, identityService },
 ) => {
   fastify.addHook('preHandler', buildCoordinatorAuthHook(authService));
   const requireWriteCoordinator = buildCoordinatorAuthHook(authService, { write: true });
@@ -24,6 +26,7 @@ export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> =
     academicServiceClient,
     attendanceServiceCommands,
     coordinationQuery,
+    identityService,
   );
 
   fastify.get('/api/coordinacion/resumen', { schema: coordinationRouteSchemas.overview }, controller.overview);
@@ -62,10 +65,16 @@ export const coordinationRoutes: FastifyPluginAsync<CoordinationRoutesOptions> =
   fastify.put<{ Params: { id: string } }>('/api/coordinacion/infraestructura/beacons/:id', { preHandler: requireWriteCoordinator }, controller.updateBeacon);
   fastify.delete<{ Params: { id: string } }>('/api/coordinacion/infraestructura/beacons/:id', { preHandler: requireWriteCoordinator }, controller.deleteBeacon);
   fastify.get('/api/coordinacion/infraestructura/alumnos-vinculados', controller.studentDeviceBindings);
+  fastify.get('/api/coordinacion/infraestructura/profesores-vinculados', controller.professorDeviceBindings);
   fastify.delete<{ Params: { matricula: string } }>(
     '/api/coordinacion/infraestructura/alumnos-vinculados/:matricula',
     { preHandler: requireWriteCoordinator },
     controller.deleteStudentDeviceBinding,
+  );
+  fastify.delete<{ Params: { externalId: string } }>(
+    '/api/coordinacion/infraestructura/profesores-vinculados/:externalId',
+    { preHandler: requireWriteCoordinator },
+    controller.deleteProfessorDeviceBinding,
   );
   fastify.get('/api/coordinacion/clases-compartidas/opciones', controller.sharedClassOptions);
   fastify.get('/api/coordinacion/clases-compartidas', controller.sharedClasses);

@@ -1,12 +1,14 @@
 package com.example.appprofesoresuniversidad
 
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -151,6 +153,9 @@ class AltBeaconPlugin(
         if (activeUuids.isEmpty()) {
             throw IllegalArgumentException("UUID inválido")
         }
+        if (!waitForBluetoothPoweredOn()) {
+            throw IllegalStateException("Bluetooth no disponible o apagado")
+        }
         val regionIdentifier = if (activeUuids.size == 1) {
             Identifier.parse(activeUuids.first())
         } else {
@@ -208,9 +213,38 @@ class AltBeaconPlugin(
     }
 
     private fun getBluetoothState(): String {
+        if (waitForBluetoothPoweredOn()) {
+            return "poweredOn"
+        }
         val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
             ?: return "unsupported"
-        return if (manager.adapter?.isEnabled == true) "poweredOn" else "poweredOff"
+        return when (manager.adapter?.state) {
+            BluetoothAdapter.STATE_ON -> "poweredOn"
+            BluetoothAdapter.STATE_OFF -> "poweredOff"
+            BluetoothAdapter.STATE_TURNING_ON,
+            BluetoothAdapter.STATE_TURNING_OFF -> "transitioning"
+            else -> "unknown"
+        }
+    }
+
+    private fun waitForBluetoothPoweredOn(timeoutMs: Long = 3_000L): Boolean {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        var lastState: Int? = null
+
+        while (SystemClock.elapsedRealtime() <= deadline) {
+            val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+                ?: return false
+            val adapter = manager.adapter ?: return false
+            lastState = adapter.state
+            if (adapter.state == BluetoothAdapter.STATE_ON && adapter.isEnabled) {
+                Log.i(TAG, "Bluetooth adapter ready")
+                return true
+            }
+            Thread.sleep(100L)
+        }
+
+        Log.w(TAG, "Bluetooth adapter not ready after ${timeoutMs}ms; adapterState=$lastState")
+        return false
     }
 
     private fun normalizeUuid(uuid: String?): String {

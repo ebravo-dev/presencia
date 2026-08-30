@@ -9,6 +9,8 @@ export const authenticatedSessionSchema = z.object({
   source: z.enum(['UAT_TEACHER', 'UAT_STUDENT']),
   correlationId: z.string().min(1).max(128),
   deviceId: z.string().min(1).max(160).optional(),
+  devicePlatform: z.enum(['android', 'ios']).optional(),
+  deviceInfo: z.string().max(500).optional(),
 }).superRefine((value, context) => {
   if (value.kind !== value.role) context.addIssue({ code: 'custom', path: ['role'], message: 'Role must match the verified identity kind' });
   if (value.kind === 'PROFESSOR' && value.source !== 'UAT_TEACHER') context.addIssue({ code: 'custom', path: ['source'], message: 'Invalid UAT source' });

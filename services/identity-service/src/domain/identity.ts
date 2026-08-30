@@ -8,6 +8,9 @@ export interface Identity {
   readonly institutionalIdentifier: string;
   readonly email: string | null;
   readonly displayName: string;
+  readonly deviceBindingId?: string | null;
+  readonly devicePlatform?: string | null;
+  readonly deviceInfo?: string | null;
   readonly disabledAt: Date | null;
   readonly lastAuthenticatedAt: Date;
 }
@@ -20,4 +23,7 @@ export interface ResolveVerifiedIdentityInput {
   readonly displayName: string;
   readonly source: 'UAT_TEACHER' | 'UAT_STUDENT' | 'LOCAL_STAFF' | 'SUPER_USER';
   readonly correlationId: string;
+  readonly deviceId?: string | undefined;
+  readonly devicePlatform?: string | undefined;
+  readonly deviceInfo?: string | undefined;
 }

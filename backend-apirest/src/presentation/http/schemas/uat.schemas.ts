@@ -4,7 +4,10 @@ import { ApiError } from '../../../errors/api-error.js';
 export const credentialsSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
-});
+  deviceBindingId: z.string().uuid().optional(),
+  platform: z.enum(['android', 'ios']).optional(),
+  deviceInfo: z.string().max(500).optional(),
+}).strict();
 
 export const studentCredentialsSchema = credentialsSchema.extend({
   idPlanEstudio: z.coerce.number().int().positive().optional(),
