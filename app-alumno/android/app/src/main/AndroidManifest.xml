@@ -10,11 +10,18 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <!-- Foreground service for BLE advertising -->
+    <!-- Foreground service used only while the student explicitly shares attendance over GATT. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- Optional: never requested or required; covers notification-capable library code. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- AltBeacon declares background components that this visible-only flow does not use. -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_LOCATION"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.RECEIVE_BOOT_COMPLETED"
+        tools:node="remove" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
     <application
         android:label="Alumnos"
@@ -43,16 +50,20 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <!-- iBeacon advertising service -->
+        <!-- Connectable GATT peripheral started from the visible attendance action. -->
         <service
             android:name=".BleAdvertiserService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+        <receiver
+            android:name="org.altbeacon.beacon.startup.StartupBroadcastReceiver"
+            tools:node="remove" />
         <service
             android:name="org.altbeacon.beacon.service.BeaconService"
-            android:exported="false"
-            android:foregroundServiceType="location|connectedDevice"
-            tools:node="merge" />
+            tools:remove="android:foregroundServiceType" />
+        <service
+            android:name="org.altbeacon.bluetooth.BluetoothTestJob"
+            tools:node="remove" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

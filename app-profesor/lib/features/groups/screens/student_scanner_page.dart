@@ -9,6 +9,7 @@ import '../../../shared/models/alumno.dart';
 class StudentScannerPage extends StatefulWidget {
   final List<Alumno> students;
   final ValueListenable<List<String>> detectedStudentKeys;
+  final ValueListenable<String?>? scanError;
   final List<Color> gradientColors;
   final String subject;
   final String groupLabel;
@@ -20,6 +21,7 @@ class StudentScannerPage extends StatefulWidget {
     super.key,
     required this.students,
     required this.detectedStudentKeys,
+    this.scanError,
     required this.gradientColors,
     required this.subject,
     required this.groupLabel,
@@ -39,6 +41,7 @@ class _StudentScannerPageState extends State<StudentScannerPage>
   bool _scanStarted = false;
   bool _isStopping = false;
   bool _allowPop = false;
+  String? _scanError;
 
   @override
   void initState() {
@@ -47,7 +50,20 @@ class _StudentScannerPageState extends State<StudentScannerPage>
       vsync: this,
       duration: const Duration(milliseconds: 1800),
     )..repeat();
+    _scanError = widget.scanError?.value;
+    widget.scanError?.addListener(_handleScanError);
     WidgetsBinding.instance.addPostFrameCallback((_) => _beginScan());
+  }
+
+  void _handleScanError() {
+    final error = widget.scanError?.value;
+    if (!mounted || error == null || error.isEmpty) return;
+    setState(() {
+      _scanError = error;
+      _isStarting = false;
+      _scanStarted = false;
+    });
+    _pulseController.stop();
   }
 
   Future<void> _beginScan() async {
@@ -80,6 +96,7 @@ class _StudentScannerPageState extends State<StudentScannerPage>
 
   @override
   void dispose() {
+    widget.scanError?.removeListener(_handleScanError);
     _pulseController.dispose();
     super.dispose();
   }
@@ -183,7 +200,7 @@ class _StudentScannerPageState extends State<StudentScannerPage>
               ? 'Preparando escaneo'
               : _scanStarted
               ? 'Escaneando alumnos'
-              : 'No se pudo iniciar el escaneo',
+              : 'El escaneo se detuvo',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: palette.textPrimary,
@@ -257,17 +274,27 @@ class _StudentScannerPageState extends State<StudentScannerPage>
           borderRadius: BorderRadius.circular(999),
           border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.info_outline_rounded, color: Colors.orange, size: 16),
-            SizedBox(width: 7),
-            Text(
-              'Revisa Bluetooth y los permisos',
-              style: TextStyle(
-                color: Colors.orange,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+            const Icon(
+              Icons.info_outline_rounded,
+              color: Colors.orange,
+              size: 16,
+            ),
+            const SizedBox(width: 7),
+            Flexible(
+              child: Text(
+                _scanError == null
+                    ? 'Revisa Bluetooth y los permisos'
+                    : 'Vuelve a intentarlo o reinicia Bluetooth',
+                style: const TextStyle(
+                  color: Colors.orange,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],

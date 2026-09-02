@@ -107,6 +107,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   final ValueNotifier<List<String>> _studentDetectionOrder = ValueNotifier(
     const [],
   );
+  final ValueNotifier<String?> _studentScanError = ValueNotifier(null);
 
   // Timer para actualizar la hora
   Timer? _timer;
@@ -301,6 +302,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     _studentBeaconSubscription?.cancel();
     _studentScanGeneration++;
     _studentDetectionOrder.dispose();
+    _studentScanError.dispose();
     _studentBeaconService.stopScanning();
     super.dispose();
   }
@@ -2165,6 +2167,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       return _isStudentBeaconScanning;
     }
     final scanGeneration = ++_studentScanGeneration;
+    _studentScanError.value = null;
 
     if (!_puedeEscanearAlumnos()) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2256,6 +2259,19 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     _studentKeyByBeaconUuid = scannableBindings;
     _studentBeaconSubscription = _studentBeaconService.detectionsStream.listen(
       _enqueueStudentBeaconDetections,
+      onError: (Object error, StackTrace stackTrace) {
+        Logger.error(
+          'El sistema detuvo el escaneo BLE de alumnos.',
+          error,
+          stackTrace,
+        );
+        _studentScanError.value = error.toString();
+        if (mounted) {
+          setState(() => _isStudentBeaconScanning = false);
+        } else {
+          _isStudentBeaconScanning = false;
+        }
+      },
     );
 
     _bleBeaconService.cancelScan();
@@ -2812,6 +2828,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
             StudentScannerPage(
               students: widget.grupo.students,
               detectedStudentKeys: _studentDetectionOrder,
+              scanError: _studentScanError,
               gradientColors: widget.gradientColors,
               subject: widget.grupo.subject,
               groupLabel: widget.grupo.grupoLetra,

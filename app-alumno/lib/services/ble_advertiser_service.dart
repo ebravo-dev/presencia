@@ -30,7 +30,7 @@ class BleAdvertiserService {
   }
 
   /// Start iBeacon advertising with the UUID associated to this student.
-  Future<void> startAdvertising({
+  Future<bool> startAdvertising({
     required String uuid,
     int major = 1,
     int minor = 1,
@@ -40,18 +40,44 @@ class BleAdvertiserService {
       final state = await _channel.invokeMethod('getBluetoothState');
       if (state != 'on') {
         _updateState(AdvertiserState.bluetoothOff);
-        return;
+        return false;
       }
-      await _channel.invokeMethod('startAdvertising', {
+      final result = await _channel.invokeMethod<bool>('startAdvertising', {
         'uuid': uuid,
         'major': major,
         'minor': minor,
         'measuredPower': measuredPower,
       });
+      if (result != true) {
+        _updateState(AdvertiserState.error);
+        return false;
+      }
       debugPrint('[BLE] Starting attendance beacon...');
+      if (_currentState == AdvertiserState.advertising) return true;
+      if (_currentState == AdvertiserState.error ||
+          _currentState == AdvertiserState.bluetoothOff) {
+        return false;
+      }
+
+      final started = await stateStream
+          .firstWhere(
+            (state) =>
+                state == AdvertiserState.advertising ||
+                state == AdvertiserState.error ||
+                state == AdvertiserState.bluetoothOff,
+          )
+          .timeout(
+            const Duration(seconds: 5),
+            onTimeout: () => AdvertiserState.error,
+          );
+      if (started == AdvertiserState.error) {
+        _updateState(AdvertiserState.error);
+      }
+      return started == AdvertiserState.advertising;
     } catch (e) {
       debugPrint('[BLE] Error starting advertising: $e');
       _updateState(AdvertiserState.error);
+      return false;
     }
   }
 
@@ -104,6 +130,11 @@ class BleAdvertiserService {
           isAdvertising ? AdvertiserState.advertising : AdvertiserState.idle,
         );
         debugPrint('[BLE] Advertising state: $isAdvertising');
+        break;
+
+      case 'onAdvertisingError':
+        debugPrint('[BLE] Advertising error: ${call.arguments}');
+        _updateState(AdvertiserState.error);
         break;
 
       case 'onBluetoothStateChanged':
