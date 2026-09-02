@@ -1,153 +1,267 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
-import 'native_altbeacon_channel.dart';
+
 import '../core/utils/utils.dart';
+import 'auth_storage_service.dart';
+import 'native_altbeacon_channel.dart';
 
-/// Resultado de la verificación BLE del beacon
-enum BeaconVerificationResult {
-  /// Beacon detectado — profesor está en el salón
-  detected,
+/// Estado final de un escaneo de salones por BLE.
+enum BeaconVerificationResult { detected, timeout, bluetoothUnavailable, error }
 
-  /// No se detectó el beacon dentro del tiempo límite
-  timeout,
+/// Beacon configurado para un salón.
+class ClassroomBeaconReference {
+  final String classroom;
+  final String uuid;
 
-  /// Bluetooth no disponible o apagado
-  bluetoothUnavailable,
-
-  /// Error durante el escaneo
-  error,
+  const ClassroomBeaconReference({required this.classroom, required this.uuid});
 }
 
-/// Servicio para verificar la presencia del profesor en el salón
-/// mediante la detección de un beacon BLE por su service UUID.
-///
-/// Flujo:
-/// 1. Verifica que Bluetooth esté encendido
-/// 2. Inicia escaneo BLE filtrando por el service UUID del beacon
-/// 3. Retorna [BeaconVerificationResult.detected] si lo encuentra,
-///    o [BeaconVerificationResult.timeout] si se agota el tiempo.
-class BleBeaconVerificationService {
-  final _beacons = NativeAltBeaconChannel();
+/// Salón que resultó más cercano durante el periodo completo de muestreo.
+class ClassroomBeaconMatch {
+  final ClassroomBeaconReference reference;
+  final AltBeaconDetection detection;
 
-  // ── Estado interno ──────────────────────────────────────────────
-  Completer<BeaconVerificationResult>? _completer;
+  const ClassroomBeaconMatch({
+    required this.reference,
+    required this.detection,
+  });
+}
+
+class ClassroomBeaconScanResult {
+  final BeaconVerificationResult status;
+  final ClassroomBeaconMatch? match;
+
+  const ClassroomBeaconScanResult(this.status, {this.match});
+}
+
+/// Elige la señal RSSI más intensa (el valor más alto, por ejemplo -45 antes
+/// que -80). Si dos señales tienen el mismo RSSI, el salón principal gana el
+/// desempate. La distancia sólo se usa cuando el dispositivo no reporta RSSI.
+@visibleForTesting
+ClassroomBeaconMatch? selectNearestClassroomBeacon({
+  required List<ClassroomBeaconReference> references,
+  required Iterable<AltBeaconDetection> detections,
+  String? primaryClassroom,
+}) {
+  final referenceByUuid = <String, ClassroomBeaconReference>{
+    for (final reference in references)
+      if (reference.uuid.trim().isNotEmpty)
+        reference.uuid.trim().toLowerCase(): reference,
+  };
+  final primaryKey = AuthStorageService.classroomKey(primaryClassroom);
+  ClassroomBeaconMatch? best;
+
+  for (final detection in detections) {
+    final reference = referenceByUuid[detection.uuid.trim().toLowerCase()];
+    if (reference == null) continue;
+    final candidate = ClassroomBeaconMatch(
+      reference: reference,
+      detection: detection,
+    );
+    if (best == null ||
+        _isStronger(candidate, best, primaryClassroomKey: primaryKey)) {
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+bool _isStronger(
+  ClassroomBeaconMatch candidate,
+  ClassroomBeaconMatch current, {
+  required String primaryClassroomKey,
+}) {
+  final candidateRssi = candidate.detection.rssi;
+  final currentRssi = current.detection.rssi;
+  if (candidateRssi != null || currentRssi != null) {
+    if (candidateRssi == null) return false;
+    if (currentRssi == null) return true;
+    if (candidateRssi != currentRssi) return candidateRssi > currentRssi;
+  } else {
+    final candidateDistance = candidate.detection.distance;
+    final currentDistance = current.detection.distance;
+    if (candidateDistance != null || currentDistance != null) {
+      if (candidateDistance == null) return false;
+      if (currentDistance == null) return true;
+      if (candidateDistance != currentDistance) {
+        return candidateDistance < currentDistance;
+      }
+    }
+  }
+
+  final candidateIsPrimary =
+      AuthStorageService.classroomKey(candidate.reference.classroom) ==
+      primaryClassroomKey;
+  final currentIsPrimary =
+      AuthStorageService.classroomKey(current.reference.classroom) ==
+      primaryClassroomKey;
+  return candidateIsPrimary && !currentIsPrimary;
+}
+
+/// Escanea simultáneamente todos los UUID configurados y conserva, para cada
+/// beacon, su lectura más intensa. Al terminar el muestreo devuelve el salón
+/// del beacon con el RSSI global más alto.
+class BleBeaconVerificationService {
+  final NativeAltBeaconChannel _beacons;
+
+  BleBeaconVerificationService({NativeAltBeaconChannel? beacons})
+    : _beacons = beacons ?? NativeAltBeaconChannel();
+
+  Completer<ClassroomBeaconScanResult>? _completer;
   Timer? _timeoutTimer;
   bool _isScanning = false;
-  String? _targetUuid;
+  List<ClassroomBeaconReference> _references = const [];
+  String? _primaryClassroom;
+  final Map<String, AltBeaconDetection> _strongestByUuid = {};
   StreamSubscription<List<AltBeaconDetection>>? _scanSubscription;
 
-  /// Stream para notificar progreso durante el escaneo.
   final _progressController = StreamController<String>.broadcast();
   Stream<String> get progressStream => _progressController.stream;
 
-  /// Indica si hay un escaneo activo.
   bool get isScanning => _isScanning;
 
-  /// Verifica que el beacon del salón está cerca.
-  Future<BeaconVerificationResult> verifyBeaconPresence({
-    required String beaconUuid,
+  Future<ClassroomBeaconScanResult> detectNearestClassroom({
+    required List<ClassroomBeaconReference> beacons,
+    String? primaryClassroom,
     Duration timeout = const Duration(seconds: 5),
   }) async {
-    if (_isScanning) {
-      Logger.info('[BLE-Beacon] Ya hay un escaneo en progreso');
-      return BeaconVerificationResult.error;
+    if (_isScanning || beacons.isEmpty) {
+      return const ClassroomBeaconScanResult(BeaconVerificationResult.error);
     }
 
-    // 1. Verificar que Bluetooth esté disponible
     try {
       final available = await _beacons.isBluetoothAvailable();
       if (!available) {
-        Logger.info('[BLE-Beacon] Bluetooth no disponible');
-        return BeaconVerificationResult.bluetoothUnavailable;
-      }
-    } catch (e) {
-      Logger.error('[BLE-Beacon] Error verificando Bluetooth', e);
-      return BeaconVerificationResult.bluetoothUnavailable;
-    }
-
-    // 2. Preparar escaneo
-    _isScanning = true;
-    _targetUuid = beaconUuid;
-    _completer = Completer<BeaconVerificationResult>();
-
-    // 3. Iniciar escaneo BLE
-    try {
-      Logger.info('[AltBeacon] Buscando UUID: $beaconUuid');
-      if (kDebugMode) {
-        debugPrint('[AltBeacon] Iniciando ranging nativo para $beaconUuid');
-      }
-
-      // Si el completer ya se completó (timeout prematuro), salir
-      if (_completer == null || _completer!.isCompleted) {
-        return _completer?.future ??
-            Future.value(BeaconVerificationResult.error);
-      }
-
-      // 4. Timer de timeout para el escaneo real (iBeacon ranging)
-      _timeoutTimer = Timer(timeout, () {
-        Logger.info(
-          '[BLE-Beacon] Timeout — no se detectó el beacon en '
-          '${timeout.inSeconds}s',
+        return const ClassroomBeaconScanResult(
+          BeaconVerificationResult.bluetoothUnavailable,
         );
-        _finishScan(BeaconVerificationResult.timeout);
-      });
-
-      _scanSubscription = _beacons.detectionsStream.listen(_onScanResult);
-      await Future.delayed(const Duration(milliseconds: 200));
-      final started = await _beacons.startScanning(uuids: [beaconUuid]);
-      debugPrint('[AltBeacon] startScanning retornó: $started');
-    } catch (e) {
-      Logger.error('[BLE-Beacon] Error iniciando escaneo', e);
-      _finishScan(BeaconVerificationResult.error);
+      }
+    } catch (error) {
+      Logger.error('[BLE-Beacon] Error verificando Bluetooth', error);
+      return const ClassroomBeaconScanResult(
+        BeaconVerificationResult.bluetoothUnavailable,
+      );
     }
 
-    return _completer!.future;
+    final referencesByUuid = <String, ClassroomBeaconReference>{};
+    for (final beacon in beacons) {
+      final uuid = beacon.uuid.trim().toLowerCase();
+      if (uuid.isNotEmpty) referencesByUuid[uuid] = beacon;
+    }
+    if (referencesByUuid.isEmpty) {
+      return const ClassroomBeaconScanResult(BeaconVerificationResult.error);
+    }
+
+    _isScanning = true;
+    _references = referencesByUuid.values.toList(growable: false);
+    _primaryClassroom = primaryClassroom;
+    _strongestByUuid.clear();
+    _completer = Completer<ClassroomBeaconScanResult>();
+
+    try {
+      final uuids = referencesByUuid.keys.toList(growable: false);
+      Logger.info('[AltBeacon] Buscando ${uuids.length} salones');
+      if (kDebugMode) {
+        debugPrint('[AltBeacon] Iniciando ranging nativo para $uuids');
+      }
+
+      _timeoutTimer = Timer(timeout, _completeFromStrongestReading);
+      _scanSubscription = _beacons.detectionsStream.listen(_onScanResult);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      final started = await _beacons.startScanning(uuids: uuids);
+      if (!started) {
+        _finishScan(
+          const ClassroomBeaconScanResult(BeaconVerificationResult.error),
+        );
+      }
+    } catch (error) {
+      Logger.error('[BLE-Beacon] Error iniciando escaneo', error);
+      _finishScan(
+        const ClassroomBeaconScanResult(BeaconVerificationResult.error),
+      );
+    }
+
+    return _completer?.future ??
+        const ClassroomBeaconScanResult(BeaconVerificationResult.error);
   }
 
-  /// Callback invocado por cada dispositivo BLE encontrado.
   void _onScanResult(List<AltBeaconDetection> detections) {
-    if (detections.isEmpty) return;
+    for (final detection in detections) {
+      final uuid = detection.uuid.trim().toLowerCase();
+      final current = _strongestByUuid[uuid];
+      if (current == null || _isStrongerDetection(detection, current)) {
+        _strongestByUuid[uuid] = detection;
+      }
+      final label = '${detection.uuid} RSSI: ${detection.rssi ?? '-'}';
+      debugPrint('[AltBeacon] Beacon: $label');
+      _progressController.add(label);
+    }
+  }
 
-    final beacon = detections.first;
-    final label = '${beacon.uuid} RSSI: ${beacon.rssi ?? '-'}';
-    debugPrint('[AltBeacon] Beacon: $label');
-    _progressController.add(label);
+  bool _isStrongerDetection(
+    AltBeaconDetection candidate,
+    AltBeaconDetection current,
+  ) {
+    if (candidate.rssi != null || current.rssi != null) {
+      if (candidate.rssi == null) return false;
+      if (current.rssi == null) return true;
+      return candidate.rssi! > current.rssi!;
+    }
+    if (candidate.distance == null) return false;
+    if (current.distance == null) return true;
+    return candidate.distance! < current.distance!;
+  }
+
+  void _completeFromStrongestReading() {
+    final match = selectNearestClassroomBeacon(
+      references: _references,
+      detections: _strongestByUuid.values,
+      primaryClassroom: _primaryClassroom,
+    );
+    if (match == null) {
+      Logger.info('[BLE-Beacon] No se detectó ningún salón configurado');
+      _finishScan(
+        const ClassroomBeaconScanResult(BeaconVerificationResult.timeout),
+      );
+      return;
+    }
 
     Logger.info(
-      '[BLE-Beacon] ✅ ¡BEACON DETECTADO! '
-      'UUID: ${beacon.uuid}, objetivo: $_targetUuid',
+      '[BLE-Beacon] Salón más cercano: ${match.reference.classroom}; '
+      'RSSI=${match.detection.rssi}',
     );
-    _finishScan(BeaconVerificationResult.detected);
+    _finishScan(
+      ClassroomBeaconScanResult(
+        BeaconVerificationResult.detected,
+        match: match,
+      ),
+    );
   }
 
-  /// Finaliza el escaneo y emite el resultado.
-  void _finishScan(BeaconVerificationResult result) {
+  void _finishScan(ClassroomBeaconScanResult result) {
     if (!_isScanning) return;
-
     _timeoutTimer?.cancel();
     _timeoutTimer = null;
     _isScanning = false;
-
     _scanSubscription?.cancel();
     _scanSubscription = null;
-
     _beacons.stopScanning();
 
-    if (_completer != null && !_completer!.isCompleted) {
-      _completer!.complete(result);
-    }
+    final completer = _completer;
     _completer = null;
+    if (completer != null && !completer.isCompleted) completer.complete(result);
   }
 
-  /// Cancela un escaneo en progreso.
   void cancelScan() {
     if (_isScanning) {
       Logger.info('[BLE-Beacon] Escaneo cancelado por el usuario');
-      _finishScan(BeaconVerificationResult.timeout);
+      _finishScan(
+        const ClassroomBeaconScanResult(BeaconVerificationResult.timeout),
+      );
     }
   }
 
-  /// Libera recursos.
   void dispose() {
     cancelScan();
     _progressController.close();

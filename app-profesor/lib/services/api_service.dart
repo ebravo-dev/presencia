@@ -749,6 +749,7 @@ class ApiService {
     Map<String, String?>? schedule,
     String? groupId,
   }) async {
+    await refreshClassroomCatalog();
     return _uploadAttendanceViaBackendApiRest(
       token: token,
       clientRecordId: clientRecordId,
@@ -1030,9 +1031,11 @@ class ApiService {
       );
       if (response.statusCode == 200) {
         final data = response.data['data'] as List<dynamic>? ?? [];
-        return Right(
-          data.map((item) => Map<String, dynamic>.from(item as Map)).toList(),
-        );
+        final beacons = data
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList();
+        await AuthStorageService().saveBeacons(beacons);
+        return Right(beacons);
       }
       return const Left('No pudimos cargar los salones disponibles.');
     } on DioException catch (e) {
@@ -1049,9 +1052,29 @@ class ApiService {
     }
   }
 
+  /// Actualiza en el equipo el catálogo completo de salones. Las operaciones
+  /// en línea de asistencia lo invocan primero, pero una falla no bloquea el
+  /// uso de la última copia local.
+  Future<void> refreshClassroomCatalog() async {
+    final result = await listAvailableClassroomBeacons();
+    result.fold(
+      (error) => Logger.error(
+        'No se pudo actualizar el catálogo completo de salones: $error',
+      ),
+      (beacons) => Logger.info(
+        '${beacons.length} salones actualizados antes de la operación en línea',
+      ),
+    );
+  }
+
   Future<List<Map<String, dynamic>>> _resolveBeaconsForGroups(
     List<Grupo> grupos,
   ) async {
+    final completeCatalog = await listAvailableClassroomBeacons();
+    if (completeCatalog.isRight()) {
+      return completeCatalog.getOrElse(() => const <Map<String, dynamic>>[]);
+    }
+
     final classrooms = grupos
         .map((grupo) => grupo.classroom)
         .where((classroom) => classroom.trim().isNotEmpty)
@@ -1119,6 +1142,7 @@ class ApiService {
     double? distance,
     String? bluetoothAddress,
   }) async {
+    await refreshClassroomCatalog();
     try {
       final response = await _presenceDio.post(
         ApiConstants.uatPresenceEntry,
@@ -1158,6 +1182,7 @@ class ApiService {
     required String externalGroupId,
     required DateTime detectedAt,
   }) async {
+    await refreshClassroomCatalog();
     try {
       final response = await _presenceDio.post(
         ApiConstants.uatPresenceExit,
@@ -1192,6 +1217,7 @@ class ApiService {
     required String externalGroupId,
     required List<Map<String, dynamic>> detections,
   }) async {
+    await refreshClassroomCatalog();
     try {
       final response = await _presenceDio.post(
         ApiConstants.uatStudentPresence,

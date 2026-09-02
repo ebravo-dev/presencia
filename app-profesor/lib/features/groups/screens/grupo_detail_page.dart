@@ -10,6 +10,7 @@ import '../../../shared/models/asistencia_registro.dart';
 import '../../../services/asistencia_local_service.dart';
 import '../../../services/api_service.dart';
 import '../../../services/ble_beacon_verification_service.dart';
+import '../../../services/native_altbeacon_channel.dart';
 import '../../../services/student_attendance_ble_service.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/uat_colors.dart';
@@ -72,7 +73,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   DateTime _selectedDateTime = DateTime.now();
   late String _selectedClassroom;
   late TextEditingController _classroomController;
-  List<String> _availableClassrooms = const [];
   bool _isLoadingClassrooms = false;
 
   // Controlador para el efecto neón parpadeante en el botón de fecha
@@ -133,7 +133,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     );
     _selectedClassroom = widget.grupo.classroom.trim().toUpperCase();
     _classroomController = TextEditingController(text: _selectedClassroom);
-    _availableClassrooms = _cachedAvailableClassrooms();
     WidgetsBinding.instance.addObserver(this);
     // Configurar status bar transparente
     SystemChrome.setSystemUIOverlayStyle(
@@ -1185,7 +1184,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
   Widget _buildClassroomPicker() {
     final palette = context.uatPalette;
-    final locked = _entradaProfesor != null;
 
     return Container(
       width: double.infinity,
@@ -1208,7 +1206,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
               const SizedBox(width: 9),
               Expanded(
                 child: Text(
-                  'Salón para tomar asistencia',
+                  _entradaProfesor == null
+                      ? 'Salón principal de la clase'
+                      : 'Salón donde se tomó la asistencia',
                   style: TextStyle(
                     color: palette.textPrimary,
                     fontSize: 15,
@@ -1228,41 +1228,42 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
             ],
           ),
           const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) => DropdownMenu<String>(
-              controller: _classroomController,
-              width: constraints.maxWidth,
-              enabled: !locked,
-              enableFilter: true,
-              enableSearch: true,
-              requestFocusOnTap: true,
-              label: const Text('Buscar salón'),
-              leadingIcon: const Icon(Icons.search_rounded),
-              trailingIcon: const Icon(Icons.keyboard_arrow_down_rounded),
-              selectedTrailingIcon: const Icon(Icons.keyboard_arrow_up_rounded),
-              dropdownMenuEntries: _availableClassrooms
-                  .map(
-                    (classroom) => DropdownMenuEntry<String>(
-                      value: classroom,
-                      label: classroom,
-                      leadingIcon: const Icon(Icons.location_on_outlined),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            decoration: BoxDecoration(
+              color: palette.surfaceMuted,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: palette.border),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.location_on_outlined,
+                  color: widget.gradientColors[0],
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _selectedClassroom.isEmpty
+                        ? 'Sin salón programado'
+                        : _selectedClassroom,
+                    style: TextStyle(
+                      color: palette.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
                     ),
-                  )
-                  .toList(),
-              onSelected: (classroom) {
-                if (classroom == null || classroom == _selectedClassroom) {
-                  return;
-                }
-                HapticFeedback.selectionClick();
-                setState(() => _selectedClassroom = classroom);
-              },
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            locked
-                ? 'Salón confirmado para esta asistencia.'
-                : 'Busca y selecciona el salón donde estás. Confirmaremos tu ubicación antes de continuar.',
+            _entradaProfesor != null
+                ? 'Este salón quedará visible para coordinación.'
+                : 'Al marcar entrada detectaremos automáticamente el beacon más cercano por intensidad de señal.',
             style: TextStyle(
               color: palette.textSecondary,
               fontSize: 12,
@@ -1274,17 +1275,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     );
   }
 
-  List<String> _cachedAvailableClassrooms() {
-    final classrooms = (_authStorage.getBeacons() ?? const [])
-        .map((beacon) => beacon['classroom']?.toString().trim().toUpperCase())
-        .whereType<String>()
-        .where((classroom) => classroom.isNotEmpty)
-        .toSet();
-    if (_selectedClassroom.isNotEmpty) classrooms.add(_selectedClassroom);
-    final result = classrooms.toList()..sort();
-    return result;
-  }
-
   Future<void> _loadAvailableClassrooms() async {
     if (mounted) setState(() => _isLoadingClassrooms = true);
     final result = await _apiService.listAvailableClassroomBeacons();
@@ -1293,7 +1283,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     });
     if (!mounted) return;
     setState(() {
-      _availableClassrooms = _cachedAvailableClassrooms();
       _isLoadingClassrooms = false;
     });
   }
@@ -1324,7 +1313,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       );
     }
     if (resultado.verificada && resultado.beaconUuid != null) {
-      await _sincronizarEntradaProfesor(resultado.beaconUuid!);
+      await _sincronizarEntradaProfesor(resultado);
     }
   }
 
@@ -1343,99 +1332,203 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   Future<_BleDialogResult?> _verificarBeaconDelSalon({
     required bool permitirMotivo,
   }) async {
-    final typedClassroom = _classroomController.text.trim().toUpperCase();
-    final matchingClassrooms = _availableClassrooms
-        .where(
-          (classroom) =>
-              AuthStorageService.classroomKey(classroom) ==
-              AuthStorageService.classroomKey(typedClassroom),
-        )
-        .toList();
-    if (typedClassroom.isEmpty || matchingClassrooms.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Selecciona un salón de la lista para tomar la asistencia.',
-            ),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-      return null;
-    }
-    final selectedClassroom = matchingClassrooms.first;
-    if (_selectedClassroom != selectedClassroom && mounted) {
-      setState(() => _selectedClassroom = selectedClassroom);
-    }
+    // Cada acción en línea vuelve a descargar el catálogo completo. Si no hay
+    // conexión se conserva la última lista local para poder seguir operando.
+    await _loadAvailableClassrooms();
+    if (!mounted) return null;
 
-    // El salón real puede ser distinto al programado para el grupo.
-    final authStorage = AuthStorageService();
-    var beaconUuid = authStorage.getBeaconUuidForClassroom(selectedClassroom);
-
-    var result = await _apiService.listAvailableClassroomBeacons();
-    if (result.isLeft()) {
-      result = await _apiService.resolveClassroomBeacons(
-        classrooms: [selectedClassroom],
-      );
-    }
-    await result.fold((_) async {}, (beacons) async {
-      if (beacons.isEmpty) return;
-
-      final existing = authStorage.getBeacons() ?? [];
-      final merged = <String, Map<String, dynamic>>{
-        for (final beacon in existing)
-          if (AuthStorageService.classroomKey(
-            beacon['classroomKey']?.toString() ??
-                beacon['classroom']?.toString(),
-          ).isNotEmpty)
-            AuthStorageService.classroomKey(
-              beacon['classroomKey']?.toString() ??
-                  beacon['classroom']?.toString(),
-            ): beacon,
-      };
-
-      for (final beacon in beacons) {
-        final classroomKey = AuthStorageService.classroomKey(
-          beacon['classroomKey']?.toString() ?? beacon['classroom']?.toString(),
-        );
-        if (classroomKey.isEmpty) continue;
-        merged[classroomKey] = beacon;
-      }
-
-      await authStorage.saveBeacons(merged.values.toList());
-      beaconUuid = authStorage.getBeaconUuidForClassroom(selectedClassroom);
-    });
-
-    final resolvedBeaconUuid = beaconUuid;
-    if (resolvedBeaconUuid == null || resolvedBeaconUuid.isEmpty) {
-      if (!mounted) return null;
+    final references = _classroomBeaconReferences();
+    if (references.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text(
-            'No pudimos preparar la verificación del salón '
-            '"$selectedClassroom". Solicita ayuda a administración.',
+            'No hay salones con beacon configurado. Solicita ayuda a administración.',
           ),
           backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 4),
+          duration: Duration(seconds: 4),
         ),
       );
       return null;
     }
 
-    if (!mounted) return null;
-    final resultado = await showDialog<_BleDialogResult>(
+    final primaryClassroom = widget.grupo.classroom.trim().toUpperCase();
+    var resultado = await _scanClassroomBeacons(
+      references,
+      primaryClassroom: primaryClassroom,
+      permitirMotivo: permitirMotivo,
+    );
+
+    while (mounted && resultado != null && resultado.verificada) {
+      final detectedClassroom = resultado.classroom;
+      if (detectedClassroom == null ||
+          _sameClassroom(detectedClassroom, primaryClassroom)) {
+        _useDetectedClassroom(detectedClassroom ?? primaryClassroom);
+        return resultado;
+      }
+
+      final action = await _showAlternateClassroomWarning(detectedClassroom);
+      if (!mounted || action == null) return null;
+      if (action == _AlternateClassroomAction.accept) {
+        _useDetectedClassroom(detectedClassroom);
+        return resultado;
+      }
+
+      final selected = await _showClassroomCorrectionPicker(references);
+      if (!mounted || selected == null) return null;
+      resultado = await _scanClassroomBeacons(
+        [selected],
+        primaryClassroom: primaryClassroom,
+        permitirMotivo: false,
+      );
+    }
+
+    return resultado;
+  }
+
+  List<ClassroomBeaconReference> _classroomBeaconReferences() {
+    final byUuid = <String, ClassroomBeaconReference>{};
+    for (final beacon in _authStorage.getBeacons() ?? const []) {
+      final classroom = beacon['classroom']?.toString().trim().toUpperCase();
+      final uuid = beacon['uuid']?.toString().trim().toLowerCase();
+      if (classroom == null ||
+          classroom.isEmpty ||
+          uuid == null ||
+          uuid.isEmpty) {
+        continue;
+      }
+      byUuid[uuid] = ClassroomBeaconReference(classroom: classroom, uuid: uuid);
+    }
+    final references = byUuid.values.toList()
+      ..sort((left, right) => left.classroom.compareTo(right.classroom));
+    return references;
+  }
+
+  Future<_BleDialogResult?> _scanClassroomBeacons(
+    List<ClassroomBeaconReference> references, {
+    required String primaryClassroom,
+    required bool permitirMotivo,
+  }) {
+    return showDialog<_BleDialogResult>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => _BleBeaconScanDialog(
         bleService: _bleBeaconService,
-        beaconUuid: resolvedBeaconUuid,
+        beacons: references,
+        primaryClassroom: primaryClassroom,
         gradientColors: widget.gradientColors,
         permitirMotivo: permitirMotivo,
       ),
     );
+  }
 
-    return resultado;
+  bool _sameClassroom(String left, String right) {
+    final leftKey = AuthStorageService.classroomKey(left);
+    return leftKey.isNotEmpty &&
+        leftKey == AuthStorageService.classroomKey(right);
+  }
+
+  void _useDetectedClassroom(String classroom) {
+    final normalized = classroom.trim().toUpperCase();
+    if (!mounted || normalized.isEmpty) return;
+    setState(() {
+      _selectedClassroom = normalized;
+      _classroomController.text = normalized;
+    });
+  }
+
+  Future<_AlternateClassroomAction?> _showAlternateClassroomWarning(
+    String classroom,
+  ) {
+    return showDialog<_AlternateClassroomAction>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        final palette = dialogContext.uatPalette;
+        return AlertDialog(
+          backgroundColor: palette.surfaceElevated,
+          icon: const Icon(
+            Icons.notification_important_outlined,
+            color: Colors.orange,
+            size: 36,
+          ),
+          title: const Text('Se detectó otro salón'),
+          content: Text(
+            'Se le notificará a coordinación que la asistencia se tomó en '
+            '$classroom.',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            FilledButton.icon(
+              onPressed: () => Navigator.of(
+                dialogContext,
+              ).pop(_AlternateClassroomAction.accept),
+              icon: const Icon(Icons.check_rounded),
+              label: const Text('Aceptar y tomar asistencia'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(
+                dialogContext,
+              ).pop(_AlternateClassroomAction.correct),
+              icon: const Icon(Icons.edit_location_alt_outlined),
+              label: const Text('Ese no es el salón en el que estoy'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancelar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<ClassroomBeaconReference?> _showClassroomCorrectionPicker(
+    List<ClassroomBeaconReference> references,
+  ) async {
+    ClassroomBeaconReference? selected;
+    return showDialog<ClassroomBeaconReference>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        final palette = dialogContext.uatPalette;
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            backgroundColor: palette.surfaceElevated,
+            title: const Text('Selecciona el salón correcto'),
+            content: DropdownButtonFormField<ClassroomBeaconReference>(
+              initialValue: selected,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Salón',
+                prefixIcon: Icon(Icons.meeting_room_outlined),
+              ),
+              items: references
+                  .map(
+                    (reference) => DropdownMenuItem(
+                      value: reference,
+                      child: Text(reference.classroom),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) => setDialogState(() => selected = value),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton.icon(
+                onPressed: selected == null
+                    ? null
+                    : () => Navigator.of(dialogContext).pop(selected),
+                icon: const Icon(Icons.radar_rounded),
+                label: const Text('Detectar salón'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   String _formatTime(DateTime dateTime) {
@@ -1623,16 +1716,27 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     );
   }
 
-  Future<void> _sincronizarEntradaProfesor(String beaconUuid) async {
+  Future<void> _sincronizarEntradaProfesor(
+    _BleDialogResult verification,
+  ) async {
     final token = _authStorage.getToken();
     final entrada = _entradaProfesor;
-    if (token == null || token.isEmpty || entrada == null) return;
+    final beaconUuid = verification.beaconUuid;
+    if (token == null ||
+        token.isEmpty ||
+        entrada == null ||
+        beaconUuid == null) {
+      return;
+    }
 
     final result = await _apiService.recordProfessorBeaconEntry(
       token: token,
       externalGroupId: widget.grupo.id,
       detectedAt: entrada,
       beaconUuid: beaconUuid,
+      rssi: verification.detection?.rssi,
+      distance: verification.detection?.distance,
+      bluetoothAddress: verification.detection?.bluetoothAddress,
     );
 
     result.fold(
@@ -3309,20 +3413,27 @@ class _BleDialogResult {
   final bool verificada;
   final String? motivo;
   final String? beaconUuid;
+  final String? classroom;
+  final AltBeaconDetection? detection;
 
   const _BleDialogResult({
     required this.debeMarcarAsistencia,
     required this.verificada,
     this.motivo,
     this.beaconUuid,
+    this.classroom,
+    this.detection,
   });
 
   /// Beacon detectado — asistencia verificada
-  factory _BleDialogResult.verified(String beaconUuid) => _BleDialogResult(
-    debeMarcarAsistencia: true,
-    verificada: true,
-    beaconUuid: beaconUuid,
-  );
+  factory _BleDialogResult.verified(ClassroomBeaconMatch match) =>
+      _BleDialogResult(
+        debeMarcarAsistencia: true,
+        verificada: true,
+        beaconUuid: match.reference.uuid,
+        classroom: match.reference.classroom,
+        detection: match.detection,
+      );
 
   /// Beacon no detectado — entrada parcial con motivo
   factory _BleDialogResult.withMotivo(String motivo) => _BleDialogResult(
@@ -3331,6 +3442,8 @@ class _BleDialogResult {
     motivo: motivo,
   );
 }
+
+enum _AlternateClassroomAction { accept, correct }
 
 // ══════════════════════════════════════════════════════════════════
 // Motivos predefinidos
@@ -3348,13 +3461,15 @@ const List<String> _motivosPredefinidos = [
 
 class _BleBeaconScanDialog extends StatefulWidget {
   final BleBeaconVerificationService bleService;
-  final String beaconUuid;
+  final List<ClassroomBeaconReference> beacons;
+  final String primaryClassroom;
   final List<Color> gradientColors;
   final bool permitirMotivo;
 
   const _BleBeaconScanDialog({
     required this.bleService,
-    required this.beaconUuid,
+    required this.beacons,
+    required this.primaryClassroom,
     required this.gradientColors,
     required this.permitirMotivo,
   });
@@ -3407,27 +3522,35 @@ class _BleBeaconScanDialogState extends State<_BleBeaconScanDialog>
     });
 
     debugPrint(
-      '[BLE-Dialog] Iniciando verificación con UUID: ${widget.beaconUuid}',
+      '[BLE-Dialog] Buscando ${widget.beacons.length} salones configurados',
     );
-    final result = await widget.bleService.verifyBeaconPresence(
-      beaconUuid: widget.beaconUuid,
+    final result = await widget.bleService.detectNearestClassroom(
+      beacons: widget.beacons,
+      primaryClassroom: widget.primaryClassroom,
     );
-    debugPrint('[BLE-Dialog] Resultado: $result');
+    debugPrint('[BLE-Dialog] Resultado: ${result.status}');
     if (!mounted) return;
 
-    switch (result) {
+    switch (result.status) {
       case BeaconVerificationResult.detected:
+        final match = result.match;
+        if (match == null) {
+          setState(() {
+            _phase = _ScanPhase.failed;
+            _statusText = 'No pudimos comprobar tu ubicación';
+          });
+          _pulseController.stop();
+          return;
+        }
         setState(() {
           _phase = _ScanPhase.success;
-          _statusText = '¡Ubicación confirmada!';
+          _statusText = 'Salón detectado: ${match.reference.classroom}';
         });
         _pulseController.stop();
         HapticFeedback.heavyImpact();
         await Future.delayed(const Duration(milliseconds: 800));
         if (mounted) {
-          Navigator.of(
-            context,
-          ).pop(_BleDialogResult.verified(widget.beaconUuid));
+          Navigator.of(context).pop(_BleDialogResult.verified(match));
         }
         break;
 
