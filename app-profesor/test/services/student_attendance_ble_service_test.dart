@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:appprofesoresuniversidad/services/native_altbeacon_channel.dart';
 import 'package:appprofesoresuniversidad/services/student_attendance_ble_service.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,13 +7,10 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const channel = MethodChannel('com.presencia/student_attendance_ble');
-  const iBeaconChannel = MethodChannel('com.presencia/altbeacon');
 
   tearDown(() async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(iBeaconChannel, null);
   });
 
   test('GATT confirmation contains matricula, materia and attendance day', () {
@@ -89,59 +85,16 @@ void main() {
     });
   });
 
-  test('ranges external iBeacons without changing the GATT payload', () async {
-    MethodCall? capturedCall;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(iBeaconChannel, (call) async {
-          capturedCall = call;
-          return true;
-        });
-
-    final started = await StudentAttendanceBleService().startIBeaconScanning(
-      uuids: const [
-        '11111111222243338444555555555555',
-        'AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE',
-        'not-a-uuid',
-      ],
-    );
-
-    expect(started, isTrue);
-    expect(capturedCall?.method, 'startScanning');
-    expect(capturedCall?.arguments, {
-      'uuids': [
-        '11111111-2222-4333-8444-555555555555',
-        'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
-      ],
+  test('parses detections emitted by the native GATT scanner', () {
+    final detection = StudentAttendanceDetection.fromMap({
+      'uuid': '11111111-2222-4333-8444-555555555555',
+      'bluetoothAddress': 'AA:BB:CC:DD:EE:FF',
+      'rssi': -55,
     });
-  });
 
-  test('external iBeacon detections never require a GATT confirmation', () {
-    final detection = StudentAttendanceDetection.fromIBeacon(
-      AltBeaconDetection(
-        uuid: '11111111-2222-4333-8444-555555555555',
-        major: 1,
-        minor: 2,
-        rssi: -55,
-      ),
-    );
-
-    expect(detection.transport, StudentAttendanceDetectionTransport.iBeacon);
-    expect(detection.requiresGattConfirmation, isFalse);
+    expect(detection.uuid, '11111111-2222-4333-8444-555555555555');
+    expect(detection.bluetoothAddress, 'AA:BB:CC:DD:EE:FF');
     expect(detection.rssi, -55);
-  });
-
-  test('only manual bindings without device identity use external iBeacon', () {
-    expect(
-      bindingUsesExternalIBeacon({'platform': 'ios', 'deviceBindingId': null}),
-      isTrue,
-    );
-    expect(
-      bindingUsesExternalIBeacon({
-        'platform': 'android',
-        'deviceBindingId': 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
-      }),
-      isFalse,
-    );
   });
 
   test(

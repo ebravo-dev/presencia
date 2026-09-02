@@ -51,7 +51,7 @@ void main() {
     expect(tester.getSize(scannerButton).width, greaterThan(300));
   });
 
-  testWidgets('permite dar de alta solamente a un alumno sin vínculo', (
+  testWidgets('no muestra alta manual para alumnos sin vínculo GATT', (
     WidgetTester tester,
   ) async {
     final apiService = _MockApiService();
@@ -64,19 +64,6 @@ void main() {
       ),
     ).thenAnswer(
       (_) async => const Right<String, List<Map<String, dynamic>>>([]),
-    );
-    when(
-      () => apiService.bindStudentDeviceByProfessor(
-        externalGroupId: any(named: 'externalGroupId'),
-        matricula: any(named: 'matricula'),
-        attendanceUuid: any(named: 'attendanceUuid'),
-      ),
-    ).thenAnswer(
-      (_) async => const Right<String, Map<String, dynamic>>({
-        'id': 'binding-1',
-        'matricula': '2251330008',
-        'attendanceUuid': '12345678-1234-4234-9234-123456789abc',
-      }),
     );
     final grupo = Grupo(
       id: '947699',
@@ -109,43 +96,13 @@ void main() {
     await tester.tap(find.text('Alumnos'));
     await tester.pumpAndSettle();
 
-    final bindButton = find.byKey(
-      const ValueKey('bind-student-uuid-2251330008'),
+    expect(
+      find.byKey(const ValueKey('bind-student-uuid-2251330008')),
+      findsNothing,
     );
-    expect(bindButton, findsOneWidget);
-    expect(find.text('Dar de alta'), findsOneWidget);
-    expect(find.textContaining('Android'), findsNothing);
+    expect(find.text('Dar de alta'), findsNothing);
+    expect(find.text('Código de asistencia'), findsNothing);
     expect(find.textContaining('iBeacon'), findsNothing);
-    expect(find.textContaining('UUID'), findsNothing);
-    await tester.scrollUntilVisible(
-      bindButton,
-      250,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(bindButton);
-    await tester.pumpAndSettle();
-    expect(find.text('Código de asistencia'), findsOneWidget);
-    expect(find.textContaining('beacon'), findsNothing);
-    expect(find.textContaining('UUID'), findsNothing);
-    await tester.enterText(
-      find.byKey(const ValueKey('student-uuid-field')),
-      '12345678-1234-4234-9234-123456789ABC',
-    );
-    await tester.tap(
-      find.byKey(const ValueKey('confirm-student-uuid-binding')),
-    );
-    await tester.pumpAndSettle();
-
-    verify(
-      () => apiService.bindStudentDeviceByProfessor(
-        externalGroupId: '947699',
-        matricula: '2251330008',
-        attendanceUuid: '12345678-1234-4234-9234-123456789abc',
-      ),
-    ).called(1);
-    expect(find.text('Listo para detección'), findsOneWidget);
-    expect(bindButton, findsNothing);
   });
 
   testWidgets('Botón de back debe cerrar la página', (

@@ -89,41 +89,27 @@ void main() {
       expect(savedProfesor?.institutionalEmail, 'test@uat.edu.mx');
     });
 
-    test(
-      'guarda UUIDs de alumnos localmente hasta su sincronización',
-      () async {
-        await authStorage.saveStudentDeviceBinding(
-          externalGroupId: '947699',
-          matricula: ' 2251330008 ',
-          attendanceUuid: '12345678-1234-4234-9234-123456789ABC',
-        );
+    test('guarda vínculos GATT resueltos por el servidor', () async {
+      await authStorage.cacheResolvedStudentDeviceBindings(const [
+        {
+          'matricula': ' 2251330008 ',
+          'attendanceUuid': '12345678-1234-4234-9234-123456789ABC',
+          'deviceBindingId': 'binding-1',
+        },
+      ]);
 
-        final cached = authStorage.getStudentDeviceBindings(
-          matriculas: const ['2251330008'],
-        );
-        expect(cached, hasLength(1));
-        expect(cached.single['matricula'], '2251330008');
-        expect(
-          cached.single['attendanceUuid'],
-          '12345678-1234-4234-9234-123456789abc',
-        );
-        expect(cached.single['pendingSync'], isTrue);
-
-        await authStorage.saveStudentDeviceBinding(
-          externalGroupId: '947699',
-          matricula: '2251330008',
-          attendanceUuid: '12345678-1234-4234-9234-123456789abc',
-          pendingSync: false,
-          deviceBindingId: 'binding-1',
-        );
-
-        expect(authStorage.getPendingStudentDeviceBindings(), isEmpty);
-        expect(
-          authStorage.getStudentDeviceBindings().single['deviceBindingId'],
-          'binding-1',
-        );
-      },
-    );
+      final cached = authStorage.getStudentDeviceBindings(
+        matriculas: const ['2251330008'],
+      );
+      expect(cached, hasLength(1));
+      expect(cached.single['matricula'], '2251330008');
+      expect(
+        cached.single['attendanceUuid'],
+        '12345678-1234-4234-9234-123456789abc',
+      );
+      expect(cached.single['deviceBindingId'], 'binding-1');
+      expect(cached.single['pendingSync'], isFalse);
+    });
 
     test('Escenario 3: Auto-login con JWT guardado válido', () async {
       // Arrange

@@ -1110,48 +1110,6 @@ class ApiService {
     }
   }
 
-  Future<Either<String, Map<String, dynamic>>> bindStudentDeviceByProfessor({
-    required String externalGroupId,
-    required String matricula,
-    required String attendanceUuid,
-  }) async {
-    try {
-      final uatSessionId = AuthStorageService().getToken();
-      if (uatSessionId == null || uatSessionId.isEmpty) {
-        return const Left('Tu sesión expiró. Inicia sesión de nuevo.');
-      }
-
-      final response = await _presenceDio.post(
-        ApiConstants.uatDeviceBindings,
-        data: {
-          'externalGroupId': externalGroupId.trim(),
-          'matricula': matricula.trim().toUpperCase(),
-          'attendanceUuid': attendanceUuid.trim().toLowerCase(),
-        },
-        options: Options(headers: {'X-UAT-Session-Id': uatSessionId}),
-      );
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final envelope = _asMap(response.data);
-        return Right(_asMap(envelope['data']));
-      }
-
-      return const Left('No pudimos dar de alta al alumno.');
-    } on DioException catch (e) {
-      final responseMessage = _asMap(
-        e.response?.data,
-      )['message']?.toString().trim();
-      final errorMessage = responseMessage?.isNotEmpty == true
-          ? responseMessage!
-          : _handleDioError(e);
-      Logger.error('Error vinculando UUID de alumno: $errorMessage', e);
-      return Left(errorMessage);
-    } catch (e, stackTrace) {
-      Logger.error('Error inesperado vinculando UUID de alumno', e, stackTrace);
-      return const Left('No pudimos dar de alta al alumno.');
-    }
-  }
-
   Future<Either<String, Map<String, dynamic>>> recordProfessorBeaconEntry({
     required String token,
     required String externalGroupId,

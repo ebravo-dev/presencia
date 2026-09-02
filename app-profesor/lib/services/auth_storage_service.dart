@@ -407,40 +407,7 @@ class AuthStorageService {
         '${chars.substring(20)}';
   }
 
-  /// Guarda en el dispositivo la relación matrícula/UUID usada para el pase
-  /// de lista. [pendingSync] indica que el alta todavía debe confirmarse en el
-  /// backend, pero la relación ya puede utilizarse sin conexión.
-  Future<void> saveStudentDeviceBinding({
-    required String externalGroupId,
-    required String matricula,
-    required String attendanceUuid,
-    bool pendingSync = true,
-    String? deviceBindingId,
-  }) async {
-    final normalizedMatricula = matricula.trim().toUpperCase();
-    final normalizedUuid = attendanceUuid.trim().toLowerCase();
-    if (normalizedMatricula.isEmpty || normalizedUuid.isEmpty) return;
-
-    final bindings = _studentBindingsByMatricula();
-    final previous = bindings[normalizedMatricula];
-    bindings[normalizedMatricula] = {
-      if (previous != null) ...previous,
-      'externalGroupId': externalGroupId.trim(),
-      'matricula': normalizedMatricula,
-      'attendanceUuid': normalizedUuid,
-      'deviceBindingId': deviceBindingId,
-      'pendingSync': pendingSync,
-      'updatedAt': DateTime.now().toUtc().toIso8601String(),
-    };
-    await _saveStudentBindings(bindings);
-    Logger.info(
-      'UUID de alumno guardado localmente para $normalizedMatricula'
-      '${pendingSync ? ' (pendiente)' : ''}',
-    );
-  }
-
-  /// Incorpora vínculos confirmados por el servidor sin pisar un alta local
-  /// más reciente que todavía esté pendiente de sincronizar.
+  /// Incorpora los vínculos GATT confirmados por el servidor.
   Future<void> cacheResolvedStudentDeviceBindings(
     List<Map<String, dynamic>> resolvedBindings,
   ) async {
@@ -450,13 +417,7 @@ class AuthStorageService {
       final uuid = raw['attendanceUuid']?.toString().trim().toLowerCase() ?? '';
       if (matricula.isEmpty || uuid.isEmpty) continue;
 
-      final previous = bindings[matricula];
-      if (previous?['pendingSync'] == true &&
-          previous?['attendanceUuid']?.toString() != uuid) {
-        continue;
-      }
       bindings[matricula] = {
-        if (previous != null) ...previous,
         ...raw,
         'matricula': matricula,
         'attendanceUuid': uuid,
@@ -477,12 +438,6 @@ class AuthStorageService {
     return _studentBindingsByMatricula().entries
         .where((entry) => allowed == null || allowed.contains(entry.key))
         .map((entry) => Map<String, dynamic>.from(entry.value))
-        .toList(growable: false);
-  }
-
-  List<Map<String, dynamic>> getPendingStudentDeviceBindings() {
-    return getStudentDeviceBindings()
-        .where((binding) => binding['pendingSync'] == true)
         .toList(growable: false);
   }
 

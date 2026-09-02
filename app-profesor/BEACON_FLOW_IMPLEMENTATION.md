@@ -69,6 +69,8 @@ Archivos principales:
 
 - `lib/services/student_attendance_ble_service.dart`
   - Detecta alumnos solo al pulsar el boton dedicado en el detalle de la clase.
+  - Usa exclusivamente el servicio GATT conectable expuesto por la app de alumnos.
+  - No admite altas manuales ni dispositivos iBeacon externos.
 
 - `lib/shared/models/alumno.dart`
   - Se agrego `beaconUuid`.
@@ -339,11 +341,10 @@ Elimina beacon de salon.
 
 ## Notas de Operacion
 
-- Android usa AltBeacon nativo.
-- iOS usa CoreLocation nativo.
-- Flutter consume ambos con el mismo canal `NativeAltBeaconChannel`.
-- La app de alumnos debe emitir como iBeacon/AltBeacon usando el `beaconUuid` asignado por backend.
-- iOS requiere dispositivo fisico; el simulador no sirve para validar iBeacon.
+- El beacon del salon usa AltBeacon nativo en Android y CoreLocation en iOS.
+- Flutter consume ese flujo de aula con el canal `NativeAltBeaconChannel`.
+- La asistencia de alumnos usa solamente GATT entre la app del alumno y la app del profesor.
+- iOS requiere dispositivo fisico para validar tanto Bluetooth GATT como el beacon del salon.
 - Para iOS en segundo plano se requiere habilitar Background Modes en Xcode:
   - Location updates
   - Uses Bluetooth LE accessories

@@ -3,28 +3,17 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
-import 'native_altbeacon_channel.dart';
-
-enum StudentAttendanceDetectionTransport { gatt, iBeacon }
-
-bool bindingUsesExternalIBeacon(Map<dynamic, dynamic> binding) {
-  final deviceBindingId = binding['deviceBindingId']?.toString().trim();
-  return deviceBindingId == null || deviceBindingId.isEmpty;
-}
-
 class StudentAttendanceDetection {
   final String uuid;
   final String? bluetoothAddress;
   final int? rssi;
   final DateTime detectedAt;
-  final StudentAttendanceDetectionTransport transport;
 
   StudentAttendanceDetection({
     required this.uuid,
     this.bluetoothAddress,
     this.rssi,
     DateTime? detectedAt,
-    this.transport = StudentAttendanceDetectionTransport.gatt,
   }) : detectedAt = detectedAt ?? DateTime.now();
 
   factory StudentAttendanceDetection.fromMap(Map<dynamic, dynamic> map) {
@@ -34,19 +23,6 @@ class StudentAttendanceDetection {
       rssi: map['rssi'] as int?,
     );
   }
-
-  factory StudentAttendanceDetection.fromIBeacon(AltBeaconDetection detection) {
-    return StudentAttendanceDetection(
-      uuid: detection.uuid,
-      bluetoothAddress: detection.bluetoothAddress,
-      rssi: detection.rssi,
-      detectedAt: detection.detectedAt,
-      transport: StudentAttendanceDetectionTransport.iBeacon,
-    );
-  }
-
-  bool get requiresGattConfirmation =>
-      transport == StudentAttendanceDetectionTransport.gatt;
 
   Map<String, dynamic> toApiJson() {
     return {
@@ -106,17 +82,6 @@ class StudentAttendanceBleService {
     });
   }
 
-  /// Standard iBeacon detections used by external iPhone beacon emulators.
-  /// This is intentionally separate from [detectionsStream], which preserves
-  /// the connectable GATT handshake used by the Presencia Android app.
-  Stream<List<StudentAttendanceDetection>> get iBeaconDetectionsStream {
-    return NativeAltBeaconChannel().detectionsStream.map(
-      (detections) => detections
-          .map(StudentAttendanceDetection.fromIBeacon)
-          .toList(growable: false),
-    );
-  }
-
   Future<bool> startScanning({
     required Map<String, StudentAttendanceGattConfirmation> confirmationsByUuid,
   }) async {
@@ -136,19 +101,6 @@ class StudentAttendanceBleService {
     return result == true;
   }
 
-  /// Starts ranging standard iBeacon advertisements for externally registered
-  /// UUIDs. Invalid identifiers are ignored rather than affecting GATT scans.
-  Future<bool> startIBeaconScanning({required Iterable<String> uuids}) async {
-    final canonicalUuids = uuids
-        .map(_canonicalUuid)
-        .whereType<String>()
-        .toSet()
-        .toList(growable: false);
-    if (canonicalUuids.isEmpty) return false;
-
-    return NativeAltBeaconChannel().startScanning(uuids: canonicalUuids);
-  }
-
   /// Allows the native layer to send feedback to the student only after the
   /// teacher app has accepted and persisted this UUID as present.
   Future<bool> confirmAttendance(String uuid) async {
@@ -165,21 +117,7 @@ class StudentAttendanceBleService {
     await _method.invokeMethod('stopScanning');
   }
 
-  Future<void> stopIBeaconScanning() async {
-    await NativeAltBeaconChannel().stopScanning();
-  }
-
   String _normalizeUuid(String uuid) {
     return uuid.replaceAll('-', '').trim().toLowerCase();
-  }
-
-  String? _canonicalUuid(String uuid) {
-    final normalized = _normalizeUuid(uuid);
-    if (!RegExp(r'^[0-9a-f]{32}$').hasMatch(normalized)) return null;
-    return '${normalized.substring(0, 8)}-'
-        '${normalized.substring(8, 12)}-'
-        '${normalized.substring(12, 16)}-'
-        '${normalized.substring(16, 20)}-'
-        '${normalized.substring(20)}';
   }
 }

@@ -1,11 +1,9 @@
 import '../data/models/uat_asistencia_model.dart';
-import '../core/utils/utils.dart';
 import '../shared/models/alumno.dart';
 import '../shared/models/asistencia_registro.dart';
 import '../shared/models/grupo.dart';
 import 'api_service.dart';
 import 'asistencia_local_service.dart';
-import 'auth_storage_service.dart';
 
 class PreparedAttendanceBatch {
   final List<Map<String, dynamic>> payload;
@@ -36,15 +34,12 @@ class DebugAttendanceBatchResult {
 class AttendanceBatchService {
   final ApiService _apiService;
   final AsistenciaLocalService _localService;
-  final AuthStorageService _authStorage;
 
   AttendanceBatchService({
     ApiService? apiService,
     AsistenciaLocalService? localService,
-    AuthStorageService? authStorage,
   }) : _apiService = apiService ?? ApiService(),
-       _localService = localService ?? AsistenciaLocalService(),
-       _authStorage = authStorage ?? AuthStorageService();
+       _localService = localService ?? AsistenciaLocalService();
 
   PreparedAttendanceBatch prepare(
     List<AsistenciaRegistro> records,
@@ -150,11 +145,6 @@ class AttendanceBatchService {
     required List<AsistenciaRegistro> records,
     required List<Grupo> groups,
   }) async {
-    // Las altas de UUID se pueden usar localmente desde el primer momento.
-    // Al pulsar "Subir" aprovechamos la conexión para confirmar las que
-    // quedaron pendientes, sin bloquear el envío de la lista.
-    await syncPendingStudentBindings();
-
     var accepted = 0;
     var skipped = 0;
     var failed = 0;
@@ -204,38 +194,6 @@ class AttendanceBatchService {
       skipped: skipped,
       failed: failed,
     );
-  }
-
-  Future<void> syncPendingStudentBindings() async {
-    final pendingBindings = _authStorage.getPendingStudentDeviceBindings();
-    for (final binding in pendingBindings) {
-      final groupId = binding['externalGroupId']?.toString().trim() ?? '';
-      final matricula = binding['matricula']?.toString().trim() ?? '';
-      final uuid = binding['attendanceUuid']?.toString().trim() ?? '';
-      if (groupId.isEmpty || matricula.isEmpty || uuid.isEmpty) continue;
-
-      final result = await _apiService.bindStudentDeviceByProfessor(
-        externalGroupId: groupId,
-        matricula: matricula,
-        attendanceUuid: uuid,
-      );
-      await result.fold(
-        (error) async {
-          Logger.error(
-            'El UUID de $matricula sigue pendiente de sincronización: $error',
-          );
-        },
-        (response) async {
-          await _authStorage.saveStudentDeviceBinding(
-            externalGroupId: groupId,
-            matricula: matricula,
-            attendanceUuid: uuid,
-            pendingSync: false,
-            deviceBindingId: response['deviceBindingId']?.toString(),
-          );
-        },
-      );
-    }
   }
 
   /// Completes the local record only when it still matches the snapshot that

@@ -19,11 +19,6 @@ import '../../../core/utils/utils.dart';
 import 'student_scanner_page.dart';
 
 import '../../../services/auth_storage_service.dart';
-import '../../../services/attendance_batch_service.dart';
-
-final RegExp _canonicalUuidPattern = RegExp(
-  r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
-);
 
 class GrupoDetailPage extends StatefulWidget {
   final Grupo grupo;
@@ -99,8 +94,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       StudentAttendanceBleService();
   StreamSubscription<List<StudentAttendanceDetection>>?
   _studentBeaconSubscription;
-  StreamSubscription<List<StudentAttendanceDetection>>?
-  _studentIBeaconSubscription;
   Future<void> _studentDetectionQueue = Future<void>.value();
   int _studentScanGeneration = 0;
   bool _isStudentBeaconScanning = false;
@@ -109,7 +102,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   bool _studentBindingStatusLoaded = false;
   String? _studentBindingStatusError;
   final Set<String> _linkedStudentMatriculas = {};
-  final Set<String> _studentBindingsBeingSaved = {};
   final Map<String, Map<String, dynamic>> _cachedStudentBindings = {};
   Map<String, String> _studentKeyByBeaconUuid = {};
   final Set<String> _detectedStudentBeaconUuids = {};
@@ -261,6 +253,12 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       ..addEntries(
         _authStorage
             .getStudentDeviceBindings(matriculas: matriculas)
+            .where((binding) {
+              final deviceBindingId = binding['deviceBindingId']
+                  ?.toString()
+                  .trim();
+              return deviceBindingId != null && deviceBindingId.isNotEmpty;
+            })
             .map((binding) {
               final matricula = binding['matricula']
                   ?.toString()
@@ -306,11 +304,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     _scrollController.dispose();
     _bleBeaconService.dispose();
     _studentBeaconSubscription?.cancel();
-    _studentIBeaconSubscription?.cancel();
     _studentScanGeneration++;
     _studentDetectionOrder.dispose();
     _studentBeaconService.stopScanning();
-    _studentBeaconService.stopIBeaconScanning();
     super.dispose();
   }
 
@@ -1666,13 +1662,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       return;
     }
 
-    await AttendanceBatchService(
-      apiService: _apiService,
-      localService: _asistenciaService,
-      authStorage: _authStorage,
-    ).syncPendingStudentBindings();
-    if (!mounted) return;
-
     // La presencia del profesor se envía únicamente cuando se verifica la
     // entrada o la salida. Repetirla al subir alumnos usaría la hora actual del
     // servidor y podría crear una marca distinta a la que ya fue tomada.
@@ -2054,7 +2043,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
 
     setState(() {
       _isLoadingStudentBindingStatus = true;
-      // El caché local es suficiente para administrar altas sin conexión.
       _studentBindingStatusLoaded = true;
       _studentBindingStatusError = null;
     });
@@ -2094,99 +2082,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     );
   }
 
-  Future<void> _bindStudentUuid(Alumno alumno) async {
-    final matricula = alumno.matricula?.trim().toUpperCase();
-    if (matricula == null || matricula.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Este alumno no tiene una matrícula válida.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    final attendanceUuid = await _showStudentUuidDialog(alumno, matricula);
-    if (!mounted || attendanceUuid == null) return;
-
-    setState(() => _studentBindingsBeingSaved.add(matricula));
-    try {
-      // Primero se confirma en el almacenamiento local. Así el profesor puede
-      // usar este UUID para pasar lista aunque la red falle a continuación.
-      await _authStorage.saveStudentDeviceBinding(
-        externalGroupId: widget.grupo.id,
-        matricula: matricula,
-        attendanceUuid: attendanceUuid,
-      );
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _studentBindingsBeingSaved.remove(matricula));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No pudimos guardar la información en este celular.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    if (!mounted) return;
-    setState(() {
-      _linkedStudentMatriculas.add(matricula);
-      _loadCachedStudentBindings();
-    });
-
-    final result = await _apiService.bindStudentDeviceByProfessor(
-      externalGroupId: widget.grupo.id,
-      matricula: matricula,
-      attendanceUuid: attendanceUuid,
-    );
-    if (!mounted) return;
-
-    String? failure;
-    await result.fold(
-      (error) async {
-        failure = error;
-      },
-      (response) async {
-        await _authStorage.saveStudentDeviceBinding(
-          externalGroupId: widget.grupo.id,
-          matricula: matricula,
-          attendanceUuid: attendanceUuid,
-          pendingSync: false,
-          deviceBindingId: response['deviceBindingId']?.toString(),
-        );
-      },
-    );
-    if (!mounted) return;
-    setState(() => _studentBindingsBeingSaved.remove(matricula));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          failure == null
-              ? 'El alumno con matrícula $matricula quedó listo para la detección automática.'
-              : 'La información se guardó en este celular y se enviará junto con la asistencia.',
-        ),
-        backgroundColor: failure == null ? Colors.green : Colors.orange,
-      ),
-    );
-  }
-
-  Future<String?> _showStudentUuidDialog(Alumno alumno, String matricula) {
-    return showDialog<String>(
-      context: context,
-      builder: (_) => _StudentUuidBindingDialog(
-        studentName: alumno.name,
-        matricula: matricula,
-      ),
-    );
-  }
-
-  Future<
-    ({Map<String, String> studentKeysByUuid, Set<String> externalIBeaconUuids})
-  >
-  _loadStudentBeaconBindingsForScan() async {
+  Future<Map<String, String>> _loadStudentBeaconBindingsForScan() async {
     final fallback = <String, String>{};
-    final fallbackExternalIBeaconUuids = <String>{};
     final studentKeysByMatricula = {
       for (final alumno in widget.grupo.students)
         if (alumno.matricula?.trim().isNotEmpty ?? false)
@@ -2220,9 +2117,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       final normalized = _normalizeBeaconUuid(beaconUuid);
       if (normalized.isEmpty) continue;
       fallback[normalized] = studentKey;
-      if (bindingUsesExternalIBeacon(binding)) {
-        fallbackExternalIBeaconUuids.add(normalized);
-      }
     }
 
     final matriculas = widget.grupo.students
@@ -2231,12 +2125,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         .where((matricula) => matricula.isNotEmpty)
         .toSet()
         .toList();
-    if (matriculas.isEmpty) {
-      return (
-        studentKeysByUuid: fallback,
-        externalIBeaconUuids: fallbackExternalIBeaconUuids,
-      );
-    }
+    if (matriculas.isEmpty) return fallback;
 
     final result = await _apiService.resolveStudentDeviceBindings(
       matriculas: matriculas,
@@ -2245,18 +2134,12 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     return result.fold(
       (error) async {
         Logger.info('[StudentBeaconScan] Usando UUIDs cacheados: $error');
-        return (
-          studentKeysByUuid: fallback,
-          externalIBeaconUuids: fallbackExternalIBeaconUuids,
-        );
+        return fallback;
       },
       (bindings) async {
         await _authStorage.cacheResolvedStudentDeviceBindings(bindings);
         _loadCachedStudentBindings();
         final resolved = Map<String, String>.from(fallback);
-        final externalIBeaconUuids = Set<String>.from(
-          fallbackExternalIBeaconUuids,
-        );
 
         for (final binding in _cachedStudentBindings.values) {
           final matricula = binding['matricula']?.toString();
@@ -2273,21 +2156,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           final normalized = _normalizeBeaconUuid(beaconUuid);
           if (normalized.isEmpty) continue;
           resolved[normalized] = studentKey;
-          if (bindingUsesExternalIBeacon(binding)) {
-            externalIBeaconUuids.add(normalized);
-          }
         }
 
-        if (resolved.isEmpty) {
-          return (
-            studentKeysByUuid: fallback,
-            externalIBeaconUuids: fallbackExternalIBeaconUuids,
-          );
-        }
-        return (
-          studentKeysByUuid: resolved,
-          externalIBeaconUuids: externalIBeaconUuids,
-        );
+        return resolved.isEmpty ? fallback : resolved;
       },
     );
   }
@@ -2312,9 +2183,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       _isLoadingStudentBeaconBindings = true;
     });
 
-    final scanPlan = await _loadStudentBeaconBindingsForScan();
+    final bindings = await _loadStudentBeaconBindingsForScan();
     if (!mounted || scanGeneration != _studentScanGeneration) return false;
-    final bindings = scanPlan.studentKeysByUuid;
 
     if (bindings.isEmpty) {
       setState(() {
@@ -2346,7 +2216,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       final matricula = student?.matricula?.trim().toUpperCase();
       if (matricula == null || matricula.isEmpty) continue;
       scannableBindings[binding.key] = binding.value;
-      if (scanPlan.externalIBeaconUuids.contains(binding.key)) continue;
       confirmationsByUuid[binding.key] = StudentAttendanceGattConfirmation(
         matricula: matricula,
         materia: widget.grupo.subject,
@@ -2354,10 +2223,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       );
     }
 
-    final externalIBeaconUuids = scanPlan.externalIBeaconUuids
-        .where(scannableBindings.containsKey)
-        .toSet();
-    if (confirmationsByUuid.isEmpty && externalIBeaconUuids.isEmpty) {
+    if (confirmationsByUuid.isEmpty) {
       setState(() {
         _isLoadingStudentBeaconBindings = false;
       });
@@ -2372,114 +2238,51 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       return false;
     }
 
-    final gattPermissionGranted = confirmationsByUuid.isNotEmpty
-        ? await PermissionService.requestStudentAttendanceBlePermissions()
-        : false;
-    if (!mounted || scanGeneration != _studentScanGeneration) return false;
-    final iBeaconPermissionGranted = externalIBeaconUuids.isNotEmpty
-        ? await PermissionService.requestStudentIBeaconPermissions()
-        : false;
+    final permissionGranted =
+        await PermissionService.requestStudentAttendanceBlePermissions();
     if (!mounted || scanGeneration != _studentScanGeneration) return false;
 
-    if (!gattPermissionGranted && !iBeaconPermissionGranted) {
+    if (!permissionGranted) {
       setState(() {
         _isLoadingStudentBeaconBindings = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            externalIBeaconUuids.isNotEmpty
-                ? 'Permite el acceso a tu ubicación para detectar a los alumnos.'
-                : 'Activa Bluetooth para detectar a los alumnos.',
-          ),
+        const SnackBar(
+          content: Text('Activa Bluetooth para detectar a los alumnos.'),
           backgroundColor: Colors.orange,
         ),
       );
       return false;
     }
 
-    if (externalIBeaconUuids.isNotEmpty && !iBeaconPermissionGranted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Algunos alumnos no podrán detectarse hasta que permitas el acceso a tu ubicación.',
-          ),
-          backgroundColor: Colors.orange,
-        ),
-      );
-    } else if (confirmationsByUuid.isNotEmpty && !gattPermissionGranted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Algunos alumnos no podrán detectarse hasta que permitas el acceso a dispositivos cercanos.',
-          ),
-          backgroundColor: Colors.orange,
-        ),
-      );
-    }
-
     await _studentBeaconSubscription?.cancel();
-    await _studentIBeaconSubscription?.cancel();
     _studentKeyByBeaconUuid = scannableBindings;
-    _studentBeaconSubscription = gattPermissionGranted
-        ? _studentBeaconService.detectionsStream.listen(
-            _enqueueStudentBeaconDetections,
-          )
-        : null;
-    _studentIBeaconSubscription = iBeaconPermissionGranted
-        ? _studentBeaconService.iBeaconDetectionsStream.listen(
-            _enqueueStudentBeaconDetections,
-          )
-        : null;
+    _studentBeaconSubscription = _studentBeaconService.detectionsStream.listen(
+      _enqueueStudentBeaconDetections,
+    );
 
     _bleBeaconService.cancelScan();
-    var gattStarted = false;
-    var iBeaconStarted = false;
+    var started = false;
     PlatformException? startError;
 
-    if (gattPermissionGranted && confirmationsByUuid.isNotEmpty) {
-      try {
-        gattStarted = await _studentBeaconService.startScanning(
-          confirmationsByUuid: confirmationsByUuid,
-        );
-      } on PlatformException catch (error) {
-        startError = error;
-        Logger.info(
-          '[StudentBeaconScan] GATT no disponible: ${error.code} ${error.message}',
-        );
-      }
-      if (!mounted || scanGeneration != _studentScanGeneration) {
-        await _studentBeaconService.stopScanning();
-        return false;
-      }
-    }
-
-    if (iBeaconPermissionGranted && externalIBeaconUuids.isNotEmpty) {
-      try {
-        iBeaconStarted = await _studentBeaconService.startIBeaconScanning(
-          uuids: externalIBeaconUuids,
-        );
-      } on PlatformException catch (error) {
-        startError ??= error;
-        Logger.info(
-          '[StudentBeaconScan] iBeacon no disponible: ${error.code} ${error.message}',
-        );
-      }
+    try {
+      started = await _studentBeaconService.startScanning(
+        confirmationsByUuid: confirmationsByUuid,
+      );
+    } on PlatformException catch (error) {
+      startError = error;
+      Logger.info(
+        '[StudentBeaconScan] GATT no disponible: ${error.code} ${error.message}',
+      );
     }
 
     if (!mounted || scanGeneration != _studentScanGeneration) {
       await _studentBeaconSubscription?.cancel();
       _studentBeaconSubscription = null;
-      await _studentIBeaconSubscription?.cancel();
-      _studentIBeaconSubscription = null;
-      await Future.wait([
-        _studentBeaconService.stopScanning(),
-        _studentBeaconService.stopIBeaconScanning(),
-      ]);
+      await _studentBeaconService.stopScanning();
       return false;
     }
 
-    final started = gattStarted || iBeaconStarted;
     if (!started && startError != null) {
       final error = startError;
       Logger.info(
@@ -2493,9 +2296,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              externalIBeaconUuids.isNotEmpty && confirmationsByUuid.isEmpty
-                  ? 'Permite el acceso a tu ubicación para detectar a los alumnos.'
-                  : error.code == 'BLUETOOTH_OFF'
+              error.code == 'BLUETOOTH_OFF'
                   ? 'Activa Bluetooth para iniciar la detección.'
                   : 'Permite el acceso a dispositivos cercanos desde Configuración.',
             ),
@@ -2505,8 +2306,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       }
       await _studentBeaconSubscription?.cancel();
       _studentBeaconSubscription = null;
-      await _studentIBeaconSubscription?.cancel();
-      _studentIBeaconSubscription = null;
       return false;
     }
     if (!mounted) return false;
@@ -2525,8 +2324,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       );
       await _studentBeaconSubscription?.cancel();
       _studentBeaconSubscription = null;
-      await _studentIBeaconSubscription?.cancel();
-      _studentIBeaconSubscription = null;
     }
     return started;
   }
@@ -2535,13 +2332,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     _studentScanGeneration++;
     await _studentBeaconSubscription?.cancel();
     _studentBeaconSubscription = null;
-    await _studentIBeaconSubscription?.cancel();
-    _studentIBeaconSubscription = null;
     await _studentDetectionQueue;
-    await Future.wait([
-      _studentBeaconService.stopScanning(),
-      _studentBeaconService.stopIBeaconScanning(),
-    ]);
+    await _studentBeaconService.stopScanning();
     _studentKeyByBeaconUuid = {};
     if (mounted) {
       setState(() {
@@ -2562,7 +2354,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       return;
     }
 
-    final gattStudentsByUuid = <String, String>{};
+    final studentsByUuid = <String, String>{};
     final previousAttendance = <String, ({bool existed, bool? wasPresent})>{};
     final newlyDetectedUuids = <String>{};
     final newlyAutomaticStudentKeys = <String>{};
@@ -2571,9 +2363,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       final normalized = _normalizeBeaconUuid(detection.uuid);
       final studentKey = _studentKeyByBeaconUuid[normalized];
       if (studentKey == null) continue;
-      if (detection.requiresGattConfirmation) {
-        gattStudentsByUuid[normalized] = studentKey;
-      }
+      studentsByUuid[normalized] = studentKey;
       if (_detectedStudentBeaconUuids.contains(normalized)) continue;
 
       previousAttendance.putIfAbsent(
@@ -2666,7 +2456,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       }
     }
 
-    for (final entry in gattStudentsByUuid.entries) {
+    for (final entry in studentsByUuid.entries) {
       if (_asistencias[entry.value] != true) continue;
       try {
         final confirmationStarted = await _studentBeaconService
@@ -3366,11 +3156,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     final hasMatricula = matricula != null && matricula.isNotEmpty;
     final hasBinding =
         hasMatricula && _linkedStudentMatriculas.contains(matricula);
-    final isSavingBinding =
-        hasMatricula && _studentBindingsBeingSaved.contains(matricula);
-    final canRegisterBinding =
-        hasMatricula && _studentBindingStatusLoaded && !hasBinding;
-    final canManageBinding = hasBinding || canRegisterBinding;
 
     return Container(
       color: palette.surface,
@@ -3398,7 +3183,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           child: Column(
             children: [
               Opacity(
-                opacity: puedeMarcar || canManageBinding ? 1.0 : 0.5,
+                opacity: puedeMarcar || hasBinding ? 1.0 : 0.5,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -3450,44 +3235,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
                                     ),
                                   ),
                                 ],
-                              ),
-                            ] else if (canRegisterBinding) ...[
-                              const SizedBox(height: 9),
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: OutlinedButton.icon(
-                                  key: ValueKey('bind-student-uuid-$matricula'),
-                                  onPressed: isSavingBinding
-                                      ? null
-                                      : () =>
-                                            unawaited(_bindStudentUuid(alumno)),
-                                  style: OutlinedButton.styleFrom(
-                                    visualDensity: VisualDensity.compact,
-                                    foregroundColor: widget.gradientColors[0],
-                                    side: BorderSide(
-                                      color: widget.gradientColors[0]
-                                          .withValues(alpha: 0.55),
-                                    ),
-                                  ),
-                                  icon: isSavingBinding
-                                      ? SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: widget.gradientColors[0],
-                                          ),
-                                        )
-                                      : const Icon(
-                                          Icons.person_add_alt_1_rounded,
-                                          size: 18,
-                                        ),
-                                  label: Text(
-                                    isSavingBinding
-                                        ? 'Guardando...'
-                                        : 'Dar de alta',
-                                  ),
-                                ),
                               ),
                             ],
                           ],
@@ -3551,95 +3298,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   }
 
   // Esta función _verificarAsistenciaProfesor fue eliminada porque no se usa
-}
-
-class _StudentUuidBindingDialog extends StatefulWidget {
-  final String studentName;
-  final String matricula;
-
-  const _StudentUuidBindingDialog({
-    required this.studentName,
-    required this.matricula,
-  });
-
-  @override
-  State<_StudentUuidBindingDialog> createState() =>
-      _StudentUuidBindingDialogState();
-}
-
-class _StudentUuidBindingDialogState extends State<_StudentUuidBindingDialog> {
-  final TextEditingController _controller = TextEditingController();
-  String? _validationError;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final uuid = _controller.text.trim().toLowerCase();
-    if (!_canonicalUuidPattern.hasMatch(uuid)) {
-      setState(
-        () => _validationError = 'Revisa el código e inténtalo de nuevo.',
-      );
-      return;
-    }
-    Navigator.of(context).pop(uuid);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Dar de alta'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.studentName,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 2),
-            Text('Matrícula ${widget.matricula}'),
-            const SizedBox(height: 16),
-            TextField(
-              key: const ValueKey('student-uuid-field'),
-              controller: _controller,
-              autofocus: true,
-              autocorrect: false,
-              enableSuggestions: false,
-              maxLength: 36,
-              onSubmitted: (_) => _submit(),
-              decoration: InputDecoration(
-                labelText: 'Código de asistencia',
-                hintText: '12345678-1234-4234-9234-123456789abc',
-                errorText: _validationError,
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Ingresa el código de asistencia del alumno. Al guardarlo, quedará listo para la detección automática.',
-              style: TextStyle(fontSize: 12),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton.icon(
-          key: const ValueKey('confirm-student-uuid-binding'),
-          onPressed: _submit,
-          icon: const Icon(Icons.save_outlined),
-          label: const Text('Guardar'),
-        ),
-      ],
-    );
-  }
 }
 
 // ══════════════════════════════════════════════════════════════════
