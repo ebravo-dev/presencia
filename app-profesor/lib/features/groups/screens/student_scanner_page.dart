@@ -226,19 +226,6 @@ class _StudentScannerPageState extends State<StudentScannerPage>
           duration: const Duration(milliseconds: 220),
           child: _buildStatusPill(palette),
         ),
-        if (_scanStarted) ...[
-          const SizedBox(height: 9),
-          Text(
-            'Hasta 4 minutos · incluye 1 reintento automático',
-            key: const ValueKey('scanner-duration'),
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: palette.textSecondary,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
       ],
     );
   }
