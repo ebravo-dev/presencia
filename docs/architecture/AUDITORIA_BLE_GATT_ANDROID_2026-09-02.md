@@ -42,8 +42,9 @@ dos controladores BLE reales para validar el modo periférico/GATT entre marcas.
 - El servidor GATT valida el UUID, respeta offsets de lectura y rechaza escrituras
   preparadas o con offset no soportado.
 - El profesor limita las conexiones simultáneas a cuatro, usa MTU 185, impone
-  12 segundos por conexión y 120 segundos al escaneo completo, y libera siempre
-  los objetos `BluetoothGatt`.
+  12 segundos por conexión y ejecuta hasta dos ventanas de escaneo de 120
+  segundos. La segunda es un único reintento automático y conserva los alumnos
+  ya confirmados; los objetos `BluetoothGatt` siempre se liberan entre intentos.
 - Los callbacks GATT se serializan en el hilo principal desde API 26 para evitar
   carreras en implementaciones OEM.
 - Los fallos del escáner dejan de mostrar una animación infinita y se comunican

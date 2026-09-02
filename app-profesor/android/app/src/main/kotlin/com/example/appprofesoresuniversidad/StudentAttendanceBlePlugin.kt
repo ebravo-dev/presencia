@@ -44,7 +44,9 @@ class StudentAttendanceBlePlugin(
         private const val REQUESTED_MTU = 185
         private const val TEACHER_ACK_TIMEOUT_MS = 20_000L
         private const val GATT_CONNECTION_TIMEOUT_MS = 12_000L
-        private const val SCAN_TIMEOUT_MS = 120_000L
+        private const val SCAN_WINDOW_MS = 120_000L
+        private const val SCAN_RESTART_DELAY_MS = 500L
+        private const val MAX_SCAN_ATTEMPTS = 2
         private const val MAX_CONCURRENT_GATT_CONNECTIONS = 4
         private val SERVICE_UUID: UUID = UUID.fromString("9f5f7f86-8e67-4f12-a8a5-b7f6f4f7b2c1")
         private val ATTENDANCE_UUID_CHAR: UUID = UUID.fromString("9f5f7f86-8e67-4f12-a8a5-b7f6f4f7b2c2")
@@ -65,14 +67,20 @@ class StudentAttendanceBlePlugin(
     private val connectionTimeouts = mutableMapOf<String, Runnable>()
     private val scanTimeout = Runnable {
         if (!isScanning) return@Runnable
-        Log.i(TAG, "Student BLE scan reached its safety timeout")
+        if (scanAttempt < MAX_SCAN_ATTEMPTS) {
+            restartScanAfterTimeout()
+            return@Runnable
+        }
+        Log.i(TAG, "Student BLE scan exhausted both two-minute attempts")
         stopScanning()
         eventSink?.error(
             "SCAN_TIMEOUT",
-            "El escaneo terminó después de dos minutos",
+            "El escaneo terminó después de cuatro minutos",
             null,
         )
     }
+    private var scanAttempt = 0
+    private var scanGeneration = 0
     @Volatile
     private var isActivityInForeground = true
     @Volatile
@@ -207,6 +215,13 @@ class StudentAttendanceBlePlugin(
 
         val scanner = readyBluetoothLeScanner()
             ?: throw IllegalStateException("Bluetooth no disponible o apagado")
+        scanAttempt = 1
+        startBleScan(scanner)
+        Log.i(TAG, "Student BLE scan attempt 1/$MAX_SCAN_ATTEMPTS started for ${targetUuids.size} UUID(s)")
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startBleScan(scanner: android.bluetooth.le.BluetoothLeScanner) {
         val filters = listOf(
             ScanFilter.Builder().setServiceUuid(ParcelUuid(SERVICE_UUID)).build()
         )
@@ -222,12 +237,18 @@ class StudentAttendanceBlePlugin(
             throw error
         }
         mainHandler.removeCallbacks(scanTimeout)
-        mainHandler.postDelayed(scanTimeout, SCAN_TIMEOUT_MS)
-        Log.i(TAG, "Student BLE scan started for ${targetUuids.size} UUID(s)")
+        mainHandler.postDelayed(scanTimeout, SCAN_WINDOW_MS)
     }
 
     @SuppressLint("MissingPermission")
     private fun stopScanning() {
+        scanGeneration++
+        scanAttempt = 0
+        stopCurrentScanAndConnections()
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun stopCurrentScanAndConnections() {
         isScanning = false
         mainHandler.removeCallbacks(scanTimeout)
         try {
@@ -249,6 +270,46 @@ class StudentAttendanceBlePlugin(
         pendingAddressByUuid.clear()
         mtuByAddress.clear()
         inFlightUuids.clear()
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun restartScanAfterTimeout() {
+        val generation = scanGeneration
+        val nextAttempt = scanAttempt + 1
+        Log.i(
+            TAG,
+            "Student BLE scan attempt $scanAttempt/$MAX_SCAN_ATTEMPTS timed out; restarting once",
+        )
+        stopCurrentScanAndConnections()
+
+        mainHandler.postDelayed({
+            if (generation != scanGeneration || !isActivityInForeground) {
+                return@postDelayed
+            }
+            val scanner = readyBluetoothLeScanner()
+            if (scanner == null) {
+                stopScanning()
+                eventSink?.error(
+                    "BLUETOOTH_OFF",
+                    "Bluetooth se apagó durante el reintento del escaneo",
+                    null,
+                )
+                return@postDelayed
+            }
+            scanAttempt = nextAttempt
+            try {
+                startBleScan(scanner)
+                Log.i(TAG, "Student BLE scan attempt $scanAttempt/$MAX_SCAN_ATTEMPTS started")
+            } catch (error: Exception) {
+                Log.e(TAG, "Could not restart student BLE scan", error)
+                stopScanning()
+                eventSink?.error(
+                    "SCAN_FAILED",
+                    "No se pudo reiniciar el escaneo Bluetooth",
+                    null,
+                )
+            }
+        }, SCAN_RESTART_DELAY_MS)
     }
 
     @SuppressLint("MissingPermission")

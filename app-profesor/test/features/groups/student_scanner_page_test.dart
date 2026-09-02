@@ -35,6 +35,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
 
     expect(find.text('Escaneando alumnos'), findsOneWidget);
+    expect(
+      find.text('Hasta 4 minutos · incluye 1 reintento automático'),
+      findsOneWidget,
+    );
     expect(find.text('Bruno López'), findsOneWidget);
     expect(find.text('Ana Martínez'), findsOneWidget);
     expect(find.text('Cancelar escaneo'), findsOneWidget);
