@@ -13,6 +13,7 @@ describe('CoordinationController beacon cutover', () => {
         },
       } as never,
       {} as never,
+      {} as never,
     );
     const reply = replyStub();
     await controller.createBeacon({
@@ -35,6 +36,7 @@ describe('CoordinationController beacon cutover', () => {
           return { data: { id: 'shared-1' } };
         },
       } as never,
+      {} as never,
       {} as never,
       {} as never,
     );
@@ -63,6 +65,7 @@ describe('CoordinationController beacon cutover', () => {
           received = input;
         },
       } as never,
+      {} as never,
       {} as never,
     );
     const reply = replyStub();
@@ -98,6 +101,7 @@ describe('CoordinationController beacon cutover', () => {
           };
         },
       } as never,
+      {} as never,
       {} as never,
     );
     const response = await controller.updateAttendanceSettings({
@@ -137,6 +141,7 @@ describe('CoordinationController beacon cutover', () => {
           meta: { generatedAt: '2026-08-03T12:00:00.000Z' },
         }),
       } as never,
+      {} as never,
       {} as never,
     );
 
