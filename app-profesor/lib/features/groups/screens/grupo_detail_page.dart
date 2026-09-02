@@ -72,8 +72,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   DateTime? _salidaProfesor;
   DateTime _selectedDateTime = DateTime.now();
   late String _selectedClassroom;
-  late TextEditingController _classroomController;
-  bool _isLoadingClassrooms = false;
 
   // Controlador para el efecto neón parpadeante en el botón de fecha
   AnimationController? _neonAnimationController;
@@ -132,7 +130,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           .where((matricula) => matricula.isNotEmpty),
     );
     _selectedClassroom = widget.grupo.classroom.trim().toUpperCase();
-    _classroomController = TextEditingController(text: _selectedClassroom);
     WidgetsBinding.instance.addObserver(this);
     // Configurar status bar transparente
     SystemChrome.setSystemUIOverlayStyle(
@@ -299,7 +296,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     _buttonAnimationController.dispose();
     _studentsAnimationController.dispose();
     _neonAnimationController?.dispose();
-    _classroomController.dispose();
     _scrollController.dispose();
     _bleBeaconService.dispose();
     _studentBeaconSubscription?.cancel();
@@ -915,8 +911,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           ),
           const SizedBox(height: 12),
         ],
-        _buildClassroomPicker(),
-        const SizedBox(height: 12),
         // Botón de Entrada
         Container(
           decoration: BoxDecoration(
@@ -1182,108 +1176,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     );
   }
 
-  Widget _buildClassroomPicker() {
-    final palette = context.uatPalette;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: palette.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.meeting_room_rounded,
-                color: widget.gradientColors[0],
-                size: 21,
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Text(
-                  _entradaProfesor == null
-                      ? 'Salón principal de la clase'
-                      : 'Salón donde se tomó la asistencia',
-                  style: TextStyle(
-                    color: palette.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              if (_isLoadingClassrooms)
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: widget.gradientColors[0],
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-            decoration: BoxDecoration(
-              color: palette.surfaceMuted,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: palette.border),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.location_on_outlined,
-                  color: widget.gradientColors[0],
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    _selectedClassroom.isEmpty
-                        ? 'Sin salón programado'
-                        : _selectedClassroom,
-                    style: TextStyle(
-                      color: palette.textPrimary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _entradaProfesor != null
-                ? 'Este salón quedará visible para coordinación.'
-                : 'Al marcar entrada detectaremos automáticamente el beacon más cercano por intensidad de señal.',
-            style: TextStyle(
-              color: palette.textSecondary,
-              fontSize: 12,
-              height: 1.35,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _loadAvailableClassrooms() async {
-    if (mounted) setState(() => _isLoadingClassrooms = true);
     final result = await _apiService.listAvailableClassroomBeacons();
     await result.fold((_) async {}, (beacons) async {
       await _authStorage.saveBeacons(beacons);
-    });
-    if (!mounted) return;
-    setState(() {
-      _isLoadingClassrooms = false;
     });
   }
 
@@ -1432,7 +1328,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     if (!mounted || normalized.isEmpty) return;
     setState(() {
       _selectedClassroom = normalized;
-      _classroomController.text = normalized;
     });
   }
 
@@ -1593,7 +1488,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         _selectedClassroom =
             registro.salonUtilizado?.trim().toUpperCase() ??
             widget.grupo.classroom.trim().toUpperCase();
-        _classroomController.text = _selectedClassroom;
         _asistencias.clear();
         _asistencias.addAll(
           _normalizarAsistencias(registro.asistenciasAlumnos),
@@ -1614,7 +1508,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         _entradaProfesor = null;
         _salidaProfesor = null;
         _selectedClassroom = widget.grupo.classroom.trim().toUpperCase();
-        _classroomController.text = _selectedClassroom;
         _asistencias.clear();
         _automaticallyDetectedStudentKeys.clear();
         _detectedStudentBeaconUuids.clear();
