@@ -13,6 +13,7 @@ import 'core/permissions/permission_service.dart';
 import 'core/utils/utils.dart';
 import 'core/theme/uat_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'core/widgets/app_splash_screen.dart';
 import 'features/authentication/presentation/pages/login_page.dart';
 import 'features/authentication/presentation/pages/relogin_page.dart';
 import 'features/groups/screens/grupos_page.dart';
@@ -196,55 +197,15 @@ class _MyAppState extends ConsumerState<MyApp> {
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeControllerProvider);
-    final activeTheme = themeMode == ThemeMode.light
-        ? UATTheme.lightTheme
-        : UATTheme.darkTheme;
 
     if (_isChecking || !_initialized) {
-      // Show splash screen while checking stored session
       return MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: UATTheme.lightTheme,
         darkTheme: UATTheme.darkTheme,
         themeMode: themeMode,
         builder: (context, child) => _DebugModeOverlay(child: child),
-        home: Scaffold(
-          backgroundColor: activeTheme.scaffoldBackgroundColor,
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: UATTheme.lightTheme.primaryColor,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Icon(
-                    Icons.school_rounded,
-                    size: 40,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                CircularProgressIndicator(
-                  color: UATTheme.lightTheme.primaryColor,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Cargando...',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: activeTheme.colorScheme.onSurface.withValues(
-                      alpha: 0.72,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        home: const AppSplashScreen(audience: 'Docentes'),
       );
     }
 

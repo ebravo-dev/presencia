@@ -11,44 +11,12 @@ import 'services/student_auth_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'theme/app_theme.dart';
+import 'widgets/app_splash_screen.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-
-  final storage = LocalStorageService();
-  await storage.init();
-  await storage.ensureDeviceBinding();
-
-  final bleService = BleAdvertiserService();
-  final attendanceSession = AttendanceSessionService(
-    storage: storage,
-    advertiser: bleService,
-  );
-  final deviceBindingService = StudentDeviceBindingService();
-
-  // Sync the local identity immediately; server reconciliation must not delay UI.
-  if (storage.isProfileSet) {
-    await bleService.setStudentIdentity(
-      matricula: storage.matricula,
-      attendanceUuid: storage.attendanceUuid,
-      deviceBindingId: storage.deviceBindingId,
-    );
-  }
-
-  runApp(
-    PresenciaAlumnoApp(
-      storage: storage,
-      bleService: bleService,
-      attendanceSession: attendanceSession,
-      deviceBindingService: deviceBindingService,
-    ),
-  );
-
-  if (storage.isProfileSet) {
-    unawaited(_syncDeviceBindingInBackground(deviceBindingService, storage));
-  }
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  runApp(const PresenciaAlumnoBootstrap());
 }
 
 Future<void> _syncDeviceBindingInBackground(
@@ -57,6 +25,114 @@ Future<void> _syncDeviceBindingInBackground(
 ) async {
   final synced = await service.sync(storage);
   await storage.setDeviceBindingSyncPending(!synced);
+}
+
+class PresenciaAlumnoBootstrap extends StatefulWidget {
+  const PresenciaAlumnoBootstrap({super.key});
+
+  @override
+  State<PresenciaAlumnoBootstrap> createState() =>
+      _PresenciaAlumnoBootstrapState();
+}
+
+class _PresenciaAlumnoBootstrapState extends State<PresenciaAlumnoBootstrap> {
+  _AlumnoServices? _services;
+  Object? _initializationError;
+
+  @override
+  void initState() {
+    super.initState();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    if (_initializationError != null) {
+      setState(() => _initializationError = null);
+    }
+
+    try {
+      final storage = LocalStorageService();
+      await storage.init();
+      await storage.ensureDeviceBinding();
+
+      final bleService = BleAdvertiserService();
+      final attendanceSession = AttendanceSessionService(
+        storage: storage,
+        advertiser: bleService,
+      );
+      final deviceBindingService = StudentDeviceBindingService();
+
+      // Restore the local identity before showing the authenticated interface.
+      if (storage.isProfileSet) {
+        await bleService.setStudentIdentity(
+          matricula: storage.matricula,
+          attendanceUuid: storage.attendanceUuid,
+          deviceBindingId: storage.deviceBindingId,
+        );
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _services = _AlumnoServices(
+          storage: storage,
+          bleService: bleService,
+          attendanceSession: attendanceSession,
+          deviceBindingService: deviceBindingService,
+        );
+      });
+
+      // Server reconciliation continues without delaying the first app screen.
+      if (storage.isProfileSet) {
+        unawaited(
+          _syncDeviceBindingInBackground(deviceBindingService, storage),
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _initializationError = error);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final services = _services;
+    if (services != null) {
+      return PresenciaAlumnoApp(
+        storage: services.storage,
+        bleService: services.bleService,
+        attendanceSession: services.attendanceSession,
+        deviceBindingService: services.deviceBindingService,
+      );
+    }
+
+    return MaterialApp(
+      title: 'Presencia: Alumnos',
+      debugShowCheckedModeBanner: false,
+      theme: buildAppTheme(Brightness.light),
+      darkTheme: buildAppTheme(Brightness.dark),
+      home: AppSplashScreen(
+        audience: 'Alumnos',
+        errorMessage: _initializationError == null
+            ? null
+            : 'No pudimos iniciar la aplicación.',
+        onRetry: _initialize,
+      ),
+    );
+  }
+}
+
+class _AlumnoServices {
+  const _AlumnoServices({
+    required this.storage,
+    required this.bleService,
+    required this.attendanceSession,
+    required this.deviceBindingService,
+  });
+
+  final LocalStorageService storage;
+  final BleAdvertiserService bleService;
+  final AttendanceSessionService attendanceSession;
+  final StudentDeviceBindingService deviceBindingService;
 }
 
 class PresenciaAlumnoApp extends StatefulWidget {

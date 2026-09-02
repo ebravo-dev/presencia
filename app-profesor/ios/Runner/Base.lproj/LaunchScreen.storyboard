@@ -16,13 +16,26 @@
                     <view key="view" contentMode="scaleToFill" id="Ze5-6b-2t3">
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <imageView opaque="NO" clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="center" image="LaunchImage" translatesAutoresizingMaskIntoConstraints="NO" id="YRO-k0-Ey4">
-                            </imageView>
+                            <imageView opaque="NO" clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="scaleAspectFit" image="LaunchImage" translatesAutoresizingMaskIntoConstraints="NO" id="YRO-k0-Ey4"/>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="Presencia" textAlignment="center" lineBreakMode="tailTruncation" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="SPL-title">
+                                <fontDescription key="fontDescription" type="system" weight="bold" pointSize="28"/>
+                                <color key="textColor" red="0.0901960784" green="0.0823529412" blue="0.0705882353" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                            </label>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="Cargando..." textAlignment="center" lineBreakMode="tailTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="SPL-loading">
+                                <fontDescription key="fontDescription" type="system" pointSize="15"/>
+                                <color key="textColor" red="0.3725490196" green="0.3568627451" blue="0.3294117647" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                            </label>
                         </subviews>
-                        <color key="backgroundColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <color key="backgroundColor" red="0.9568627451" green="0.9450980392" blue="0.9254901961" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                         <constraints>
                             <constraint firstItem="YRO-k0-Ey4" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="1a2-6s-vTC"/>
-                            <constraint firstItem="YRO-k0-Ey4" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="4X2-HB-R7a"/>
+                            <constraint firstItem="YRO-k0-Ey4" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" constant="-80" id="4X2-HB-R7a"/>
+                            <constraint firstItem="YRO-k0-Ey4" firstAttribute="width" constant="216" id="SPL-logo-width"/>
+                            <constraint firstItem="YRO-k0-Ey4" firstAttribute="height" constant="216" id="SPL-logo-height"/>
+                            <constraint firstItem="SPL-title" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="SPL-title-center"/>
+                            <constraint firstItem="SPL-title" firstAttribute="top" secondItem="YRO-k0-Ey4" secondAttribute="bottom" constant="-15" id="SPL-title-top"/>
+                            <constraint firstItem="SPL-loading" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="SPL-loading-center"/>
+                            <constraint firstItem="SPL-loading" firstAttribute="top" secondItem="SPL-title" secondAttribute="bottom" constant="12" id="SPL-loading-top"/>
                         </constraints>
                     </view>
                 </viewController>
@@ -32,6 +45,6 @@
         </scene>
     </scenes>
     <resources>
-        <image name="LaunchImage" width="168" height="185"/>
+        <image name="LaunchImage" width="216" height="216"/>
     </resources>
 </document>
