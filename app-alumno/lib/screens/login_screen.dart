@@ -229,7 +229,7 @@ class _BrandHeader extends StatelessWidget {
       ),
       const SizedBox(height: 12),
       Text(
-        'FIUAT Attendance',
+        'Presencia: Alumnos',
         style: GoogleFonts.poppins(
           fontSize: 23,
           fontWeight: FontWeight.w600,

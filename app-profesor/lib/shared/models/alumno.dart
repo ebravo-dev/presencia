@@ -8,6 +8,7 @@ class Alumno extends Equatable {
   final String? id;
   final String? matricula;
   final String? beaconUuid;
+  final String? photoUrl;
   final int number;
   final String name;
 
@@ -15,6 +16,7 @@ class Alumno extends Equatable {
     this.id,
     this.matricula,
     this.beaconUuid,
+    this.photoUrl,
     required this.number,
     required this.name,
   });
@@ -24,7 +26,14 @@ class Alumno extends Equatable {
   Map<String, dynamic> toJson() => _$AlumnoToJson(this);
 
   @override
-  List<Object?> get props => [id, matricula, beaconUuid, number, name];
+  List<Object?> get props => [
+    id,
+    matricula,
+    beaconUuid,
+    photoUrl,
+    number,
+    name,
+  ];
 
   String get nombreCompleto => name;
   int get numeroLista => number;

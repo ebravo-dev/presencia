@@ -188,7 +188,7 @@ class AltBeaconScannerPlugin(
 
         val notification = builder
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("Presencia")
+            .setContentTitle("Presencia: Alumnos")
             .setContentText("Confirmando tu clase")
             .setContentIntent(pendingIntent)
             .setOngoing(true)

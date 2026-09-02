@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.presencia" "\0"
-            VALUE "FileDescription", "app_alumno" "\0"
+            VALUE "FileDescription", "Presencia: Alumnos" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "app_alumno" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.presencia. All rights reserved." "\0"
             VALUE "OriginalFilename", "app_alumno.exe" "\0"
-            VALUE "ProductName", "app_alumno" "\0"
+            VALUE "ProductName", "Presencia: Alumnos" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

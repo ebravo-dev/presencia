@@ -41,6 +41,14 @@ void main() {
     // Verificar que la página se renderiza
     expect(find.byType(GrupoDetailPage), findsOneWidget);
     expect(find.byType(CustomScrollView), findsOneWidget);
+
+    await tester.tap(find.text('Alumnos'));
+    await tester.pumpAndSettle();
+    final scannerButton = find.byKey(const ValueKey('open-student-scanner'));
+    expect(scannerButton, findsOneWidget);
+    expect(find.text('Escanear alumnos'), findsOneWidget);
+    expect(find.text('Detección automática'), findsNothing);
+    expect(tester.getSize(scannerButton).width, greaterThan(300));
   });
 
   testWidgets('permite dar de alta solamente a un alumno sin vínculo', (

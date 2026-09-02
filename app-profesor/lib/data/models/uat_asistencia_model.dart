@@ -103,6 +103,7 @@ class UatAsistenciaAlumnoModel {
   final int idAlumno;
   final int numeroLista;
   final String? matricula;
+  final String? photoUrl;
   final String nombre;
 
   const UatAsistenciaAlumnoModel({
@@ -110,6 +111,7 @@ class UatAsistenciaAlumnoModel {
     required this.idAlumno,
     required this.numeroLista,
     this.matricula,
+    this.photoUrl,
     required this.nombre,
   });
 
@@ -124,6 +126,23 @@ class UatAsistenciaAlumnoModel {
         'Num_Matricula',
         'num_matricula',
         'Matricula',
+      ]),
+      photoUrl: _readString(json, const [
+        'Foto',
+        'foto',
+        'Txt_Foto',
+        'txt_foto',
+        'Url_Foto',
+        'url_foto',
+        'URL_Foto',
+        'UrlFoto',
+        'foto_url',
+        'photoUrl',
+        'Photo',
+        'photo',
+        'Imagen',
+        'imagen',
+        'avatar',
       ]),
       nombre:
           _readString(json, const [
@@ -140,6 +159,7 @@ class UatAsistenciaAlumnoModel {
     return Alumno(
       id: idAlumno.toString(),
       matricula: matricula,
+      photoUrl: photoUrl,
       number: numeroLista,
       name: nombre,
     );

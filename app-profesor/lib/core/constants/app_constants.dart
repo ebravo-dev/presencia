@@ -1,6 +1,6 @@
 /// Global application constants
 class AppConstants {
-  static const String appName = 'App Profesores Universidad';
+  static const String appName = 'Presencia: Docentes';
   static const String appVersion = '1.0.0';
 
   // Database

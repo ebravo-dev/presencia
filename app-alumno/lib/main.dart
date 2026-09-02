@@ -83,7 +83,7 @@ class _PresenciaAlumnoAppState extends State<PresenciaAlumnoApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'FIUAT Student Hub',
+      title: 'Presencia: Alumnos',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(Brightness.light),
       darkTheme: buildAppTheme(Brightness.dark),

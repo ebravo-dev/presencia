@@ -91,7 +91,7 @@ class _SetupScreenState extends State<SetupScreen> {
                       const _BrandHeader(),
                       SizedBox(height: constraints.maxHeight < 700 ? 44 : 76),
                       Text(
-                        'Bienvenido a\nFIUAT Student Hub',
+                        'Bienvenido a\nPresencia: Alumnos',
                         style: Theme.of(
                           context,
                         ).textTheme.headlineSmall?.copyWith(fontSize: 27),
@@ -229,7 +229,7 @@ class _BrandHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'FIUAT',
+              'Presencia',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
@@ -238,7 +238,7 @@ class _BrandHeader extends StatelessWidget {
             ),
             SizedBox(height: 2),
             Text(
-              'Student Hub',
+              'Alumnos',
               style: Theme.of(
                 context,
               ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),

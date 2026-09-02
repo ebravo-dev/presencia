@@ -16,6 +16,7 @@ import '../../../core/theme/uat_colors.dart';
 import '../../../core/permissions/permission_service.dart';
 import '../../../core/utils/attendance_window.dart';
 import '../../../core/utils/utils.dart';
+import 'student_scanner_page.dart';
 
 import '../../../services/auth_storage_service.dart';
 import '../../../services/attendance_batch_service.dart';
@@ -101,6 +102,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   StreamSubscription<List<StudentAttendanceDetection>>?
   _studentIBeaconSubscription;
   Future<void> _studentDetectionQueue = Future<void>.value();
+  int _studentScanGeneration = 0;
   bool _isStudentBeaconScanning = false;
   bool _isLoadingStudentBeaconBindings = false;
   bool _isLoadingStudentBindingStatus = false;
@@ -112,10 +114,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   Map<String, String> _studentKeyByBeaconUuid = {};
   final Set<String> _detectedStudentBeaconUuids = {};
   final Set<String> _automaticallyDetectedStudentKeys = {};
-  bool _studentScanTimerEnabled = false;
-  Duration _studentScanDuration = const Duration(minutes: 5);
-  DateTime? _studentScanEndsAt;
-  Timer? _studentScanCountdownTimer;
+  final ValueNotifier<List<String>> _studentDetectionOrder = ValueNotifier(
+    const [],
+  );
 
   // Timer para actualizar la hora
   Timer? _timer;
@@ -306,7 +307,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     _bleBeaconService.dispose();
     _studentBeaconSubscription?.cancel();
     _studentIBeaconSubscription?.cancel();
-    _studentScanCountdownTimer?.cancel();
+    _studentScanGeneration++;
+    _studentDetectionOrder.dispose();
     _studentBeaconService.stopScanning();
     _studentBeaconService.stopIBeaconScanning();
     super.dispose();
@@ -2290,8 +2292,11 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     );
   }
 
-  Future<void> _startStudentBeaconScan() async {
-    if (_isStudentBeaconScanning || _isLoadingStudentBeaconBindings) return;
+  Future<bool> _startStudentBeaconScan() async {
+    if (_isStudentBeaconScanning || _isLoadingStudentBeaconBindings) {
+      return _isStudentBeaconScanning;
+    }
+    final scanGeneration = ++_studentScanGeneration;
 
     if (!_puedeEscanearAlumnos()) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2300,7 +2305,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           backgroundColor: Colors.orange,
         ),
       );
-      return;
+      return false;
     }
 
     setState(() {
@@ -2308,7 +2313,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     });
 
     final scanPlan = await _loadStudentBeaconBindingsForScan();
-    if (!mounted) return;
+    if (!mounted || scanGeneration != _studentScanGeneration) return false;
     final bindings = scanPlan.studentKeysByUuid;
 
     if (bindings.isEmpty) {
@@ -2323,7 +2328,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           backgroundColor: Colors.orange,
         ),
       );
-      return;
+      return false;
     }
 
     final studentsByKey = {
@@ -2364,17 +2369,17 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           backgroundColor: Colors.orange,
         ),
       );
-      return;
+      return false;
     }
 
     final gattPermissionGranted = confirmationsByUuid.isNotEmpty
         ? await PermissionService.requestStudentAttendanceBlePermissions()
         : false;
-    if (!mounted) return;
+    if (!mounted || scanGeneration != _studentScanGeneration) return false;
     final iBeaconPermissionGranted = externalIBeaconUuids.isNotEmpty
         ? await PermissionService.requestStudentIBeaconPermissions()
         : false;
-    if (!mounted) return;
+    if (!mounted || scanGeneration != _studentScanGeneration) return false;
 
     if (!gattPermissionGranted && !iBeaconPermissionGranted) {
       setState(() {
@@ -2390,7 +2395,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           backgroundColor: Colors.orange,
         ),
       );
-      return;
+      return false;
     }
 
     if (externalIBeaconUuids.isNotEmpty && !iBeaconPermissionGranted) {
@@ -2443,6 +2448,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           '[StudentBeaconScan] GATT no disponible: ${error.code} ${error.message}',
         );
       }
+      if (!mounted || scanGeneration != _studentScanGeneration) {
+        await _studentBeaconService.stopScanning();
+        return false;
+      }
     }
 
     if (iBeaconPermissionGranted && externalIBeaconUuids.isNotEmpty) {
@@ -2456,6 +2465,18 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           '[StudentBeaconScan] iBeacon no disponible: ${error.code} ${error.message}',
         );
       }
+    }
+
+    if (!mounted || scanGeneration != _studentScanGeneration) {
+      await _studentBeaconSubscription?.cancel();
+      _studentBeaconSubscription = null;
+      await _studentIBeaconSubscription?.cancel();
+      _studentIBeaconSubscription = null;
+      await Future.wait([
+        _studentBeaconService.stopScanning(),
+        _studentBeaconService.stopIBeaconScanning(),
+      ]);
+      return false;
     }
 
     final started = gattStarted || iBeaconStarted;
@@ -2486,18 +2507,14 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       _studentBeaconSubscription = null;
       await _studentIBeaconSubscription?.cancel();
       _studentIBeaconSubscription = null;
-      return;
+      return false;
     }
-    if (!mounted) return;
+    if (!mounted) return false;
 
     setState(() {
       _isLoadingStudentBeaconBindings = false;
       _isStudentBeaconScanning = started;
     });
-
-    if (started) {
-      _startStudentScanCountdownIfNeeded();
-    }
 
     if (!started) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2511,33 +2528,11 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       await _studentIBeaconSubscription?.cancel();
       _studentIBeaconSubscription = null;
     }
+    return started;
   }
 
-  void _startStudentScanCountdownIfNeeded() {
-    _studentScanCountdownTimer?.cancel();
-    if (!_studentScanTimerEnabled) {
-      _studentScanEndsAt = null;
-      return;
-    }
-
-    _studentScanEndsAt = DateTime.now().add(_studentScanDuration);
-    _studentScanCountdownTimer = Timer.periodic(const Duration(seconds: 1), (
-      timer,
-    ) {
-      final endsAt = _studentScanEndsAt;
-      if (endsAt == null || !DateTime.now().isBefore(endsAt)) {
-        timer.cancel();
-        unawaited(_stopStudentBeaconScan(showTimerFeedback: true));
-        return;
-      }
-      if (mounted) setState(() {});
-    });
-  }
-
-  Future<void> _stopStudentBeaconScan({bool showTimerFeedback = false}) async {
-    _studentScanCountdownTimer?.cancel();
-    _studentScanCountdownTimer = null;
-    _studentScanEndsAt = null;
+  Future<void> _stopStudentBeaconScan() async {
+    _studentScanGeneration++;
     await _studentBeaconSubscription?.cancel();
     _studentBeaconSubscription = null;
     await _studentIBeaconSubscription?.cancel();
@@ -2556,15 +2551,6 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     } else {
       _isStudentBeaconScanning = false;
       _isLoadingStudentBeaconBindings = false;
-    }
-
-    if (showTimerFeedback && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('El tiempo de detección terminó.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
     }
   }
 
@@ -2610,6 +2596,15 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         }
         _detectedStudentBeaconUuids.addAll(newlyDetectedUuids);
         _automaticallyDetectedStudentKeys.addAll(newlyAutomaticStudentKeys);
+        if (mounted && newlyAutomaticStudentKeys.isNotEmpty) {
+          final nextOrder = List<String>.from(_studentDetectionOrder.value);
+          for (final studentKey in newlyAutomaticStudentKeys) {
+            nextOrder
+              ..remove(studentKey)
+              ..insert(0, studentKey);
+          }
+          _studentDetectionOrder.value = nextOrder;
+        }
       }
 
       if (mounted) {
@@ -2639,6 +2634,11 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           _automaticallyDetectedStudentKeys.removeAll(
             newlyAutomaticStudentKeys,
           );
+          if (mounted && newlyAutomaticStudentKeys.isNotEmpty) {
+            _studentDetectionOrder.value = _studentDetectionOrder.value
+                .where((key) => !newlyAutomaticStudentKeys.contains(key))
+                .toList(growable: false);
+          }
         }
 
         if (mounted) {
@@ -2655,6 +2655,10 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
           rollbackDetections();
         }
         return;
+      }
+
+      if (mounted && newlyAutomaticStudentKeys.isNotEmpty) {
+        HapticFeedback.lightImpact();
       }
 
       if (mounted) {
@@ -2985,250 +2989,119 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     }
   }
 
-  Widget _buildStudentBeaconScanControls() {
-    final palette = context.uatPalette;
-    final detectedCount = _automaticallyDetectedStudentKeys.length;
-    final linkedCount = _studentKeyByBeaconUuid.isNotEmpty
-        ? _studentKeyByBeaconUuid.length
-        : widget.grupo.students
-              .where((alumno) => alumno.beaconUuid?.isNotEmpty ?? false)
-              .length;
-    final canScan = _puedeEscanearAlumnos();
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: _isStudentBeaconScanning
-              ? widget.gradientColors[0].withValues(alpha: 0.45)
-              : palette.border,
+  Future<void> _openStudentScanner() async {
+    if (!_puedeEscanearAlumnos()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_mensajeEscaneoNoDisponible()),
+          backgroundColor: Colors.orange,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: palette.shadow,
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: widget.gradientColors[0].withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  _isStudentBeaconScanning
-                      ? Icons.person_search_rounded
-                      : Icons.sensors_rounded,
-                  color: widget.gradientColors[0],
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _isStudentBeaconScanning
-                          ? 'Detectando alumnos'
-                          : 'Detección automática',
-                      style: TextStyle(
-                        color: palette.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      _isStudentBeaconScanning
-                          ? '$detectedCount detectados de $linkedCount disponibles'
-                          : linkedCount == 1
-                          ? '1 alumno disponible'
-                          : '$linkedCount alumnos disponibles',
-                      style: TextStyle(
-                        color: palette.textSecondary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              if (_isLoadingStudentBeaconBindings)
-                SizedBox(
-                  width: 34,
-                  height: 34,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 3,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      widget.gradientColors[0],
-                    ),
-                  ),
-                )
-              else
-                FilledButton.icon(
-                  onPressed: canScan
-                      ? (_isStudentBeaconScanning
-                            ? _stopStudentBeaconScan
-                            : _startStudentBeaconScan)
-                      : null,
-                  icon: Icon(
-                    _isStudentBeaconScanning
-                        ? Icons.stop_rounded
-                        : Icons.sensors_rounded,
-                    size: 18,
-                  ),
-                  label: Text(_isStudentBeaconScanning ? 'Detener' : 'Iniciar'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _isStudentBeaconScanning
-                        ? Colors.red.shade600
-                        : widget.gradientColors[0],
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Divider(height: 1, color: palette.border),
-          const SizedBox(height: 10),
-          if (_isStudentBeaconScanning)
-            _buildActiveScanTimer(palette)
-          else
-            _buildScanTimerSettings(palette),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildScanTimerSettings(UATPalette palette) {
-    const minuteOptions = [1, 2, 5, 10, 15];
-    return Row(
-      children: [
-        Switch.adaptive(
-          value: _studentScanTimerEnabled,
-          activeTrackColor: widget.gradientColors[0],
-          onChanged: (value) {
-            setState(() => _studentScanTimerEnabled = value);
-          },
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            'Detener automáticamente',
-            style: TextStyle(
-              color: palette.textPrimary,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        if (_studentScanTimerEnabled)
-          DropdownButtonHideUnderline(
-            child: DropdownButton<int>(
-              value: _studentScanDuration.inMinutes,
-              dropdownColor: palette.surfaceElevated,
-              style: TextStyle(
-                color: palette.textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
-              items: minuteOptions
-                  .map(
-                    (minutes) => DropdownMenuItem(
-                      value: minutes,
-                      child: Text('$minutes min'),
-                    ),
-                  )
-                  .toList(growable: false),
-              onChanged: (minutes) {
-                if (minutes == null) return;
-                setState(
-                  () => _studentScanDuration = Duration(minutes: minutes),
-                );
-              },
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildActiveScanTimer(UATPalette palette) {
-    final endsAt = _studentScanEndsAt;
-    if (endsAt == null) {
-      return Row(
-        children: [
-          Icon(
-            Icons.timer_off_outlined,
-            size: 18,
-            color: palette.textSecondary,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'Detección sin límite de tiempo',
-            style: TextStyle(color: palette.textSecondary, fontSize: 13),
-          ),
-        ],
       );
+      return;
     }
 
-    final remaining = endsAt.difference(DateTime.now());
-    final seconds = remaining.isNegative ? 0 : remaining.inSeconds;
-    final progress = (seconds / _studentScanDuration.inSeconds).clamp(0.0, 1.0);
-    final minutesText = (seconds ~/ 60).toString().padLeft(2, '0');
-    final secondsText = (seconds % 60).toString().padLeft(2, '0');
+    final currentOrder = List<String>.from(_studentDetectionOrder.value);
+    for (final studentKey in _automaticallyDetectedStudentKeys) {
+      if (!currentOrder.contains(studentKey)) currentOrder.add(studentKey);
+    }
+    if (currentOrder.length != _studentDetectionOrder.value.length) {
+      _studentDetectionOrder.value = currentOrder;
+    }
 
-    return Column(
-      children: [
-        Row(
-          children: [
-            Icon(
-              Icons.timer_outlined,
-              size: 18,
-              color: widget.gradientColors[0],
+    final availableStudentCount = _linkedStudentMatriculas.isNotEmpty
+        ? _linkedStudentMatriculas.length
+        : widget.grupo.students
+              .where(
+                (student) => student.beaconUuid?.trim().isNotEmpty ?? false,
+              )
+              .length;
+
+    await Navigator.of(context).push<void>(
+      PageRouteBuilder<void>(
+        fullscreenDialog: true,
+        transitionDuration: const Duration(milliseconds: 360),
+        reverseTransitionDuration: const Duration(milliseconds: 280),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            StudentScannerPage(
+              students: widget.grupo.students,
+              detectedStudentKeys: _studentDetectionOrder,
+              gradientColors: widget.gradientColors,
+              subject: widget.grupo.subject,
+              groupLabel: widget.grupo.grupoLetra,
+              availableStudentCount: availableStudentCount,
+              onStart: _startStudentBeaconScan,
+              onStop: _stopStudentBeaconScan,
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Tiempo restante',
-                style: TextStyle(color: palette.textSecondary, fontSize: 13),
-              ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.035),
+                end: Offset.zero,
+              ).animate(curved),
+              child: child,
             ),
-            Text(
-              '$minutesText:$secondsText',
-              style: TextStyle(
-                color: palette.textPrimary,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-          ],
+          );
+        },
+      ),
+    );
+
+    if (mounted &&
+        (_isStudentBeaconScanning || _isLoadingStudentBeaconBindings)) {
+      await _stopStudentBeaconScan();
+    }
+  }
+
+  Widget _buildStudentBeaconScanControls() {
+    final palette = context.uatPalette;
+    final canScan = _puedeEscanearAlumnos();
+
+    return SizedBox(
+      width: double.infinity,
+      height: 68,
+      child: FilledButton.icon(
+        key: const ValueKey('open-student-scanner'),
+        onPressed: canScan && !_isLoadingStudentBeaconBindings
+            ? _openStudentScanner
+            : null,
+        icon: _isLoadingStudentBeaconBindings
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                ),
+              )
+            : const Icon(Icons.person_search_rounded, size: 27),
+        label: Text(
+          _isLoadingStudentBeaconBindings
+              ? 'Preparando escaneo…'
+              : 'Escanear alumnos',
         ),
-        const SizedBox(height: 8),
-        LinearProgressIndicator(
-          value: progress,
-          minHeight: 4,
-          borderRadius: BorderRadius.circular(4),
-          color: widget.gradientColors[0],
-          backgroundColor: palette.border,
+        style: FilledButton.styleFrom(
+          backgroundColor: widget.gradientColors.first,
+          disabledBackgroundColor: palette.surfaceMuted,
+          foregroundColor: Colors.white,
+          disabledForegroundColor: palette.textTertiary,
+          elevation: 0,
+          shadowColor: widget.gradientColors.first.withValues(alpha: 0.28),
+          textStyle: const TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.15,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
         ),
-      ],
+      ),
     );
   }
 
