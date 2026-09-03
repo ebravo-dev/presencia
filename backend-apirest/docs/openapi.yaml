@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Presencia Backend API REST UAT
-  version: 1.4.0
+  version: 1.5.0
   description: >
     API REST interna para autenticar contra el portal escolar UAT con cookies
     ASP.NET y consultar horarios/examenes de profesor.
@@ -24,7 +24,9 @@ paths:
       summary: Crea una sesion autenticada contra UAT
       description: >
         Ejecuta GET /Login, POST /Login/Accesar_Dominio y GET /Login/Validar
-        manteniendo un CookieJar cifrado y compartido en Redis.
+        manteniendo un CookieJar cifrado y compartido en Redis. Las identidades
+        configuradas para App Review se aíslan del portal y de las proyecciones
+        institucionales.
       requestBody:
         required: true
         content:
@@ -240,6 +242,18 @@ paths:
           $ref: "#/components/responses/Error"
         "502":
           $ref: "#/components/responses/Error"
+  /api/uat/profesor/asistencia/configuracion:
+    get:
+      summary: Obtiene la tolerancia vigente para asistencia del profesor
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      responses:
+        "200":
+          description: Configuración de asistencia
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AttendanceSettingsResponse" }
+        "401": { $ref: "#/components/responses/Error" }
   /api/uat/profesor/control-asistencia/grupos:
     get:
       summary: Consulta grupos del profesor para un ciclo y DES
@@ -359,8 +373,8 @@ paths:
       description: >
         Obtiene __RequestVerificationToken, ejecuta Login/Accesar_Dominio,
         valida la sesion, consulta carreras y selecciona el plan solicitado o
-        el primero disponible. Registra o valida obligatoriamente el UUID y el
-        dispositivo del alumno en Attendance Service.
+        el primero disponible. Registra o valida el UUID y el dispositivo del
+        alumno en Attendance Service, salvo en la sesión aislada de App Review.
       requestBody:
         required: true
         content:
@@ -460,6 +474,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UatDataResponse"
+  /api/uat/alumnos/asistencia/configuracion:
+    get:
+      summary: Obtiene la tolerancia vigente para la app Alumno
+      parameters:
+        - $ref: "#/components/parameters/UatStudentSessionHeader"
+      responses:
+        "200":
+          description: Configuración de asistencia
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AttendanceSettingsResponse" }
+        "401": { $ref: "#/components/responses/Error" }
   /api/uat/asistencia/registros/estado:
     post:
       summary: Reconcilia registros locales después de cerrar o reiniciar la app
@@ -714,6 +740,25 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /api/uat/profesor/beacons:
+    get:
+      summary: Lista los beacons de salones disponibles para el profesor
+      parameters:
+        - $ref: "#/components/parameters/UatSessionHeader"
+      responses:
+        "200":
+          description: Catálogo de beacons de salón
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ClassroomBeacon" }
+        "401": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
   /api/uat/profesor/beacons/resolve:
     post:
@@ -1135,7 +1180,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/SessionResponse"
         - type: object
-          required: [careers, selectedCareer, deviceBindingToken, identitySession]
+          required: [careers, selectedCareer]
           properties:
             careers:
               type: array
@@ -1148,8 +1193,33 @@ components:
             deviceBindingToken:
               type: string
               description: Token acotado para renovar exclusivamente el vínculo exacto del celular.
+            reviewAttendanceUuid:
+              type: string
+              format: uuid
+              description: UUID BLE fijo presente únicamente en la sesión aislada de App Review.
             identitySession:
               $ref: "#/components/schemas/IdentitySessionGrant"
+    AttendanceSettingsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [teacherAttendanceToleranceMinutes, updatedAt]
+          properties:
+            teacherAttendanceToleranceMinutes:
+              type: integer
+              minimum: 0
+              maximum: 120
+            updatedAt:
+              type: string
+              format: date-time
+              nullable: true
+        meta:
+          type: object
+          required: [generatedAt]
+          properties:
+            generatedAt: { type: string, format: date-time }
     IdentitySessionGrant:
       type: object
       required: [identityId, sessionId, accessToken, expiresAt]

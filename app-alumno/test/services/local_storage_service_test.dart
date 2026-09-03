@@ -141,4 +141,26 @@ void main() {
       expect(prefs.getString('classroom_beacon_uuid'), isNull);
     },
   );
+
+  test('logout discards the fixed App Review device identity', () async {
+    SharedPreferences.setMockInitialValues({
+      'student_matricula': 'APPREVIEW01',
+      'student_attendance_uuid': '00000000-0000-4000-8000-000000000903',
+      'student_device_binding_id': 'review-binding-id',
+    });
+    final box = _MemoryBox();
+    box.contents.addAll({
+      'matricula': 'APPREVIEW01',
+      'attendance_uuid': '00000000-0000-4000-8000-000000000903',
+      'device_binding_id': 'review-binding-id',
+      'app_review_demo_mode': true,
+    });
+    final storage = LocalStorageService.withProfileBox(box);
+
+    await storage.clearStudentSession();
+
+    expect(storage.isProfileSet, isFalse);
+    expect(storage.attendanceUuid, isEmpty);
+    expect(storage.deviceBindingId, isEmpty);
+  });
 }

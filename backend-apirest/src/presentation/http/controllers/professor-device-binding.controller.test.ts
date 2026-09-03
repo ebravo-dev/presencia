@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ProfessorDeviceBindingController } from './professor-device-binding.controller.js';
 
 describe('ProfessorDeviceBindingController', () => {
@@ -93,5 +93,40 @@ describe('ProfessorDeviceBindingController', () => {
       professorExternalId: 'Profesor@UAT.edu.mx', professorEmail: 'Profesor@UAT.edu.mx',
       classrooms: ['AULA SUSTITUCIÓN'],
     });
+  });
+
+  it('resolves the fixed App Review student without querying Attendance Service', async () => {
+    const resolveStudentDeviceBindings = vi.fn(async () => ({ data: [], missing: [] }));
+    const appReviewCatalog = vi.fn(async () => ({
+      data: {
+        enabled: true,
+        settings: { teacherAttendanceToleranceMinutes: 10 },
+        teachers: [],
+        students: [{
+          id: 'review-student', uatStudentId: 999902, matricula: 'APPREVIEW01',
+          email: 'appreview.alumno@alumnos.uat.edu.mx', name: 'Alumno de Revisión',
+          attendanceUuid: '00000000-0000-4000-8000-000000000903', careerName: 'Demo',
+          createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+        }],
+        classes: [], attendanceWrites: [], updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    }));
+    const controller = new ProfessorDeviceBindingController(
+      { resolveStudentDeviceBindings } as never,
+      { appReviewCatalog } as never,
+    );
+
+    const response = await controller.resolve({
+      body: { matriculas: ['APPREVIEW01'] },
+      uatSession: {
+        source: 'APP_REVIEW', username: 'appreview.profesor@uat.edu.mx', login: { parametros: {} },
+      },
+    } as never);
+
+    expect(response).toMatchObject({
+      data: [{ matricula: 'APPREVIEW01', attendanceUuid: '00000000-0000-4000-8000-000000000903' }],
+      missing: [],
+    });
+    expect(resolveStudentDeviceBindings).not.toHaveBeenCalled();
   });
 });

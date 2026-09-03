@@ -52,6 +52,27 @@ test('debug mode requires an explicitly isolated demo deployment', () => {
   }, ''), []);
 });
 
+test('App Review requires two distinct non-placeholder credentials', () => {
+  const base = {
+    ROUTE_TARGET_OVERRIDES: '{}',
+    PRESENCIA_APP_REVIEW_ENABLED: 'true',
+    PRESENCIA_APP_REVIEW_TEACHER_USERNAME: 'appreview.profesor@uat.edu.mx',
+    PRESENCIA_APP_REVIEW_STUDENT_USERNAME: 'appreview.alumno@alumnos.uat.edu.mx',
+  };
+  const errors = validateDokployEnvironment({
+    ...base,
+    PRESENCIA_APP_REVIEW_TEACHER_PASSWORD: 'short',
+    PRESENCIA_APP_REVIEW_STUDENT_PASSWORD: 'replace-with-review-password',
+  }, '');
+  assert.ok(errors.some((error) => error.includes('TEACHER_PASSWORD must contain at least 12')));
+  assert.ok(errors.some((error) => error.includes('STUDENT_PASSWORD still contains an example placeholder')));
+  assert.deepEqual(validateDokployEnvironment({
+    ...base,
+    PRESENCIA_APP_REVIEW_TEACHER_PASSWORD: 'teacher-review-strong',
+    PRESENCIA_APP_REVIEW_STUDENT_PASSWORD: 'student-review-strong',
+  }, ''), []);
+});
+
 test('the env parser preserves JSON and URL values', () => {
   assert.deepEqual(parseEnvFile('ROUTE_TARGET_OVERRIDES={"/a":"identity"}\nURL=postgresql://u:p@db:5432/x?schema=public\n'), {
     ROUTE_TARGET_OVERRIDES: '{"/a":"identity"}', URL: 'postgresql://u:p@db:5432/x?schema=public',

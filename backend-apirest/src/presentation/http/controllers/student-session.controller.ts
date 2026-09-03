@@ -11,7 +11,10 @@ export class StudentSessionController {
     const session = await this.uatStudentService.createSession(credentials, { correlationId: request.id });
     const response = await this.uatStudentService.toSessionResponse(session);
 
-    return reply.code(201).send({ ...response, demoMode: env.PRESENCIA_DEBUG_MODE });
+    return reply.code(201).send({
+      ...response,
+      demoMode: env.PRESENCIA_DEBUG_MODE || session.source === 'APP_REVIEW',
+    });
   };
 
   delete = async (request: FastifyRequest, reply: FastifyReply) => {

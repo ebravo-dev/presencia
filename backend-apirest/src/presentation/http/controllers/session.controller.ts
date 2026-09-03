@@ -26,32 +26,42 @@ export class SessionController {
     const session = await this.uatService.createSession(credentials, { correlationId: request.id });
     const response = await this.uatService.toSessionResponse(session);
 
-    try {
-      await this.eventBus.publish(
-        createTeacherAuthenticatedEvent({
-          sessionId: session.id,
-          username: credentials.username,
-          correlationId: request.id,
-          causationId: request.id,
-          loginParameters: session.login.parametros,
-        }),
-      );
-      if (env.PRESENCIA_DEBUG_MODE) {
-        request.log.info({ sessionId: session.id }, 'Modo demo activo: cosecha UAT encolada; las asistencias no se subiran.');
+    if (session.source !== 'APP_REVIEW') {
+      try {
+        await this.eventBus.publish(
+          createTeacherAuthenticatedEvent({
+            sessionId: session.id,
+            username: credentials.username,
+            correlationId: request.id,
+            causationId: request.id,
+            loginParameters: session.login.parametros,
+          }),
+        );
+        if (env.PRESENCIA_DEBUG_MODE) {
+          request.log.info({ sessionId: session.id }, 'Modo demo activo: cosecha UAT encolada; las asistencias no se subiran.');
+        }
+      } catch (error) {
+        request.log.error({ err: error, sessionId: session.id }, 'No fue posible despachar la cosecha post-autenticacion.');
       }
-    } catch (error) {
-      request.log.error({ err: error, sessionId: session.id }, 'No fue posible despachar la cosecha post-autenticacion.');
     }
 
     return reply.code(201).send({
       ...response,
-      demoMode: env.PRESENCIA_DEBUG_MODE,
-      demoCapabilities: { simulateRoomBeacon: env.PRESENCIA_DEBUG_MODE },
+      demoMode: env.PRESENCIA_DEBUG_MODE || session.source === 'APP_REVIEW',
+      demoCapabilities: { simulateRoomBeacon: env.PRESENCIA_DEBUG_MODE || session.source === 'APP_REVIEW' },
     });
   };
 
   sync = async (request: FastifyRequest, reply: FastifyReply) => {
     const session = request.uatSession;
+
+    if (session.source === 'APP_REVIEW') {
+      return reply.code(202).send({
+        accepted: true,
+        sessionId: session.id,
+        message: 'Los datos de revisión ya están disponibles.',
+      });
+    }
 
     await this.eventBus.publish(
       createTeacherAuthenticatedEvent({

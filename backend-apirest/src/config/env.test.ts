@@ -16,4 +16,15 @@ describe('UAT Integration demo environment', () => {
       PRESENCIA_DEMO_PORTAL_URL: 'http://demo-portal-service:3900',
     }).success).toBe(true);
   });
+
+  it('applies the same private-network restriction to App Review routing', () => {
+    expect(envSchema.safeParse({
+      NODE_ENV: 'test', PRESENCIA_APP_REVIEW_ENABLED: 'true',
+      PRESENCIA_DEMO_PORTAL_URL: 'https://public.example.com',
+    }).success).toBe(false);
+    expect(envSchema.safeParse({
+      NODE_ENV: 'test', PRESENCIA_APP_REVIEW_ENABLED: 'true',
+      PRESENCIA_DEMO_PORTAL_URL: 'http://demo-portal-service:3900',
+    }).success).toBe(true);
+  });
 });

@@ -239,6 +239,7 @@ export async function buildApp() {
         ok: false, error: error instanceof Error ? error.message : 'Unknown Coordination Query error',
       })),
       env.PRESENCIA_DEBUG_MODE
+        || env.PRESENCIA_APP_REVIEW_ENABLED
         ? demoPortal.health().then(() => ({ ok: true })).catch((error: unknown) => ({
             ok: false, error: error instanceof Error ? error.message : 'Unknown Demo Portal error',
           }))
@@ -281,6 +282,7 @@ export async function buildApp() {
     attendanceUploadWorker,
     attendanceCaptureClient,
     attendanceServiceCommands,
+    appReviewPortal: demoPortal,
   });
 
   await fastify.register(coordinatorAuthRoutes, { authService: coordinatorAuthService });

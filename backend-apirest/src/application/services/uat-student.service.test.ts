@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { IUatSessionRepository } from '../../domain/repositories/session-store.repository.js';
 import type {
   StoredUatStudentSession,
@@ -135,6 +135,32 @@ describe('UatStudentService', () => {
     await expect(service.createSession(studentLoginInput())).rejects.toThrow('Redis unavailable');
     expect(revoked).toEqual(['identity-token-1']);
   });
+
+  it('mantiene la cuenta App Review fuera de Identity, Attendance y Academic', async () => {
+    const client = fakeStudentClient();
+    const identity = {
+      createAuthenticatedSession: vi.fn(async () => { throw new Error('must not be called'); }),
+      revoke: vi.fn(async () => undefined),
+    };
+    const binding = {
+      createStudentDeviceBinding: vi.fn(async () => { throw new Error('must not be called'); }),
+    };
+    const academic = { publishStudentSnapshot: vi.fn(async () => undefined) };
+    const service = makeService(client, { identity, binding, academic, source: 'APP_REVIEW' });
+
+    const session = await service.createSession(studentLoginInput({
+      username: 'appreview.alumno@alumnos.uat.edu.mx',
+    }));
+    const response = await service.toSessionResponse(session);
+    await service.getScheduleBySession(session.id);
+
+    expect(session.source).toBe('APP_REVIEW');
+    expect(response).not.toHaveProperty('identitySession');
+    expect(response).not.toHaveProperty('deviceBindingToken');
+    expect(identity.createAuthenticatedSession).not.toHaveBeenCalled();
+    expect(binding.createStudentDeviceBinding).not.toHaveBeenCalled();
+    expect(academic.publishStudentSnapshot).not.toHaveBeenCalled();
+  });
 });
 
 function studentLoginInput(
@@ -157,6 +183,7 @@ function makeService(
     binding?: unknown;
     identity?: unknown;
     academic?: unknown;
+    source?: 'UAT' | 'APP_REVIEW';
   } = {},
 ) {
   const binding = overrides.binding ?? {
@@ -174,7 +201,7 @@ function makeService(
   const academic = overrides.academic ?? { publishStudentSnapshot: async () => undefined };
   return new UatStudentService(
     overrides.repository ?? memoryRepository(),
-    fakeFactory(client),
+    fakeFactory(client, overrides.source),
     binding as never,
     identity as never,
     academic as never,
@@ -199,10 +226,14 @@ function memoryRepository(): IUatSessionRepository<StoredUatStudentSession> {
   };
 }
 
-function fakeFactory(client: UatStudentPortalClientPort): UatStudentClientFactory {
+function fakeFactory(
+  client: UatStudentPortalClientPort,
+  source: 'UAT' | 'APP_REVIEW' = 'UAT',
+): UatStudentClientFactory {
   return {
     create: () => client,
-  } as UatStudentClientFactory;
+    createFor: () => ({ client, source }),
+  } as unknown as UatStudentClientFactory;
 }
 
 function fakeStudentClient(): UatStudentPortalClientPort & { selectedPlans: number[] } {

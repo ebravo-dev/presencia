@@ -7,6 +7,7 @@ import type { AttendanceUploadService } from '../../../application/services/atte
 import type { AttendanceUploadWorker } from '../../../infrastructure/jobs/attendance-upload.worker.js';
 import type { AttendanceCaptureClient } from '../../../infrastructure/http/client/attendance-capture.client.js';
 import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
+import type { DemoPortalClient } from '../../../infrastructure/http/client/demo-portal.client.js';
 import { AsistenciaController } from '../controllers/asistencia.controller.js';
 import { AttendanceUploadController } from '../controllers/attendance-upload.controller.js';
 import { CatalogoController } from '../controllers/catalogo.controller.js';
@@ -29,11 +30,12 @@ export interface UatRoutesOptions {
   attendanceUploadWorker: AttendanceUploadWorker;
   attendanceCaptureClient: AttendanceCaptureClient;
   attendanceServiceCommands?: AttendanceServiceCommandClient;
+  appReviewPortal?: DemoPortalClient;
 }
 
 export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   fastify,
-  { uatService, uatStudentService, eventBus, academicServiceClient, attendanceUploadService, attendanceUploadWorker, attendanceCaptureClient, attendanceServiceCommands },
+  { uatService, uatStudentService, eventBus, academicServiceClient, attendanceUploadService, attendanceUploadWorker, attendanceCaptureClient, attendanceServiceCommands, appReviewPortal },
 ) => {
   const authUat = buildAuthUatHook(uatService);
   const authUatStudent = buildAuthUatStudentHook(uatStudentService);
@@ -51,7 +53,7 @@ export const uatRoutes: FastifyPluginAsync<UatRoutesOptions> = async (
   );
   const attendanceUploadController = new AttendanceUploadController(attendanceUploadService);
   const sharedClassController = new SharedClassController(academicServiceClient);
-  const professorDeviceBindingController = new ProfessorDeviceBindingController(attendanceServiceCommands);
+  const professorDeviceBindingController = new ProfessorDeviceBindingController(attendanceServiceCommands, appReviewPortal);
   const professorPresenceController = new ProfessorPresenceController(attendanceServiceCommands);
 
   fastify.post('/api/uat/sessions', {

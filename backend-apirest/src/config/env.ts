@@ -31,6 +31,9 @@ export const envSchema = z.object({
     .default(UAT_ALUMNOS_BASE_URL)
     .transform((value) => value.replace(/\/+$/, '')),
   PRESENCIA_DEMO_PORTAL_URL: z.string().url().default('http://demo-portal-service:3900').transform((value) => value.replace(/\/+$/, '')),
+  PRESENCIA_APP_REVIEW_ENABLED: booleanValue.default(false),
+  PRESENCIA_APP_REVIEW_TEACHER_USERNAME: z.string().email().default('appreview.profesor@uat.edu.mx').transform((value) => value.trim().toLowerCase()),
+  PRESENCIA_APP_REVIEW_STUDENT_USERNAME: z.string().email().default('appreview.alumno@alumnos.uat.edu.mx').transform((value) => value.trim().toLowerCase()),
   UAT_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   UAT_CIRCUIT_FAILURE_THRESHOLD: z.coerce.number().int().positive().max(100).default(5),
   UAT_CIRCUIT_OPEN_MS: z.coerce.number().int().positive().max(600_000).default(30_000),
@@ -64,16 +67,24 @@ export const envSchema = z.object({
   UAT_SESSION_ENCRYPTION_SECRET: z.string().min(32).default('development-uat-session-secret-change-me'),
   COORDINATION_WEB_DIST: z.string().optional(),
 }).superRefine((value, ctx) => {
-  if (value.PRESENCIA_DEBUG_MODE) {
+  if (value.PRESENCIA_DEBUG_MODE || value.PRESENCIA_APP_REVIEW_ENABLED) {
     const demoPortal = new URL(value.PRESENCIA_DEMO_PORTAL_URL);
     const privateDemoHosts = new Set(['demo-portal-service', 'localhost', '127.0.0.1', '[::1]']);
     if (!privateDemoHosts.has(demoPortal.hostname)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['PRESENCIA_DEMO_PORTAL_URL'],
-        message: 'Debug mode must target the private demo-portal-service or a loopback development host',
+        message: 'Demo and App Review modes must target the private demo-portal-service or a loopback development host',
       });
     }
+  }
+
+  if (value.PRESENCIA_APP_REVIEW_TEACHER_USERNAME === value.PRESENCIA_APP_REVIEW_STUDENT_USERNAME) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['PRESENCIA_APP_REVIEW_STUDENT_USERNAME'],
+      message: 'Teacher and student App Review usernames must be different',
+    });
   }
 
   if (value.NODE_ENV !== 'production') return;

@@ -23,6 +23,7 @@ Future<void> _syncDeviceBindingInBackground(
   StudentDeviceBindingService service,
   LocalStorageService storage,
 ) async {
+  if (storage.isDemoMode) return;
   final synced = await service.sync(storage);
   await storage.setDeviceBindingSyncPending(!synced);
 }
@@ -202,7 +203,7 @@ class _AppRouterState extends State<_AppRouter> {
   late bool _profileSet;
   StudentAcademicProfile? _academicProfile;
   String? _initialUatSessionId;
-  bool _demoMode = false;
+  late bool _demoMode;
 
   Future<void> _logout() async {
     await widget.attendanceSession.stop();
@@ -224,6 +225,7 @@ class _AppRouterState extends State<_AppRouter> {
   @override
   void initState() {
     super.initState();
+    _demoMode = widget.storage.isDemoMode;
     _profileSet = widget.storage.isProfileSet;
     _academicProfile = widget.storage.academicProfile;
     if (_profileSet && _academicProfile == null) {
@@ -247,9 +249,17 @@ class _AppRouterState extends State<_AppRouter> {
             username: username,
             password: password,
           );
-          await widget.storage.saveDeviceBindingToken(
-            result.deviceBindingToken,
-          );
+          await widget.storage.saveDemoMode(result.demoMode);
+          if (result.reviewAttendanceUuid != null) {
+            await widget.storage.saveAppReviewAttendanceUuid(
+              result.reviewAttendanceUuid!,
+            );
+          }
+          if (result.deviceBindingToken.isNotEmpty) {
+            await widget.storage.saveDeviceBindingToken(
+              result.deviceBindingToken,
+            );
+          }
           await widget.storage.saveAcademicProfile(result.profile);
           await widget.bleService.setStudentIdentity(
             matricula: result.matricula,
@@ -262,12 +272,14 @@ class _AppRouterState extends State<_AppRouter> {
             _demoMode = result.demoMode;
             _profileSet = true;
           });
-          unawaited(
-            _syncDeviceBindingInBackground(
-              widget.deviceBindingService,
-              widget.storage,
-            ),
-          );
+          if (!result.demoMode) {
+            unawaited(
+              _syncDeviceBindingInBackground(
+                widget.deviceBindingService,
+                widget.storage,
+              ),
+            );
+          }
         },
       );
     }

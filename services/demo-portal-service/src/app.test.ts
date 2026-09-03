@@ -46,6 +46,83 @@ describe('demo portal HTTP compatibility', () => {
     expect((await app.inject({ method: 'GET', url: '/Login' })).statusCode).toBe(404);
   });
 
+  it('serves isolated App Review accounts without exposing or persisting them in the demo catalog', async () => {
+    const reviewEnv = demoPortalEnvSchema.parse({
+      ...env,
+      PRESENCIA_DEBUG_MODE: false,
+      PRESENCIA_DEMO_SEED: false,
+      PRESENCIA_APP_REVIEW_ENABLED: true,
+      PRESENCIA_APP_REVIEW_TEACHER_PASSWORD: 'teacher-review-password',
+      PRESENCIA_APP_REVIEW_STUDENT_PASSWORD: 'student-review-password',
+    });
+    const catalog = new DemoCatalogService(new MemoryDemoPortalRepository(), reviewEnv);
+    await catalog.initialize();
+    app = await buildDemoPortalApp({ env: reviewEnv, catalog, ready: async () => true });
+
+    expect((await app.inject({
+      method: 'GET',
+      url: '/internal/v1/demo/catalog',
+      headers: { 'x-internal-service-token': reviewEnv.INTERNAL_API_TOKEN },
+    })).statusCode).toBe(404);
+
+    const teacherLogin = await app.inject({
+      method: 'POST', url: '/Login/Accesar_Dominio', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      payload: new URLSearchParams({
+        txtUsuario: reviewEnv.PRESENCIA_APP_REVIEW_TEACHER_USERNAME,
+        txtContrasenia: reviewEnv.PRESENCIA_APP_REVIEW_TEACHER_PASSWORD,
+      }).toString(),
+    });
+    expect(teacherLogin.json()).toMatchObject({ exito: true });
+    const teacherCookie = teacherLogin.headers['set-cookie'];
+    const groups = await app.inject({
+      method: 'GET', url: '/Profesor/ControlAsistencia/BuscaGruposProfesor',
+      headers: { cookie: teacherCookie!, 'x-requested-with': 'XMLHttpRequest' },
+    });
+    expect(groups.json().data).toMatchObject([{ Id_Grupo: 999901, Txt_Materia: 'Materia de demostración' }]);
+
+    const attendance = await app.inject({
+      method: 'POST', url: '/Profesor/ControlAsistencia/GuardaAsistencias',
+      headers: {
+        cookie: teacherCookie!, 'x-requested-with': 'XMLHttpRequest',
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      payload: new URLSearchParams({
+        Id_Grupo: '999901', Fec_Ini: '31/08/2026',
+        Asistencia: JSON.stringify([{ id_alumno: 999902, num_dia: 3, sn_asistencia: true }]),
+      }).toString(),
+    });
+    expect(attendance.json()).toMatchObject({ exito: true });
+    const unauthorizedGroup = await app.inject({
+      method: 'POST', url: '/Profesor/ControlAsistencia/GuardaAsistencias',
+      headers: {
+        cookie: teacherCookie!, 'x-requested-with': 'XMLHttpRequest',
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      payload: new URLSearchParams({
+        Id_Grupo: '123456', Fec_Ini: '31/08/2026', Asistencia: '[]',
+      }).toString(),
+    });
+    expect(unauthorizedGroup.statusCode).toBe(404);
+    expect(await catalog.snapshot()).toMatchObject({
+      teachers: [], students: [], classes: [], attendanceWrites: [],
+    });
+
+    const studentLogin = await app.inject({
+      method: 'POST', url: '/Login/Accesar_Dominio', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      payload: new URLSearchParams({
+        __RequestVerificationToken: 'presencia-demo-csrf',
+        txtUsuario: reviewEnv.PRESENCIA_APP_REVIEW_STUDENT_USERNAME,
+        txtContrasenia: reviewEnv.PRESENCIA_APP_REVIEW_STUDENT_PASSWORD,
+      }).toString(),
+    });
+    expect(studentLogin.json()).toMatchObject({ exito: true });
+    const schedule = await app.inject({
+      method: 'GET', url: '/Alumno/Horario/SpuSelHorarioFichaAlumno',
+      headers: { cookie: studentLogin.headers['set-cookie']!, 'x-requested-with': 'XMLHttpRequest' },
+    });
+    expect(schedule.json().data).toMatchObject([{ Id_Grupo: 999901, Txt_Materia: 'Materia de demostración' }]);
+  });
+
   it('clears the demo catalog only through the authenticated internal route', async () => {
     const catalog = new DemoCatalogService(new MemoryDemoPortalRepository(), env);
     await catalog.initialize();

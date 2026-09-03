@@ -2,6 +2,7 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { AppReviewCatalog, type AppReviewClass, type AppReviewStudent, type AppReviewTeacher } from './app-review.catalog.js';
 import type { DemoCatalogService } from './catalog.service.js';
 import { DemoCatalogError } from './catalog.service.js';
 import type { DemoPortalEnv } from './config.js';
@@ -18,15 +19,17 @@ export async function buildDemoPortalApp(options: {
   ready: () => Promise<boolean>;
 }) {
   const app = Fastify({ logger: { level: options.env.NODE_ENV === 'test' ? 'silent' : 'info' } });
+  const appReview = new AppReviewCatalog(options.env);
+  const portalEnabled = options.env.PRESENCIA_DEBUG_MODE || appReview.enabled;
   await app.register(helmet, { contentSecurityPolicy: false });
   await app.register(rateLimit, { global: false });
   app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_request, body, done) => done(null, body));
 
-  app.get('/health', async () => ({ status: 'ok', service: 'demo-portal-service', enabled: options.env.PRESENCIA_DEBUG_MODE }));
+  app.get('/health', async () => ({ status: 'ok', service: 'demo-portal-service', enabled: portalEnabled }));
   app.get('/health/live', async () => ({ status: 'ok', service: 'demo-portal-service' }));
   app.get('/health/ready', async (_request, reply) => {
     const redis = await options.ready();
-    return reply.code(redis ? 200 : 503).send({ status: redis ? 'ok' : 'degraded', enabled: options.env.PRESENCIA_DEBUG_MODE, dependencies: { redis } });
+    return reply.code(redis ? 200 : 503).send({ status: redis ? 'ok' : 'degraded', enabled: portalEnabled, dependencies: { redis } });
   });
 
   const internal = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -34,6 +37,15 @@ export async function buildDemoPortalApp(options: {
       return reply.code(404).send({ error: 'NOT_FOUND' });
     }
   };
+  const internalAppReview = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!appReview.enabled || request.headers['x-internal-service-token'] !== options.env.INTERNAL_API_TOKEN) {
+      return reply.code(404).send({ error: 'NOT_FOUND' });
+    }
+  };
+
+  app.get('/internal/v1/app-review/catalog', { preHandler: internalAppReview }, async () => ({
+    data: appReview.snapshot(),
+  }));
 
   app.get('/internal/v1/demo/status', { preHandler: internal }, async () => ({
     data: {
@@ -106,31 +118,33 @@ export async function buildDemoPortalApp(options: {
   }));
 
   app.get('/', async (_request, reply) => {
-    if (!options.env.PRESENCIA_DEBUG_MODE) return disabled(reply);
+    if (!portalEnabled) return disabled(reply);
     reply.header('set-cookie', 'ASP.NET_SessionId=presencia-demo-student; Path=/; HttpOnly; SameSite=Lax');
     return reply.type('text/html').send('<input name="__RequestVerificationToken" value="presencia-demo-csrf">');
   });
   app.get('/Login', async (_request, reply) => {
-    if (!options.env.PRESENCIA_DEBUG_MODE) return disabled(reply);
+    if (!portalEnabled) return disabled(reply);
     reply.header('set-cookie', 'ASP.NET_SessionId=presencia-demo-teacher; Path=/; HttpOnly; SameSite=Lax');
     return reply.type('text/html').send('<html><body>Portal UAT Demo</body></html>');
   });
   app.post('/Login/Accesar_Dominio', {
     config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
   }, async (request, reply) => {
-    if (!options.env.PRESENCIA_DEBUG_MODE) return disabled(reply);
+    if (!portalEnabled) return disabled(reply);
     const form = formBody(request.body);
     const studentLogin = form.has('__RequestVerificationToken');
     const username = form.get('txtUsuario') ?? '';
     const password = form.get('txtContrasenia') ?? '';
     if (studentLogin && form.get('__RequestVerificationToken') !== 'presencia-demo-csrf') return invalidLogin(reply);
     if (studentLogin) {
-      const student = await options.catalog.authenticateStudent(username, password);
+      const student = await appReview.authenticateStudent(username, password)
+        ?? (options.env.PRESENCIA_DEBUG_MODE ? await options.catalog.authenticateStudent(username, password) : null);
       if (!student) return invalidLogin(reply);
       reply.header('set-cookie', `.ASPXAUTH=${sessionToken('student', student.id, options.env.DEMO_SESSION_SECRET)}; Path=/; HttpOnly; SameSite=Lax`);
       return { exito: true, mensaje: 'Acceso demo correcto', parametros: { Txt_Nombre_Alumno: student.name } };
     }
-    const teacher = await options.catalog.authenticateTeacher(username, password);
+    const teacher = await appReview.authenticateTeacher(username, password)
+      ?? (options.env.PRESENCIA_DEBUG_MODE ? await options.catalog.authenticateTeacher(username, password) : null);
     if (!teacher) return invalidLogin(reply);
     reply.header('set-cookie', `.ASPXAUTH=${sessionToken('teacher', teacher.id, options.env.DEMO_SESSION_SECRET)}; Path=/; HttpOnly; SameSite=Lax`);
     return {
@@ -145,7 +159,7 @@ export async function buildDemoPortalApp(options: {
 
   app.addHook('preHandler', async (request, reply) => {
     if (request.url.startsWith('/internal/') || request.url.startsWith('/health') || request.url === '/' || request.url.startsWith('/Login')) return;
-    if (!options.env.PRESENCIA_DEBUG_MODE) return disabled(reply);
+    if (!portalEnabled) return disabled(reply);
     if (!portalSession(request, options.env.DEMO_SESSION_SECRET) || request.headers['x-requested-with'] !== 'XMLHttpRequest') {
       return reply.code(401).send({ exito: false, mensaje: 'Sesión demo requerida.' });
     }
@@ -164,24 +178,24 @@ export async function buildDemoPortalApp(options: {
     Sn_Activo: true,
   }] }));
   app.get('/Profesor/Consultas/BuscaHorarios', async (request, reply) => {
-    const teacher = await authenticatedTeacher(request, options);
-    return teacher ? { data: (await options.catalog.classesForTeacher(teacher.id)).map(toTeacherSchedule) } : unauthorized(reply);
+    const teacher = await authenticatedTeacher(request, options, appReview);
+    return teacher ? { data: (await classesForTeacher(teacher.id, options, appReview)).map(toTeacherSchedule) } : unauthorized(reply);
   });
   app.get('/Profesor/Consultas/BuscaExamenes', async () => ({ data: [] }));
   app.get('/Profesor/ControlAsistencia/BuscaGruposProfesor', async (request, reply) => {
-    const teacher = await authenticatedTeacher(request, options);
-    return teacher ? { data: (await options.catalog.classesForTeacher(teacher.id)).map((item) => toTeacherGroup(item, options.env)) } : unauthorized(reply);
+    const teacher = await authenticatedTeacher(request, options, appReview);
+    return teacher ? { data: (await classesForTeacher(teacher.id, options, appReview)).map((item) => toTeacherGroup(item, options.env)) } : unauthorized(reply);
   });
   app.get('/Profesor/ControlAsistencia/BuscaSemanas', async (request, reply) => {
     const groupId = Number((request.query as Record<string, unknown>).Id_Grupo ?? (request.query as Record<string, unknown>).id_grupo);
-    const item = await options.catalog.classByGroupId(groupId);
+    const item = await classForAuthenticatedTeacher(request, groupId, options, appReview);
     if (!item) return reply.code(404).send({ exito: false, mensaje: 'Materia demo no encontrada.' });
     const { start, end } = currentWeek();
     return { data: [{ Id_Grupo: item.groupId, Fec_Ini: start, Fec_Fin: end, Semana: 1 }] };
   });
   app.get('/Profesor/ControlAsistencia/BuscaAsistenciaGrupo', async (request, reply) => {
     const groupId = Number((request.query as Record<string, unknown>).Id_Grupo ?? (request.query as Record<string, unknown>).id_grupo);
-    const item = await options.catalog.classByGroupId(groupId);
+    const item = await classForAuthenticatedTeacher(request, groupId, options, appReview);
     if (!item) return reply.code(404).send({ exito: false, mensaje: 'Materia demo no encontrada.' });
     return { data: item.students.map((student, index) => ({
       Id_Alumno: student.uatStudentId, Num_Lista: index + 1, Num_Matricula: student.matricula, Txt_Alumno: student.name,
@@ -193,26 +207,33 @@ export async function buildDemoPortalApp(options: {
     const weekStart = form.get('Fec_Ini') ?? '';
     let attendances: Array<{ id_alumno: number; num_dia: number; sn_asistencia: boolean }>;
     try { attendances = JSON.parse(form.get('Asistencia') ?? '[]') as typeof attendances; } catch { return reply.code(400).send({ exito: false, mensaje: 'Asistencia demo inválida.' }); }
-    await options.catalog.recordAttendance({ groupId, weekStart, attendances });
+    const item = await classForAuthenticatedTeacher(request, groupId, options, appReview);
+    if (!item) return reply.code(404).send({ exito: false, mensaje: 'Materia demo no encontrada.' });
+    if (!appReview.teacherById(item.professorId)) {
+      await options.catalog.recordAttendance({ groupId, weekStart, attendances });
+    }
     return { exito: true, mensaje: 'Asistencia guardada en el simulador.' };
   });
   app.get('/Home/CarrerasAlumno', async (request, reply) => {
-    const student = await authenticatedStudent(request, options);
+    const student = await authenticatedStudent(request, options, appReview);
     return student ? { data: [toStudentCareer(student, options.env)] } : unauthorized(reply);
   });
   app.post('/Home/SeleccionarCarreraAlumno', async (request, reply) => {
-    const student = await authenticatedStudent(request, options);
+    const student = await authenticatedStudent(request, options, appReview);
     if (!student) return unauthorized(reply);
     if (Number(formBody(request.body).get('Id_Plan_Estudio')) !== planId(student.matricula)) return reply.code(400).send({ exito: false, mensaje: 'Plan demo inválido.' });
     return { exito: true, parametros: {
       Id_Plan_Estudio_AlumnosUAT: planId(student.matricula), Num_Matricula_AlumnosUAT: student.matricula,
       Id_Ciclo_Escolar_Activo_AlumnosUAT: options.env.PRESENCIA_DEMO_CYCLE_ID,
       Id_DES_AlumnosUAT: options.env.PRESENCIA_DEMO_COORDINATION_ID,
+      ...(student.origin === 'APP_REVIEW'
+        ? { Presencia_Attendance_UUID: student.attendanceUuid }
+        : {}),
     } };
   });
   app.get('/Alumno/Horario/SpuSelHorarioFichaAlumno', async (request, reply) => {
-    const student = await authenticatedStudent(request, options);
-    return student ? { data: (await options.catalog.classesForStudent(student.id)).map((item) => toStudentSchedule(item)) } : unauthorized(reply);
+    const student = await authenticatedStudent(request, options, appReview);
+    return student ? { data: (await classesForStudent(student.id, options, appReview)).map((item) => toStudentSchedule(item)) } : unauthorized(reply);
   });
   app.get('/Alumno/CalificacionesParciales/SPUSELCalificacionesParciales', async () => ({ exito: false, mensaje: 'Sin calificaciones demo', data: [] }));
   app.get('/Alumno/CalificacionesFinales/ConsultaEvaluaciones', async () => ({ exito: false, mensaje: 'Sin calificaciones demo', data: [] }));
@@ -250,30 +271,84 @@ function portalSession(request: FastifyRequest, secret: string): { kind: 'teache
   return expected.length === actual.length && timingSafeEqual(expected, actual) ? { kind, id } : null;
 }
 
-async function authenticatedTeacher(request: FastifyRequest, options: { env: DemoPortalEnv; catalog: DemoCatalogService }) {
+type PortalOptions = { env: DemoPortalEnv; catalog: DemoCatalogService };
+type PortalTeacher = AppReviewTeacher | NonNullable<Awaited<ReturnType<DemoCatalogService['teacherById']>>>;
+type PortalStudent = AppReviewStudent | NonNullable<Awaited<ReturnType<DemoCatalogService['studentById']>>>;
+type PortalClass = AppReviewClass | NonNullable<Awaited<ReturnType<DemoCatalogService['classByGroupId']>>>;
+
+async function authenticatedTeacher(
+  request: FastifyRequest,
+  options: PortalOptions,
+  appReview: AppReviewCatalog,
+): Promise<PortalTeacher | null> {
   const session = portalSession(request, options.env.DEMO_SESSION_SECRET);
-  return session?.kind === 'teacher' ? options.catalog.teacherById(session.id) : null;
+  if (session?.kind !== 'teacher') return null;
+  return appReview.teacherById(session.id)
+    ?? (options.env.PRESENCIA_DEBUG_MODE ? options.catalog.teacherById(session.id) : null);
 }
-async function authenticatedStudent(request: FastifyRequest, options: { env: DemoPortalEnv; catalog: DemoCatalogService }) {
+async function authenticatedStudent(
+  request: FastifyRequest,
+  options: PortalOptions,
+  appReview: AppReviewCatalog,
+): Promise<PortalStudent | null> {
   const session = portalSession(request, options.env.DEMO_SESSION_SECRET);
-  return session?.kind === 'student' ? options.catalog.studentById(session.id) : null;
+  if (session?.kind !== 'student') return null;
+  return appReview.studentById(session.id)
+    ?? (options.env.PRESENCIA_DEBUG_MODE ? options.catalog.studentById(session.id) : null);
 }
 
-function toTeacherGroup(item: Awaited<ReturnType<DemoCatalogService['classesForTeacher']>>[number], env: DemoPortalEnv) {
+async function classesForTeacher(
+  teacherId: string,
+  options: PortalOptions,
+  appReview: AppReviewCatalog,
+): Promise<PortalClass[]> {
+  const reviewClasses = appReview.classesForTeacher(teacherId);
+  return reviewClasses.length > 0
+    ? reviewClasses
+    : options.env.PRESENCIA_DEBUG_MODE ? options.catalog.classesForTeacher(teacherId) : [];
+}
+
+async function classesForStudent(
+  studentId: string,
+  options: PortalOptions,
+  appReview: AppReviewCatalog,
+): Promise<PortalClass[]> {
+  const reviewClasses = appReview.classesForStudent(studentId);
+  return reviewClasses.length > 0
+    ? reviewClasses
+    : options.env.PRESENCIA_DEBUG_MODE ? options.catalog.classesForStudent(studentId) : [];
+}
+
+async function classForAuthenticatedTeacher(
+  request: FastifyRequest,
+  groupId: number,
+  options: PortalOptions,
+  appReview: AppReviewCatalog,
+): Promise<PortalClass | null> {
+  const session = portalSession(request, options.env.DEMO_SESSION_SECRET);
+  if (session?.kind !== 'teacher') return null;
+  const reviewClass = appReview.teacherById(session.id) ? appReview.classByGroupId(groupId) : null;
+  if (reviewClass) return reviewClass;
+  if (!options.env.PRESENCIA_DEBUG_MODE) return null;
+  const item = await options.catalog.classByGroupId(groupId);
+  return item?.professorId === session.id ? item : null;
+}
+
+function toTeacherGroup(item: PortalClass, env: DemoPortalEnv) {
   return {
     Id_Grupo: item.groupId, Id_Materia: item.code, Txt_Materia: item.name, Txt_Letra: item.groupLetter,
     Id_DES: env.PRESENCIA_DEMO_COORDINATION_ID, Id_Ciclo_Escolar: env.PRESENCIA_DEMO_CYCLE_ID, Ciclo: env.PRESENCIA_DEMO_CYCLE_NAME,
   };
 }
 
-function toTeacherSchedule(item: Awaited<ReturnType<DemoCatalogService['classesForTeacher']>>[number]) {
+function toTeacherSchedule(item: PortalClass) {
   return {
     Id_Grupo: item.groupId, Id_Materia: item.code, Txt_Materia: item.name, Txt_Espacio_Fisico: item.classroom,
     Num_Periodo: item.period, ...scheduleFields(item.schedule),
   };
 }
 
-function toStudentSchedule(item: Awaited<ReturnType<DemoCatalogService['classesForStudent']>>[number]) {
+function toStudentSchedule(item: PortalClass) {
   return {
     ...toTeacherSchedule(item), Txt_Nombre_Profesor: item.professor?.name ?? 'Profesor Demo',
     Txt_Letra: item.groupLetter, Num_Creditos: 5,

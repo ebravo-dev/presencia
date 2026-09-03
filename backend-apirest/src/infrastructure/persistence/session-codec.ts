@@ -21,6 +21,7 @@ const baseSessionSchema = z.object({
   createdAt: z.string().datetime(),
   lastUsedAt: z.string().datetime(),
   expiresAt: z.string().datetime(),
+  source: z.enum(['UAT', 'APP_REVIEW']).default('UAT'),
   cookieJar: z.unknown(),
 });
 
@@ -64,6 +65,7 @@ export class TeacherSessionCodec implements SessionCodec<StoredUatSession> {
     return this.cipher.encrypt(JSON.stringify({
       id: session.id,
       username: session.username,
+      source: session.source ?? 'UAT',
       credentialCipher: session.credentialCipher,
       login: session.login,
       ...(session.identitySession ? { identitySession: session.identitySession } : {}),
@@ -79,10 +81,11 @@ export class TeacherSessionCodec implements SessionCodec<StoredUatSession> {
     return {
       id: payload.id,
       username: payload.username,
+      source: payload.source,
       credentialCipher: payload.credentialCipher,
       login: payload.login as UatLoginResponse,
       ...(payload.identitySession ? { identitySession: payload.identitySession } : {}),
-      client: this.clientFactory.restore(payload.cookieJar),
+      client: this.clientFactory.restore(payload.cookieJar, payload.source),
       createdAt: new Date(payload.createdAt),
       lastUsedAt: new Date(payload.lastUsedAt),
       expiresAt: new Date(payload.expiresAt),
@@ -100,6 +103,7 @@ export class StudentSessionCodec implements SessionCodec<StoredUatStudentSession
     return this.cipher.encrypt(JSON.stringify({
       id: session.id,
       username: session.username,
+      source: session.source ?? 'UAT',
       login: session.login,
       careers: session.careers,
       selectedCareer: session.selectedCareer,
@@ -117,12 +121,13 @@ export class StudentSessionCodec implements SessionCodec<StoredUatStudentSession
     return {
       id: payload.id,
       username: payload.username,
+      source: payload.source,
       login: payload.login as UatLoginResponse,
       careers: payload.careers as UatStudentCareerItem[],
       selectedCareer: payload.selectedCareer as UatStudentCareerSelection,
       ...(payload.deviceBindingToken ? { deviceBindingToken: payload.deviceBindingToken } : {}),
       ...(payload.identitySession ? { identitySession: payload.identitySession } : {}),
-      client: this.clientFactory.restore(payload.cookieJar),
+      client: this.clientFactory.restore(payload.cookieJar, payload.source),
       createdAt: new Date(payload.createdAt),
       lastUsedAt: new Date(payload.lastUsedAt),
       expiresAt: new Date(payload.expiresAt),

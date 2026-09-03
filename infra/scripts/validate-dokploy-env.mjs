@@ -115,8 +115,24 @@ export function validateDokployEnvironment(environment, composeSource) {
   if (environment.PRESENCIA_DEBUG_MODE && !['true', 'false'].includes(environment.PRESENCIA_DEBUG_MODE)) {
     errors.push('PRESENCIA_DEBUG_MODE must be true or false.');
   }
+  if (environment.PRESENCIA_APP_REVIEW_ENABLED && !['true', 'false'].includes(environment.PRESENCIA_APP_REVIEW_ENABLED)) {
+    errors.push('PRESENCIA_APP_REVIEW_ENABLED must be true or false.');
+  }
   if (environment.PRESENCIA_DEBUG_MODE === 'true' && environment.DEPLOYMENT_ENVIRONMENT !== 'demo') {
     errors.push('PRESENCIA_DEBUG_MODE=true requires DEPLOYMENT_ENVIRONMENT=demo in an isolated Dokploy project.');
+  }
+  if (environment.PRESENCIA_APP_REVIEW_ENABLED === 'true') {
+    for (const field of ['PRESENCIA_APP_REVIEW_TEACHER_PASSWORD', 'PRESENCIA_APP_REVIEW_STUDENT_PASSWORD']) {
+      const value = environment[field] || '';
+      if (value.length < 12) errors.push(`${field} must contain at least 12 characters when App Review access is enabled.`);
+      if (/replace-with|change-me|example/i.test(value)) errors.push(`${field} still contains an example placeholder.`);
+    }
+    if (environment.PRESENCIA_APP_REVIEW_TEACHER_PASSWORD === environment.PRESENCIA_APP_REVIEW_STUDENT_PASSWORD) {
+      errors.push('The App Review teacher and student passwords must be different.');
+    }
+    if (environment.PRESENCIA_APP_REVIEW_TEACHER_USERNAME === environment.PRESENCIA_APP_REVIEW_STUDENT_USERNAME) {
+      errors.push('The App Review teacher and student usernames must be different.');
+    }
   }
   return errors;
 }

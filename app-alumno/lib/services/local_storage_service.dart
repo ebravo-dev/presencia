@@ -33,6 +33,7 @@ class LocalStorageService {
   static const String _scheduleKey = 'student_schedule';
   static const String _attendanceToleranceKey =
       'teacher_attendance_tolerance_minutes';
+  static const String _demoModeKey = 'app_review_demo_mode';
   static const int defaultAttendanceToleranceMinutes = 10;
   static const int _maxAttendanceHistoryEntries = 200;
   static const String _secureUsernameKey = 'uat_student_username';
@@ -121,6 +122,15 @@ class LocalStorageService {
 
   bool get hasPendingDeviceBindingSync =>
       _profile.get('device_binding_sync_pending', defaultValue: false) == true;
+
+  bool get isDemoMode {
+    try {
+      return _profile.get(_demoModeKey, defaultValue: false) == true;
+    } catch (_) {
+      // Lightweight widget-test doubles may not initialize Hive.
+      return false;
+    }
+  }
 
   bool get hasClassroomBeacon => classroomBeaconUuid.trim().isNotEmpty;
 
@@ -230,6 +240,21 @@ class LocalStorageService {
     await _profile.put(_attendanceToleranceKey, minutes.clamp(0, 120).toInt());
   }
 
+  Future<void> saveDemoMode(bool enabled) async {
+    await _profile.put(_demoModeKey, enabled);
+  }
+
+  Future<void> saveAppReviewAttendanceUuid(String uuid) async {
+    final normalized = uuid.trim().toLowerCase();
+    if (normalized.isEmpty) return;
+    await _profile.put('attendance_uuid', normalized);
+    await _syncNativeIdentity(
+      matricula: matricula,
+      attendanceUuid: normalized,
+      deviceBindingId: deviceBindingId,
+    );
+  }
+
   Future<void> saveInstitutionalCredentials({
     required String username,
     required String password,
@@ -264,8 +289,9 @@ class LocalStorageService {
   }
 
   Future<void> clearStudentSession() async {
-    final stableAttendanceUuid = attendanceUuid;
-    final stableDeviceBindingId = deviceBindingId;
+    final preserveDeviceIdentity = !isDemoMode;
+    final stableAttendanceUuid = preserveDeviceIdentity ? attendanceUuid : '';
+    final stableDeviceBindingId = preserveDeviceIdentity ? deviceBindingId : '';
 
     await Future.wait<void>([
       _secureStorage.delete(key: _secureUsernameKey),

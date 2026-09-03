@@ -115,6 +115,41 @@ describe('AsistenciaController', () => {
     expect(wake).not.toHaveBeenCalled();
   });
 
+  it('keeps App Review attendance out of Attendance Service and the durable upload queue', async () => {
+    const guardarAsistenciasPorSesion = vi.fn(async () => ({ exito: true }));
+    const capture = vi.fn(async () => ({}));
+    const submit = vi.fn(async () => ({}));
+    const wake = vi.fn();
+    const controller = new AsistenciaController(
+      { guardarAsistenciasPorSesion } as never,
+      { capture } as never,
+      { submit } as never,
+      { wake },
+    );
+
+    const response = await controller.guardar({
+      id: 'request-review',
+      body: {
+        ClientRecordId: '999901_2026-09-02', Id_Grupo: 999901, Fec_Ini: '31/08/2026',
+        Asistencia: [{ id_alumno: 999902, num_pase_lista: 1, num_dia: 3, sn_asistencia: true }],
+      },
+      uatSession: {
+        id: 'session-review', source: 'APP_REVIEW', username: 'appreview.profesor@uat.edu.mx',
+        credentialCipher: 'encrypted', login: { parametros: { Id_Plantilla_AdmonUAT: '999900' } },
+      },
+    } as never);
+
+    expect(guardarAsistenciasPorSesion).toHaveBeenCalledWith('session-review', {
+      Id_Grupo: 999901,
+      Fec_Ini: '31/08/2026',
+      Asistencia: JSON.stringify([{ id_alumno: 999902, num_pase_lista: 1, num_dia: 3, sn_asistencia: true }]),
+    });
+    expect(response).toMatchObject({ data: { uploadStatus: 'SKIPPED' }, reviewOnly: true });
+    expect(capture).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+    expect(wake).not.toHaveBeenCalled();
+  });
+
   it('rejects the removed monolith-only debug payload instead of uploading it to UAT', async () => {
     const capture = vi.fn(async () => ({}));
     const controller = new AsistenciaController({} as never, { capture } as never, {} as never, { wake() {} });

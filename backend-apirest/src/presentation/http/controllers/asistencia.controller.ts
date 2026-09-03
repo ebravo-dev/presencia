@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 import type { UatService } from '../../../application/services/uat.service.js';
 import type { AttendanceCaptureClient } from '../../../infrastructure/http/client/attendance-capture.client.js';
@@ -48,6 +49,26 @@ export class AsistenciaController {
     const dayNumbers = [...new Set(body.Asistencia.map(({ num_dia }) => num_dia))];
     if (dayNumbers.length !== 1) {
       throw new ApiError(400, 'ATTENDANCE_MULTIPLE_DAYS', 'Una captura sólo puede corresponder a un día.');
+    }
+    if (request.uatSession.source === 'APP_REVIEW') {
+      await this.uatService.guardarAsistenciasPorSesion(request.uatSession.id, {
+        Id_Grupo: body.Id_Grupo,
+        Fec_Ini: body.Fec_Ini,
+        Asistencia: JSON.stringify(body.Asistencia),
+      });
+      return {
+        data: {
+          attendanceSessionId: randomUUID(),
+          externalGroupId: String(body.Id_Grupo),
+          date: dateFromWeekStart(body.Fec_Ini, dayNumbers[0]!),
+          entriesCount: body.Asistencia.length,
+          uploadStatus: 'SKIPPED' as const,
+          duplicate: false,
+          version: 1,
+        },
+        skippedApiRestUpload: true,
+        reviewOnly: true,
+      };
     }
     const capture = await this.attendanceCaptureClient.capture({
       correlationId: request.id,

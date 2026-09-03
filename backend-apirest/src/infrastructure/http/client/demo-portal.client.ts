@@ -17,7 +17,7 @@ export interface DemoPortalStudent {
   name: string;
   attendanceUuid: string;
   careerName: string;
-  origin?: 'DEMO' | 'REGISTERED';
+  origin?: 'DEMO' | 'REGISTERED' | 'APP_REVIEW';
   createdAt: string;
   updatedAt: string;
 }
@@ -79,6 +79,9 @@ export class DemoPortalClient {
   }
 
   health(): Promise<unknown> { return this.request('/health/ready', { method: 'GET', authenticate: false }); }
+  appReviewCatalog(): Promise<{ data: DemoPortalCatalog }> {
+    return this.request('/internal/v1/app-review/catalog', { method: 'GET' });
+  }
   status(): Promise<{ data: DemoPortalStatus }> { return this.request('/internal/v1/demo/status', { method: 'GET' }); }
   catalog(): Promise<{ data: DemoPortalCatalog }> { return this.request('/internal/v1/demo/catalog', { method: 'GET' }); }
   createTeacher(input: { email: string; name: string; password: string }) { return this.request<{ data: DemoPortalTeacher }>('/internal/v1/demo/teachers', { method: 'POST', body: input }); }

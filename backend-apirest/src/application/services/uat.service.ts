@@ -10,6 +10,8 @@ import type {
   UatDataResponse,
   UatDesItem,
   UatExamenItem,
+  UatGuardaAsistenciasPayload,
+  UatGuardaAsistenciasResponse,
   UatAsistenciaGrupoParams,
   UatAsistenciaGrupoResponse,
   UatHorarioItem,
@@ -38,32 +40,35 @@ export class UatService {
   ) {}
 
   async createSession(credentials: UatCredentials, context: { correlationId?: string } = {}): Promise<StoredUatSession> {
-    const client = this.clientFactory.create();
+    const { client, source } = this.clientFactory.createFor(credentials.username);
     const login = await client.authenticate(credentials);
     const plantillaId = login.parametros?.Id_Plantilla_AdmonUAT?.trim();
     const institutionalCode = login.parametros?.Cve_Usuario_AdmonUAT?.trim();
-    const identitySession = await this.identityService.createAuthenticatedSession({
-      kind: 'PROFESSOR',
-      role: 'PROFESSOR',
-      institutionalIdentifier: plantillaId || institutionalCode || credentials.username.trim().toLowerCase(),
-      ...(credentials.username.includes('@') ? { email: credentials.username.trim().toLowerCase() } : {}),
-      displayName: login.parametros?.Txt_Usuario_AdmonUAT?.trim() || institutionalCode || credentials.username.trim(),
-      source: 'UAT_TEACHER',
-      correlationId: context.correlationId ?? randomUUID(),
-      ...(credentials.deviceBindingId ? {
-        deviceId: credentials.deviceBindingId,
-        devicePlatform: credentials.platform,
-        deviceInfo: credentials.deviceInfo,
-      } : {}),
-    });
+    const identitySession = source === 'APP_REVIEW'
+      ? undefined
+      : await this.identityService.createAuthenticatedSession({
+        kind: 'PROFESSOR',
+        role: 'PROFESSOR',
+        institutionalIdentifier: plantillaId || institutionalCode || credentials.username.trim().toLowerCase(),
+        ...(credentials.username.includes('@') ? { email: credentials.username.trim().toLowerCase() } : {}),
+        displayName: login.parametros?.Txt_Usuario_AdmonUAT?.trim() || institutionalCode || credentials.username.trim(),
+        source: 'UAT_TEACHER',
+        correlationId: context.correlationId ?? randomUUID(),
+        ...(credentials.deviceBindingId ? {
+          deviceId: credentials.deviceBindingId,
+          devicePlatform: credentials.platform,
+          deviceInfo: credentials.deviceInfo,
+        } : {}),
+      });
     const now = new Date();
     const session: StoredUatSession = {
       id: randomUUID(),
       username: credentials.username.trim().toLowerCase(),
+      source,
       credentialCipher: this.credentialCipher.encrypt(credentials.password),
       client,
       login,
-      identitySession,
+      ...(identitySession ? { identitySession } : {}),
       createdAt: now,
       lastUsedAt: now,
       expiresAt: now,
@@ -73,7 +78,7 @@ export class UatService {
       await this.sessionRepository.create(session.id, session);
       return session;
     } catch (error) {
-      await this.identityService.revoke(identitySession.accessToken).catch(() => undefined);
+      if (identitySession) await this.identityService.revoke(identitySession.accessToken).catch(() => undefined);
       throw error;
     }
   }
@@ -199,6 +204,13 @@ export class UatService {
     });
   }
 
+  async guardarAsistenciasPorSesion(
+    sessionId: string,
+    payload: UatGuardaAsistenciasPayload,
+  ): Promise<UatGuardaAsistenciasResponse> {
+    return this.withSession(sessionId, (session) => session.client.guardaAsistencias(payload));
+  }
+
   private async withSession<TResult>(
     sessionId: string,
     action: (session: StoredUatSession) => Promise<TResult>,
@@ -219,7 +231,7 @@ export class UatService {
     options: { includeExamenes?: boolean } = {},
   ): Promise<UatSnapshotResponse> {
     const includeExamenes = options.includeExamenes ?? true;
-    const client = this.clientFactory.create();
+    const { client } = this.clientFactory.createFor(credentials.username);
     const login = await client.authenticate(credentials);
 
     const [horarios, examenes] = await Promise.all([

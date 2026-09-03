@@ -13,6 +13,7 @@ class StudentAuthResult {
   final StudentAcademicProfile profile;
   final String sessionId;
   final bool demoMode;
+  final String? reviewAttendanceUuid;
 
   const StudentAuthResult({
     required this.matricula,
@@ -20,6 +21,7 @@ class StudentAuthResult {
     required this.profile,
     required this.sessionId,
     required this.demoMode,
+    this.reviewAttendanceUuid,
   });
 }
 
@@ -92,8 +94,11 @@ class StudentAuthService {
     final sessionId = decoded['sessionId']?.toString() ?? '';
     final matricula = _extractMatricula(decoded);
     final deviceBindingToken = decoded['deviceBindingToken']?.toString() ?? '';
+    final demoMode = decoded['demoMode'] == true;
 
-    if (sessionId.isEmpty || matricula.isEmpty || deviceBindingToken.isEmpty) {
+    if (sessionId.isEmpty ||
+        matricula.isEmpty ||
+        (!demoMode && deviceBindingToken.isEmpty)) {
       if (sessionId.isNotEmpty) await _deleteStudentSession(sessionId);
       throw const StudentAuthException(
         'No pudimos preparar tu cuenta. Inténtalo de nuevo.',
@@ -109,7 +114,8 @@ class StudentAuthService {
         institutionalEmail: username,
       ),
       sessionId: sessionId,
-      demoMode: decoded['demoMode'] == true,
+      demoMode: demoMode,
+      reviewAttendanceUuid: decoded['reviewAttendanceUuid']?.toString(),
     );
   }
 

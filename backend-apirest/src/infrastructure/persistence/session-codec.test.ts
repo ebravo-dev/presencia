@@ -66,6 +66,29 @@ describe('encrypted UAT session codecs', () => {
     expect(restored.careers[0]?.Id_Plan_Estudio).toBe(3313);
     expect(restored.client.getCookieDiagnostics().hasAuthCookie).toBe(true);
   });
+
+  it('restores App Review sessions against the private portal after a Redis round trip', () => {
+    const factory = new UatClientFactory();
+    const jar = authenticatedJar('http://demo-portal-service:3900');
+    const codec = new TeacherSessionCodec(factory, cipher);
+    const now = new Date('2026-09-02T12:00:00.000Z');
+    const session: StoredUatSession = {
+      id: randomUUID(),
+      username: 'appreview.profesor@uat.edu.mx',
+      source: 'APP_REVIEW',
+      credentialCipher: cipher.encrypt('teacher-review-password'),
+      client: factory.restore(jar.serializeSync(), 'APP_REVIEW'),
+      login: { exito: true, parametros: { Id_Plantilla_AdmonUAT: '999900' } },
+      createdAt: now,
+      lastUsedAt: now,
+      expiresAt: new Date(now.getTime() + 60_000),
+    };
+
+    const restored = codec.decode(codec.encode(session));
+
+    expect(restored.source).toBe('APP_REVIEW');
+    expect(restored.client.getCookieDiagnostics().hasAuthCookie).toBe(true);
+  });
 });
 
 function authenticatedJar(baseUrl: string): CookieJar {

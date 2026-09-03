@@ -51,7 +51,7 @@ export class UatStudentService {
     input: CreateUatStudentSessionInput,
     context: { correlationId?: string } = {},
   ): Promise<StoredUatStudentSession> {
-    const client = this.clientFactory.create();
+    const { client, source } = this.clientFactory.createFor(input.username);
     const login = await client.authenticate(input);
     const careers = await client.getCareers();
 
@@ -65,35 +65,40 @@ export class UatStudentService {
     if (!matricula) {
       throw new ApiError(502, 'UAT_STUDENT_MATRICULA_MISSING', 'El portal de alumnos no devolvio matricula para crear la identidad.');
     }
-    const identitySession = await this.identityService.createAuthenticatedSession({
-      kind: 'STUDENT',
-      role: 'STUDENT',
-      institutionalIdentifier: matricula,
-      ...(input.username.includes('@') ? { email: input.username.trim().toLowerCase() } : {}),
-      displayName: input.username.trim(),
-      source: 'UAT_STUDENT',
-      correlationId: context.correlationId ?? randomUUID(),
-      deviceId: input.deviceBindingId,
-    });
-    let deviceBindingToken: string;
-    try {
-      deviceBindingToken = await this.bindStudentDevice(input, selectedCareer, career);
-    } catch (error) {
-      if (identitySession) {
-        await this.identityService.revoke(identitySession.accessToken).catch(() => undefined);
+    const identitySession = source === 'APP_REVIEW'
+      ? undefined
+      : await this.identityService.createAuthenticatedSession({
+        kind: 'STUDENT',
+        role: 'STUDENT',
+        institutionalIdentifier: matricula,
+        ...(input.username.includes('@') ? { email: input.username.trim().toLowerCase() } : {}),
+        displayName: input.username.trim(),
+        source: 'UAT_STUDENT',
+        correlationId: context.correlationId ?? randomUUID(),
+        deviceId: input.deviceBindingId,
+      });
+    let deviceBindingToken: string | undefined;
+    if (source !== 'APP_REVIEW') {
+      try {
+        deviceBindingToken = await this.bindStudentDevice(input, selectedCareer, career);
+      } catch (error) {
+        if (identitySession) {
+          await this.identityService.revoke(identitySession.accessToken).catch(() => undefined);
+        }
+        throw error;
       }
-      throw error;
     }
     const now = new Date();
     const session: StoredUatStudentSession = {
       id: randomUUID(),
       username: input.username.trim().toLowerCase(),
+      source,
       client,
       login,
       careers,
       selectedCareer,
-      deviceBindingToken,
-      identitySession,
+      ...(deviceBindingToken ? { deviceBindingToken } : {}),
+      ...(identitySession ? { identitySession } : {}),
       createdAt: now,
       lastUsedAt: now,
       expiresAt: now,
@@ -103,7 +108,7 @@ export class UatStudentService {
       await this.sessionRepository.create(session.id, session);
       return session;
     } catch (error) {
-      await this.identityService.revoke(identitySession.accessToken).catch(() => undefined);
+      if (identitySession) await this.identityService.revoke(identitySession.accessToken).catch(() => undefined);
       throw error;
     }
   }
@@ -134,7 +139,7 @@ export class UatStudentService {
   }
 
   async toSessionResponse(session: StoredUatStudentSession): Promise<UatStudentSessionResponse> {
-    if (!session.deviceBindingToken || !session.identitySession) {
+    if (session.source !== 'APP_REVIEW' && (!session.deviceBindingToken || !session.identitySession)) {
       throw new ApiError(
         503,
         'UAT_STUDENT_SESSION_INCOMPLETE',
@@ -147,8 +152,11 @@ export class UatStudentService {
       login: this.toSafeLogin(session.login),
       careers: session.careers,
       selectedCareer: session.selectedCareer,
-      deviceBindingToken: session.deviceBindingToken,
-      identitySession: session.identitySession,
+      ...(session.deviceBindingToken ? { deviceBindingToken: session.deviceBindingToken } : {}),
+      ...(session.source === 'APP_REVIEW' && session.selectedCareer.parametros?.Presencia_Attendance_UUID
+        ? { reviewAttendanceUuid: session.selectedCareer.parametros.Presencia_Attendance_UUID }
+        : {}),
+      ...(session.identitySession ? { identitySession: session.identitySession } : {}),
       createdAt: session.createdAt.toISOString(),
       lastUsedAt: session.lastUsedAt.toISOString(),
       expiresAt: session.expiresAt.toISOString(),
@@ -182,7 +190,9 @@ export class UatStudentService {
   ): Promise<UatDataResponse<UatStudentScheduleItem>> {
     return this.withSession(sessionId, async (session) => {
       const schedule = await session.client.getSchedule();
-      await this.syncStudentAcademicSnapshot(session, schedule, context.correlationId ?? randomUUID());
+      if (session.source !== 'APP_REVIEW') {
+        await this.syncStudentAcademicSnapshot(session, schedule, context.correlationId ?? randomUUID());
+      }
       return this.toUatDataResponse('SpuSelHorarioFichaAlumno', {}, schedule);
     });
   }

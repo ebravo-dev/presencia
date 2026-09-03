@@ -59,6 +59,7 @@ export interface UatStudentCareerSelection extends JsonRecord {
     Id_Plan_Estudio_AlumnosUAT?: string | number;
     Id_Ciclo_Escolar_Activo_AlumnosUAT?: string | number;
     Id_DES_AlumnosUAT?: string | number;
+    Presencia_Attendance_UUID?: string;
   };
 }
 
@@ -299,9 +300,13 @@ export interface UatStudentPortalClientPort {
   exportSessionState?(): unknown;
 }
 
+export type UatSessionSource = 'UAT' | 'APP_REVIEW';
+
 export interface StoredUatSessionBase {
   id: string;
   username: string;
+  /** Defaults to UAT when decoding sessions created before this field existed. */
+  source?: UatSessionSource;
   createdAt: Date;
   lastUsedAt: Date;
   expiresAt: Date;
@@ -376,8 +381,9 @@ export interface UatStudentSessionResponse {
   login: UatSafeLogin;
   careers: UatStudentCareerItem[];
   selectedCareer: UatStudentCareerSelection;
-  deviceBindingToken: string;
-  identitySession: IdentitySessionGrant;
+  deviceBindingToken?: string;
+  reviewAttendanceUuid?: string;
+  identitySession?: IdentitySessionGrant;
   createdAt: string;
   lastUsedAt: string;
   expiresAt: string;

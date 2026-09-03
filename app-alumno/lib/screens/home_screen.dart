@@ -166,7 +166,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _syncDeviceBinding() async {
-    if (_isSyncingDeviceBinding || !widget.storage.isProfileSet) return;
+    if (widget.demoMode ||
+        widget.storage.isDemoMode ||
+        _isSyncingDeviceBinding ||
+        !widget.storage.isProfileSet) {
+      return;
+    }
     _isSyncingDeviceBinding = true;
     try {
       final synced = await widget.deviceBindingService.sync(widget.storage);
@@ -257,9 +262,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   username: email,
                   password: password,
                 );
-                await widget.storage.saveDeviceBindingToken(
-                  result.deviceBindingToken,
-                );
+                await widget.storage.saveDemoMode(result.demoMode);
+                if (result.reviewAttendanceUuid != null) {
+                  await widget.storage.saveAppReviewAttendanceUuid(
+                    result.reviewAttendanceUuid!,
+                  );
+                }
+                if (result.deviceBindingToken.isNotEmpty) {
+                  await widget.storage.saveDeviceBindingToken(
+                    result.deviceBindingToken,
+                  );
+                }
                 await widget.storage.saveAcademicProfile(result.profile);
                 _pendingUatSessionId = result.sessionId;
                 _profile = result.profile;

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ProfessorPresenceController } from './professor-presence.controller.js';
 
 describe('ProfessorPresenceController', () => {
@@ -50,5 +50,21 @@ describe('ProfessorPresenceController', () => {
       },
       uatSession: { username: 'profesor@uat.edu.mx', login: { parametros: {} } },
     } as never)).rejects.toMatchObject({ statusCode: 503, code: 'ATTENDANCE_SERVICE_REQUIRED' });
+  });
+
+  it('accepts App Review observations without writing to Attendance Service', async () => {
+    const observeProfessorEntry = vi.fn(async () => ({ data: {} }));
+    const controller = new ProfessorPresenceController({ observeProfessorEntry } as never);
+
+    const response = await controller.entry({
+      id: 'request-review',
+      body: { externalGroupId: '999901', beaconUuid: '00000000-0000-4000-8000-000000000902' },
+      uatSession: {
+        source: 'APP_REVIEW', username: 'appreview.profesor@uat.edu.mx', login: { parametros: {} },
+      },
+    } as never);
+
+    expect(response).toMatchObject({ data: { externalGroupId: '999901', reviewOnly: true } });
+    expect(observeProfessorEntry).not.toHaveBeenCalled();
   });
 });
