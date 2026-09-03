@@ -552,6 +552,23 @@ services:
     expose: ["8080"]
     networks: [private, dokploy-network]
 
+  landing-alumnos:
+    image: presencia-landing-alumnos:${IMAGE_TAG:-latest}
+    build:
+      context: ../../landing-alumnos
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+      - /etc/nginx/conf.d:size=1m,mode=0775,uid=101,gid=101
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    expose: ["8080"]
+    networks: [dokploy-network]
+
 volumes:
   postgres-data:
   redis-data:

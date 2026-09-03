@@ -1,0 +1,70 @@
+server {
+  listen 8080;
+  server_name _;
+  absolute_redirect off;
+  port_in_redirect off;
+  server_name_in_redirect off;
+  root /usr/share/nginx/html;
+
+  location = / {
+    add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    add_header Permissions-Policy "camera=(), geolocation=(), microphone=(), payment=(), usb=()" always;
+    add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'none'; object-src 'none'; script-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'" always;
+    try_files /index.html =404;
+  }
+
+  location = /soporte/alumnos {
+    return 308 /soporte/alumnos/;
+  }
+
+  location = /soporte/alumnos/ {
+    add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    add_header Permissions-Policy "camera=(), geolocation=(), microphone=(), payment=(), usb=()" always;
+    add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'none'; object-src 'none'; script-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'" always;
+    try_files /index.html =404;
+  }
+
+  location = /soporte/alumnos/styles.css {
+    alias /usr/share/nginx/html/styles.css;
+    add_header Cache-Control "public, max-age=3600" always;
+  }
+
+  location /soporte/alumnos/assets/ {
+    alias /usr/share/nginx/html/assets/;
+    access_log off;
+    add_header Cache-Control "public, max-age=2592000, immutable" always;
+  }
+
+  location = /styles.css {
+    add_header Cache-Control "public, max-age=3600" always;
+    try_files $uri =404;
+  }
+
+  location /assets/ {
+    access_log off;
+    add_header Cache-Control "public, max-age=2592000, immutable" always;
+    try_files $uri =404;
+  }
+
+  location = /health/ready {
+    access_log off;
+    default_type application/json;
+    return 200 '{"status":"ok","service":"landing-alumnos"}';
+  }
+
+  location / {
+    return 404;
+  }
+
+  add_header X-Content-Type-Options nosniff always;
+  add_header X-Frame-Options DENY always;
+  add_header Referrer-Policy strict-origin-when-cross-origin always;
+  add_header Permissions-Policy "camera=(), geolocation=(), microphone=(), payment=(), usb=()" always;
+  add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'none'; object-src 'none'; script-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'" always;
+}
