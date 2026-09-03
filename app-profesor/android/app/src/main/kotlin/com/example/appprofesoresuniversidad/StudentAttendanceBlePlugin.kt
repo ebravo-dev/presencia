@@ -1,6 +1,7 @@
 package com.example.appprofesoresuniversidad
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
@@ -9,6 +10,7 @@ import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothStatusCodes
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
@@ -19,7 +21,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
-import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -38,9 +39,15 @@ class StudentAttendanceBlePlugin(
         private const val TAG = "StudentAttendanceBLE"
         private const val METHOD_CHANNEL = "com.presencia/student_attendance_ble"
         private const val EVENT_CHANNEL = "com.presencia/student_attendance_ble_events"
-        private const val REQUESTED_MTU = 512
+        // 185 bytes is broadly supported by Android/iOS controllers and is
+        // ample for the small JSON confirmation without stressing OEM stacks.
+        private const val REQUESTED_MTU = 185
         private const val TEACHER_ACK_TIMEOUT_MS = 20_000L
-        private const val MAX_CONCURRENT_GATT_CONNECTIONS = 6
+        private const val GATT_CONNECTION_TIMEOUT_MS = 12_000L
+        private const val SCAN_WINDOW_MS = 120_000L
+        private const val SCAN_RESTART_DELAY_MS = 500L
+        private const val MAX_SCAN_ATTEMPTS = 2
+        private const val MAX_CONCURRENT_GATT_CONNECTIONS = 4
         private val SERVICE_UUID: UUID = UUID.fromString("9f5f7f86-8e67-4f12-a8a5-b7f6f4f7b2c1")
         private val ATTENDANCE_UUID_CHAR: UUID = UUID.fromString("9f5f7f86-8e67-4f12-a8a5-b7f6f4f7b2c2")
         private val CONFIRMATION_CHAR: UUID = UUID.fromString("9f5f7f86-8e67-4f12-a8a5-b7f6f4f7b2c3")
@@ -57,8 +64,27 @@ class StudentAttendanceBlePlugin(
     private val mtuByAddress = mutableMapOf<String, Int>()
     private val pendingDetections = mutableMapOf<String, PendingDetection>()
     private val pendingAddressByUuid = mutableMapOf<String, String>()
+    private val connectionTimeouts = mutableMapOf<String, Runnable>()
+    private val scanTimeout = Runnable {
+        if (!isScanning) return@Runnable
+        if (scanAttempt < MAX_SCAN_ATTEMPTS) {
+            restartScanAfterTimeout()
+            return@Runnable
+        }
+        Log.i(TAG, "Student BLE scan exhausted both two-minute attempts")
+        stopScanning()
+        eventSink?.error(
+            "SCAN_TIMEOUT",
+            "El escaneo terminó después de cuatro minutos",
+            null,
+        )
+    }
+    private var scanAttempt = 0
+    private var scanGeneration = 0
     @Volatile
     private var isActivityInForeground = true
+    @Volatile
+    private var isScanning = false
 
     private data class PendingDetection(
         val uuid: String,
@@ -72,19 +98,28 @@ class StudentAttendanceBlePlugin(
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
-            if (isActivityInForeground) {
+            if (isActivityInForeground && isScanning) {
                 connectToCandidate(result)
             }
         }
 
         override fun onBatchScanResults(results: MutableList<ScanResult>) {
-            if (isActivityInForeground) {
+            if (isActivityInForeground && isScanning) {
                 results.forEach(::connectToCandidate)
             }
         }
 
         override fun onScanFailed(errorCode: Int) {
             Log.e(TAG, "Scan failed: $errorCode")
+            mainHandler.post {
+                if (!isScanning) return@post
+                stopScanning()
+                eventSink?.error(
+                    "SCAN_FAILED",
+                    scanFailureMessage(errorCode),
+                    errorCode,
+                )
+            }
         }
     }
 
@@ -133,6 +168,17 @@ class StudentAttendanceBlePlugin(
                 try {
                     startScanning(payloads)
                     result.success(true)
+                } catch (error: SecurityException) {
+                    Log.e(TAG, "Missing permission for student BLE scan", error)
+                    result.error("PERMISSION_DENIED", error.message, null)
+                } catch (error: IllegalStateException) {
+                    Log.e(TAG, "Bluetooth unavailable for student scan", error)
+                    val code = if (error.message?.contains("Bluetooth") == true) {
+                        "BLUETOOTH_OFF"
+                    } else {
+                        "SCAN_ERROR"
+                    }
+                    result.error(code, error.message, null)
                 } catch (error: Exception) {
                     Log.e(TAG, "Error starting student BLE scan", error)
                     result.error("SCAN_ERROR", error.message, null)
@@ -150,10 +196,12 @@ class StudentAttendanceBlePlugin(
                 }
                 result.success(confirmAttendance(normalized))
             }
+            "getAndroidSdkInt" -> result.success(Build.VERSION.SDK_INT)
             else -> result.notImplemented()
         }
     }
 
+    @SuppressLint("MissingPermission")
     private fun startScanning(payloads: Map<String, String>) {
         if (!isActivityInForeground) {
             throw IllegalStateException("La detección BLE solo está disponible con la app en primer plano")
@@ -165,19 +213,44 @@ class StudentAttendanceBlePlugin(
         handledUuids.clear()
         inFlightUuids.clear()
 
-        val scanner = waitForBluetoothLeScanner()
+        val scanner = readyBluetoothLeScanner()
             ?: throw IllegalStateException("Bluetooth no disponible o apagado")
+        scanAttempt = 1
+        startBleScan(scanner)
+        Log.i(TAG, "Student BLE scan attempt 1/$MAX_SCAN_ATTEMPTS started for ${targetUuids.size} UUID(s)")
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startBleScan(scanner: android.bluetooth.le.BluetoothLeScanner) {
         val filters = listOf(
             ScanFilter.Builder().setServiceUuid(ParcelUuid(SERVICE_UUID)).build()
         )
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .setReportDelay(0L)
             .build()
-        scanner.startScan(filters, settings, scanCallback)
-        Log.i(TAG, "Student BLE scan started for ${targetUuids.size} UUID(s)")
+        isScanning = true
+        try {
+            scanner.startScan(filters, settings, scanCallback)
+        } catch (error: Exception) {
+            isScanning = false
+            throw error
+        }
+        mainHandler.removeCallbacks(scanTimeout)
+        mainHandler.postDelayed(scanTimeout, SCAN_WINDOW_MS)
     }
 
+    @SuppressLint("MissingPermission")
     private fun stopScanning() {
+        scanGeneration++
+        scanAttempt = 0
+        stopCurrentScanAndConnections()
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun stopCurrentScanAndConnections() {
+        isScanning = false
+        mainHandler.removeCallbacks(scanTimeout)
         try {
             bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
         } catch (error: Exception) {
@@ -190,6 +263,8 @@ class StudentAttendanceBlePlugin(
             } catch (_: Exception) {
             }
         }
+        connectionTimeouts.values.forEach(mainHandler::removeCallbacks)
+        connectionTimeouts.clear()
         activeGatts.clear()
         pendingDetections.clear()
         pendingAddressByUuid.clear()
@@ -197,8 +272,53 @@ class StudentAttendanceBlePlugin(
         inFlightUuids.clear()
     }
 
+    @SuppressLint("MissingPermission")
+    private fun restartScanAfterTimeout() {
+        val generation = scanGeneration
+        val nextAttempt = scanAttempt + 1
+        Log.i(
+            TAG,
+            "Student BLE scan attempt $scanAttempt/$MAX_SCAN_ATTEMPTS timed out; restarting once",
+        )
+        stopCurrentScanAndConnections()
+
+        mainHandler.postDelayed({
+            if (generation != scanGeneration || !isActivityInForeground) {
+                return@postDelayed
+            }
+            val scanner = readyBluetoothLeScanner()
+            if (scanner == null) {
+                stopScanning()
+                eventSink?.error(
+                    "BLUETOOTH_OFF",
+                    "Bluetooth se apagó durante el reintento del escaneo",
+                    null,
+                )
+                return@postDelayed
+            }
+            scanAttempt = nextAttempt
+            try {
+                startBleScan(scanner)
+                Log.i(TAG, "Student BLE scan attempt $scanAttempt/$MAX_SCAN_ATTEMPTS started")
+            } catch (error: Exception) {
+                Log.e(TAG, "Could not restart student BLE scan", error)
+                stopScanning()
+                eventSink?.error(
+                    "SCAN_FAILED",
+                    "No se pudo reiniciar el escaneo Bluetooth",
+                    null,
+                )
+            }
+        }, SCAN_RESTART_DELAY_MS)
+    }
+
+    @SuppressLint("MissingPermission")
     private fun connectToCandidate(result: ScanResult) {
-        if (!isActivityInForeground) return
+        if (!isActivityInForeground || !isScanning) return
+        if (!hasConnectPermission()) {
+            stopScanning()
+            return
+        }
 
         val device = result.device ?: return
         val address = device.address ?: return
@@ -206,11 +326,16 @@ class StudentAttendanceBlePlugin(
         // Android devices have a small BLE connection budget. Advertisements
         // continue arriving, so remaining students are picked up as slots free.
         if (activeGatts.size >= MAX_CONCURRENT_GATT_CONNECTIONS) return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) return
 
+        @SuppressLint("MissingPermission")
         val callback = object : BluetoothGattCallback() {
             override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-                if (!isActivityInForeground) {
+                if (!isActivityInForeground || !hasConnectPermission()) {
+                    closeGatt(address, gatt)
+                    return
+                }
+                if (status != BluetoothGatt.GATT_SUCCESS) {
+                    Log.w(TAG, "Connection failed for $address with status=$status")
                     closeGatt(address, gatt)
                     return
                 }
@@ -227,6 +352,10 @@ class StudentAttendanceBlePlugin(
             }
 
             override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+                if (!hasConnectPermission()) {
+                    closeGatt(address, gatt)
+                    return
+                }
                 mtuByAddress[address] = if (status == BluetoothGatt.GATT_SUCCESS) mtu else 23
                 if (!gatt.discoverServices()) {
                     Log.w(TAG, "Could not start service discovery after MTU negotiation for $address")
@@ -235,7 +364,7 @@ class StudentAttendanceBlePlugin(
             }
 
             override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-                if (!isActivityInForeground) {
+                if (!isActivityInForeground || !hasConnectPermission()) {
                     closeGatt(address, gatt)
                     return
                 }
@@ -282,7 +411,7 @@ class StudentAttendanceBlePlugin(
                 characteristic: BluetoothGattCharacteristic,
                 status: Int,
             ) {
-                if (!isActivityInForeground) {
+                if (!isActivityInForeground || !hasConnectPermission()) {
                     closeGatt(address, gatt)
                     return
                 }
@@ -299,12 +428,25 @@ class StudentAttendanceBlePlugin(
             }
         }
 
-        val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
-        } else {
-            device.connectGatt(context, false, callback)
+        val gatt = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                device.connectGatt(
+                    context,
+                    false,
+                    callback,
+                    BluetoothDevice.TRANSPORT_LE,
+                    BluetoothDevice.PHY_LE_1M_MASK,
+                    mainHandler,
+                )
+            } else {
+                device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not connect to student candidate $address: ${error.message}")
+            return
         }
         activeGatts[address] = gatt
+        scheduleConnectionTimeout(address, gatt)
     }
 
     @Suppress("DEPRECATION")
@@ -368,6 +510,7 @@ class StudentAttendanceBlePlugin(
             rssi = rssi,
             normalizedUuid = normalized,
         )
+        cancelConnectionTimeout(address)
         pendingAddressByUuid[normalized] = address
         emitDetectionForTeacher(pendingDetections.getValue(address))
         mainHandler.postDelayed({
@@ -379,11 +522,16 @@ class StudentAttendanceBlePlugin(
     }
 
     @Suppress("DEPRECATION")
+    @SuppressLint("MissingPermission")
     private fun confirmAttendance(normalizedUuid: String): Boolean {
         val address = pendingAddressByUuid[normalizedUuid] ?: return false
         val detection = pendingDetections[address]
         val gatt = activeGatts[address]
         if (detection == null || gatt == null || detection.normalizedUuid != normalizedUuid) {
+            return false
+        }
+        if (!hasConnectPermission()) {
+            closeGatt(address, gatt)
             return false
         }
 
@@ -405,8 +553,17 @@ class StudentAttendanceBlePlugin(
             return false
         }
 
-        confirmation.value = bytes
-        if (!gatt.writeCharacteristic(confirmation)) {
+        val writeStarted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            gatt.writeCharacteristic(
+                confirmation,
+                bytes,
+                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
+            ) == BluetoothStatusCodes.SUCCESS
+        } else {
+            confirmation.value = bytes
+            gatt.writeCharacteristic(confirmation)
+        }
+        if (!writeStarted) {
             Log.w(TAG, "Could not write teacher-approved confirmation to $address")
             closeGatt(address, gatt)
             return false
@@ -438,13 +595,18 @@ class StudentAttendanceBlePlugin(
         inFlightUuids.remove(detection.normalizedUuid)
         handledUuids.add(detection.normalizedUuid)
         Log.i(TAG, "Teacher-approved confirmation delivered for ${detection.normalizedUuid}")
+        if (handledUuids.containsAll(targetUuids)) {
+            stopBleScanOnly()
+        }
     }
 
+    @SuppressLint("MissingPermission")
     private fun closeGatt(address: String, gatt: BluetoothGatt) {
         // A late callback from an old connection must not clear a newer GATT
         // session that happens to use the same Bluetooth address.
         if (activeGatts[address] === gatt) {
             activeGatts.remove(address)
+            cancelConnectionTimeout(address)
             pendingDetections.remove(address)?.let { pending ->
                 if (pendingAddressByUuid[pending.normalizedUuid] == address) {
                     pendingAddressByUuid.remove(pending.normalizedUuid)
@@ -465,35 +627,69 @@ class StudentAttendanceBlePlugin(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (!hasPermission(Manifest.permission.BLUETOOTH_SCAN)) missing.add(Manifest.permission.BLUETOOTH_SCAN)
             if (!hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) missing.add(Manifest.permission.BLUETOOTH_CONNECT)
+        } else if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
+            missing.add(Manifest.permission.ACCESS_FINE_LOCATION)
         }
-        if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) missing.add(Manifest.permission.ACCESS_FINE_LOCATION)
         if (missing.isNotEmpty()) {
             throw SecurityException("Permisos faltantes: ${missing.joinToString()}")
         }
     }
 
-    private fun waitForBluetoothLeScanner(timeoutMs: Long = 3_000L): android.bluetooth.le.BluetoothLeScanner? {
-        val deadline = SystemClock.elapsedRealtime() + timeoutMs
-        var lastState: Int? = null
+    private fun readyBluetoothLeScanner(): android.bluetooth.le.BluetoothLeScanner? {
+        val adapter = bluetoothAdapter ?: return null
+        if (adapter.state != BluetoothAdapter.STATE_ON || !adapter.isEnabled) return null
+        return adapter.bluetoothLeScanner
+    }
 
-        while (SystemClock.elapsedRealtime() <= deadline) {
-            val adapter = bluetoothAdapter
-            lastState = adapter?.state
-            if (adapter?.state == BluetoothAdapter.STATE_ON) {
-                adapter.bluetoothLeScanner?.let { scanner ->
-                    Log.i(TAG, "Bluetooth LE scanner ready")
-                    return scanner
-                }
+    private fun scheduleConnectionTimeout(address: String, gatt: BluetoothGatt) {
+        cancelConnectionTimeout(address)
+        val timeout = Runnable {
+            if (activeGatts[address] === gatt && !pendingDetections.containsKey(address)) {
+                Log.w(TAG, "GATT connection timed out for $address")
+                closeGatt(address, gatt)
             }
-            Thread.sleep(100L)
         }
+        connectionTimeouts[address] = timeout
+        mainHandler.postDelayed(timeout, GATT_CONNECTION_TIMEOUT_MS)
+    }
 
-        Log.w(TAG, "Bluetooth LE scanner not ready after ${timeoutMs}ms; adapterState=$lastState")
-        return null
+    private fun cancelConnectionTimeout(address: String) {
+        connectionTimeouts.remove(address)?.let(mainHandler::removeCallbacks)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun stopBleScanOnly() {
+        if (!isScanning) return
+        isScanning = false
+        mainHandler.removeCallbacks(scanTimeout)
+        try {
+            bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
+        } catch (error: Exception) {
+            Log.w(TAG, "Error stopping completed scan: ${error.message}")
+        }
+        Log.i(TAG, "All target students were confirmed; BLE scan stopped")
+    }
+
+    private fun scanFailureMessage(errorCode: Int): String {
+        return when (errorCode) {
+            ScanCallback.SCAN_FAILED_ALREADY_STARTED -> "El escaneo Bluetooth ya estaba activo"
+            ScanCallback.SCAN_FAILED_APPLICATION_REGISTRATION_FAILED ->
+                "Android no pudo registrar el escáner Bluetooth; vuelve a intentarlo"
+            ScanCallback.SCAN_FAILED_FEATURE_UNSUPPORTED ->
+                "Este teléfono no admite el modo de escaneo requerido"
+            ScanCallback.SCAN_FAILED_INTERNAL_ERROR ->
+                "El sistema Bluetooth tuvo un error interno; apágalo y enciéndelo"
+            else -> "No se pudo continuar el escaneo Bluetooth ($errorCode)"
+        }
     }
 
     private fun hasPermission(permission: String): Boolean {
         return ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun hasConnectPermission(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+            hasPermission(Manifest.permission.BLUETOOTH_CONNECT)
     }
 
     private fun normalizeUuid(uuid: String?): String {

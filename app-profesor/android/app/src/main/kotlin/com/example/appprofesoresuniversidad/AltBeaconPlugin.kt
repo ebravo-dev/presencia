@@ -5,10 +5,10 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -146,6 +146,9 @@ class AltBeaconPlugin(
             throw IllegalStateException("El escaneo de beacons solo está disponible con la app en primer plano")
         }
         ensureRuntimePermissions()
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R && !isLocationEnabled()) {
+            throw IllegalStateException("Activa la ubicación del teléfono para buscar el beacon del salón")
+        }
         stopScanning()
 
         activeUuids = uuids.map { normalizeUuid(it) }.filter { it.isNotEmpty() }.toSet()
@@ -153,7 +156,7 @@ class AltBeaconPlugin(
         if (activeUuids.isEmpty()) {
             throw IllegalArgumentException("UUID inválido")
         }
-        if (!waitForBluetoothPoweredOn()) {
+        if (!isBluetoothPoweredOn()) {
             throw IllegalStateException("Bluetooth no disponible o apagado")
         }
         val regionIdentifier = if (activeUuids.size == 1) {
@@ -212,10 +215,18 @@ class AltBeaconPlugin(
             PackageManager.PERMISSION_GRANTED
     }
 
-    private fun getBluetoothState(): String {
-        if (waitForBluetoothPoweredOn()) {
-            return "poweredOn"
+    private fun isLocationEnabled(): Boolean {
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            ?: return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            manager.isLocationEnabled
+        } else {
+            manager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
         }
+    }
+
+    private fun getBluetoothState(): String {
         val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
             ?: return "unsupported"
         return when (manager.adapter?.state) {
@@ -227,24 +238,11 @@ class AltBeaconPlugin(
         }
     }
 
-    private fun waitForBluetoothPoweredOn(timeoutMs: Long = 3_000L): Boolean {
-        val deadline = SystemClock.elapsedRealtime() + timeoutMs
-        var lastState: Int? = null
-
-        while (SystemClock.elapsedRealtime() <= deadline) {
-            val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-                ?: return false
-            val adapter = manager.adapter ?: return false
-            lastState = adapter.state
-            if (adapter.state == BluetoothAdapter.STATE_ON && adapter.isEnabled) {
-                Log.i(TAG, "Bluetooth adapter ready")
-                return true
-            }
-            Thread.sleep(100L)
-        }
-
-        Log.w(TAG, "Bluetooth adapter not ready after ${timeoutMs}ms; adapterState=$lastState")
-        return false
+    private fun isBluetoothPoweredOn(): Boolean {
+        val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            ?: return false
+        val adapter = manager.adapter ?: return false
+        return adapter.state == BluetoothAdapter.STATE_ON && adapter.isEnabled
     }
 
     private fun normalizeUuid(uuid: String?): String {

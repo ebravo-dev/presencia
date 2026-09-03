@@ -9,14 +9,15 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <!-- Location is used only to infer proximity to the configured classroom beacon. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Optional: never requested or required; covers notification-capable library code. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Beacon detection is only available while the activity is visible. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" tools:node="remove" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" tools:node="remove" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" tools:node="remove" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
     
     <!-- Características de hardware (no requeridas para que funcione en dispositivos sin Bluetooth) -->
@@ -61,6 +62,9 @@
         <receiver
             android:name="org.altbeacon.beacon.startup.StartupBroadcastReceiver"
             tools:node="remove" />
+        <service
+            android:name="org.altbeacon.beacon.service.BeaconService"
+            tools:remove="android:foregroundServiceType" />
         <service
             android:name="org.altbeacon.bluetooth.BluetoothTestJob"
             tools:node="remove" />

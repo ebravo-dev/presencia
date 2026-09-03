@@ -1,8 +1,13 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 /// Service to handle app permissions
 class PermissionService {
+  static const _studentBleChannel = MethodChannel(
+    'com.presencia/student_attendance_ble',
+  );
+
   /// Request Bluetooth permissions
   static Future<bool> requestBluetoothPermissions() async {
     final permissions = _platformBluetoothPermissions();
@@ -27,7 +32,7 @@ class PermissionService {
   /// Bluetooth permission, not Location. Location is still requested by the
   /// classroom iBeacon flow through [requestBluetoothPermissions].
   static Future<bool> requestStudentAttendanceBlePermissions() async {
-    final permissions = _platformStudentBlePermissions();
+    final permissions = await _platformStudentBlePermissions();
     final statuses = await permissions.request();
 
     return statuses.values.every(
@@ -54,7 +59,6 @@ class PermissionService {
       return [
         Permission.bluetoothScan,
         Permission.bluetoothConnect,
-        Permission.bluetoothAdvertise,
         Permission.location,
       ];
     }
@@ -66,9 +70,25 @@ class PermissionService {
     return [Permission.bluetooth, Permission.location];
   }
 
-  static List<Permission> _platformStudentBlePermissions() {
+  static Future<List<Permission>> _platformStudentBlePermissions() async {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      return [Permission.bluetoothScan, Permission.bluetoothConnect];
+      // Android 12+ has a dedicated Nearby devices permission. Android 11 and
+      // below still require location to perform a BLE scan.
+      var sdkInt = 30;
+      try {
+        sdkInt =
+            await _studentBleChannel.invokeMethod<int>('getAndroidSdkInt') ??
+            30;
+      } on PlatformException {
+        // Conservative fallback keeps legacy Android functional.
+      } on MissingPluginException {
+        // Tests and unsupported platforms do not install the native channel.
+      }
+      return [
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        if (sdkInt <= 30) Permission.locationWhenInUse,
+      ];
     }
 
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {

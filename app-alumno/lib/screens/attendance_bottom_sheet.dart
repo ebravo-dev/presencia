@@ -183,6 +183,20 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
 
   void _retry() {
     unawaited(HapticFeedback.selectionClick());
+    setState(() {
+      _status = AttendanceSheetStatus.scanning;
+      _remainingSeconds = widget.timeoutDuration.inSeconds;
+      _errorMessage = null;
+    });
+    if (!_pulseController.isAnimating) {
+      _pulseController.repeat();
+    }
+    unawaited(_restartSession());
+  }
+
+  Future<void> _restartSession() async {
+    await widget.attendanceSession.stop();
+    if (!mounted || _status != AttendanceSheetStatus.scanning) return;
     _startSessionAndCountdown();
   }
 

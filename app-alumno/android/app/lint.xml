@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!--
+      AltBeacon's optional BluetoothMedic class is packaged but its startup
+      receiver and test job are removed by our manifest. The app declares the
+      permission for library compatibility and never invokes that component.
+    -->
+    <issue id="NotificationPermission">
+        <ignore path="src/main/AndroidManifest.xml" />
+    </issue>
+</lint>

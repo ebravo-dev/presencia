@@ -53,6 +53,7 @@ class AttendanceSessionService {
   StreamSubscription<List<AltBeaconDetection>>? _roomScanSubscription;
   Timer? _roomScanTimer;
   AttendanceSessionState _currentState = AttendanceSessionState.idle;
+  int _sessionGeneration = 0;
 
   AttendanceSessionState get currentState => _currentState;
 
@@ -61,6 +62,7 @@ class AttendanceSessionService {
         _currentState == AttendanceSessionState.broadcasting) {
       return;
     }
+    final generation = ++_sessionGeneration;
 
     final classroomUuid = _storage.classroomBeaconUuid.trim();
     final attendanceUuid = _storage.attendanceUuid.trim();
@@ -76,6 +78,7 @@ class AttendanceSessionService {
     final permissionsReady = await _requestRuntimePermissions(
       requiresRoomScan: classroomUuid.isNotEmpty,
     );
+    if (generation != _sessionGeneration) return;
     if (!permissionsReady) {
       _emit(
         AttendanceSessionState.error,
@@ -85,6 +88,7 @@ class AttendanceSessionService {
     }
 
     final bluetoothReady = await _beacons.isBluetoothAvailable();
+    if (generation != _sessionGeneration) return;
     if (!bluetoothReady) {
       _emit(
         AttendanceSessionState.bluetoothOff,
@@ -94,9 +98,21 @@ class AttendanceSessionService {
     }
 
     await _stopRoomScanOnly();
+    if (generation != _sessionGeneration) return;
 
     if (classroomUuid.isEmpty) {
-      await _advertiser.startAdvertising(uuid: attendanceUuid);
+      final started = await _advertiser.startAdvertising(uuid: attendanceUuid);
+      if (generation != _sessionGeneration) {
+        if (started) await _advertiser.stopAdvertising();
+        return;
+      }
+      if (!started) {
+        _emit(
+          AttendanceSessionState.error,
+          message: 'No pudimos activar la transmisión Bluetooth.',
+        );
+        return;
+      }
       _emit(AttendanceSessionState.broadcasting);
       return;
     }
@@ -105,6 +121,10 @@ class AttendanceSessionService {
 
     _roomScanSubscription = _beacons.detectionsStream.listen(
       (detections) async {
+        if (generation != _sessionGeneration ||
+            _currentState != AttendanceSessionState.checkingRoom) {
+          return;
+        }
         AltBeaconDetection? match;
         for (final detection in detections) {
           if (_sameUuid(detection.uuid, classroomUuid)) {
@@ -117,10 +137,25 @@ class AttendanceSessionService {
 
         await _stopRoomScanOnly();
         _emit(AttendanceSessionState.roomVerified, roomDetection: match);
-        await _advertiser.startAdvertising(uuid: attendanceUuid);
+        final started = await _advertiser.startAdvertising(
+          uuid: attendanceUuid,
+        );
+        if (generation != _sessionGeneration) {
+          if (started) await _advertiser.stopAdvertising();
+          return;
+        }
+        if (!started) {
+          _emit(
+            AttendanceSessionState.error,
+            roomDetection: match,
+            message: 'No pudimos activar la transmisión Bluetooth.',
+          );
+          return;
+        }
         _emit(AttendanceSessionState.broadcasting, roomDetection: match);
       },
       onError: (Object error) {
+        if (generation != _sessionGeneration) return;
         debugPrint('[AttendanceSession] Room scan error: $error');
         _emit(
           AttendanceSessionState.error,
@@ -131,6 +166,10 @@ class AttendanceSessionService {
 
     try {
       final scanStarted = await _beacons.startScanning(uuids: [classroomUuid]);
+      if (generation != _sessionGeneration) {
+        if (scanStarted) await _stopRoomScanOnly();
+        return;
+      }
       if (!scanStarted) {
         await _stopRoomScanOnly();
         _emit(
@@ -150,7 +189,10 @@ class AttendanceSessionService {
     }
 
     _roomScanTimer = Timer(roomScanTimeout, () async {
-      if (_currentState != AttendanceSessionState.checkingRoom) return;
+      if (generation != _sessionGeneration ||
+          _currentState != AttendanceSessionState.checkingRoom) {
+        return;
+      }
       await _stopRoomScanOnly();
       _emit(
         AttendanceSessionState.roomNotFound,
@@ -160,6 +202,7 @@ class AttendanceSessionService {
   }
 
   Future<void> stop() async {
+    _sessionGeneration++;
     await _stopRoomScanOnly();
     await _advertiser.stopAdvertising();
     _emit(AttendanceSessionState.idle);
@@ -202,19 +245,19 @@ class AttendanceSessionService {
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
         final permissions = <Permission>[
-          Permission.bluetoothScan,
           Permission.bluetoothAdvertise,
           Permission.bluetoothConnect,
-          Permission.locationWhenInUse,
-          Permission.notification,
         ];
+        if (requiresRoomScan) {
+          permissions.addAll([
+            Permission.bluetoothScan,
+            Permission.locationWhenInUse,
+          ]);
+        }
         final results = await permissions.request();
-        return results.entries.every((entry) {
-          if (entry.key == Permission.notification) {
-            return entry.value.isGranted || entry.value.isLimited;
-          }
-          return entry.value.isGranted || entry.value.isLimited;
-        });
+        return results.values.every(
+          (status) => status.isGranted || status.isLimited,
+        );
       case TargetPlatform.iOS:
         return !requiresRoomScan || await _beacons.requestPermissions();
       default:
