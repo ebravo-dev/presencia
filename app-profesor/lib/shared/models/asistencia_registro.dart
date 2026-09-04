@@ -60,6 +60,12 @@ class AsistenciaRegistro extends HiveObject {
   @HiveField(17)
   final String? salonUtilizado; // Salón validado por el beacon para esta toma
 
+  /// Claves de alumnos confirmados mediante BLE, del más reciente al más
+  /// antiguo. Se guarda aparte de [asistenciasAlumnos] para poder reconstruir
+  /// la lista del escáner sin confundir asistencias marcadas manualmente.
+  @HiveField(18)
+  final List<String> alumnosDetectadosAutomaticamente;
+
   AsistenciaRegistro({
     required this.id,
     required this.grupoId,
@@ -79,6 +85,7 @@ class AsistenciaRegistro extends HiveObject {
     this.grupoGroupLetter,
     this.grupoPeriod,
     this.salonUtilizado,
+    this.alumnosDetectadosAutomaticamente = const [],
   });
 
   AsistenciaRegistro copyWith({
@@ -100,6 +107,7 @@ class AsistenciaRegistro extends HiveObject {
     String? grupoGroupLetter,
     String? grupoPeriod,
     String? salonUtilizado,
+    List<String>? alumnosDetectadosAutomaticamente,
   }) {
     return AsistenciaRegistro(
       id: id ?? this.id,
@@ -121,6 +129,9 @@ class AsistenciaRegistro extends HiveObject {
       grupoGroupLetter: grupoGroupLetter ?? this.grupoGroupLetter,
       grupoPeriod: grupoPeriod ?? this.grupoPeriod,
       salonUtilizado: salonUtilizado ?? this.salonUtilizado,
+      alumnosDetectadosAutomaticamente:
+          alumnosDetectadosAutomaticamente ??
+          this.alumnosDetectadosAutomaticamente,
     );
   }
 }

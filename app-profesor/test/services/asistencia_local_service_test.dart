@@ -32,14 +32,21 @@ void main() {
       profesorId: '123',
       fecha: DateTime(2026, 8, 28),
       asistenciasAlumnos: const {'2251330008': true, '2251330009': false},
+      alumnosDetectadosAutomaticamente: const ['2251330008'],
       fechaCreacion: DateTime(2026, 8, 28, 9),
     );
 
     await service.guardarAsistencia(registro);
+    await service.close();
+    await service.init();
 
     final saved = service.obtenerAsistencia(registro.id);
     expect(saved, isNotNull);
     expect(saved!.asistenciasAlumnos, registro.asistenciasAlumnos);
+    expect(
+      saved.alumnosDetectadosAutomaticamente,
+      registro.alumnosDetectadosAutomaticamente,
+    );
     expect(saved.sincronizado, isFalse);
     expect(service.obtenerAsistenciasPendientes(), hasLength(1));
   });

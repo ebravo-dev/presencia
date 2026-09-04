@@ -1467,6 +1467,46 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     return normalized;
   }
 
+  List<String> _normalizarAlumnosDetectados(
+    Iterable<String> detectedKeys,
+    Map<String, bool> normalizedAttendance,
+  ) {
+    final currentStudentKeys = widget.grupo.students.map(_alumnoKey).toSet();
+    final normalizedKeys = _normalizarAsistencias({
+      for (final key in detectedKeys) key: true,
+    }).keys;
+
+    final uniqueKeys = <String>{};
+    return [
+      for (final key in normalizedKeys)
+        if (currentStudentKeys.contains(key) &&
+            normalizedAttendance[key] == true &&
+            uniqueKeys.add(key))
+          key,
+    ];
+  }
+
+  List<String> _ordenPersistenteDeAlumnosDetectados() {
+    final automaticKeys = _automaticallyDetectedStudentKeys;
+    final persistedOrder = <String>[];
+    final includedKeys = <String>{};
+
+    for (final key in _studentDetectionOrder.value) {
+      if (automaticKeys.contains(key) &&
+          _asistencias[key] == true &&
+          includedKeys.add(key)) {
+        persistedOrder.add(key);
+      }
+    }
+    for (final key in automaticKeys) {
+      if (_asistencias[key] == true && includedKeys.add(key)) {
+        persistedOrder.add(key);
+      }
+    }
+
+    return persistedOrder;
+  }
+
   // Cargar asistencia existente para la fecha seleccionada
   void _cargarAsistencia() {
     final registroActual = _asistenciaService.obtenerAsistenciaPorGrupoYFecha(
@@ -1482,6 +1522,13 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     final registro = registroActual ?? registroLegado;
 
     if (registro != null) {
+      final normalizedAttendance = _normalizarAsistencias(
+        registro.asistenciasAlumnos,
+      );
+      final detectedStudentKeys = _normalizarAlumnosDetectados(
+        registro.alumnosDetectadosAutomaticamente,
+        normalizedAttendance,
+      );
       setState(() {
         _entradaProfesor = registro.horaEntrada;
         _salidaProfesor = registro.horaSalida;
@@ -1491,11 +1538,12 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
             registro.salonUtilizado?.trim().toUpperCase() ??
             widget.grupo.classroom.trim().toUpperCase();
         _asistencias.clear();
-        _asistencias.addAll(
-          _normalizarAsistencias(registro.asistenciasAlumnos),
-        );
-        _automaticallyDetectedStudentKeys.clear();
+        _asistencias.addAll(normalizedAttendance);
+        _automaticallyDetectedStudentKeys
+          ..clear()
+          ..addAll(detectedStudentKeys);
         _detectedStudentBeaconUuids.clear();
+        _studentDetectionOrder.value = detectedStudentKeys;
       });
 
       // Actualizar el nombre de la clase si está vacío (asistencias antiguas)
@@ -1513,6 +1561,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         _asistencias.clear();
         _automaticallyDetectedStudentKeys.clear();
         _detectedStudentBeaconUuids.clear();
+        _studentDetectionOrder.value = const [];
       });
     }
   }
@@ -1585,6 +1634,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       grupoGroupLetter: widget.grupo.groupLetter,
       grupoPeriod: widget.grupo.period,
       salonUtilizado: _selectedClassroom,
+      alumnosDetectadosAutomaticamente: _ordenPersistenteDeAlumnosDetectados(),
     );
 
     await _asistenciaService.guardarAsistencia(registro);
@@ -3124,33 +3174,36 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: ExpansionTile(
-          initiallyExpanded: false,
-          maintainState: true,
-          iconColor: widget.gradientColors[0],
-          collapsedIconColor: palette.textSecondary,
-          leading: Icon(
-            Icons.bluetooth_connected_rounded,
-            color: widget.gradientColors[0],
-          ),
-          title: Text(
-            'Alumnos detectados automáticamente',
-            style: TextStyle(
-              color: palette.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
+        child: Material(
+          color: Colors.transparent,
+          child: ExpansionTile(
+            initiallyExpanded: false,
+            maintainState: true,
+            iconColor: widget.gradientColors[0],
+            collapsedIconColor: palette.textSecondary,
+            leading: Icon(
+              Icons.bluetooth_connected_rounded,
+              color: widget.gradientColors[0],
             ),
-          ),
-          subtitle: Text(
-            '${students.length} confirmados automáticamente',
-            style: TextStyle(color: palette.textSecondary, fontSize: 12),
-          ),
-          children: List.generate(
-            students.length,
-            (index) => _buildStudentCard(
-              students[index],
-              isLast: index == students.length - 1,
-              automaticallyDetected: true,
+            title: Text(
+              'Alumnos detectados automáticamente',
+              style: TextStyle(
+                color: palette.textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            subtitle: Text(
+              '${students.length} confirmados automáticamente',
+              style: TextStyle(color: palette.textSecondary, fontSize: 12),
+            ),
+            children: List.generate(
+              students.length,
+              (index) => _buildStudentCard(
+                students[index],
+                isLast: index == students.length - 1,
+                automaticallyDetected: true,
+              ),
             ),
           ),
         ),
@@ -3172,6 +3225,9 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         hasMatricula && _linkedStudentMatriculas.contains(matricula);
 
     return Container(
+      key: ValueKey(
+        '${automaticallyDetected ? 'automatic' : 'regular'}-student-${_alumnoKey(alumno)}',
+      ),
       color: palette.surface,
       child: Material(
         color: Colors.transparent,

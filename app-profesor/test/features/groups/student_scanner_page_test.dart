@@ -6,7 +6,7 @@ import 'package:appprofesoresuniversidad/features/groups/screens/student_scanner
 import 'package:appprofesoresuniversidad/shared/models/alumno.dart';
 
 void main() {
-  testWidgets('muestra al alumno más reciente arriba de la pila', (
+  testWidgets('muestra al alumno más reciente arriba de la lista', (
     tester,
   ) async {
     final detectedKeys = ValueNotifier<List<String>>(['1002', '1001']);
@@ -35,9 +35,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
 
     expect(find.text('Escaneando alumnos'), findsOneWidget);
+    expect(find.text('2 de 3 detectados'), findsOneWidget);
     expect(find.text('Bruno López'), findsOneWidget);
     expect(find.text('Ana Martínez'), findsOneWidget);
     expect(find.text('Cancelar escaneo'), findsOneWidget);
+    expect(find.byKey(const ValueKey('detected-student-list')), findsOneWidget);
 
     final brunoCard = find.byKey(const ValueKey('detected-student-1002'));
     final anaCard = find.byKey(const ValueKey('detected-student-1001'));
@@ -56,6 +58,49 @@ void main() {
       tester.getTopLeft(carlaCard).dy,
       lessThan(tester.getTopLeft(brunoCard).dy),
     );
+  });
+
+  testWidgets('permite recorrer todos los alumnos detectados', (tester) async {
+    final students = List<Alumno>.generate(
+      8,
+      (index) => Alumno(
+        id: '${index + 1}',
+        matricula: '100${index + 1}',
+        number: index + 1,
+        name: 'Alumno ${index + 1}',
+      ),
+    );
+    final detectedKeys = ValueNotifier<List<String>>(
+      List<String>.generate(8, (index) => '100${8 - index}'),
+    );
+    addTearDown(detectedKeys.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: UATTheme.lightTheme,
+        home: StudentScannerPage(
+          students: students,
+          detectedStudentKeys: detectedKeys,
+          gradientColors: const [Color(0xFFCC6633), Color(0xFFB85C3E)],
+          subject: 'Matemáticas',
+          groupLabel: 'A',
+          availableStudentCount: 8,
+          onStart: () async => true,
+          onStop: () async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(find.text('Alumno 8'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Alumno 1'),
+      260,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Alumno 1'), findsOneWidget);
   });
 
   testWidgets('el botón rojo detiene el escaneo antes de cerrar', (

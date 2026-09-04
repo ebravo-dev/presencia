@@ -354,62 +354,46 @@ class _StudentScannerPageState extends State<StudentScannerPage>
     return ValueListenableBuilder<List<String>>(
       valueListenable: widget.detectedStudentKeys,
       builder: (context, detectedKeys, _) {
-        final visibleStudents = detectedKeys
+        final detectedStudents = detectedKeys
             .map((key) => studentsByKey[key])
             .whereType<Alumno>()
-            .take(4)
             .toList(growable: false);
 
         return AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
           switchInCurve: Curves.easeOutCubic,
           switchOutCurve: Curves.easeInCubic,
-          child: visibleStudents.isEmpty
+          child: detectedStudents.isEmpty
               ? _ScannerEmptyState(
                   key: const ValueKey('scanner-empty'),
                   palette: palette,
                   isUnavailable: !_isStarting && !_scanStarted,
                 )
-              : LayoutBuilder(
-                  key: const ValueKey('detected-student-stack'),
-                  builder: (context, constraints) {
-                    return Stack(
-                      clipBehavior: Clip.none,
-                      alignment: Alignment.topCenter,
-                      children: [
-                        for (
-                          var index = visibleStudents.length - 1;
-                          index >= 0;
-                          index--
-                        )
-                          AnimatedPositioned(
-                            key: ValueKey(
-                              'student-position-${_studentKey(visibleStudents[index])}',
-                            ),
-                            duration: const Duration(milliseconds: 320),
-                            curve: Curves.easeOutCubic,
-                            top: index * 17,
-                            left: index * 8,
-                            right: index * 8,
-                            child: Transform.scale(
-                              scale: 1 - (index * 0.025),
-                              alignment: Alignment.topCenter,
-                              child: Opacity(
-                                opacity: 1 - (index * 0.17),
-                                child: _DetectedStudentCard(
-                                  key: ValueKey(
-                                    'detected-student-${_studentKey(visibleStudents[index])}',
-                                  ),
-                                  student: visibleStudents[index],
-                                  accentColor: widget.gradientColors.first,
-                                  palette: palette,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    );
-                  },
+              : Scrollbar(
+                  key: const ValueKey('detected-student-list'),
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(0, 4, 0, 12),
+                    physics: const BouncingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
+                    ),
+                    itemCount: detectedStudents.length,
+                    itemBuilder: (context, index) {
+                      final student = detectedStudents[index];
+                      final studentKey = _studentKey(student);
+                      return Padding(
+                        key: ValueKey('detected-student-row-$studentKey'),
+                        padding: EdgeInsets.only(
+                          bottom: index == detectedStudents.length - 1 ? 0 : 12,
+                        ),
+                        child: _DetectedStudentCard(
+                          key: ValueKey('detected-student-$studentKey'),
+                          student: student,
+                          accentColor: widget.gradientColors.first,
+                          palette: palette,
+                        ),
+                      );
+                    },
+                  ),
                 ),
         );
       },
