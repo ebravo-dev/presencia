@@ -60,6 +60,8 @@ void main() {
         return 1;
       });
       messenger.setMockMethodCallHandler(studentBleChannel, (call) async {
+        if (call.method == 'getAndroidSdkInt') return 35;
+        if (call.method == 'checkBluetoothState') return 'poweredOn';
         if (call.method == 'startScanning') return true;
         return null;
       });

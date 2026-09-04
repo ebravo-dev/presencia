@@ -14,7 +14,6 @@ import 'services/asistencia_local_service.dart';
 import 'services/app_log_service.dart';
 import 'core/constants/app_constants.dart';
 import 'core/constants/api_constants.dart';
-import 'core/permissions/permission_service.dart';
 import 'core/utils/utils.dart';
 import 'core/theme/uat_theme.dart';
 import 'core/theme/theme_controller.dart';
@@ -111,11 +110,6 @@ Future<void> _bootstrap() async {
     // Initialize database
     await DatabaseService().init();
     Logger.info('App initialization completed');
-
-    // Request Bluetooth permissions at startup.
-    PermissionService.requestBluetoothPermissions().then((granted) {
-      Logger.info('Bluetooth permissions: ${granted ? "granted" : "denied"}');
-    });
 
     // Debug: Print API configuration
     ApiConstants.printConfig();

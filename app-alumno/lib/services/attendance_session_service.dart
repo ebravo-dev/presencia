@@ -10,24 +10,37 @@ import 'student_logger.dart';
 
 enum AttendanceSessionState {
   idle,
+  permissionRequired,
+  permissionDenied,
+  locationServicesOff,
   checkingRoom,
   roomVerified,
   broadcasting,
   bluetoothOff,
+  bluetoothUnsupported,
   missingRoomBeacon,
   roomNotFound,
   error,
+}
+
+enum AttendanceRequirementAction {
+  requestPermissions,
+  openAppSettings,
+  openBluetoothSettings,
+  openLocationSettings,
 }
 
 class AttendanceSessionSnapshot {
   final AttendanceSessionState state;
   final AltBeaconDetection? roomDetection;
   final String? message;
+  final AttendanceRequirementAction? action;
 
   const AttendanceSessionSnapshot({
     required this.state,
     this.roomDetection,
     this.message,
+    this.action,
   });
 }
 
@@ -58,7 +71,7 @@ class AttendanceSessionService {
 
   AttendanceSessionState get currentState => _currentState;
 
-  Future<void> start() async {
+  Future<void> start({bool requestPermissions = false}) async {
     if (_currentState == AttendanceSessionState.checkingRoom ||
         _currentState == AttendanceSessionState.broadcasting) {
       return;
@@ -76,24 +89,92 @@ class AttendanceSessionService {
       return;
     }
 
-    final permissionsReady = await _requestRuntimePermissions(
-      requiresRoomScan: classroomUuid.isNotEmpty,
-    );
+    late final _RuntimePermissionResult permissionResult;
+    try {
+      permissionResult = await _checkRuntimePermissions(
+        requiresRoomScan: classroomUuid.isNotEmpty,
+        requestPermissions: requestPermissions,
+      );
+    } catch (error, stackTrace) {
+      StudentLogger.error(
+        'attendance.requirements.permission_check_failed',
+        'No se pudieron comprobar los permisos del teléfono.',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (generation == _sessionGeneration) {
+        _emit(
+          AttendanceSessionState.error,
+          message:
+              'No pudimos comprobar los permisos del teléfono. Inténtalo de nuevo.',
+        );
+      }
+      return;
+    }
     if (generation != _sessionGeneration) return;
-    if (!permissionsReady) {
+    if (!permissionResult.granted) {
       _emit(
-        AttendanceSessionState.error,
-        message: 'Permite el acceso necesario para pasar lista.',
+        permissionResult.permanentlyDenied
+            ? AttendanceSessionState.permissionDenied
+            : AttendanceSessionState.permissionRequired,
+        message: permissionResult.permanentlyDenied
+            ? 'El acceso a dispositivos cercanos está bloqueado. Actívalo desde Configuración para registrar tu asistencia.'
+            : 'Permite el acceso a dispositivos cercanos${classroomUuid.isNotEmpty ? ' y a tu ubicación' : ''} para registrar tu asistencia.',
+        action: permissionResult.permanentlyDenied
+            ? AttendanceRequirementAction.openAppSettings
+            : AttendanceRequirementAction.requestPermissions,
       );
       return;
     }
 
-    final bluetoothReady = await _beacons.isBluetoothAvailable();
+    final bluetoothAvailability = await _beacons.getBluetoothAvailability();
     if (generation != _sessionGeneration) return;
-    if (!bluetoothReady) {
+    if (bluetoothAvailability == BluetoothAvailability.poweredOff) {
       _emit(
         AttendanceSessionState.bluetoothOff,
-        message: 'Revisa la configuración de tu celular.',
+        message:
+            'Bluetooth está apagado. Enciéndelo para buscar el salón y registrar tu asistencia.',
+        action: AttendanceRequirementAction.openBluetoothSettings,
+      );
+      return;
+    }
+    if (bluetoothAvailability == BluetoothAvailability.unsupported) {
+      _emit(
+        AttendanceSessionState.bluetoothUnsupported,
+        message:
+            'Este teléfono no es compatible con el registro de asistencia por Bluetooth.',
+      );
+      return;
+    }
+    if (bluetoothAvailability == BluetoothAvailability.unauthorized) {
+      _emit(
+        AttendanceSessionState.permissionDenied,
+        message:
+            'Bluetooth no está autorizado para esta app. Actívalo desde Configuración.',
+        action: AttendanceRequirementAction.openAppSettings,
+      );
+      return;
+    }
+    if (bluetoothAvailability != BluetoothAvailability.poweredOn) {
+      _emit(
+        AttendanceSessionState.error,
+        message:
+            'No pudimos comprobar el estado de Bluetooth. Inténtalo de nuevo.',
+      );
+      return;
+    }
+
+    final requiresLocationService = await _requiresLocationService(
+      classroomUuid.isNotEmpty,
+    );
+    if (generation != _sessionGeneration) return;
+    if (requiresLocationService && !await _beacons.isLocationServiceEnabled()) {
+      if (generation != _sessionGeneration) return;
+      _emit(
+        AttendanceSessionState.locationServicesOff,
+        message:
+            'La ubicación del teléfono está desactivada. Enciéndela para detectar el beacon del salón.',
+        action: AttendanceRequirementAction.openLocationSettings,
       );
       return;
     }
@@ -218,6 +299,25 @@ class AttendanceSessionService {
     _emit(AttendanceSessionState.idle);
   }
 
+  Future<void> performRequirementAction(
+    AttendanceRequirementAction action,
+  ) async {
+    switch (action) {
+      case AttendanceRequirementAction.requestPermissions:
+        await start(requestPermissions: true);
+        return;
+      case AttendanceRequirementAction.openAppSettings:
+        await openAppSettings();
+        return;
+      case AttendanceRequirementAction.openBluetoothSettings:
+        await _beacons.openBluetoothSettings();
+        return;
+      case AttendanceRequirementAction.openLocationSettings:
+        await _beacons.openLocationSettings();
+        return;
+    }
+  }
+
   Future<void> _stopRoomScanOnly() async {
     _roomScanTimer?.cancel();
     _roomScanTimer = null;
@@ -230,6 +330,7 @@ class AttendanceSessionService {
     AttendanceSessionState state, {
     AltBeaconDetection? roomDetection,
     String? message,
+    AttendanceRequirementAction? action,
   }) {
     _currentState = state;
     _stateController.add(
@@ -237,6 +338,7 @@ class AttendanceSessionService {
         state: state,
         roomDetection: roomDetection,
         message: message,
+        action: action,
       ),
     );
   }
@@ -249,30 +351,56 @@ class AttendanceSessionService {
     return uuid.replaceAll('-', '').toLowerCase().trim();
   }
 
-  Future<bool> _requestRuntimePermissions({
+  Future<_RuntimePermissionResult> _checkRuntimePermissions({
     required bool requiresRoomScan,
+    required bool requestPermissions,
   }) async {
+    final permissions = <Permission>[];
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        final permissions = <Permission>[
+        permissions.addAll([
           Permission.bluetoothAdvertise,
           Permission.bluetoothConnect,
-        ];
+        ]);
         if (requiresRoomScan) {
-          permissions.addAll([
-            Permission.bluetoothScan,
-            Permission.locationWhenInUse,
-          ]);
+          permissions.add(Permission.bluetoothScan);
+          if (await _beacons.getAndroidSdkInt() <= 30) {
+            permissions.add(Permission.locationWhenInUse);
+          }
         }
-        final results = await permissions.request();
-        return results.values.every(
-          (status) => status.isGranted || status.isLimited,
-        );
       case TargetPlatform.iOS:
-        return !requiresRoomScan || await _beacons.requestPermissions();
+        permissions.add(Permission.bluetooth);
+        if (requiresRoomScan) {
+          permissions.add(Permission.locationWhenInUse);
+        }
       default:
-        return true;
+        return const _RuntimePermissionResult(granted: true);
     }
+
+    final statuses = requestPermissions
+        ? await permissions.request()
+        : <Permission, PermissionStatus>{
+            for (final permission in permissions)
+              permission: await permission.status,
+          };
+    final granted = statuses.values.every(
+      (status) => status.isGranted || status.isLimited,
+    );
+    return _RuntimePermissionResult(
+      granted: granted,
+      permanentlyDenied: statuses.values.any(
+        (status) => status.isPermanentlyDenied || status.isRestricted,
+      ),
+    );
+  }
+
+  Future<bool> _requiresLocationService(bool requiresRoomScan) async {
+    if (!requiresRoomScan) return false;
+    if (defaultTargetPlatform == TargetPlatform.iOS) return true;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return await _beacons.getAndroidSdkInt() <= 30;
+    }
+    return false;
   }
 
   String _roomScanErrorMessage(Object error) {
@@ -291,4 +419,14 @@ class AttendanceSessionService {
     _roomScanSubscription?.cancel();
     _stateController.close();
   }
+}
+
+class _RuntimePermissionResult {
+  final bool granted;
+  final bool permanentlyDenied;
+
+  const _RuntimePermissionResult({
+    required this.granted,
+    this.permanentlyDenied = false,
+  });
 }

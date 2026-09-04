@@ -4,6 +4,14 @@ import 'package:flutter/services.dart';
 
 import 'student_logger.dart';
 
+enum BluetoothAvailability {
+  poweredOn,
+  poweredOff,
+  unauthorized,
+  unsupported,
+  unknown,
+}
+
 class AltBeaconDetection {
   final String uuid;
   final int? major;
@@ -59,17 +67,69 @@ class NativeAltBeaconChannel {
     });
   }
 
-  Future<bool> isBluetoothAvailable() async {
+  Future<BluetoothAvailability> getBluetoothAvailability() async {
     try {
       final state = await _method.invokeMethod<String>('checkBluetoothState');
-      return state == 'poweredOn';
+      return switch (state) {
+        'poweredOn' => BluetoothAvailability.poweredOn,
+        'poweredOff' => BluetoothAvailability.poweredOff,
+        'unauthorized' => BluetoothAvailability.unauthorized,
+        'unsupported' => BluetoothAvailability.unsupported,
+        _ => BluetoothAvailability.unknown,
+      };
     } catch (e) {
       StudentLogger.warning(
         'ble.scan.state_check_failed',
         'No se pudo consultar el estado de Bluetooth.',
         error: e,
       );
+      return BluetoothAvailability.unknown;
+    }
+  }
+
+  Future<bool> isBluetoothAvailable() async =>
+      await getBluetoothAvailability() == BluetoothAvailability.poweredOn;
+
+  Future<int> getAndroidSdkInt() async {
+    try {
+      return await _method.invokeMethod<int>('getAndroidSdkInt') ?? 30;
+    } on MissingPluginException {
+      return 30;
+    } on PlatformException {
+      return 30;
+    }
+  }
+
+  Future<bool> isLocationServiceEnabled() async {
+    try {
+      return await _method.invokeMethod<bool>('checkLocationServices') ?? false;
+    } catch (e) {
+      StudentLogger.warning(
+        'ble.scan.location_state_check_failed',
+        'No se pudo consultar el estado de la ubicación.',
+        error: e,
+      );
       return false;
+    }
+  }
+
+  Future<void> openBluetoothSettings() async {
+    await _openSettings('openBluetoothSettings');
+  }
+
+  Future<void> openLocationSettings() async {
+    await _openSettings('openLocationSettings');
+  }
+
+  Future<void> _openSettings(String method) async {
+    try {
+      await _method.invokeMethod<bool>(method);
+    } catch (e) {
+      StudentLogger.warning(
+        'ble.scan.settings_open_failed',
+        'No se pudo abrir la configuración del teléfono.',
+        error: e,
+      );
     }
   }
 

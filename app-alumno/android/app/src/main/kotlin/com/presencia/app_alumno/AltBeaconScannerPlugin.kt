@@ -3,11 +3,13 @@ package com.presencia.app_alumno
 import android.Manifest
 import android.bluetooth.BluetoothManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -98,6 +100,10 @@ class AltBeaconScannerPlugin(
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "checkBluetoothState" -> result.success(getBluetoothState())
+            "checkLocationServices" -> result.success(isLocationEnabled())
+            "getAndroidSdkInt" -> result.success(Build.VERSION.SDK_INT)
+            "openBluetoothSettings" -> result.success(openSettings(Settings.ACTION_BLUETOOTH_SETTINGS))
+            "openLocationSettings" -> result.success(openSettings(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
             "requestPermissions" -> result.success(hasRequiredPermissions())
             "startScanning" -> {
                 val uuid = call.argument<String>("uuid")
@@ -189,7 +195,9 @@ class AltBeaconScannerPlugin(
                 missing.add(Manifest.permission.BLUETOOTH_CONNECT)
             }
         }
-        if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R &&
+            !hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+        ) {
             missing.add(Manifest.permission.ACCESS_FINE_LOCATION)
         }
 
@@ -226,7 +234,27 @@ class AltBeaconScannerPlugin(
     private fun getBluetoothState(): String {
         val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
             ?: return "unsupported"
-        return if (manager.adapter?.isEnabled == true) "poweredOn" else "poweredOff"
+        return try {
+            if (manager.adapter == null) {
+                "unsupported"
+            } else if (manager.adapter?.isEnabled == true) {
+                "poweredOn"
+            } else {
+                "poweredOff"
+            }
+        } catch (_: SecurityException) {
+            "unauthorized"
+        }
+    }
+
+    private fun openSettings(action: String): Boolean {
+        return try {
+            activity.startActivity(Intent(action))
+            true
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not open settings: ${error.message}")
+            false
+        }
     }
 
     private fun normalizeUuid(uuid: String?): String {

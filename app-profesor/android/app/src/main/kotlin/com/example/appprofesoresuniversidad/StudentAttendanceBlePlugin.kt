@@ -16,11 +16,14 @@ import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
+import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -197,6 +200,10 @@ class StudentAttendanceBlePlugin(
                 result.success(confirmAttendance(normalized))
             }
             "getAndroidSdkInt" -> result.success(Build.VERSION.SDK_INT)
+            "checkBluetoothState" -> result.success(getBluetoothState())
+            "checkLocationServices" -> result.success(isLocationEnabled())
+            "openBluetoothSettings" -> result.success(openSettings(Settings.ACTION_BLUETOOTH_SETTINGS))
+            "openLocationSettings" -> result.success(openSettings(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
             else -> result.notImplemented()
         }
     }
@@ -694,5 +701,38 @@ class StudentAttendanceBlePlugin(
 
     private fun normalizeUuid(uuid: String?): String {
         return uuid?.replace("-", "")?.lowercase()?.trim().orEmpty()
+    }
+
+    private fun getBluetoothState(): String {
+        return try {
+            when {
+                bluetoothAdapter == null -> "unsupported"
+                bluetoothAdapter?.isEnabled == true -> "poweredOn"
+                else -> "poweredOff"
+            }
+        } catch (_: SecurityException) {
+            "unauthorized"
+        }
+    }
+
+    private fun isLocationEnabled(): Boolean {
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            ?: return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            manager.isLocationEnabled
+        } else {
+            manager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        }
+    }
+
+    private fun openSettings(action: String): Boolean {
+        return try {
+            activity.startActivity(Intent(action))
+            true
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not open settings: ${error.message}")
+            false
+        }
     }
 }

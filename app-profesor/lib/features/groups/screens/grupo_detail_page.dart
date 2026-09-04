@@ -96,6 +96,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
   int _studentScanGeneration = 0;
   bool _isStudentBeaconScanning = false;
   bool _isLoadingStudentBeaconBindings = false;
+  bool _isCheckingStudentScanRequirements = false;
   bool _isLoadingStudentBindingStatus = false;
   bool _studentBindingStatusLoaded = false;
   String? _studentBindingStatusError;
@@ -1249,6 +1250,11 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       return null;
     }
 
+    if (!await _ensureScanRequirements(classroomBeacon: true)) {
+      return null;
+    }
+    if (!mounted) return null;
+
     final primaryClassroom = widget.grupo.classroom.trim().toUpperCase();
     var resultado = await _scanClassroomBeacons(
       references,
@@ -2288,17 +2294,18 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       return false;
     }
 
-    final permissionGranted =
-        await PermissionService.requestStudentAttendanceBlePermissions();
+    final requirement = await PermissionService.checkStudentAttendanceScan();
     if (!mounted || scanGeneration != _studentScanGeneration) return false;
 
-    if (!permissionGranted) {
+    if (!requirement.isReady) {
       setState(() {
         _isLoadingStudentBeaconBindings = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Activa Bluetooth para detectar a los alumnos.'),
+          content: Text(
+            'El teléfono ya no cumple los requisitos. Cierra el escáner e inténtalo de nuevo.',
+          ),
           backgroundColor: Colors.orange,
         ),
       );
@@ -2853,6 +2860,18 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       return;
     }
 
+    if (_isCheckingStudentScanRequirements) return;
+    setState(() => _isCheckingStudentScanRequirements = true);
+    var requirementsReady = false;
+    try {
+      requirementsReady = await _ensureScanRequirements(classroomBeacon: false);
+    } finally {
+      if (mounted) {
+        setState(() => _isCheckingStudentScanRequirements = false);
+      }
+    }
+    if (!mounted || !requirementsReady) return;
+
     final currentOrder = List<String>.from(_studentDetectionOrder.value);
     for (final studentKey in _automaticallyDetectedStudentKeys) {
       if (!currentOrder.contains(studentKey)) currentOrder.add(studentKey);
@@ -2912,6 +2931,119 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     }
   }
 
+  Future<bool> _ensureScanRequirements({required bool classroomBeacon}) async {
+    Future<ScanRequirementResult> check({bool request = false}) {
+      return classroomBeacon
+          ? PermissionService.checkClassroomBeaconScan(
+              requestPermissions: request,
+            )
+          : PermissionService.checkStudentAttendanceScan(
+              requestPermissions: request,
+            );
+    }
+
+    var result = await check();
+    if (!mounted || result.isReady) return result.isReady;
+
+    final accepted = await _showScanRequirementDialog(
+      result,
+      classroomBeacon: classroomBeacon,
+    );
+    if (!mounted || !accepted) return false;
+
+    if (result.requirement == ScanRequirement.permissionRequired) {
+      result = await check(request: true);
+      if (!mounted || result.isReady) return result.isReady;
+      await _showScanRequirementDialog(
+        result,
+        classroomBeacon: classroomBeacon,
+      );
+      return false;
+    }
+
+    final target = result.settingsTarget;
+    if (target != null) {
+      await PermissionService.openSettings(target);
+    }
+    return false;
+  }
+
+  Future<bool> _showScanRequirementDialog(
+    ScanRequirementResult result, {
+    required bool classroomBeacon,
+  }) async {
+    final operation = classroomBeacon
+        ? 'detectar el sensor del salón'
+        : 'escanear alumnos cercanos';
+    final (title, message, icon) = switch (result.requirement) {
+      ScanRequirement.permissionRequired => (
+        'Permisos necesarios',
+        'Para $operation, permite el acceso a dispositivos cercanos${classroomBeacon ? ' y a tu ubicación' : ''}.',
+        Icons.admin_panel_settings_outlined,
+      ),
+      ScanRequirement.permissionDenied => (
+        'Permiso bloqueado',
+        'El permiso necesario está desactivado. Actívalo en la configuración de la app para continuar.',
+        Icons.lock_outline_rounded,
+      ),
+      ScanRequirement.bluetoothOff => (
+        'Bluetooth está apagado',
+        'Enciende Bluetooth antes de $operation. El escaneo no comenzará mientras siga apagado.',
+        Icons.bluetooth_disabled_rounded,
+      ),
+      ScanRequirement.locationServicesOff => (
+        'Ubicación desactivada',
+        'Enciende la ubicación del teléfono para $operation. El escaneo no comenzará mientras siga apagada.',
+        Icons.location_off_rounded,
+      ),
+      ScanRequirement.unsupported => (
+        'Función no disponible',
+        'Este teléfono no es compatible con el escaneo Bluetooth requerido.',
+        Icons.phonelink_erase_rounded,
+      ),
+      ScanRequirement.unavailable => (
+        'No se pudo verificar el teléfono',
+        'No pudimos comprobar el estado de Bluetooth. Inténtalo de nuevo.',
+        Icons.error_outline_rounded,
+      ),
+      ScanRequirement.ready => (
+        'Todo listo',
+        'El teléfono está listo para escanear.',
+        Icons.check_circle_outline_rounded,
+      ),
+    };
+    final actionLabel = result.requirement == ScanRequirement.permissionRequired
+        ? 'Permitir'
+        : switch (result.settingsTarget) {
+            ScanSettingsTarget.app => 'Abrir configuración',
+            ScanSettingsTarget.bluetooth => 'Abrir Bluetooth',
+            ScanSettingsTarget.location => 'Abrir ubicación',
+            null => 'Entendido',
+          };
+
+    return await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => AlertDialog(
+            icon: Icon(icon, color: Colors.orange, size: 38),
+            title: Text(title, textAlign: TextAlign.center),
+            content: Text(message, textAlign: TextAlign.center),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                key: const ValueKey('scan-requirement-action'),
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text(actionLabel),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
   Widget _buildStudentBeaconScanControls() {
     final palette = context.uatPalette;
     final canScan = _puedeEscanearAlumnos();
@@ -2921,10 +3053,15 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
       height: 68,
       child: FilledButton.icon(
         key: const ValueKey('open-student-scanner'),
-        onPressed: canScan && !_isLoadingStudentBeaconBindings
+        onPressed:
+            canScan &&
+                !_isLoadingStudentBeaconBindings &&
+                !_isCheckingStudentScanRequirements
             ? _openStudentScanner
             : null,
-        icon: _isLoadingStudentBeaconBindings
+        icon:
+            _isLoadingStudentBeaconBindings ||
+                _isCheckingStudentScanRequirements
             ? const SizedBox(
                 width: 22,
                 height: 22,
@@ -2937,6 +3074,8 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
         label: Text(
           _isLoadingStudentBeaconBindings
               ? 'Preparando escaneo…'
+              : _isCheckingStudentScanRequirements
+              ? 'Verificando teléfono…'
               : 'Escanear alumnos',
         ),
         style: FilledButton.styleFrom(

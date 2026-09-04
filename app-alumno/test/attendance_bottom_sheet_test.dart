@@ -54,6 +54,48 @@ class _FakeBleAdvertiser extends BleAdvertiserService {
   }
 }
 
+class _FakeAttendanceSession extends AttendanceSessionService {
+  _FakeAttendanceSession({
+    required super.storage,
+    required super.advertiser,
+    this.initialSnapshot = const AttendanceSessionSnapshot(
+      state: AttendanceSessionState.checkingRoom,
+    ),
+  });
+
+  final AttendanceSessionSnapshot initialSnapshot;
+  final _controller = StreamController<AttendanceSessionSnapshot>.broadcast();
+  bool permissionWasRequested = false;
+
+  @override
+  Stream<AttendanceSessionSnapshot> get stateStream => _controller.stream;
+
+  @override
+  Future<void> start({bool requestPermissions = false}) async {
+    permissionWasRequested = permissionWasRequested || requestPermissions;
+    _controller.add(
+      requestPermissions
+          ? const AttendanceSessionSnapshot(
+              state: AttendanceSessionState.checkingRoom,
+            )
+          : initialSnapshot,
+    );
+  }
+
+  @override
+  Future<void> stop() async {
+    _controller.add(
+      const AttendanceSessionSnapshot(state: AttendanceSessionState.idle),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.close();
+    super.dispose();
+  }
+}
+
 void main() {
   testWidgets(
     'bottom sheet displays scanning animation, 30s countdown and class info',
@@ -65,10 +107,7 @@ void main() {
 
       final storage = _FakeStorage();
       final ble = _FakeBleAdvertiser();
-      final session = AttendanceSessionService(
-        storage: storage,
-        advertiser: ble,
-      );
+      final session = _FakeAttendanceSession(storage: storage, advertiser: ble);
 
       final occurrence = StudentScheduleOccurrence(
         entry: const StudentScheduleEntry(
@@ -126,10 +165,7 @@ void main() {
 
       final storage = _FakeStorage();
       final ble = _FakeBleAdvertiser();
-      final session = AttendanceSessionService(
-        storage: storage,
-        advertiser: ble,
-      );
+      final session = _FakeAttendanceSession(storage: storage, advertiser: ble);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -198,10 +234,7 @@ void main() {
 
       final storage = _FakeStorage(testMatricula: '20261234');
       final ble = _FakeBleAdvertiser();
-      final session = AttendanceSessionService(
-        storage: storage,
-        advertiser: ble,
-      );
+      final session = _FakeAttendanceSession(storage: storage, advertiser: ble);
 
       final occurrence = StudentScheduleOccurrence(
         entry: const StudentScheduleEntry(
@@ -289,6 +322,97 @@ void main() {
     },
   );
 
+  testWidgets('muestra el permiso faltante y solo inicia después de aceptar', (
+    WidgetTester tester,
+  ) async {
+    final storage = _FakeStorage();
+    final ble = _FakeBleAdvertiser();
+    final session = _FakeAttendanceSession(
+      storage: storage,
+      advertiser: ble,
+      initialSnapshot: const AttendanceSessionSnapshot(
+        state: AttendanceSessionState.permissionRequired,
+        message: 'Permite el acceso a dispositivos cercanos.',
+        action: AttendanceRequirementAction.requestPermissions,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => FilledButton(
+              onPressed: () => AttendanceBottomSheet.show(
+                context,
+                attendanceSession: session,
+                bleService: ble,
+                storage: storage,
+              ),
+              child: const Text('Abrir'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Abrir'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Se necesita tu permiso'), findsOneWidget);
+    expect(find.text('Permitir'), findsOneWidget);
+    expect(find.text('Registrando asistencia'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('attendance_requirement_action')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(session.permissionWasRequested, isTrue);
+    expect(find.text('Registrando asistencia'), findsOneWidget);
+  });
+
+  testWidgets('no mantiene el escaneo si Bluetooth está apagado', (
+    WidgetTester tester,
+  ) async {
+    final storage = _FakeStorage();
+    final ble = _FakeBleAdvertiser();
+    final session = _FakeAttendanceSession(
+      storage: storage,
+      advertiser: ble,
+      initialSnapshot: const AttendanceSessionSnapshot(
+        state: AttendanceSessionState.bluetoothOff,
+        message: 'Bluetooth está apagado.',
+        action: AttendanceRequirementAction.openBluetoothSettings,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => FilledButton(
+              onPressed: () => AttendanceBottomSheet.show(
+                context,
+                attendanceSession: session,
+                bleService: ble,
+                storage: storage,
+              ),
+              child: const Text('Abrir'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Abrir'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bluetooth no está disponible'), findsOneWidget);
+    expect(find.text('Abrir Bluetooth'), findsOneWidget);
+    expect(find.text('Registrando asistencia'), findsNothing);
+  });
+
   testWidgets(
     'HomeScreen opens AttendanceBottomSheet when Registrar asistencia is tapped',
     (WidgetTester tester) async {
@@ -319,7 +443,7 @@ void main() {
       );
 
       final advertiser = _FakeBleAdvertiser();
-      final session = AttendanceSessionService(
+      final session = _FakeAttendanceSession(
         storage: storage,
         advertiser: advertiser,
       );

@@ -22,11 +22,7 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
   private var pendingUuidByPeripheral: [UUID: String] = [:]
   private var teacherAckTimeouts: [String: DispatchWorkItem] = [:]
   private var pendingStartResult: FlutterResult?
-
-  override init() {
-    super.init()
-    centralManager = CBCentralManager(delegate: self, queue: nil)
-  }
+  private var pendingBluetoothStateResults: [FlutterResult] = []
 
   func register(with messenger: FlutterBinaryMessenger) {
     let methodChannel = FlutterMethodChannel(name: methodChannelName, binaryMessenger: messenger)
@@ -96,6 +92,18 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
       }
       result(confirmAttendance(normalizedUuid: normalized))
 
+    case "checkBluetoothState":
+      checkBluetoothState(result: result)
+
+    case "openBluetoothSettings", "openLocationSettings":
+      guard let url = URL(string: UIApplication.openSettingsURLString) else {
+        result(false)
+        return
+      }
+      UIApplication.shared.open(url, options: [:]) { opened in
+        result(opened)
+      }
+
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -118,13 +126,14 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
       return
     }
 
-    guard let manager = centralManager else {
-      result(FlutterError(code: "UNAVAILABLE", message: "BLE no disponible", details: nil))
-      return
-    }
+    let manager = ensureCentralManager()
 
     if manager.state != .poweredOn {
-      pendingStartResult = result
+      if manager.state == .unknown || manager.state == .resetting {
+        pendingStartResult = result
+      } else {
+        result(FlutterError(code: "BLUETOOTH_OFF", message: "Bluetooth no disponible", details: nil))
+      }
       return
     }
 
@@ -150,6 +159,13 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
   }
 
   func centralManagerDidUpdateState(_ central: CBCentralManager) {
+    if !pendingBluetoothStateResults.isEmpty {
+      let state = bluetoothStateName(central.state)
+      let results = pendingBluetoothStateResults
+      pendingBluetoothStateResults.removeAll()
+      results.forEach { $0(state) }
+    }
+
     guard let result = pendingStartResult else { return }
     pendingStartResult = nil
     if central.state == .poweredOn {
@@ -160,6 +176,32 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
       result(true)
     } else {
       result(FlutterError(code: "BLUETOOTH_OFF", message: "Bluetooth no disponible", details: nil))
+    }
+  }
+
+  private func ensureCentralManager() -> CBCentralManager {
+    if let manager = centralManager { return manager }
+    let manager = CBCentralManager(delegate: self, queue: nil)
+    centralManager = manager
+    return manager
+  }
+
+  private func checkBluetoothState(result: @escaping FlutterResult) {
+    let manager = ensureCentralManager()
+    if manager.state == .unknown || manager.state == .resetting {
+      pendingBluetoothStateResults.append(result)
+      return
+    }
+    result(bluetoothStateName(manager.state))
+  }
+
+  private func bluetoothStateName(_ state: CBManagerState) -> String {
+    switch state {
+    case .poweredOn: return "poweredOn"
+    case .poweredOff: return "poweredOff"
+    case .unauthorized: return "unauthorized"
+    case .unsupported: return "unsupported"
+    default: return "unknown"
     }
   }
 

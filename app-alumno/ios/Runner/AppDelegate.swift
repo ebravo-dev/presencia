@@ -21,6 +21,8 @@ import UIKit
   private var activeAttendanceUuid: String?
   private var attendanceUuidValue: Data?
   private var waitingForGattService = false
+  private var pendingAdvertiserBluetoothResults: [FlutterResult] = []
+  private var pendingScannerBluetoothResults: [FlutterResult] = []
 
   private var locationManager: CLLocationManager?
   private var pendingLocationPermissionResult: FlutterResult?
@@ -34,7 +36,6 @@ import UIKit
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
     configureLocationManager()
-    configurePeripheralManager()
 
     if let controller = window?.rootViewController as? FlutterViewController {
       registerAdvertiserChannel(controller.binaryMessenger)
@@ -82,8 +83,7 @@ import UIKit
         result(self.isAdvertising)
 
       case "getBluetoothState":
-        let state = self.peripheralManager?.state ?? .unknown
-        result(state == .poweredOn ? "on" : "off")
+        self.checkPeripheralBluetoothState(result: result, scannerFormat: false)
 
       case "setStudentIdentity":
         if let args = call.arguments as? [String: Any] {
@@ -145,8 +145,19 @@ import UIKit
 
     switch call.method {
     case "checkBluetoothState":
-      let state = peripheralManager?.state ?? .unknown
-      result(state == .poweredOn ? "poweredOn" : "poweredOff")
+      checkPeripheralBluetoothState(result: result, scannerFormat: true)
+
+    case "checkLocationServices":
+      result(CLLocationManager.locationServicesEnabled())
+
+    case "openBluetoothSettings", "openLocationSettings":
+      guard let url = URL(string: UIApplication.openSettingsURLString) else {
+        result(false)
+        return
+      }
+      UIApplication.shared.open(url, options: [:]) { opened in
+        result(opened)
+      }
 
     case "requestPermissions":
       requestLocationPermissions(result: result)
@@ -171,6 +182,37 @@ import UIKit
   private func configurePeripheralManager() {
     if peripheralManager != nil { return }
     peripheralManager = CBPeripheralManager(delegate: self, queue: nil, options: nil)
+  }
+
+  private func checkPeripheralBluetoothState(
+    result: @escaping FlutterResult,
+    scannerFormat: Bool
+  ) {
+    configurePeripheralManager()
+    let state = peripheralManager?.state ?? .unknown
+    if state == .unknown || state == .resetting {
+      if scannerFormat {
+        pendingScannerBluetoothResults.append(result)
+      } else {
+        pendingAdvertiserBluetoothResults.append(result)
+      }
+      return
+    }
+    result(scannerFormat ? scannerBluetoothStateName(state) : advertiserBluetoothStateName(state))
+  }
+
+  private func scannerBluetoothStateName(_ state: CBManagerState) -> String {
+    switch state {
+    case .poweredOn: return "poweredOn"
+    case .poweredOff: return "poweredOff"
+    case .unauthorized: return "unauthorized"
+    case .unsupported: return "unsupported"
+    default: return "unknown"
+    }
+  }
+
+  private func advertiserBluetoothStateName(_ state: CBManagerState) -> String {
+    state == .poweredOn ? "on" : "off"
   }
 
   private func startBeacon(uuid: UUID, major: UInt16, minor: UInt16, measuredPower: Int8) {
@@ -395,6 +437,19 @@ import UIKit
 
 extension AppDelegate: CBPeripheralManagerDelegate {
   func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
+    if !pendingScannerBluetoothResults.isEmpty {
+      let results = pendingScannerBluetoothResults
+      pendingScannerBluetoothResults.removeAll()
+      let state = scannerBluetoothStateName(peripheral.state)
+      results.forEach { $0(state) }
+    }
+    if !pendingAdvertiserBluetoothResults.isEmpty {
+      let results = pendingAdvertiserBluetoothResults
+      pendingAdvertiserBluetoothResults.removeAll()
+      let state = advertiserBluetoothStateName(peripheral.state)
+      results.forEach { $0(state) }
+    }
+
     let state: String
     switch peripheral.state {
     case .poweredOn:

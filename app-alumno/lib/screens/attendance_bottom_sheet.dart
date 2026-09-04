@@ -11,7 +11,7 @@ import '../services/local_storage_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/subject_name.dart';
 
-enum AttendanceSheetStatus { scanning, timeout, success }
+enum AttendanceSheetStatus { scanning, requirement, timeout, success }
 
 class AttendanceBottomSheet extends StatefulWidget {
   const AttendanceBottomSheet({
@@ -65,7 +65,7 @@ class AttendanceBottomSheet extends StatefulWidget {
 }
 
 class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final AnimationController _pulseController;
   Timer? _countdownTimer;
   Timer? _autoCloseTimer;
@@ -77,10 +77,13 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
   AttendanceSessionSnapshot? _lastSnapshot;
   AttendanceConfirmation? _confirmedData;
   String? _errorMessage;
+  AttendanceRequirementAction? _requirementAction;
+  bool _waitingForSettings = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _remainingSeconds = widget.timeoutDuration.inSeconds;
     _pulseController = AnimationController(
       vsync: this,
@@ -88,7 +91,7 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
     )..repeat();
 
     _listenToStreams();
-    _startSessionAndCountdown();
+    _startSession();
   }
 
   void _listenToStreams() {
@@ -96,13 +99,35 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
       snapshot,
     ) {
       if (!mounted || _status != AttendanceSheetStatus.scanning) return;
+      final isRequirement =
+          snapshot.state == AttendanceSessionState.permissionRequired ||
+          snapshot.state == AttendanceSessionState.permissionDenied ||
+          snapshot.state == AttendanceSessionState.bluetoothOff ||
+          snapshot.state == AttendanceSessionState.bluetoothUnsupported ||
+          snapshot.state == AttendanceSessionState.locationServicesOff ||
+          snapshot.state == AttendanceSessionState.error;
+      final isTimeout =
+          snapshot.state == AttendanceSessionState.roomNotFound ||
+          snapshot.state == AttendanceSessionState.missingRoomBeacon;
+
+      if (isRequirement || isTimeout) {
+        _countdownTimer?.cancel();
+        _countdownTimer = null;
+        _pulseController.stop();
+      }
       setState(() {
         _lastSnapshot = snapshot;
-        if (snapshot.state == AttendanceSessionState.error ||
-            snapshot.state == AttendanceSessionState.bluetoothOff ||
-            snapshot.state == AttendanceSessionState.roomNotFound ||
-            snapshot.state == AttendanceSessionState.missingRoomBeacon) {
+        if (isRequirement) {
+          _status = AttendanceSheetStatus.requirement;
           _errorMessage = snapshot.message;
+          _requirementAction = snapshot.action;
+        } else if (isTimeout) {
+          _status = AttendanceSheetStatus.timeout;
+          _errorMessage = snapshot.message;
+        } else if (snapshot.state == AttendanceSessionState.checkingRoom ||
+            snapshot.state == AttendanceSessionState.roomVerified ||
+            snapshot.state == AttendanceSessionState.broadcasting) {
+          _startCountdownIfNeeded();
         }
       });
     });
@@ -141,20 +166,25 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
     });
   }
 
-  void _startSessionAndCountdown() {
+  void _startSession({bool requestPermissions = false}) {
     setState(() {
       _status = AttendanceSheetStatus.scanning;
       _remainingSeconds = widget.timeoutDuration.inSeconds;
       _errorMessage = null;
+      _requirementAction = null;
     });
 
     if (!_pulseController.isAnimating) {
       _pulseController.repeat();
     }
 
-    // Iniciar la sesión de asistencia
-    unawaited(widget.attendanceSession.start());
+    unawaited(
+      widget.attendanceSession.start(requestPermissions: requestPermissions),
+    );
+  }
 
+  void _startCountdownIfNeeded() {
+    if (_countdownTimer != null) return;
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) return;
@@ -197,7 +227,23 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
   Future<void> _restartSession() async {
     await widget.attendanceSession.stop();
     if (!mounted || _status != AttendanceSheetStatus.scanning) return;
-    _startSessionAndCountdown();
+    _startSession();
+  }
+
+  Future<void> _handleRequirementAction() async {
+    final action = _requirementAction;
+    if (action == null) {
+      _retry();
+      return;
+    }
+    unawaited(HapticFeedback.selectionClick());
+    if (action == AttendanceRequirementAction.requestPermissions) {
+      _startSession(requestPermissions: true);
+      return;
+    }
+
+    _waitingForSettings = true;
+    await widget.attendanceSession.performRequirementAction(action);
   }
 
   void _cancel() {
@@ -209,6 +255,7 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _countdownTimer?.cancel();
     _autoCloseTimer?.cancel();
     _sessionSubscription?.cancel();
@@ -218,6 +265,14 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
       unawaited(widget.attendanceSession.stop());
     }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _waitingForSettings && mounted) {
+      _waitingForSettings = false;
+      _startSession();
+    }
   }
 
   @override
@@ -281,11 +336,117 @@ class _AttendanceBottomSheetState extends State<AttendanceBottomSheet>
     switch (_status) {
       case AttendanceSheetStatus.scanning:
         return _buildScanningState(context, dark);
+      case AttendanceSheetStatus.requirement:
+        return _buildRequirementState(context, dark);
       case AttendanceSheetStatus.timeout:
         return _buildTimeoutState(context, dark);
       case AttendanceSheetStatus.success:
         return _buildSuccessState(context, dark);
     }
+  }
+
+  Widget _buildRequirementState(BuildContext context, bool dark) {
+    final state = _lastSnapshot?.state;
+    final isBluetooth =
+        state == AttendanceSessionState.bluetoothOff ||
+        state == AttendanceSessionState.bluetoothUnsupported;
+    final isLocation = state == AttendanceSessionState.locationServicesOff;
+    final isPermission =
+        state == AttendanceSessionState.permissionRequired ||
+        state == AttendanceSessionState.permissionDenied;
+    final icon = isBluetooth
+        ? Icons.bluetooth_disabled_rounded
+        : isLocation
+        ? Icons.location_off_rounded
+        : isPermission
+        ? Icons.admin_panel_settings_outlined
+        : Icons.error_outline_rounded;
+    final title = isBluetooth
+        ? 'Bluetooth no está disponible'
+        : isLocation
+        ? 'Activa la ubicación'
+        : isPermission
+        ? 'Se necesita tu permiso'
+        : 'No se pudo iniciar el registro';
+    final actionLabel = switch (_requirementAction) {
+      AttendanceRequirementAction.requestPermissions => 'Permitir',
+      AttendanceRequirementAction.openAppSettings => 'Abrir configuración',
+      AttendanceRequirementAction.openBluetoothSettings => 'Abrir Bluetooth',
+      AttendanceRequirementAction.openLocationSettings => 'Abrir ubicación',
+      null => 'Reintentar',
+    };
+
+    return Column(
+      key: const ValueKey('attendance_state_requirement'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 82,
+          height: 82,
+          margin: const EdgeInsets.only(top: 8, bottom: 16),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.orange.withValues(alpha: .12),
+            border: Border.all(
+              color: Colors.orange.withValues(alpha: .32),
+              width: 2,
+            ),
+          ),
+          child: Icon(icon, color: Colors.orange, size: 40),
+        ),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+            fontSize: 20,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _errorMessage ??
+              'Revisa los requisitos del teléfono e inténtalo de nuevo.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 13,
+            height: 1.4,
+            color: dark ? const Color(0xFF9CA3AF) : const Color(0xFF6B7280),
+          ),
+        ),
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _cancel,
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: const Text('Cancelar'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton(
+                key: const Key('attendance_requirement_action'),
+                onPressed: _handleRequirementAction,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                  backgroundColor: const Color(0xFFD65F05),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: Text(actionLabel, textAlign: TextAlign.center),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   // ==========================================
