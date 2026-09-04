@@ -2,7 +2,8 @@
 
 Sitio estático independiente para presentar Presencia y resolver las dudas más
 frecuentes de los alumnos. El contenedor sirve la misma página en `/` y en
-`/soporte/alumnos/`.
+`/soporte/alumnos/`, además del Aviso de privacidad en
+`/soporte/alumnos/privacidad/`.
 
 ## Construcción
 
