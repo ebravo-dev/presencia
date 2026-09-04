@@ -23,6 +23,7 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
   private var teacherAckTimeouts: [String: DispatchWorkItem] = [:]
   private var pendingStartResult: FlutterResult?
   private var pendingBluetoothStateResults: [FlutterResult] = []
+  private var pendingBluetoothPermissionResults: [FlutterResult] = []
 
   func register(with messenger: FlutterBinaryMessenger) {
     let methodChannel = FlutterMethodChannel(name: methodChannelName, binaryMessenger: messenger)
@@ -95,6 +96,12 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
     case "checkBluetoothState":
       checkBluetoothState(result: result)
 
+    case "checkBluetoothPermission":
+      result(bluetoothAuthorizationName())
+
+    case "requestBluetoothPermission":
+      requestBluetoothPermission(result: result)
+
     case "openBluetoothSettings", "openLocationSettings":
       guard let url = URL(string: UIApplication.openSettingsURLString) else {
         result(false)
@@ -159,6 +166,14 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
   }
 
   func centralManagerDidUpdateState(_ central: CBCentralManager) {
+    if bluetoothAuthorizationName() != "notDetermined" &&
+       !pendingBluetoothPermissionResults.isEmpty {
+      let results = pendingBluetoothPermissionResults
+      pendingBluetoothPermissionResults.removeAll()
+      let permission = bluetoothAuthorizationName()
+      results.forEach { $0(permission) }
+    }
+
     if !pendingBluetoothStateResults.isEmpty {
       let state = bluetoothStateName(central.state)
       let results = pendingBluetoothStateResults
@@ -203,6 +218,26 @@ final class StudentAttendanceBlePlugin: NSObject, FlutterStreamHandler, CBCentra
     case .unsupported: return "unsupported"
     default: return "unknown"
     }
+  }
+
+  private func bluetoothAuthorizationName() -> String {
+    switch CBManager.authorization {
+    case .allowedAlways: return "granted"
+    case .notDetermined: return "notDetermined"
+    case .denied: return "denied"
+    case .restricted: return "restricted"
+    @unknown default: return "unknown"
+    }
+  }
+
+  private func requestBluetoothPermission(result: @escaping FlutterResult) {
+    let status = bluetoothAuthorizationName()
+    guard status == "notDetermined" else {
+      result(status)
+      return
+    }
+    pendingBluetoothPermissionResults.append(result)
+    _ = ensureCentralManager()
   }
 
   func centralManager(

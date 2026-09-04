@@ -23,6 +23,7 @@ import UIKit
   private var waitingForGattService = false
   private var pendingAdvertiserBluetoothResults: [FlutterResult] = []
   private var pendingScannerBluetoothResults: [FlutterResult] = []
+  private var pendingBluetoothPermissionResults: [FlutterResult] = []
 
   private var locationManager: CLLocationManager?
   private var pendingLocationPermissionResult: FlutterResult?
@@ -150,6 +151,22 @@ import UIKit
     case "checkLocationServices":
       result(CLLocationManager.locationServicesEnabled())
 
+    case "checkBluetoothPermission":
+      result(bluetoothAuthorizationName())
+
+    case "requestBluetoothPermission":
+      requestBluetoothPermission(result: result)
+
+    case "checkLocationPermission":
+      guard let manager = locationManager else {
+        result("unknown")
+        return
+      }
+      result(locationAuthorizationName(authorizationStatus(for: manager)))
+
+    case "requestLocationPermission":
+      requestNativeLocationPermission(result: result)
+
     case "openBluetoothSettings", "openLocationSettings":
       guard let url = URL(string: UIApplication.openSettingsURLString) else {
         result(false)
@@ -160,7 +177,7 @@ import UIKit
       }
 
     case "requestPermissions":
-      requestLocationPermissions(result: result)
+      requestNativeLocationPermission(result: result)
 
     case "startScanning":
       guard let args = call.arguments as? [String: Any] else {
@@ -213,6 +230,26 @@ import UIKit
 
   private func advertiserBluetoothStateName(_ state: CBManagerState) -> String {
     state == .poweredOn ? "on" : "off"
+  }
+
+  private func bluetoothAuthorizationName() -> String {
+    switch CBManager.authorization {
+    case .allowedAlways: return "granted"
+    case .notDetermined: return "notDetermined"
+    case .denied: return "denied"
+    case .restricted: return "restricted"
+    @unknown default: return "unknown"
+    }
+  }
+
+  private func requestBluetoothPermission(result: @escaping FlutterResult) {
+    let status = bluetoothAuthorizationName()
+    guard status == "notDetermined" else {
+      result(status)
+      return
+    }
+    pendingBluetoothPermissionResults.append(result)
+    configurePeripheralManager()
   }
 
   private func startBeacon(uuid: UUID, major: UInt16, minor: UInt16, measuredPower: Int8) {
@@ -316,20 +353,28 @@ import UIKit
     locationManager = manager
   }
 
-  private func requestLocationPermissions(result: @escaping FlutterResult) {
+  private func requestNativeLocationPermission(result: @escaping FlutterResult) {
     guard let manager = locationManager else {
-      result(false)
+      result("unknown")
       return
     }
-
     let status = authorizationStatus(for: manager)
     if status == .notDetermined {
       pendingLocationPermissionResult = result
       manager.requestWhenInUseAuthorization()
       return
     }
+    result(locationAuthorizationName(status))
+  }
 
-    result(status == .authorizedAlways || status == .authorizedWhenInUse)
+  private func locationAuthorizationName(_ status: CLAuthorizationStatus) -> String {
+    switch status {
+    case .authorizedAlways, .authorizedWhenInUse: return "granted"
+    case .notDetermined: return "notDetermined"
+    case .denied: return "denied"
+    case .restricted: return "restricted"
+    @unknown default: return "unknown"
+    }
   }
 
   private func startScanning(uuidStrings: [String], result: @escaping FlutterResult) {
@@ -437,6 +482,13 @@ import UIKit
 
 extension AppDelegate: CBPeripheralManagerDelegate {
   func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
+    if bluetoothAuthorizationName() != "notDetermined" &&
+       !pendingBluetoothPermissionResults.isEmpty {
+      let results = pendingBluetoothPermissionResults
+      pendingBluetoothPermissionResults.removeAll()
+      let permission = bluetoothAuthorizationName()
+      results.forEach { $0(permission) }
+    }
     if !pendingScannerBluetoothResults.isEmpty {
       let results = pendingScannerBluetoothResults
       pendingScannerBluetoothResults.removeAll()
@@ -569,7 +621,7 @@ extension AppDelegate: CLLocationManagerDelegate {
     guard status != .notDetermined else { return }
 
     pendingLocationPermissionResult = nil
-    result(status == .authorizedAlways || status == .authorizedWhenInUse)
+    result(locationAuthorizationName(status))
   }
 
   func locationManager(

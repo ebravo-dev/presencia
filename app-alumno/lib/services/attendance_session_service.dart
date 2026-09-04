@@ -369,10 +369,21 @@ class AttendanceSessionService {
           }
         }
       case TargetPlatform.iOS:
-        permissions.add(Permission.bluetooth);
-        if (requiresRoomScan) {
-          permissions.add(Permission.locationWhenInUse);
+        final bluetoothStatus = await _beacons.getBluetoothPermissionStatus(
+          request: requestPermissions,
+        );
+        if (bluetoothStatus != NativePermissionStatus.granted) {
+          return _RuntimePermissionResult.fromNativeStatuses([bluetoothStatus]);
         }
+        final locationStatus = !requiresRoomScan
+            ? NativePermissionStatus.granted
+            : await _beacons.getLocationPermissionStatus(
+                request: requestPermissions,
+              );
+        return _RuntimePermissionResult.fromNativeStatuses([
+          bluetoothStatus,
+          locationStatus,
+        ]);
       default:
         return const _RuntimePermissionResult(granted: true);
     }
@@ -429,4 +440,19 @@ class _RuntimePermissionResult {
     required this.granted,
     this.permanentlyDenied = false,
   });
+
+  factory _RuntimePermissionResult.fromNativeStatuses(
+    Iterable<NativePermissionStatus> statuses,
+  ) {
+    return _RuntimePermissionResult(
+      granted: statuses.every(
+        (status) => status == NativePermissionStatus.granted,
+      ),
+      permanentlyDenied: statuses.any(
+        (status) =>
+            status == NativePermissionStatus.denied ||
+            status == NativePermissionStatus.restricted,
+      ),
+    );
+  }
 }

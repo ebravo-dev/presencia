@@ -12,6 +12,14 @@ enum BluetoothAvailability {
   unknown,
 }
 
+enum NativePermissionStatus {
+  granted,
+  notDetermined,
+  denied,
+  restricted,
+  unknown,
+}
+
 class AltBeaconDetection {
   final String uuid;
   final int? major;
@@ -134,16 +142,43 @@ class NativeAltBeaconChannel {
   }
 
   Future<bool> requestPermissions() async {
+    return await getLocationPermissionStatus(request: true) ==
+        NativePermissionStatus.granted;
+  }
+
+  Future<NativePermissionStatus> getBluetoothPermissionStatus({
+    bool request = false,
+  }) async {
+    return _getPermissionStatus(
+      request ? 'requestBluetoothPermission' : 'checkBluetoothPermission',
+    );
+  }
+
+  Future<NativePermissionStatus> getLocationPermissionStatus({
+    bool request = false,
+  }) async {
+    return _getPermissionStatus(
+      request ? 'requestLocationPermission' : 'checkLocationPermission',
+    );
+  }
+
+  Future<NativePermissionStatus> _getPermissionStatus(String method) async {
     try {
-      final result = await _method.invokeMethod<bool>('requestPermissions');
-      return result == true;
+      final status = await _method.invokeMethod<String>(method);
+      return switch (status) {
+        'granted' => NativePermissionStatus.granted,
+        'notDetermined' => NativePermissionStatus.notDetermined,
+        'denied' => NativePermissionStatus.denied,
+        'restricted' => NativePermissionStatus.restricted,
+        _ => NativePermissionStatus.unknown,
+      };
     } catch (e) {
       StudentLogger.warning(
-        'ble.scan.permission_failed',
-        'No se pudieron solicitar los permisos Bluetooth.',
+        'ble.scan.native_permission_check_failed',
+        'No se pudo consultar un permiso de iOS.',
         error: e,
       );
-      return false;
+      return NativePermissionStatus.unknown;
     }
   }
 

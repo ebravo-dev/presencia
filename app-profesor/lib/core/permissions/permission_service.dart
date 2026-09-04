@@ -28,11 +28,13 @@ class PermissionService {
   static const _studentBleChannel = MethodChannel(
     'com.presencia/student_attendance_ble',
   );
+  static const _classroomBeaconChannel = MethodChannel(
+    'com.presencia/altbeacon',
+  );
 
   /// Request Bluetooth permissions
   static Future<bool> requestBluetoothPermissions() async {
-    final permissions = await _classroomScanPermissions();
-    return (await _permissionResult(permissions, request: true)).isReady;
+    return (await checkClassroomBeaconScan(requestPermissions: true)).isReady;
   }
 
   /// Request only the permissions required for the local student BLE handshake.
@@ -41,14 +43,24 @@ class PermissionService {
   /// Bluetooth permission, not Location. Location is still requested by the
   /// classroom iBeacon flow through [requestBluetoothPermissions].
   static Future<bool> requestStudentAttendanceBlePermissions() async {
-    final permissions = await _platformStudentBlePermissions();
-    return (await _permissionResult(permissions, request: true)).isReady;
+    return (await checkStudentAttendanceScan(requestPermissions: true)).isReady;
   }
 
   static Future<ScanRequirementResult> checkStudentAttendanceScan({
     bool requestPermissions = false,
   }) async {
     try {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+        final permissionResult = await _nativeIosPermissionResult(
+          channel: _studentBleChannel,
+          checkMethod: 'checkBluetoothPermission',
+          requestMethod: 'requestBluetoothPermission',
+          request: requestPermissions,
+        );
+        if (!permissionResult.isReady) return permissionResult;
+        return await _checkServices(requiresLocationServices: false);
+      }
+
       final permissions = await _platformStudentBlePermissions();
       final permissionResult = await _permissionResult(
         permissions,
@@ -72,6 +84,24 @@ class PermissionService {
     bool requestPermissions = false,
   }) async {
     try {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+        final bluetoothResult = await _nativeIosPermissionResult(
+          channel: _studentBleChannel,
+          checkMethod: 'checkBluetoothPermission',
+          requestMethod: 'requestBluetoothPermission',
+          request: requestPermissions,
+        );
+        if (!bluetoothResult.isReady) return bluetoothResult;
+        final locationResult = await _nativeIosPermissionResult(
+          channel: _classroomBeaconChannel,
+          checkMethod: 'checkLocationPermission',
+          requestMethod: 'requestLocationPermission',
+          request: requestPermissions,
+        );
+        if (!locationResult.isReady) return locationResult;
+        return await _checkServices(requiresLocationServices: true);
+      }
+
       final permissions = await _classroomScanPermissions();
       final permissionResult = await _permissionResult(
         permissions,
@@ -110,16 +140,7 @@ class PermissionService {
 
   /// Check if Bluetooth permissions are granted
   static Future<bool> hasBluetoothPermissions() async {
-    final permissions = await _classroomScanPermissions();
-
-    for (final permission in permissions) {
-      final status = await permission.status;
-      if (!status.isGranted && !status.isLimited) {
-        return false;
-      }
-    }
-
-    return true;
+    return (await checkClassroomBeaconScan()).isReady;
   }
 
   static Future<List<Permission>> _classroomScanPermissions() async {
@@ -195,6 +216,28 @@ class PermissionService {
     );
   }
 
+  static Future<ScanRequirementResult> _nativeIosPermissionResult({
+    required MethodChannel channel,
+    required String checkMethod,
+    required String requestMethod,
+    required bool request,
+  }) async {
+    final status = await channel.invokeMethod<String>(
+      request ? requestMethod : checkMethod,
+    );
+    return switch (status) {
+      'granted' => const ScanRequirementResult(ScanRequirement.ready),
+      'notDetermined' => const ScanRequirementResult(
+        ScanRequirement.permissionRequired,
+      ),
+      'denied' || 'restricted' => const ScanRequirementResult(
+        ScanRequirement.permissionDenied,
+        settingsTarget: ScanSettingsTarget.app,
+      ),
+      _ => const ScanRequirementResult(ScanRequirement.unavailable),
+    };
+  }
+
   static Future<ScanRequirementResult> _checkServices({
     required bool requiresLocationServices,
   }) async {
@@ -231,8 +274,14 @@ class PermissionService {
     }
 
     if (requiresLocationServices) {
-      final serviceStatus = await Permission.locationWhenInUse.serviceStatus;
-      if (!serviceStatus.isEnabled) {
+      final locationEnabled =
+          !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS
+          ? await _classroomBeaconChannel.invokeMethod<bool>(
+                  'checkLocationServices',
+                ) ??
+                false
+          : (await Permission.locationWhenInUse.serviceStatus).isEnabled;
+      if (!locationEnabled) {
         return const ScanRequirementResult(
           ScanRequirement.locationServicesOff,
           settingsTarget: ScanSettingsTarget.location,

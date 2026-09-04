@@ -12,6 +12,7 @@ final class IosBeaconPlugin: NSObject, FlutterStreamHandler, CLLocationManagerDe
   private var activeConstraints: [String: CLBeaconIdentityConstraint] = [:]
   private var monitoredRegions: [String: CLBeaconRegion] = [:]
   private var backgroundTaskIdentifier: UIBackgroundTaskIdentifier = .invalid
+  private var pendingLocationPermissionResults: [FlutterResult] = []
 
   override init() {
     super.init()
@@ -64,8 +65,18 @@ final class IosBeaconPlugin: NSObject, FlutterStreamHandler, CLLocationManagerDe
     case "checkBluetoothState":
       result(currentBeaconState())
 
-    case "requestPermissions":
-      requestPermissions(result: result)
+    case "checkLocationServices":
+      result(CLLocationManager.locationServicesEnabled())
+
+    case "checkLocationPermission":
+      guard let manager = locationManager else {
+        result("unknown")
+        return
+      }
+      result(locationAuthorizationName(authorizationStatus(for: manager)))
+
+    case "requestLocationPermission", "requestPermissions":
+      requestLocationPermission(result: result)
 
     case "startScanning":
       guard let args = call.arguments as? [String: Any] else {
@@ -104,20 +115,30 @@ final class IosBeaconPlugin: NSObject, FlutterStreamHandler, CLLocationManagerDe
     return CLLocationManager.locationServicesEnabled() ? "poweredOn" : "poweredOff"
   }
 
-  private func requestPermissions(result: @escaping FlutterResult) {
+  private func requestLocationPermission(result: @escaping FlutterResult) {
     guard let manager = locationManager else {
-      result(false)
+      result("unknown")
       return
     }
 
     let status = authorizationStatus(for: manager)
     if status == .notDetermined {
-      manager.requestAlwaysAuthorization()
-      result(false)
+      pendingLocationPermissionResults.append(result)
+      manager.requestWhenInUseAuthorization()
       return
     }
 
-    result(status == .authorizedAlways || status == .authorizedWhenInUse)
+    result(locationAuthorizationName(status))
+  }
+
+  private func locationAuthorizationName(_ status: CLAuthorizationStatus) -> String {
+    switch status {
+    case .authorizedAlways, .authorizedWhenInUse: return "granted"
+    case .notDetermined: return "notDetermined"
+    case .denied: return "denied"
+    case .restricted: return "restricted"
+    @unknown default: return "unknown"
+    }
   }
 
   private func startScanning(uuidStrings: [String], result: @escaping FlutterResult) {
@@ -278,6 +299,17 @@ final class IosBeaconPlugin: NSObject, FlutterStreamHandler, CLLocationManagerDe
       return manager.authorizationStatus
     }
     return CLLocationManager.authorizationStatus()
+  }
+
+  func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    let status = authorizationStatus(for: manager)
+    guard status != .notDetermined, !pendingLocationPermissionResults.isEmpty else {
+      return
+    }
+    let results = pendingLocationPermissionResults
+    pendingLocationPermissionResults.removeAll()
+    let permission = locationAuthorizationName(status)
+    results.forEach { $0(permission) }
   }
 
   private func requestExecutionTimeExtension() {
