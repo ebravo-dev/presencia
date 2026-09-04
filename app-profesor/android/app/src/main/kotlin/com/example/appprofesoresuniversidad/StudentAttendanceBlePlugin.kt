@@ -12,7 +12,6 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.BluetoothStatusCodes
 import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
@@ -22,7 +21,6 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.os.ParcelUuid
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -101,14 +99,17 @@ class StudentAttendanceBlePlugin(
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
-            if (isActivityInForeground && isScanning) {
+            if (isActivityInForeground && isScanning && isStudentAttendanceCandidate(result)) {
                 connectToCandidate(result)
             }
         }
 
         override fun onBatchScanResults(results: MutableList<ScanResult>) {
             if (isActivityInForeground && isScanning) {
-                results.forEach(::connectToCandidate)
+                results
+                    .asSequence()
+                    .filter(::isStudentAttendanceCandidate)
+                    .forEach(::connectToCandidate)
             }
         }
 
@@ -229,22 +230,31 @@ class StudentAttendanceBlePlugin(
 
     @SuppressLint("MissingPermission")
     private fun startBleScan(scanner: android.bluetooth.le.BluetoothLeScanner) {
-        val filters = listOf(
-            ScanFilter.Builder().setServiceUuid(ParcelUuid(SERVICE_UUID)).build()
-        )
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .setReportDelay(0L)
             .build()
         isScanning = true
         try {
-            scanner.startScan(filters, settings, scanCallback)
+            // Do not allocate a controller-side ScanFilter here. Some Samsung
+            // devices exhaust their finite hardware filter slots with system
+            // services and silently leave this app's filter blocked, producing
+            // zero callbacks even while the radio is receiving advertisements.
+            // Scan broadly and apply the same service UUID check in-process.
+            scanner.startScan(null, settings, scanCallback)
         } catch (error: Exception) {
             isScanning = false
             throw error
         }
         mainHandler.removeCallbacks(scanTimeout)
         mainHandler.postDelayed(scanTimeout, SCAN_WINDOW_MS)
+    }
+
+    private fun isStudentAttendanceCandidate(result: ScanResult): Boolean {
+        return result.scanRecord
+            ?.serviceUuids
+            ?.any { advertisedUuid -> advertisedUuid.uuid == SERVICE_UUID }
+            ?: false
     }
 
     @SuppressLint("MissingPermission")
@@ -634,7 +644,8 @@ class StudentAttendanceBlePlugin(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (!hasPermission(Manifest.permission.BLUETOOTH_SCAN)) missing.add(Manifest.permission.BLUETOOTH_SCAN)
             if (!hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) missing.add(Manifest.permission.BLUETOOTH_CONNECT)
-        } else if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
+        }
+        if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
             missing.add(Manifest.permission.ACCESS_FINE_LOCATION)
         }
         if (missing.isNotEmpty()) {

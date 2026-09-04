@@ -9,7 +9,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <!-- Location is used only to infer proximity to the configured classroom beacon. -->
+    <!-- Location is required because BLE is also used to infer proximity to the configured classroom beacon. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Optional: never requested or required; covers notification-capable library code. -->

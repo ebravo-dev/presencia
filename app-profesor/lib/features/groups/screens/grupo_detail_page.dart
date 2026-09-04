@@ -2368,7 +2368,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
             content: Text(
               error.code == 'BLUETOOTH_OFF'
                   ? 'Activa Bluetooth para iniciar la detección.'
-                  : 'Permite el acceso a dispositivos cercanos desde Configuración.',
+                  : 'Permite dispositivos cercanos y ubicación desde Configuración.',
             ),
             backgroundColor: Colors.orange,
           ),
@@ -2978,7 +2978,7 @@ class _GrupoDetailPageState extends State<GrupoDetailPage>
     final (title, message, icon) = switch (result.requirement) {
       ScanRequirement.permissionRequired => (
         'Permisos necesarios',
-        'Para $operation, permite el acceso a dispositivos cercanos${classroomBeacon ? ' y a tu ubicación' : ''}.',
+        'Para $operation, permite el acceso a dispositivos cercanos y a tu ubicación.',
         Icons.admin_panel_settings_outlined,
       ),
       ScanRequirement.permissionDenied => (

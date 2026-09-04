@@ -201,9 +201,7 @@ class AltBeaconPlugin(
                 missing.add(Manifest.permission.BLUETOOTH_CONNECT)
             }
         }
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R &&
-            !hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
-        ) {
+        if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
             missing.add(Manifest.permission.ACCESS_FINE_LOCATION)
         }
 

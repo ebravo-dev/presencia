@@ -68,12 +68,10 @@ class PermissionService {
       );
       if (!permissionResult.isReady) return permissionResult;
 
-      final sdkInt = await _androidSdkInt();
       return await _checkServices(
         requiresLocationServices:
             !kIsWeb &&
-            defaultTargetPlatform == TargetPlatform.android &&
-            sdkInt <= 30,
+            defaultTargetPlatform == TargetPlatform.android,
       );
     } catch (_) {
       return const ScanRequirementResult(ScanRequirement.unavailable);
@@ -109,13 +107,11 @@ class PermissionService {
       );
       if (!permissionResult.isReady) return permissionResult;
 
-      final sdkInt = await _androidSdkInt();
       return await _checkServices(
         requiresLocationServices:
             !kIsWeb &&
             (defaultTargetPlatform == TargetPlatform.iOS ||
-                (defaultTargetPlatform == TargetPlatform.android &&
-                    sdkInt <= 30)),
+                defaultTargetPlatform == TargetPlatform.android),
       );
     } catch (_) {
       return const ScanRequirementResult(ScanRequirement.unavailable);
@@ -148,7 +144,7 @@ class PermissionService {
       return [
         Permission.bluetoothScan,
         Permission.bluetoothConnect,
-        if (await _androidSdkInt() <= 30) Permission.locationWhenInUse,
+        Permission.locationWhenInUse,
       ];
     }
 
@@ -161,13 +157,14 @@ class PermissionService {
 
   static Future<List<Permission>> _platformStudentBlePermissions() async {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      // Android 12+ has a dedicated Nearby devices permission. Android 11 and
-      // below still require location to perform a BLE scan.
-      final sdkInt = await _androidSdkInt();
+      // This app also uses BLE to establish physical proximity to the
+      // configured classroom. Therefore it cannot declare neverForLocation,
+      // and Android requires Location in addition to Nearby devices before it
+      // will deliver scan results.
       return [
         Permission.bluetoothScan,
         Permission.bluetoothConnect,
-        if (sdkInt <= 30) Permission.locationWhenInUse,
+        Permission.locationWhenInUse,
       ];
     }
 
@@ -176,18 +173,6 @@ class PermissionService {
     }
 
     return [Permission.bluetooth];
-  }
-
-  static Future<int> _androidSdkInt() async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return 0;
-    try {
-      return await _studentBleChannel.invokeMethod<int>('getAndroidSdkInt') ??
-          30;
-    } on PlatformException {
-      return 30;
-    } on MissingPluginException {
-      return 30;
-    }
   }
 
   static Future<ScanRequirementResult> _permissionResult(

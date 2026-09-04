@@ -511,7 +511,7 @@ class _ScannerEmptyState extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               isUnavailable
-                  ? 'Activa Bluetooth y permite el acceso a dispositivos cercanos.'
+                  ? 'Activa Bluetooth y permite dispositivos cercanos y ubicación.'
                   : 'Las tarjetas aparecerán aquí en cuanto la app los detecte.',
               textAlign: TextAlign.center,
               style: TextStyle(
