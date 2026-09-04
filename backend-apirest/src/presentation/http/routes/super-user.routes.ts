@@ -7,6 +7,7 @@ import type { AttendanceCaptureClient } from '../../../infrastructure/http/clien
 import type { AttendanceServiceCommandClient } from '../../../infrastructure/http/client/attendance-service-command.client.js';
 import type { IdentityServiceClient } from '../../../infrastructure/http/client/identity-service.client.js';
 import type { CoordinationQueryClient } from '../../../infrastructure/http/client/coordination-query.client.js';
+import type { AppLogServiceClient } from '../../../infrastructure/http/client/app-log-service.client.js';
 import type {
   DemoPortalAttendanceWrite,
   DemoPortalClass,
@@ -24,6 +25,7 @@ interface SuperUserRoutesOptions {
   attendanceCapture: AttendanceCaptureClient;
   academicService: AcademicServiceClient;
   coordinationQuery: CoordinationQueryClient;
+  appLogs: AppLogServiceClient;
   demoPortal: DemoPortalClient;
   resetLocalDemoData: () => Promise<{ teacherSessions: number; studentSessions: number }>;
 }
@@ -89,6 +91,17 @@ const databasePurgeSchema = z.object({
   target: databaseTargetSchema,
   confirmation: z.string().trim().min(1).max(80),
 }).strict();
+const appLogQuerySchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  application: z.enum(['STUDENT', 'PROFESSOR']).optional(),
+  level: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL']).optional(),
+  installationId: z.string().uuid().optional(),
+  userIdentifier: z.string().trim().max(160).optional(),
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
+  cursor: z.string().max(500).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
 
 type DatabaseTarget = z.infer<typeof databaseTargetSchema>;
 type SingleDatabaseTarget = Exclude<DatabaseTarget, 'all'>;
@@ -141,7 +154,7 @@ const ALL_DATABASES_CONFIRMATION = 'BORRAR TODAS LAS BASES';
 
 export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async (
   fastify,
-  { authService, identityService, attendanceService, attendanceCapture, academicService, coordinationQuery, demoPortal, resetLocalDemoData },
+  { authService, identityService, attendanceService, attendanceCapture, academicService, coordinationQuery, appLogs, demoPortal, resetLocalDemoData },
 ) => {
   fastify.post('/api/superUsuario/auth/login', {
     config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
@@ -173,6 +186,8 @@ export const superUserRoutes: FastifyPluginAsync<SuperUserRoutesOptions> = async
   });
 
   fastify.get('/api/superUsuario/auth/me', async (request) => ({ data: { user: { role: request.superUser?.role } } }));
+  fastify.get('/api/superUsuario/logs', async (request) => appLogs.search(appLogQuerySchema.parse(request.query)));
+  fastify.get('/api/superUsuario/logs/resumen', async () => appLogs.summary());
   fastify.get('/api/superUsuario/bases-datos', async () => ({
     data: {
       databases: DATABASE_TARGETS,

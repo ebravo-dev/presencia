@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:developer' as developer;
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +11,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'services/database_service.dart';
 import 'services/auth_storage_service.dart';
 import 'services/asistencia_local_service.dart';
+import 'services/app_log_service.dart';
 import 'core/constants/app_constants.dart';
 import 'core/constants/api_constants.dart';
 import 'core/permissions/permission_service.dart';
@@ -20,7 +25,21 @@ import 'features/groups/screens/grupos_page.dart';
 import 'features/groups/screens/sync_status_screen.dart';
 import 'features/authentication/providers/profesor_auth_provider.dart';
 
-void main() async {
+void main() {
+  runZonedGuarded<Future<void>>(_bootstrap, (error, stackTrace) {
+    unawaited(
+      AppLogService.instance.record(
+        level: 'FATAL',
+        eventName: 'app.zone_unhandled_error',
+        message: 'Error no controlado en la zona principal.',
+        error: error,
+        stackTrace: stackTrace,
+      ),
+    );
+  });
+}
+
+Future<void> _bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -30,6 +49,55 @@ void main() async {
   try {
     // Initialize Hive for local storage
     await Hive.initFlutter();
+    try {
+      await AppLogService.instance.initialize(
+        baseUrl: ApiConstants.baseUrl,
+        ingestionKey: ApiConstants.appLogIngestionKey,
+        application: 'PROFESSOR',
+        appVersion: ApiConstants.appVersion,
+        buildNumber: ApiConstants.appBuildNumber,
+        userIdentifierProvider: () =>
+            AuthStorageService().getProfesor()?.institutionalEmail,
+      );
+    } catch (error, stackTrace) {
+      // La telemetría nunca debe impedir que el profesor abra la aplicación.
+      developer.log(
+        'No se pudo inicializar la cola de logs.',
+        name: 'APP_LOG_QUEUE',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+    final previousFlutterError = FlutterError.onError;
+    FlutterError.onError = (details) {
+      unawaited(
+        AppLogService.instance.record(
+          level: 'FATAL',
+          eventName: 'app.flutter_error',
+          message: details.exceptionAsString(),
+          error: details.exception,
+          stackTrace: details.stack,
+          context: {
+            'library': details.library,
+            'context': details.context?.toDescription(),
+          },
+        ),
+      );
+      (previousFlutterError ?? FlutterError.presentError)(details);
+    };
+    final previousPlatformError = ui.PlatformDispatcher.instance.onError;
+    ui.PlatformDispatcher.instance.onError = (error, stackTrace) {
+      unawaited(
+        AppLogService.instance.record(
+          level: 'FATAL',
+          eventName: 'app.platform_unhandled_error',
+          message: 'Error asíncrono no controlado.',
+          error: error,
+          stackTrace: stackTrace,
+        ),
+      );
+      return previousPlatformError?.call(error, stackTrace) ?? true;
+    };
     Logger.info('Hive initialized');
 
     // Initialize auth storage service

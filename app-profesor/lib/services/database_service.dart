@@ -11,6 +11,9 @@ class DatabaseService {
   static const String _studentsBox = 'students';
   static const String _groupsBox = 'groups';
   static const String _attendanceBox = 'attendance';
+  static const String _authBox = 'auth';
+  static const String _offlineAttendanceBox = 'asistencias';
+  static const String _themeBox = 'uat_theme_preferences';
 
   /// Initialize the database
   Future<void> init() async {
@@ -59,8 +62,24 @@ class DatabaseService {
   /// Clear all data
   Future<void> clearAll() async {
     try {
-      await Hive.deleteFromDisk();
-      Logger.info('All database data cleared');
+      // Never use Hive.deleteFromDisk here: the durable diagnostic queue is
+      // intentionally outside session cleanup and may contain unsent errors.
+      for (final boxName in const [
+        _professorsBox,
+        _studentsBox,
+        _groupsBox,
+        _attendanceBox,
+        _authBox,
+        _offlineAttendanceBox,
+        _themeBox,
+      ]) {
+        if (Hive.isBoxOpen(boxName)) {
+          await Hive.box(boxName).clear();
+        } else if (await Hive.boxExists(boxName)) {
+          await Hive.deleteBoxFromDisk(boxName);
+        }
+      }
+      Logger.info('Application data cleared; diagnostic queue preserved');
     } catch (e, stackTrace) {
       Logger.error('Error clearing database', e, stackTrace);
     }

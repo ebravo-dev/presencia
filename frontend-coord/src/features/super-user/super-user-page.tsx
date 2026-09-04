@@ -1,13 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, AlertTriangle, Bluetooth, Bug, CalendarRange, Copy, Database, KeyRound, Link2, Lock, LogOut, Pencil, Play, PlusCircle, RefreshCw, ShieldCheck, Trash2, UserCog, Users } from 'lucide-react';
+import { Activity, AlertTriangle, Bluetooth, Bug, CalendarRange, ChevronDown, ChevronUp, Clock3, Copy, Database, FilterX, KeyRound, Link2, ListTree, Lock, LogOut, Pencil, Play, PlusCircle, RefreshCw, Search, ShieldCheck, Smartphone, Trash2, UserCog, Users } from 'lucide-react';
 import { FormEvent, useState } from 'react';
 import { superUserApi } from '@/core/api/coordination.api';
-import type { Beacon, CoordinatorAccount, DatabaseTargetId, DebugClassResponse, DebugMutationResponse, DebugScheduleInput, ScheduleDay } from '@/core/api/types';
-import { Button, Card, EmptyState, Skeleton, cn } from '@/shared/components/ui';
+import type { AppLogApplication, AppLogEvent, AppLogLevel, Beacon, CoordinatorAccount, DatabaseTargetId, DebugClassResponse, DebugMutationResponse, DebugScheduleInput, ScheduleDay } from '@/core/api/types';
+import { Badge, Button, Card, EmptyState, Skeleton, cn } from '@/shared/components/ui';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 
 const REFRESH_INTERVAL_MS = 10_000;
-type Section = 'cycle' | 'coordinators' | 'beacons' | 'students' | 'databases' | 'debug';
+type Section = 'cycle' | 'coordinators' | 'beacons' | 'students' | 'logs' | 'databases' | 'debug';
 
 export function SuperUserPage() {
   const session = useQuery({ queryKey: ['super-user', 'me'], queryFn: superUserApi.me, retry: false });
@@ -89,7 +89,7 @@ function SuperUserConsole() {
           <div>
             <p className="text-xs font-bold uppercase tracking-[.18em] text-[#C8102E]">Administración restringida</p>
             <h1 className="mt-1 text-2xl font-black tracking-tight">Super usuario</h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Beacons, celulares vinculados y permisos de coordinadores.</p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Operación, dispositivos, cuentas y diagnóstico de las aplicaciones.</p>
           </div>
           <Button variant="secondary" onClick={() => logout.mutate()}><LogOut size={17} />Salir</Button>
         </div>
@@ -101,6 +101,7 @@ function SuperUserConsole() {
           <SectionButton current={section} value="coordinators" onClick={setSection} icon={<UserCog size={17} />} label="Coordinadores" />
           <SectionButton current={section} value="beacons" onClick={setSection} icon={<Bluetooth size={17} />} label="Beacons" />
           <SectionButton current={section} value="students" onClick={setSection} icon={<Link2 size={17} />} label="Alumnos vinculados" />
+          <SectionButton current={section} value="logs" onClick={setSection} icon={<ListTree size={17} />} label="Logs de apps" />
           <SectionButton current={section} value="databases" onClick={setSection} icon={<Database size={17} />} label="Bases de datos" />
           <SectionButton current={section} value="debug" onClick={setSection} icon={<Bug size={17} />} label="Debug" />
         </div>
@@ -109,6 +110,7 @@ function SuperUserConsole() {
         {section === 'coordinators' && <CoordinatorAdmin />}
         {section === 'beacons' && <BeaconAdmin />}
         {section === 'students' && <StudentBindingAdmin />}
+        {section === 'logs' && <AppLogsAdmin />}
         {section === 'databases' && <DatabaseAdmin />}
         {section === 'debug' && <DebugAdmin />}
       </div>
@@ -132,6 +134,236 @@ function SectionButton({ current, value, onClick, icon, label }: { current: Sect
       {icon}{label}
     </button>
   );
+}
+
+function AppLogsAdmin() {
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 350);
+  const [application, setApplication] = useState<AppLogApplication | ''>('');
+  const [level, setLevel] = useState<AppLogLevel | ''>('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [cursor, setCursor] = useState<string | undefined>();
+  const [cursorHistory, setCursorHistory] = useState<Array<string | undefined>>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const filters = {
+    ...(debouncedSearch ? { q: debouncedSearch } : {}),
+    ...(application ? { application } : {}),
+    ...(level ? { level } : {}),
+    ...(from ? { from: new Date(from).toISOString() } : {}),
+    ...(to ? { to: new Date(to).toISOString() } : {}),
+    ...(cursor ? { cursor } : {}),
+    limit: 50,
+  };
+  const logs = useQuery({
+    queryKey: ['super-user', 'app-logs', filters],
+    queryFn: () => superUserApi.logs(filters),
+    refetchInterval: cursor ? false : 15_000,
+  });
+  const summary = useQuery({
+    queryKey: ['super-user', 'app-logs-summary'],
+    queryFn: superUserApi.logSummary,
+    refetchInterval: 15_000,
+  });
+
+  const resetPagination = () => {
+    setCursor(undefined);
+    setCursorHistory([]);
+    setExpandedId(null);
+  };
+  const clearFilters = () => {
+    setSearch('');
+    setApplication('');
+    setLevel('');
+    setFrom('');
+    setTo('');
+    resetPagination();
+  };
+  const nextPage = () => {
+    const next = logs.data?.meta.nextCursor;
+    if (!next) return;
+    setCursorHistory((history) => [...history, cursor]);
+    setCursor(next);
+    setExpandedId(null);
+  };
+  const previousPage = () => {
+    const history = [...cursorHistory];
+    const previous = history.pop();
+    setCursorHistory(history);
+    setCursor(previous);
+    setExpandedId(null);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <LogMetric label="Eventos totales" value={summary.data?.data.total} icon={<ListTree size={19} />} />
+        <LogMetric label="Últimas 24 h" value={summary.data?.data.last24Hours} icon={<Clock3 size={19} />} />
+        <LogMetric label="Errores 24 h" value={summary.data?.data.errorsLast24Hours} icon={<AlertTriangle size={19} />} tone="danger" />
+        <LogMetric label="Fatales 24 h" value={summary.data?.data.fatalLast24Hours} icon={<Bug size={19} />} tone="danger" />
+        <LogMetric label="Instalaciones activas" value={summary.data?.data.activeInstallationsLast24Hours} icon={<Smartphone size={19} />} />
+      </div>
+
+      {(summary.data?.data.topErrors ?? []).length > 0 && (
+        <Card className="p-4">
+          <p className="mb-3 text-xs font-black uppercase tracking-wide text-slate-500">Errores más frecuentes · 24 h</p>
+          <div className="flex flex-wrap gap-2">
+            {summary.data!.data.topErrors.map((item) => (
+              <button
+                key={item.eventName}
+                type="button"
+                onClick={() => { setSearch(item.eventName); resetPagination(); }}
+                className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-left text-xs font-bold text-red-800 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
+              >
+                <span className="font-mono">{item.eventName}</span>
+                <span className="ml-2 rounded-full bg-white/70 px-2 py-0.5 dark:bg-black/20">{item.count}</span>
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <Card className="p-4">
+        <div className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_170px_150px_190px_190px_auto]">
+          <label className="relative block">
+            <span className="sr-only">Buscar logs</span>
+            <Search className="pointer-events-none absolute left-3 top-3 text-slate-400" size={17} />
+            <input
+              className="field pl-10"
+              value={search}
+              onChange={(event) => { setSearch(event.target.value); resetPagination(); }}
+              placeholder="Mensaje, evento, usuario o correlación"
+            />
+          </label>
+          <label>
+            <span className="sr-only">Aplicación</span>
+            <select className="field" value={application} onChange={(event) => { setApplication(event.target.value as AppLogApplication | ''); resetPagination(); }}>
+              <option value="">Todas las apps</option>
+              <option value="STUDENT">Alumnos</option>
+              <option value="PROFESSOR">Profesores</option>
+            </select>
+          </label>
+          <label>
+            <span className="sr-only">Severidad</span>
+            <select className="field" value={level} onChange={(event) => { setLevel(event.target.value as AppLogLevel | ''); resetPagination(); }}>
+              <option value="">Toda severidad</option>
+              {(['FATAL', 'ERROR', 'WARN', 'INFO', 'DEBUG'] as const).map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
+          <label className="text-xs font-bold text-slate-500">
+            Desde
+            <input className="field mt-1" type="datetime-local" value={from} onChange={(event) => { setFrom(event.target.value); resetPagination(); }} />
+          </label>
+          <label className="text-xs font-bold text-slate-500">
+            Hasta
+            <input className="field mt-1" type="datetime-local" value={to} onChange={(event) => { setTo(event.target.value); resetPagination(); }} />
+          </label>
+          <Button variant="secondary" onClick={clearFilters} title="Limpiar filtros"><FilterX size={17} />Limpiar</Button>
+        </div>
+      </Card>
+
+      {logs.isLoading && <Card className="p-5"><Skeleton className="h-80" /></Card>}
+      {logs.isError && (
+        <Card className="p-5"><EmptyState icon={<AlertTriangle />} title="Logs no disponibles" description="No se pudo consultar App Log Service. Revisa su estado y vuelve a intentar." /></Card>
+      )}
+      {logs.data && logs.data.data.length === 0 && (
+        <Card className="p-5"><EmptyState icon={<Search />} title="Sin coincidencias" description="No hay eventos con los filtros seleccionados." /></Card>
+      )}
+      {logs.data && logs.data.data.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3 dark:border-[#2e3138]">
+            <p className="text-sm font-bold">{logs.data.meta.total.toLocaleString()} eventos encontrados</p>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">Actualizado {formatLogDate(logs.data.meta.generatedAt)}</span>
+              <Button variant="ghost" onClick={() => logs.refetch()} disabled={logs.isFetching}><RefreshCw className={cn(logs.isFetching && 'animate-spin')} size={16} />Actualizar</Button>
+            </div>
+          </div>
+          <div className="divide-y divide-slate-100 dark:divide-[#2e3138]">
+            {logs.data.data.map((event) => (
+              <LogEventRow key={event.eventId} event={event} expanded={expandedId === event.eventId} onToggle={() => setExpandedId(expandedId === event.eventId ? null : event.eventId)} />
+            ))}
+          </div>
+          <div className="flex items-center justify-between border-t border-slate-200 p-4 dark:border-[#2e3138]">
+            <Button variant="secondary" disabled={cursorHistory.length === 0} onClick={previousPage}>Anterior</Button>
+            <span className="text-xs font-semibold text-slate-400">Página {cursorHistory.length + 1}</span>
+            <Button variant="secondary" disabled={!logs.data.meta.nextCursor} onClick={nextPage}>Más antiguos</Button>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function LogMetric({ label, value, icon, tone = 'neutral' }: { label: string; value?: number; icon: React.ReactNode; tone?: 'neutral' | 'danger' }) {
+  return (
+    <Card className="flex items-center gap-3 p-4">
+      <div className={cn('rounded-xl p-2.5', tone === 'danger' ? 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300' : 'bg-slate-100 text-slate-600 dark:bg-[#15181d] dark:text-slate-300')}>{icon}</div>
+      <div><p className="text-xs font-bold text-slate-500">{label}</p><p className="text-2xl font-black">{value === undefined ? '—' : value.toLocaleString()}</p></div>
+    </Card>
+  );
+}
+
+function LogEventRow({ event, expanded, onToggle }: { event: AppLogEvent; expanded: boolean; onToggle: () => void }) {
+  const tone = event.level === 'ERROR' || event.level === 'FATAL' ? 'danger' : event.level === 'WARN' ? 'warning' : event.level === 'INFO' ? 'info' : 'neutral';
+  return (
+    <article>
+      <button type="button" className="grid w-full gap-3 px-4 py-4 text-left hover:bg-slate-50 dark:hover:bg-white/[.03] md:grid-cols-[90px_115px_155px_minmax(0,1fr)_auto] md:items-start" onClick={onToggle}>
+        <Badge tone={tone}>{event.level}</Badge>
+        <span className="text-xs font-bold text-slate-500">{event.application === 'STUDENT' ? 'Alumnos' : 'Profesores'}</span>
+        <span className="text-xs text-slate-500">{formatLogDate(event.occurredAt)}</span>
+        <span className="min-w-0"><span className="block truncate text-sm font-bold">{event.message}</span><span className="mt-1 block truncate font-mono text-xs text-slate-400">{event.eventName}{event.userIdentifier ? ` · ${event.userIdentifier}` : ''}</span></span>
+        {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+      </button>
+      {expanded && (
+        <div className="border-t border-slate-100 bg-slate-50/70 px-4 py-5 dark:border-[#2e3138] dark:bg-[#15181d]">
+          <div className="grid gap-4 lg:grid-cols-3">
+            <LogDetail title="Dispositivo" entries={[
+              ['Instalación', event.installationId], ['Plataforma', event.platform], ['Sistema', event.osVersion],
+              ['Modelo', [event.deviceManufacturer, event.deviceModel].filter(Boolean).join(' ')], ['Locale', event.locale],
+              ['Zona horaria', event.timezoneOffset], ['Red', event.networkType],
+            ]} />
+            <LogDetail title="Aplicación" entries={[
+              ['Versión', `${event.appVersion} (${event.buildNumber})`], ['Sesión', event.appSessionId], ['Secuencia', String(event.sequence)],
+              ['Usuario', event.userIdentifier], ['Recibido', formatLogDate(event.receivedAt)], ['Correlación', event.correlationId],
+            ]} />
+            <LogDetail title="Error" entries={[
+              ['Tipo', event.errorType], ['Detalle', event.errorMessage], ['IP origen', event.sourceIp], ['Evento', event.eventId],
+            ]} />
+          </div>
+          <LogCode title="Mensaje completo" value={event.message} />
+          {event.stackTrace && <LogCode title="Stack trace" value={event.stackTrace} />}
+          {event.context && Object.keys(event.context).length > 0 && <LogCode title="Contexto estructurado" value={JSON.stringify(event.context, null, 2)} />}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function LogDetail({ title, entries }: { title: string; entries: Array<[string, string | undefined]> }) {
+  return (
+    <div>
+      <h3 className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">{title}</h3>
+      <dl className="space-y-2">
+        {entries.filter(([, value]) => value).map(([label, value]) => (
+          <div key={label} className="grid grid-cols-[85px_minmax(0,1fr)] gap-2 text-xs"><dt className="font-bold text-slate-400">{label}</dt><dd className="break-all font-mono text-slate-700 dark:text-slate-200">{value}</dd></div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function LogCode({ title, value }: { title: string; value: string }) {
+  return (
+    <div className="mt-4">
+      <div className="mb-2 flex items-center justify-between"><h3 className="text-xs font-black uppercase tracking-wide text-slate-500">{title}</h3><Button variant="ghost" onClick={() => navigator.clipboard?.writeText(value)}><Copy size={14} />Copiar</Button></div>
+      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-slate-950 p-4 text-xs leading-relaxed text-slate-200">{value}</pre>
+    </div>
+  );
+}
+
+function formatLogDate(value: string): string {
+  return new Intl.DateTimeFormat('es-MX', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(value));
 }
 
 function DatabaseAdmin() {

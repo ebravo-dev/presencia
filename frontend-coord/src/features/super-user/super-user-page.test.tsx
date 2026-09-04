@@ -103,6 +103,43 @@ describe('SuperUser student beacon administration', () => {
   });
 });
 
+describe('SuperUser application logs', () => {
+  it('filters and expands structured mobile diagnostics', async () => {
+    let requestedUrl = '';
+    server.use(
+      http.get('/api/superUsuario/auth/me', () => HttpResponse.json({ data: { user: { role: 'SUPER_USER' } } })),
+      http.get('/api/superUsuario/coordinadores', () => HttpResponse.json({ data: [], meta: { generatedAt: '2026-09-04T10:00:00.000Z' } })),
+      http.get('/api/superUsuario/logs/resumen', () => HttpResponse.json({
+        data: { total: 42, last24Hours: 12, errorsLast24Hours: 3, fatalLast24Hours: 1, activeInstallationsLast24Hours: 4, byApplication: [], byLevel: [], generatedAt: '2026-09-04T10:00:00.000Z' },
+      })),
+      http.get('/api/superUsuario/logs', ({ request }) => {
+        requestedUrl = request.url;
+        return HttpResponse.json({
+          data: [{
+            eventId: '74b29734-65a8-48b2-9e6e-8cd01f1a0016', sequence: 7, level: 'ERROR', application: 'STUDENT',
+            eventName: 'ble.scan.start_failed', message: 'No se pudo iniciar el escaneo.', occurredAt: '2026-09-04T09:59:00.000Z',
+            receivedAt: '2026-09-04T10:00:00.000Z', installationId: '74b29734-65a8-48b2-9e6e-8cd01f1a0017',
+            appSessionId: '74b29734-65a8-48b2-9e6e-8cd01f1a0018', userIdentifier: '2251330008', appVersion: '1.2.0',
+            buildNumber: '5', platform: 'android', osVersion: 'Android 15', context: { permission: 'bluetoothScan' },
+          }],
+          meta: { nextCursor: null, total: 1, generatedAt: '2026-09-04T10:00:00.000Z' },
+        });
+      }),
+    );
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Logs de apps' }));
+    expect(await screen.findByText('No se pudo iniciar el escaneo.')).toBeInTheDocument();
+    expect(screen.getByText('42')).toBeInTheDocument();
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Aplicación' }), 'STUDENT');
+    await waitFor(() => expect(requestedUrl).toContain('application=STUDENT'));
+    await user.click(screen.getByText('No se pudo iniciar el escaneo.'));
+    expect(await screen.findByText('Android 15')).toBeInTheDocument();
+    expect(screen.getByText(/bluetoothScan/)).toBeInTheDocument();
+  });
+});
+
 describe('SuperUser debug roster administration', () => {
   it('assigns a previously registered student to a debug class by matricula', async () => {
     let requestBody: unknown;

@@ -1,5 +1,52 @@
 export interface CoordinatorUser { id: string; email: string; name: string; role: string }
 export interface SuperUser { role: 'SUPER_USER' }
+export type AppLogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
+export type AppLogApplication = 'STUDENT' | 'PROFESSOR';
+export interface AppLogEvent {
+  eventId: string;
+  sequence: number;
+  level: AppLogLevel;
+  application: AppLogApplication;
+  eventName: string;
+  message: string;
+  occurredAt: string;
+  receivedAt: string;
+  installationId: string;
+  appSessionId: string;
+  userIdentifier?: string;
+  appVersion: string;
+  buildNumber: string;
+  platform: string;
+  osVersion: string;
+  deviceModel?: string;
+  deviceManufacturer?: string;
+  locale?: string;
+  timezoneOffset?: string;
+  networkType?: string;
+  errorType?: string;
+  errorMessage?: string;
+  stackTrace?: string;
+  correlationId?: string;
+  context?: Record<string, unknown>;
+  sourceIp?: string;
+}
+export interface AppLogPageResponse {
+  data: AppLogEvent[];
+  meta: { nextCursor: string | null; total: number; generatedAt: string };
+}
+export interface AppLogSummaryResponse {
+  data: {
+    total: number;
+    last24Hours: number;
+    errorsLast24Hours: number;
+    fatalLast24Hours: number;
+    activeInstallationsLast24Hours: number;
+    byApplication: Array<{ application: AppLogApplication; count: number }>;
+    byLevel: Array<{ level: AppLogLevel; count: number }>;
+    topErrors: Array<{ eventName: string; count: number }>;
+    generatedAt: string;
+  };
+}
 export type DatabaseTargetId = 'integration' | 'identity' | 'academic' | 'attendance' | 'coordination-query';
 export interface DatabaseTarget {
   id: DatabaseTargetId;

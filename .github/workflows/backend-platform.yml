@@ -163,6 +163,7 @@ jobs:
           --scale academic-service=2
           --scale attendance-service=2
           --scale coordination-query-service=2
+          --scale app-log-service=2
 
       - name: Run public deployment smoke checks
         env:

@@ -36,6 +36,7 @@ describe('superUserRoutes', () => {
       attendanceCapture: {} as never,
       academicService: { activeAcademicCycle: vi.fn(async () => cycleStatus), changeActiveAcademicCycle } as never,
       coordinationQuery: {} as never,
+      appLogs: { search: async () => ({ data: [], meta: { nextCursor: null, total: 0 } }), summary: async () => ({ data: {} }) } as never,
       demoPortal: {} as never,
       resetLocalDemoData: async () => ({ teacherSessions: 0, studentSessions: 0 }),
     });

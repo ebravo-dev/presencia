@@ -65,6 +65,7 @@ x-uat-environment: &uat-environment
   IDENTITY_SERVICE_URL: http://identity-service:3200
   ACADEMIC_SERVICE_URL: http://academic-service:3300
   COORDINATION_QUERY_SERVICE_URL: http://coordination-query-service:3500
+  APP_LOG_SERVICE_URL: http://app-log-service:3600
   COORDINATOR_EMAIL: ${COORDINATOR_EMAIL:-}
   COORDINATOR_NAME: ${COORDINATOR_NAME:-}
   COORDINATOR_PASSWORD: ${COORDINATOR_PASSWORD:-}
@@ -152,6 +153,18 @@ x-coordination-query-environment: &coordination-query-environment
   METRICS_TOKEN: ${COORDINATION_QUERY_METRICS_TOKEN:?COORDINATION_QUERY_METRICS_TOKEN is required}
   OTEL_SERVICE_NAME: presencia-coordination-query
 
+x-app-log-environment: &app-log-environment
+  <<: *otel-environment
+  NODE_ENV: production
+  HOST: 0.0.0.0
+  PORT: 3600
+  DATABASE_URL: ${APP_LOG_DATABASE_URL:?APP_LOG_DATABASE_URL is required}
+  APP_LOG_INGESTION_KEY: ${APP_LOG_INGESTION_KEY:?APP_LOG_INGESTION_KEY is required}
+  INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
+  METRICS_TOKEN: ${APP_LOG_METRICS_TOKEN:?APP_LOG_METRICS_TOKEN is required}
+  INGESTION_RATE_LIMIT_MAX: ${APP_LOG_INGESTION_RATE_LIMIT_MAX:-600}
+  OTEL_SERVICE_NAME: presencia-app-logs
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -178,6 +191,9 @@ services:
       COORDINATION_QUERY_DB_NAME: ${COORDINATION_QUERY_DB_NAME:-presencia_coordination_query}
       COORDINATION_QUERY_DB_USER: ${COORDINATION_QUERY_DB_USER:-presencia_coordination_query}
       COORDINATION_QUERY_DB_PASSWORD: ${COORDINATION_QUERY_DB_PASSWORD:?COORDINATION_QUERY_DB_PASSWORD is required}
+      APP_LOG_DB_NAME: ${APP_LOG_DB_NAME:-presencia_app_logs}
+      APP_LOG_DB_USER: ${APP_LOG_DB_USER:-presencia_app_logs}
+      APP_LOG_DB_PASSWORD: ${APP_LOG_DB_PASSWORD:?APP_LOG_DB_PASSWORD is required}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ../postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
@@ -215,6 +231,9 @@ services:
       COORDINATION_QUERY_DB_NAME: ${COORDINATION_QUERY_DB_NAME:-presencia_coordination_query}
       COORDINATION_QUERY_DB_USER: ${COORDINATION_QUERY_DB_USER:-presencia_coordination_query}
       COORDINATION_QUERY_DB_PASSWORD: ${COORDINATION_QUERY_DB_PASSWORD:?COORDINATION_QUERY_DB_PASSWORD is required}
+      APP_LOG_DB_NAME: ${APP_LOG_DB_NAME:-presencia_app_logs}
+      APP_LOG_DB_USER: ${APP_LOG_DB_USER:-presencia_app_logs}
+      APP_LOG_DB_PASSWORD: ${APP_LOG_DB_PASSWORD:?APP_LOG_DB_PASSWORD is required}
     volumes:
       - ../postgres/init-databases.sh:/opt/presencia/init-databases.sh:ro
     depends_on:
@@ -490,6 +509,32 @@ services:
     expose: ["3500"]
     networks: [private]
 
+  app-log-migrate:
+    image: presencia-app-log-service:${IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: services/app-log-service/Dockerfile
+    restart: "no"
+    command: ["npm", "run", "prisma:deploy", "--workspace", "@presencia/app-log-service"]
+    environment: *app-log-environment
+    depends_on:
+      postgres-provision:
+        condition: service_completed_successfully
+    networks: [private]
+
+  app-log-service:
+    <<: *node-runtime-hardening
+    image: presencia-app-log-service:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    environment: *app-log-environment
+    depends_on:
+      app-log-migrate:
+        condition: service_completed_successfully
+    expose: ["3600"]
+    networks: [private]
+
   api-gateway:
     <<: *node-runtime-hardening
     image: presencia-api-gateway:${IMAGE_TAG:-latest}
@@ -509,10 +554,12 @@ services:
       ACADEMIC_SERVICE_URL: http://academic-service:3300
       ATTENDANCE_SERVICE_URL: http://attendance-service:3400
       COORDINATION_QUERY_SERVICE_URL: http://coordination-query-service:3500
+      APP_LOG_SERVICE_URL: http://app-log-service:3600
       ROUTE_TARGET_OVERRIDES: ${ROUTE_TARGET_OVERRIDES:-{}}
       REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
       CORS_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
       METRICS_TOKEN: ${METRICS_TOKEN:?METRICS_TOKEN is required}
+      APP_LOG_INGESTION_RATE_LIMIT_MAX: ${APP_LOG_INGESTION_RATE_LIMIT_MAX:-600}
       OTEL_SERVICE_NAME: presencia-api-gateway
     depends_on:
       uat-integration:

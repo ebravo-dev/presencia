@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'ble_advertiser_service.dart';
 import 'local_storage_service.dart';
 import 'native_altbeacon_channel.dart';
+import 'student_logger.dart';
 
 enum AttendanceSessionState {
   idle,
@@ -156,7 +157,11 @@ class AttendanceSessionService {
       },
       onError: (Object error) {
         if (generation != _sessionGeneration) return;
-        debugPrint('[AttendanceSession] Room scan error: $error');
+        StudentLogger.error(
+          'attendance.room_scan.stream_error',
+          'Falló el flujo de detección del aula.',
+          error: error,
+        );
         _emit(
           AttendanceSessionState.error,
           message: 'No pudimos preparar el pase de lista.',
@@ -178,8 +183,13 @@ class AttendanceSessionService {
         );
         return;
       }
-    } catch (error) {
-      debugPrint('[AttendanceSession] Could not start room scan: $error');
+    } catch (error, stackTrace) {
+      StudentLogger.error(
+        'attendance.room_scan.start_failed',
+        'No se pudo iniciar la detección del aula.',
+        error: error,
+        stackTrace: stackTrace,
+      );
       await _stopRoomScanOnly();
       _emit(
         AttendanceSessionState.error,

@@ -8,6 +8,7 @@ const metricsToken = 'a-different-metrics-token-with-at-least-32-characters';
 describe('API Gateway', () => {
   let uat: FastifyInstance;
   let attendance: FastifyInstance;
+  let appLogs: FastifyInstance;
   let gateway: FastifyInstance;
   let env: GatewayEnv;
 
@@ -29,11 +30,20 @@ describe('API Gateway', () => {
     }));
     await attendance.listen({ host: '127.0.0.1', port: 0 });
 
+    appLogs = Fastify();
+    appLogs.all('/*', async (request) => ({
+      upstream: 'app-logs',
+      appLogKey: request.headers['x-app-log-key'],
+      internalToken: request.headers['x-internal-service-token'],
+    }));
+    await appLogs.listen({ host: '127.0.0.1', port: 0 });
+
     env = gatewayEnvSchema.parse({
       NODE_ENV: 'test',
       LOG_LEVEL: 'silent',
       UAT_INTEGRATION_URL: uat.listeningOrigin,
       ATTENDANCE_SERVICE_URL: attendance.listeningOrigin,
+      APP_LOG_SERVICE_URL: appLogs.listeningOrigin,
       METRICS_TOKEN: metricsToken,
     });
     gateway = await buildGateway({
@@ -43,7 +53,7 @@ describe('API Gateway', () => {
   });
 
   afterEach(async () => {
-    await Promise.all([gateway?.close(), uat?.close(), attendance?.close()]);
+    await Promise.all([gateway?.close(), uat?.close(), attendance?.close(), appLogs?.close()]);
   });
 
   it('routes UAT requests and strips untrusted internal headers', async () => {
@@ -152,6 +162,50 @@ describe('API Gateway', () => {
     expect(response.json().internalToken).toBeUndefined();
   });
 
+  it('routes mobile log batches without exposing service identity', async () => {
+    const response = await gateway.inject({
+      method: 'POST', url: '/api/app-logs/batches', payload: {},
+      headers: { 'x-app-log-key': 'mobile-key', 'x-internal-service-token': 'attacker-value' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ upstream: 'app-logs', appLogKey: 'mobile-key' });
+    expect(response.json().internalToken).toBeUndefined();
+  });
+
+  it('keeps mobile logs outside the shared gateway rate-limit budget', async () => {
+    const priorityGateway = await buildGateway({
+      env: gatewayEnvSchema.parse({ ...env, RATE_LIMIT_MAX: 1 }),
+      redis: { ping: async () => 'PONG', quit: async () => 'OK' },
+    });
+    const logRequest = {
+      method: 'POST' as const,
+      url: '/api/app-logs/batches',
+      payload: {},
+      headers: { 'x-app-log-key': 'mobile-key' },
+    };
+    expect((await priorityGateway.inject(logRequest)).statusCode).toBe(200);
+    expect((await priorityGateway.inject(logRequest)).statusCode).toBe(200);
+    expect((await priorityGateway.inject({ method: 'GET', url: '/api/uat/one' })).statusCode).toBe(200);
+    expect((await priorityGateway.inject({ method: 'GET', url: '/api/uat/two' })).statusCode).toBe(429);
+    await priorityGateway.close();
+  });
+
+  it('enforces a dedicated log-ingestion budget', async () => {
+    const limitedGateway = await buildGateway({
+      env: gatewayEnvSchema.parse({ ...env, APP_LOG_INGESTION_RATE_LIMIT_MAX: 1 }),
+      redis: { ping: async () => 'PONG', quit: async () => 'OK' },
+    });
+    const request = {
+      method: 'POST' as const,
+      url: '/api/app-logs/batches',
+      payload: {},
+      headers: { 'x-app-log-key': 'mobile-key' },
+    };
+    expect((await limitedGateway.inject(request)).statusCode).toBe(200);
+    expect((await limitedGateway.inject(request)).statusCode).toBe(429);
+    await limitedGateway.close();
+  });
+
   it('never exposes internal service routes', async () => {
     const response = await gateway.inject({ method: 'GET', url: '/internal/coordination/beacons' });
     expect(response.statusCode).toBe(404);
@@ -189,5 +243,22 @@ describe('API Gateway', () => {
     expect(response.json().dependencies.identity).toMatchObject({ ok: false, status: 503 });
     await readinessGateway.close();
     await identity.close();
+  });
+
+  it('reports App Log Service degradation without taking functional APIs down', async () => {
+    const unavailableLogs = Fastify();
+    unavailableLogs.get('/health/ready', async (_request, reply) => (
+      reply.code(503).send({ status: 'degraded' })
+    ));
+    await unavailableLogs.listen({ host: '127.0.0.1', port: 0 });
+    const readinessGateway = await buildGateway({
+      env: gatewayEnvSchema.parse({ ...env, APP_LOG_SERVICE_URL: unavailableLogs.listeningOrigin }),
+      redis: { ping: async () => 'PONG', quit: async () => 'OK' },
+    });
+    const response = await readinessGateway.inject({ method: 'GET', url: '/health/ready' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().dependencies.appLogs).toMatchObject({ ok: false, status: 503 });
+    await readinessGateway.close();
+    await unavailableLogs.close();
   });
 });

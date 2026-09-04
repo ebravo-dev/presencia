@@ -25,6 +25,7 @@ import { AcademicServiceClient } from './infrastructure/http/client/academic-ser
 import { AttendanceServiceCommandClient } from './infrastructure/http/client/attendance-service-command.client.js';
 import { AttendanceCaptureClient } from './infrastructure/http/client/attendance-capture.client.js';
 import { CoordinationQueryClient } from './infrastructure/http/client/coordination-query.client.js';
+import { AppLogServiceClient } from './infrastructure/http/client/app-log-service.client.js';
 import { DemoPortalClient } from './infrastructure/http/client/demo-portal.client.js';
 import { DurableDomainEventBus } from './infrastructure/events/durable-domain-event-bus.js';
 import { registerUatIntegrationMetrics } from './infrastructure/observability/http-metrics.js';
@@ -116,6 +117,7 @@ export async function buildApp() {
     env.COORDINATION_QUERY_SERVICE_URL,
     env.INTERNAL_API_TOKEN,
   );
+  const appLogs = new AppLogServiceClient(env.APP_LOG_SERVICE_URL, env.INTERNAL_API_TOKEN);
   const demoPortal = new DemoPortalClient(env.PRESENCIA_DEMO_PORTAL_URL, env.INTERNAL_API_TOKEN);
   const uatStudentService = new UatStudentService(
     studentSessionRepository,
@@ -217,7 +219,7 @@ export async function buildApp() {
   }));
 
   fastify.get('/health/ready', async (_request, reply) => {
-    const [database, redisStatus, identityStatus, academicStatus, attendanceStatus, coordinationQueryStatus, demoPortalStatus] = await Promise.all([
+    const [database, redisStatus, identityStatus, academicStatus, attendanceStatus, coordinationQueryStatus, appLogStatus, demoPortalStatus] = await Promise.all([
       prisma.$queryRaw`SELECT 1`.then(() => ({ ok: true })).catch((error: unknown) => ({
         ok: false,
         error: error instanceof Error ? error.message : 'Unknown PostgreSQL error',
@@ -237,6 +239,9 @@ export async function buildApp() {
       })),
       coordinationQuery.health().then(() => ({ ok: true })).catch((error: unknown) => ({
         ok: false, error: error instanceof Error ? error.message : 'Unknown Coordination Query error',
+      })),
+      appLogs.health().then(() => ({ ok: true })).catch((error: unknown) => ({
+        ok: false, error: error instanceof Error ? error.message : 'Unknown App Log Service error',
       })),
       env.PRESENCIA_DEBUG_MODE
         || env.PRESENCIA_APP_REVIEW_ENABLED
@@ -259,6 +264,7 @@ export async function buildApp() {
         academic: academicStatus,
         attendance: attendanceStatus,
         coordinationQuery: coordinationQueryStatus,
+        appLogs: appLogStatus,
         demoPortal: demoPortalStatus,
       },
     });
@@ -293,6 +299,7 @@ export async function buildApp() {
     attendanceCapture: attendanceCaptureClient,
     academicService: academicServiceClient,
     coordinationQuery,
+    appLogs,
     demoPortal,
     resetLocalDemoData: async () => {
       const [teacherSessions, studentSessions] = await Promise.all([

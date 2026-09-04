@@ -7,6 +7,7 @@ export type GatewayTarget =
   | 'academic'
   | 'attendance'
   | 'coordination-query'
+  | 'app-logs'
   | 'denied';
 
 export interface GatewayRouteOverride {
@@ -24,6 +25,7 @@ export const publicRouteContracts = [
   { prefix: '/api/uat', owner: 'uat-integration', transitionalTarget: 'uat-integration' },
   { prefix: '/api/coordinacion', owner: 'coordination-query', transitionalTarget: 'uat-integration' },
   { prefix: '/api/student-device-bindings', owner: 'attendance', transitionalTarget: 'attendance' },
+  { prefix: '/api/app-logs', owner: 'app-log-service', transitionalTarget: 'app-logs' },
   { prefix: '/api/superUsuario', owner: 'identity', transitionalTarget: 'uat-integration' },
 ] as const satisfies readonly PublicRouteContract[];
 

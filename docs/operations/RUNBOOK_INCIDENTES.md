@@ -15,6 +15,7 @@ fallos propios ni atribuir a Presencia una caída institucional.
 | Aceptación durable de una captura de asistencia, p95 | menor a 1 s | 5 minutos |
 | Convergencia del dashboard después de un evento, p95 | menor a 30 s | 15 minutos |
 | Carga UAT completada con el portal disponible | 95% antes de 5 minutos | 24 horas |
+| Aceptación de un lote de logs móviles, p95 | menor a 1 s | 5 minutos |
 
 `infra/scripts/verify-load.mjs` comprueba en CI el SLO de lectura con 200
 solicitudes, concurrencia 20, dos réplicas por servicio y el portal UAT
@@ -68,6 +69,20 @@ con `OTEL_TRACES_EXPORTER=none` sin retirar métricas ni health checks.
    recuperación.
 5. Una escritura manual en UAT exige grupo, fecha, lista y autorización
    explícitos; las sondas ordinarias son de sólo lectura.
+
+## Logs móviles sin convergencia
+
+1. Comprueba `app-log-service/health/ready`, la clave de ingesta configurada en
+   el build móvil y el espacio disponible en `presencia_app_logs`.
+2. No pidas limpiar caché, cerrar datos ni reinstalar: la cola Hive pendiente
+   puede ser la única copia del diagnóstico.
+3. Corrige el servicio o la configuración y vuelve a primer plano en la app;
+   esto fuerza un intento inmediato. Los reintentos ordinarios nunca descartan
+   eventos.
+4. Confirma que los UUID aparezcan en Super Usuario. Reenvíos con el mismo UUID
+   son normales y no duplican filas.
+5. Si faltan eventos después de un acuse, restaura el backup en un destino
+   aislado y compara UUID/conteos. No desactives el trigger append-only.
 
 ## Dashboard sin convergencia
 

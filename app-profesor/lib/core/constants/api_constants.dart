@@ -92,6 +92,18 @@ class ApiConstants {
     'PRESENCIA_API_TIMEOUT',
     defaultValue: timeoutDuration,
   );
+  static const String appLogIngestionKey = String.fromEnvironment(
+    'PRESENCIA_LOG_INGESTION_KEY',
+    defaultValue: 'development-app-log-ingestion-key-change-me',
+  );
+  static const String appVersion = String.fromEnvironment(
+    'PRESENCIA_APP_VERSION',
+    defaultValue: '1.0.0',
+  );
+  static const String appBuildNumber = String.fromEnvironment(
+    'PRESENCIA_APP_BUILD_NUMBER',
+    defaultValue: '1',
+  );
   static const int uatDefaultIdCiclo = int.fromEnvironment(
     'UAT_ID_CICLO',
     defaultValue: 150,

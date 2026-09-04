@@ -60,6 +60,7 @@ export const envSchema = z.object({
   ),
   ATTENDANCE_SERVICE_URL: z.string().url().default('http://localhost:3400'),
   COORDINATION_QUERY_SERVICE_URL: z.string().url().default('http://localhost:3500'),
+  APP_LOG_SERVICE_URL: z.string().url().default('http://localhost:3600'),
   IDENTITY_SERVICE_URL: z.string().url().default('http://localhost:3200'),
   ACADEMIC_SERVICE_URL: z.string().url().default('http://localhost:3300'),
   ATTENDANCE_BACKEND_SERVICE_TOKEN: z.string().min(32).default('development-internal-service-token-change-me'),

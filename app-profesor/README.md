@@ -121,11 +121,15 @@ flutter pub get
 
 3. **Configurar el backend**
 
-La app usa `https://dashboarduat.presenciauat.fit` de forma predeterminada. Para
-compilar con la configuración de producción versionada:
+La app usa `https://dashboarduat.presenciauat.fit` de forma predeterminada.
+`env.production.json` sólo contiene valores públicos. Para una build que envíe
+diagnósticos, usa el archivo local ignorado por Git e inyecta la clave de
+ingesta del despliegue:
 
 ```bash
-flutter run --dart-define-from-file=env.production.json
+cp env.example.json env.local.json
+# Edita PRESENCIA_LOG_INGESTION_KEY con el valor entregado por CI/CD.
+flutter build apk --release --dart-define-from-file=env.local.json
 ```
 
 Para otro entorno, copia el ejemplo (el archivo local está ignorado por Git),
@@ -137,8 +141,9 @@ flutter run --dart-define-from-file=env.local.json
 flutter build apk --release --dart-define-from-file=env.local.json
 ```
 
-No guardes contraseñas ni tokens en estos archivos: las variables Dart quedan
-incluidas en el binario de la aplicación.
+No guardes contraseñas ni tokens de usuario en estos archivos. La clave de
+ingesta queda incluida en el binario, por lo que sólo autoriza escritura y el
+backend aplica rate limit y validación estricta; nunca permite leer logs.
 
 4. **Generar código (si es necesario)**
 ```bash

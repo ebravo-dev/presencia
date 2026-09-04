@@ -63,13 +63,15 @@ El Compose automatiza el orden:
    en un proyecto demo sustituye ambos portales UAT sin publicar puertos.
 7. UAT Integration arranca después de sus dependencias. El proceso HTTP del
    monolito ya no forma parte del runtime.
-8. UAT Integration comprueba PostgreSQL, Redis, RabbitMQ, Identity, Academic,
-   Attendance y Coordination Query en su readiness. El Gateway también exige
-   readiness de todos sus upstreams antes de que arranque la web.
+8. UAT Integration y el Gateway reportan App Log Service en sus dependencias,
+   pero no bloquean el resto de la plataforma si éste falla: los móviles
+   conservan la cola hasta su recuperación. PostgreSQL, Redis, RabbitMQ y los
+   servicios funcionales sí condicionan el readiness.
 
 No se deben ejecutar migraciones dentro de réplicas HTTP. Para escalar, aumenta
 réplicas únicamente de `api-gateway`, `uat-integration`, `identity-service`,
-`academic-service`, `attendance-service` y `coordination-query-service`. Los
+`academic-service`, `attendance-service`, `coordination-query-service` y
+`app-log-service`. Los
 jobs `*-migrate`, `*-import`, PostgreSQL, Redis y RabbitMQ permanecen únicos
 salvo que se sustituyan por servicios administrados de alta disponibilidad.
 `demo-portal-service` también permanece en una sola réplica y sólo almacena
@@ -91,7 +93,8 @@ docker compose --env-file infra/compose/.env.dokploy \
   --scale identity-service=2 \
   --scale academic-service=2 \
   --scale attendance-service=2 \
-  --scale coordination-query-service=2
+  --scale coordination-query-service=2 \
+  --scale app-log-service=2
 PRESENCIA_BASE_URL=https://presencia.example.edu.mx \
   node infra/scripts/smoke-deployment.mjs
 ```

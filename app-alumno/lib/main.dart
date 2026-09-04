@@ -1,20 +1,87 @@
 import 'dart:async';
+import 'dart:developer' as developer;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'config/app_environment.dart';
 import 'models/student_academic_profile.dart';
 import 'services/local_storage_service.dart';
 import 'services/ble_advertiser_service.dart';
 import 'services/attendance_session_service.dart';
 import 'services/student_device_binding_service.dart';
 import 'services/student_auth_service.dart';
+import 'services/app_log_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/app_splash_screen.dart';
 
-Future<void> main() async {
+void main() {
+  runZonedGuarded<Future<void>>(_bootstrap, (error, stackTrace) {
+    unawaited(
+      AppLogService.instance.record(
+        level: 'FATAL',
+        eventName: 'app.zone_unhandled_error',
+        message: 'Error no controlado en la zona principal.',
+        error: error,
+        stackTrace: stackTrace,
+      ),
+    );
+  });
+}
+
+Future<void> _bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Hive.initFlutter();
+  try {
+    await AppLogService.instance.initialize(
+      baseUrl: AppEnvironment.presenceApiBaseUrl,
+      ingestionKey: AppEnvironment.appLogIngestionKey,
+      application: 'STUDENT',
+      appVersion: AppEnvironment.appVersion,
+      buildNumber: AppEnvironment.appBuildNumber,
+    );
+  } catch (error, stackTrace) {
+    // La telemetría nunca debe impedir que el alumno abra la aplicación.
+    developer.log(
+      'No se pudo inicializar la cola de logs.',
+      name: 'APP_LOG_QUEUE',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+  final previousFlutterError = FlutterError.onError;
+  FlutterError.onError = (details) {
+    unawaited(
+      AppLogService.instance.record(
+        level: 'FATAL',
+        eventName: 'app.flutter_error',
+        message: details.exceptionAsString(),
+        error: details.exception,
+        stackTrace: details.stack,
+        context: {
+          'library': details.library,
+          'context': details.context?.toDescription(),
+        },
+      ),
+    );
+    (previousFlutterError ?? FlutterError.presentError)(details);
+  };
+  final previousPlatformError = ui.PlatformDispatcher.instance.onError;
+  ui.PlatformDispatcher.instance.onError = (error, stackTrace) {
+    unawaited(
+      AppLogService.instance.record(
+        level: 'FATAL',
+        eventName: 'app.platform_unhandled_error',
+        message: 'Error asíncrono no controlado.',
+        error: error,
+        stackTrace: stackTrace,
+      ),
+    );
+    return previousPlatformError?.call(error, stackTrace) ?? true;
+  };
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   runApp(const PresenciaAlumnoBootstrap());
 }
@@ -55,6 +122,7 @@ class _PresenciaAlumnoBootstrapState extends State<PresenciaAlumnoBootstrap> {
       final storage = LocalStorageService();
       await storage.init();
       await storage.ensureDeviceBinding();
+      AppLogService.instance.setUserIdentifierProvider(() => storage.matricula);
 
       final bleService = BleAdvertiserService();
       final attendanceSession = AttendanceSessionService(

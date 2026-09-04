@@ -3,6 +3,7 @@ import 'dart:io';
 
 import '../config/app_environment.dart';
 import 'local_storage_service.dart';
+import 'student_logger.dart';
 
 class StudentDeviceBindingService {
   static const String baseUrl = AppEnvironment.studentBindingApiBaseUrl;
@@ -44,7 +45,14 @@ class StudentDeviceBindingService {
       final body = await utf8.decodeStream(response);
       final successful =
           response.statusCode >= 200 && response.statusCode < 300;
-      if (!successful) return false;
+      if (!successful) {
+        StudentLogger.warning(
+          'device_binding.sync_rejected',
+          'El backend rechazó la sincronización del dispositivo.',
+          context: {'statusCode': response.statusCode},
+        );
+        return false;
+      }
 
       if (body.trim().isNotEmpty) {
         final decoded = jsonDecode(body);
@@ -58,8 +66,19 @@ class StudentDeviceBindingService {
           }
         }
       }
+      StudentLogger.info(
+        'device_binding.sync_completed',
+        'El vínculo del dispositivo quedó sincronizado.',
+      );
       return true;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      StudentLogger.warning(
+        'device_binding.sync_deferred',
+        'La sincronización del dispositivo quedó pendiente.',
+        error: error,
+        stackTrace: stackTrace,
+        context: {'offlineRetry': true},
+      );
       return false;
     } finally {
       client.close(force: true);

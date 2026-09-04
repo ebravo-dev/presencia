@@ -39,6 +39,7 @@ apps y separa datos en bases PostgreSQL independientes:
 - `academic-service`: profesores, alumnos, horarios, grupos, roster y clases compartidas;
 - `attendance-service`: asistencia, permisos proyectados y vinculación matrícula/celular/UUID;
 - `coordination-query-service`: dashboard y reportes reconstruibles;
+- `app-log-service`: ingesta idempotente y consulta de logs móviles append-only;
 - `backend-apirest`: integración y anticorrupción con los portales UAT;
 - `demo-portal-service`: sustituto privado de ambos portales cuando el despliegue activa el modo demo;
 - RabbitMQ: eventos durables con reintentos/DLQ;
@@ -76,6 +77,10 @@ validación de secretos, smoke test, rollback y backups está en
 [docs/operations/DOKPLOY.md](docs/operations/DOKPLOY.md).
 Los SLO, alertas Prometheus y procedimientos de incidentes están en
 [docs/operations/RUNBOOK_INCIDENTES.md](docs/operations/RUNBOOK_INCIDENTES.md).
+La cola offline, el contrato, la privacidad y la operación de logs se describen
+en [docs/operations/APP_LOGS.md](docs/operations/APP_LOGS.md).
+La ingesta móvil tiene un contrato OpenAPI independiente en
+[docs/openapi/app-log-service.yaml](docs/openapi/app-log-service.yaml).
 Para presentar las apps sin datos institucionales, usa un proyecto aislado y
 sigue [docs/operations/MODO_DEMO.md](docs/operations/MODO_DEMO.md).
 

@@ -6,6 +6,7 @@ import '../models/student_academic_profile.dart';
 import '../models/student_schedule_entry.dart';
 import 'local_storage_service.dart';
 import 'student_session_request.dart';
+import 'student_logger.dart';
 
 class StudentAuthResult {
   final String matricula;
@@ -84,6 +85,10 @@ class StudentAuthService {
     required String password,
     required LocalStorageService storage,
   }) async {
+    StudentLogger.info(
+      'auth.login.started',
+      'Iniciando autenticación del alumno.',
+    );
     await storage.ensureDeviceIdentity();
     final decoded = await _createStudentSession(
       username: username,
@@ -105,6 +110,11 @@ class StudentAuthService {
       );
     }
 
+    StudentLogger.info(
+      'auth.login.completed',
+      'Autenticación del alumno completada.',
+      context: {'demoMode': demoMode},
+    );
     return StudentAuthResult(
       matricula: matricula,
       deviceBindingToken: deviceBindingToken,

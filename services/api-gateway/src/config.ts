@@ -19,6 +19,7 @@ export const gatewayEnvSchema = z.object({
   ACADEMIC_SERVICE_URL: z.url().optional(),
   ATTENDANCE_SERVICE_URL: z.url().optional(),
   COORDINATION_QUERY_SERVICE_URL: z.url().optional(),
+  APP_LOG_SERVICE_URL: z.url().optional(),
   ROUTE_TARGET_OVERRIDES: z.string().default('{}'),
   REDIS_URL: z.url().default('redis://localhost:6379/0'),
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
@@ -26,6 +27,7 @@ export const gatewayEnvSchema = z.object({
   UPSTREAM_TIMEOUT_MS: z.coerce.number().int().positive().max(120_000).default(30_000),
   BODY_LIMIT_BYTES: z.coerce.number().int().positive().max(10_000_000).default(1_048_576),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+  APP_LOG_INGESTION_RATE_LIMIT_MAX: z.coerce.number().int().positive().max(10_000).default(600),
   RATE_LIMIT_WINDOW: z.string().default('1 minute'),
 }).superRefine((value, context) => {
   if (value.NODE_ENV !== 'production') return;
@@ -58,6 +60,7 @@ const overridableTargetSchema = z.enum([
   'academic',
   'attendance',
   'coordination-query',
+  'app-logs',
 ] satisfies Exclude<GatewayTarget, 'gateway' | 'denied'>[]);
 
 export function parseRouteOverrides(value: string): GatewayRouteOverride[] {

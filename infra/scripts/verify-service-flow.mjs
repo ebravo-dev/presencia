@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 const internalToken = process.env.INTERNAL_API_TOKEN;
 if (!internalToken) throw new Error('INTERNAL_API_TOKEN is required.');
 
@@ -6,6 +8,8 @@ const academicUrl = process.env.ACADEMIC_SERVICE_URL ?? 'http://academic-service
 const attendanceUrl = process.env.ATTENDANCE_SERVICE_URL ?? 'http://attendance-service:3400';
 const queryUrl = process.env.COORDINATION_QUERY_SERVICE_URL ?? 'http://coordination-query-service:3500';
 const gatewayUrl = process.env.API_GATEWAY_URL ?? 'http://api-gateway:8080';
+const appLogIngestionKey = process.env.APP_LOG_INGESTION_KEY;
+if (!appLogIngestionKey) throw new Error('APP_LOG_INGESTION_KEY is required.');
 const uatPortalMockUrl = process.env.UAT_PORTAL_MOCK_URL ?? 'http://uat-portal-mock:3900';
 const rabbitmqManagementUrl = process.env.RABBITMQ_MANAGEMENT_URL ?? 'http://rabbitmq:15672';
 const rabbitmqUser = process.env.RABBITMQ_USER;
@@ -61,6 +65,57 @@ const coordinatorMe = await request(gatewayUrl, '/api/coordinacion/auth/me', {
 });
 if (coordinatorMe.data?.user?.role !== 'COORDINATOR') throw new Error('Coordinator session is not backed by Identity.');
 pass('Identity owns coordinator and super-user sessions behind the stable BFF contracts');
+
+const diagnosticEventId = randomUUID();
+const diagnosticBatch = {
+  schemaVersion: 1,
+  batchId: randomUUID(),
+  sentAt: verificationObservedAt,
+  events: [{
+    eventId: diagnosticEventId,
+    sequence: 1,
+    level: 'ERROR',
+    application: 'STUDENT',
+    eventName: 'ci.log.flow',
+    message: 'CI diagnostic token=must-not-survive',
+    occurredAt: verificationObservedAt,
+    installationId: randomUUID(),
+    appSessionId: randomUUID(),
+    userIdentifier: matricula,
+    appVersion: '1.2.0',
+    buildNumber: '5',
+    platform: 'android',
+    osVersion: 'Android CI',
+    context: { password: 'must-not-survive', operation: 'integration-check' },
+  }],
+};
+const acceptedDiagnostic = await request(gatewayUrl, '/api/app-logs/batches', {
+  method: 'POST', expected: 202,
+  requestHeaders: { 'x-app-log-key': appLogIngestionKey },
+  body: diagnosticBatch,
+});
+if (!acceptedDiagnostic.data?.acceptedEventIds?.includes(diagnosticEventId)) {
+  throw new Error('App Log Service did not acknowledge the committed diagnostic event.');
+}
+const duplicateDiagnostic = await request(gatewayUrl, '/api/app-logs/batches', {
+  method: 'POST', expected: 200,
+  requestHeaders: { 'x-app-log-key': appLogIngestionKey },
+  body: diagnosticBatch,
+});
+if (duplicateDiagnostic.data?.duplicates !== 1) {
+  throw new Error('App Log Service did not acknowledge the duplicate idempotently.');
+}
+const visibleDiagnostics = await eventually(async () => request(
+  gatewayUrl,
+  '/api/superUsuario/logs?q=ci.log.flow&limit=10',
+  { method: 'GET', expected: 200, requestHeaders: { cookie: superCookie } },
+), (result) => result.data?.some((event) => event.eventId === diagnosticEventId), 'The diagnostic event never became visible to Super Usuario.');
+const visibleDiagnostic = visibleDiagnostics.data.find((event) => event.eventId === diagnosticEventId);
+if (visibleDiagnostic?.context?.password !== '[REDACTED]'
+  || visibleDiagnostic?.message?.includes('must-not-survive')) {
+  throw new Error('App Log Service did not redact sensitive diagnostic values.');
+}
+pass('Mobile diagnostics are committed idempotently, redacted and visible only through Super Usuario');
 
 const harvestedGroups = await eventually(async () => request(
   academicUrl,

@@ -14,4 +14,17 @@ class AppEnvironment {
     'PRESENCIA_API_TIMEOUT',
     defaultValue: 12000,
   );
+
+  static const String appLogIngestionKey = String.fromEnvironment(
+    'PRESENCIA_LOG_INGESTION_KEY',
+    defaultValue: 'development-app-log-ingestion-key-change-me',
+  );
+  static const String appVersion = String.fromEnvironment(
+    'PRESENCIA_APP_VERSION',
+    defaultValue: '1.2.0',
+  );
+  static const String appBuildNumber = String.fromEnvironment(
+    'PRESENCIA_APP_BUILD_NUMBER',
+    defaultValue: '5',
+  );
 }

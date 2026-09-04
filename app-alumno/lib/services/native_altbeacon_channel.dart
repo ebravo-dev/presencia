@@ -1,7 +1,8 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
+import 'student_logger.dart';
 
 class AltBeaconDetection {
   final String uuid;
@@ -63,7 +64,11 @@ class NativeAltBeaconChannel {
       final state = await _method.invokeMethod<String>('checkBluetoothState');
       return state == 'poweredOn';
     } catch (e) {
-      debugPrint('[AltBeacon] Error checking BT state: $e');
+      StudentLogger.warning(
+        'ble.scan.state_check_failed',
+        'No se pudo consultar el estado de Bluetooth.',
+        error: e,
+      );
       return false;
     }
   }
@@ -73,7 +78,11 @@ class NativeAltBeaconChannel {
       final result = await _method.invokeMethod<bool>('requestPermissions');
       return result == true;
     } catch (e) {
-      debugPrint('[AltBeacon] Error requesting permissions: $e');
+      StudentLogger.warning(
+        'ble.scan.permission_failed',
+        'No se pudieron solicitar los permisos Bluetooth.',
+        error: e,
+      );
       return false;
     }
   }
@@ -85,8 +94,13 @@ class NativeAltBeaconChannel {
         'uuids': uuids,
       });
       return result == true;
-    } catch (e) {
-      debugPrint('[AltBeacon] Error starting scan: $e');
+    } catch (e, stackTrace) {
+      StudentLogger.error(
+        'ble.scan.start_failed',
+        'No se pudo iniciar el escaneo de beacons.',
+        error: e,
+        stackTrace: stackTrace,
+      );
       rethrow;
     }
   }
@@ -95,7 +109,11 @@ class NativeAltBeaconChannel {
     try {
       await _method.invokeMethod('stopScanning');
     } catch (e) {
-      debugPrint('[AltBeacon] Error stopping scan: $e');
+      StudentLogger.warning(
+        'ble.scan.stop_failed',
+        'No se pudo detener el escaneo de beacons.',
+        error: e,
+      );
     }
   }
 }

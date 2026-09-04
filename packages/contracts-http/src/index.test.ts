@@ -7,6 +7,7 @@ describe('resolveGatewayTarget', () => {
     ['/api/coordinacion/resumen', 'uat-integration'],
     ['/api/student-device-bindings', 'attendance'],
     ['/api/student-device-bindings/resolve', 'attendance'],
+    ['/api/app-logs/batches', 'app-logs'],
     ['/api/superUsuario/auth/me', 'uat-integration'],
     ['/health/ready', 'gateway'],
   ])('routes %s to %s', (url, target) => {

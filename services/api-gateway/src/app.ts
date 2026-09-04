@@ -4,7 +4,7 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import replyFrom from '@fastify/reply-from';
 import { resolveGatewayTarget, type GatewayTarget } from '@presencia/contracts-http';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { Redis } from 'ioredis';
 import { type GatewayEnv, loadGatewayEnv, parseCorsOrigins, parseRouteOverrides } from './config.js';
 import { createGatewayMetrics } from './metrics.js';
@@ -67,11 +67,15 @@ export async function buildGateway(options: BuildGatewayOptions = {}): Promise<F
     ...(env.ACADEMIC_SERVICE_URL ? { academic: env.ACADEMIC_SERVICE_URL } : {}),
     ...(env.ATTENDANCE_SERVICE_URL ? { attendance: env.ATTENDANCE_SERVICE_URL } : {}),
     ...(env.COORDINATION_QUERY_SERVICE_URL ? { 'coordination-query': env.COORDINATION_QUERY_SERVICE_URL } : {}),
+    ...(env.APP_LOG_SERVICE_URL ? { 'app-logs': env.APP_LOG_SERVICE_URL } : {}),
   };
 
   const app = Fastify({
     bodyLimit: env.BODY_LIMIT_BYTES,
     logger: { level: env.LOG_LEVEL },
+    // Only the public Nginx hop is trusted. Using `true` would allow callers
+    // to forge the left-most X-Forwarded-For value and evade rate limiting.
+    trustProxy: 1,
     genReqId(request) {
       const supplied = headerValue(request.headers['x-correlation-id']);
       return supplied && supplied.length <= 128 ? supplied : randomUUID();
@@ -85,13 +89,23 @@ export async function buildGateway(options: BuildGatewayOptions = {}): Promise<F
     exposedHeaders: ['x-correlation-id', 'traceparent'],
   });
   const rateLimitOptions = {
-    global: true,
+    global: false,
     max: env.RATE_LIMIT_MAX,
     timeWindow: env.RATE_LIMIT_WINDOW,
   };
   await app.register(rateLimit, ownedRedis
     ? { ...rateLimitOptions, redis }
     : rateLimitOptions);
+  const sharedProxyLimiter = app.rateLimit({
+    max: env.RATE_LIMIT_MAX,
+    timeWindow: env.RATE_LIMIT_WINDOW,
+    groupId: 'gateway-public',
+  });
+  const appLogProxyLimiter = app.rateLimit({
+    max: env.APP_LOG_INGESTION_RATE_LIMIT_MAX,
+    timeWindow: '1 minute',
+    groupId: 'app-log-ingestion',
+  });
   await app.register(replyFrom, {
     http: { requestOptions: { timeout: env.UPSTREAM_TIMEOUT_MS } },
   });
@@ -129,16 +143,28 @@ export async function buildGateway(options: BuildGatewayOptions = {}): Promise<F
       ...(env.COORDINATION_QUERY_SERVICE_URL ? {
         coordinationQuery: { url: env.COORDINATION_QUERY_SERVICE_URL, path: '/health/ready' },
       } : {}),
+      ...(env.APP_LOG_SERVICE_URL ? {
+        appLogs: { url: env.APP_LOG_SERVICE_URL, path: '/health/ready' },
+      } : {}),
     };
     const checks = await Promise.all(Object.entries(configured).map(async ([name, dependency]) => [
-      name, await checkHttpDependency(dependency.url, env.UPSTREAM_TIMEOUT_MS, dependency.path),
+      name,
+      await checkHttpDependency(
+        dependency.url,
+        name === 'appLogs' ? Math.min(env.UPSTREAM_TIMEOUT_MS, 2_000) : env.UPSTREAM_TIMEOUT_MS,
+        dependency.path,
+      ),
     ] as const));
     const redisResult = await redis.ping().then((value) => ({ ok: value === 'PONG' })).catch((error: unknown) => ({
       ok: false,
       error: error instanceof Error ? error.message : 'Unknown Redis error',
     }));
     const dependencies = { ...Object.fromEntries(checks), redis: redisResult };
-    const ready = Object.values(dependencies).every(({ ok }) => ok);
+    // Logging is intentionally non-critical: clients retain their durable
+    // queues while it recovers, and attendance/authentication stay available.
+    const ready = Object.entries(dependencies).every(
+      ([name, dependency]) => name === 'appLogs' || dependency.ok,
+    );
     return reply.code(ready ? 200 : 503).send({
       status: ready ? 'ok' : 'degraded',
       service: 'api-gateway',
@@ -160,7 +186,16 @@ export async function buildGateway(options: BuildGatewayOptions = {}): Promise<F
     return reply.type(metrics.registry.contentType).send(await metrics.registry.metrics());
   });
 
-  app.setNotFoundHandler(async (request, reply) => {
+  // Proxy routes are resolved by the not-found handler, so the limiter must be
+  // attached explicitly; Fastify's global route hook does not cover 404s.
+  app.setNotFoundHandler({
+    preHandler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const target = resolveGatewayTarget(request.raw.url ?? request.url, routeOverrides);
+      return target === 'app-logs'
+        ? appLogProxyLimiter.call(app, request, reply)
+        : sharedProxyLimiter.call(app, request, reply);
+    },
+  }, async (request, reply) => {
     const target = resolveGatewayTarget(request.raw.url ?? request.url, routeOverrides);
     if (target === 'denied') {
       return reply.code(404).send({ error: 'NOT_FOUND', message: 'Ruta no encontrada.' });

@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../models/attendance_confirmation.dart';
+import 'student_logger.dart';
 
 /// State of the BLE advertiser
 enum AdvertiserState { idle, advertising, bluetoothOff, error }
@@ -52,7 +52,10 @@ class BleAdvertiserService {
         _updateState(AdvertiserState.error);
         return false;
       }
-      debugPrint('[BLE] Starting attendance beacon...');
+      StudentLogger.info(
+        'ble.advertising.start',
+        'Iniciando transmisión del beacon de asistencia.',
+      );
       if (_currentState == AdvertiserState.advertising) return true;
       if (_currentState == AdvertiserState.error ||
           _currentState == AdvertiserState.bluetoothOff) {
@@ -74,8 +77,13 @@ class BleAdvertiserService {
         _updateState(AdvertiserState.error);
       }
       return started == AdvertiserState.advertising;
-    } catch (e) {
-      debugPrint('[BLE] Error starting advertising: $e');
+    } catch (e, stackTrace) {
+      StudentLogger.error(
+        'ble.advertising.start_failed',
+        'No se pudo iniciar la transmisión BLE.',
+        error: e,
+        stackTrace: stackTrace,
+      );
       _updateState(AdvertiserState.error);
       return false;
     }
@@ -86,7 +94,11 @@ class BleAdvertiserService {
     try {
       await _channel.invokeMethod('stopAdvertising');
     } catch (e) {
-      debugPrint('[BLE] Error stopping advertising: $e');
+      StudentLogger.warning(
+        'ble.advertising.stop_failed',
+        'No se pudo detener la transmisión BLE.',
+        error: e,
+      );
     }
   }
 
@@ -103,7 +115,11 @@ class BleAdvertiserService {
         'deviceBindingId': ?deviceBindingId,
       });
     } catch (e) {
-      debugPrint('[BLE] Error setting student identity: $e');
+      StudentLogger.error(
+        'ble.identity.sync_failed',
+        'No se pudo sincronizar la identidad con el servicio BLE nativo.',
+        error: e,
+      );
     }
   }
 
@@ -129,17 +145,29 @@ class BleAdvertiserService {
         _updateState(
           isAdvertising ? AdvertiserState.advertising : AdvertiserState.idle,
         );
-        debugPrint('[BLE] Advertising state: $isAdvertising');
+        StudentLogger.debug(
+          'ble.advertising.state_changed',
+          'Cambió el estado de transmisión BLE.',
+          context: {'isAdvertising': isAdvertising},
+        );
         break;
 
       case 'onAdvertisingError':
-        debugPrint('[BLE] Advertising error: ${call.arguments}');
+        StudentLogger.error(
+          'ble.advertising.native_error',
+          'El servicio BLE nativo reportó un error.',
+          error: call.arguments,
+        );
         _updateState(AdvertiserState.error);
         break;
 
       case 'onBluetoothStateChanged':
         final state = call.arguments as String;
-        debugPrint('[BLE] Bluetooth state: $state');
+        StudentLogger.info(
+          'ble.adapter.state_changed',
+          'Cambió el estado del adaptador Bluetooth.',
+          context: {'state': state},
+        );
         if (state == 'poweredOn') {
           _updateState(AdvertiserState.idle);
         } else if (state == 'poweredOff') {
@@ -149,12 +177,18 @@ class BleAdvertiserService {
 
       case 'onAttendanceConfirmed':
         final message = call.arguments as String? ?? '';
-        debugPrint('[BLE] Attendance confirmed: $message');
+        StudentLogger.info(
+          'attendance.gatt.confirmed',
+          'El profesor confirmó la asistencia por GATT.',
+        );
         _confirmController.add(AttendanceConfirmation.fromGattMessage(message));
         break;
 
       case 'onBeaconDetected':
-        debugPrint('[BLE] Attendance beacon was detected by professor');
+        StudentLogger.info(
+          'attendance.beacon.detected_by_professor',
+          'El profesor detectó el beacon de asistencia.',
+        );
         break;
     }
     return null;

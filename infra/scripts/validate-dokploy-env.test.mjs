@@ -88,6 +88,7 @@ test('runtime containers gate Docker health on readiness', async () => {
     '../../services/academic-service/Dockerfile',
     '../../services/attendance-service/Dockerfile',
     '../../services/coordination-query-service/Dockerfile',
+    '../../services/app-log-service/Dockerfile',
     '../../services/demo-portal-service/Dockerfile',
   ];
   for (const dockerfile of dockerfiles) {
@@ -105,6 +106,7 @@ test('application images run as non-root users', async () => {
     '../../services/academic-service/Dockerfile',
     '../../services/attendance-service/Dockerfile',
     '../../services/coordination-query-service/Dockerfile',
+    '../../services/app-log-service/Dockerfile',
     '../../services/demo-portal-service/Dockerfile',
   ];
   for (const dockerfile of dockerfiles) {
@@ -120,6 +122,7 @@ test('all Node runtime images preload OpenTelemetry before application code', as
     '../../services/academic-service/Dockerfile',
     '../../services/attendance-service/Dockerfile',
     '../../services/coordination-query-service/Dockerfile',
+    '../../services/app-log-service/Dockerfile',
     '../../services/demo-portal-service/Dockerfile',
   ];
   for (const dockerfile of workspaceDockerfiles) {
@@ -135,7 +138,7 @@ test('all Node runtime images preload OpenTelemetry before application code', as
   for (const serviceName of [
     'presencia-api-gateway', 'presencia-uat-integration', 'presencia-identity',
     'presencia-academic', 'presencia-attendance', 'presencia-coordination-query',
-    'presencia-demo-portal',
+    'presencia-demo-portal', 'presencia-app-logs',
   ]) assert.match(compose, new RegExp(`OTEL_SERVICE_NAME: ${serviceName}`));
   assert.match(compose, /OTEL_METRICS_EXPORTER: none/);
   assert.match(compose, /OTEL_LOGS_EXPORTER: none/);
@@ -146,7 +149,7 @@ test('Dokploy runtime services use the hardened read-only profile', async () => 
   assert.match(compose, /x-node-runtime-hardening:[\s\S]*read_only: true[\s\S]*cap_drop: \[ALL\][\s\S]*no-new-privileges:true/);
   for (const serviceName of [
     'uat-integration', 'identity-service', 'academic-service',
-    'attendance-service', 'coordination-query-service', 'api-gateway',
+    'attendance-service', 'coordination-query-service', 'app-log-service', 'api-gateway',
     'demo-portal-service',
   ]) {
     const start = compose.indexOf(`\n  ${serviceName}:`);
@@ -229,17 +232,21 @@ test('Compose CI replaces both UAT portals with an isolated non-root simulator',
 
 test('the cross-service verifier also runs with the hardened Node 24 runtime', async () => {
   const workflow = await readFile(new URL('../../.github/workflows/backend-platform.yml', import.meta.url), 'utf8');
+  const serviceFlow = await readFile(new URL('./verify-service-flow.mjs', import.meta.url), 'utf8');
   assert.doesNotMatch(workflow, /node(?:-version:|:) 24\.7/);
   assert.doesNotMatch(workflow, /up --build --detach --wait/);
   assert.match(workflow, /up --build --detach/);
   for (const service of [
     'api-gateway', 'uat-integration', 'identity-service',
-    'academic-service', 'attendance-service', 'coordination-query-service',
+    'academic-service', 'attendance-service', 'coordination-query-service', 'app-log-service',
   ]) assert.match(workflow, new RegExp(`--scale ${service}=2`));
   assert.match(workflow, /Verify PostgreSQL backup restoration[\s\S]*PRESENCIA_BACKUP_VERIFY_ALLOW=ci/);
   assert.match(workflow, /Verify Redis backup restoration[\s\S]*PRESENCIA_BACKUP_VERIFY_ALLOW: ci/);
   assert.match(workflow, /Verify API Gateway replica failover[\s\S]*docker stop "\$gateway_container"[\s\S]*smoke-deployment\.mjs/);
   assert.match(workflow, /docker run --rm[\s\S]*--user node[\s\S]*--read-only[\s\S]*--cap-drop ALL[\s\S]*node:24-alpine/);
+  assert.match(serviceFlow, /\/api\/app-logs\/batches/);
+  assert.match(serviceFlow, /\/api\/superUsuario\/logs/);
+  assert.match(serviceFlow, /\[REDACTED\]/);
 });
 
 test('CI compiles both Flutter apps for Android and unsigned iOS', async () => {

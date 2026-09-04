@@ -1,0 +1,135 @@
+openapi: 3.1.0
+info:
+  title: Presencia App Log Ingestion API
+  version: 1.0.0
+  description: Ingesta append-only e idempotente para diagnósticos de las aplicaciones móviles.
+servers:
+  - url: https://presencia.example.edu.mx
+paths:
+  /api/app-logs/batches:
+    post:
+      operationId: appendAppLogBatch
+      summary: Persiste y confirma un lote de eventos móviles
+      security:
+        - appLogKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppLogBatch'
+      responses:
+        '202':
+          description: Uno o más eventos nuevos fueron persistidos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppLogAcknowledgement'
+        '200':
+          description: Todos los eventos ya existían y fueron confirmados idempotentemente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppLogAcknowledgement'
+        '400':
+          description: El lote no cumple el esquema o el límite de tamaño.
+        '401':
+          description: Clave de ingesta ausente o inválida.
+        '429':
+          description: Límite de ingesta excedido; el cliente debe conservar y reintentar el lote.
+components:
+  securitySchemes:
+    appLogKey:
+      type: apiKey
+      in: header
+      name: x-app-log-key
+  schemas:
+    AppLogBatch:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, batchId, sentAt, events]
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        batchId:
+          type: string
+          format: uuid
+        sentAt:
+          type: string
+          format: date-time
+        events:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/AppLogEvent'
+    AppLogEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - sequence
+        - level
+        - application
+        - eventName
+        - message
+        - occurredAt
+        - installationId
+        - appSessionId
+        - appVersion
+        - buildNumber
+        - platform
+        - osVersion
+      properties:
+        eventId: { type: string, format: uuid }
+        sequence: { type: integer, minimum: 0 }
+        level:
+          type: string
+          enum: [DEBUG, INFO, WARN, ERROR, FATAL]
+        application:
+          type: string
+          enum: [STUDENT, PROFESSOR]
+        eventName:
+          type: string
+          minLength: 1
+          maxLength: 120
+          pattern: '^[a-zA-Z0-9][a-zA-Z0-9._-]*$'
+        message: { type: string, minLength: 1, maxLength: 8000 }
+        occurredAt: { type: string, format: date-time }
+        installationId: { type: string, format: uuid }
+        appSessionId: { type: string, format: uuid }
+        userIdentifier: { type: string, maxLength: 160 }
+        appVersion: { type: string, minLength: 1, maxLength: 40 }
+        buildNumber: { type: string, minLength: 1, maxLength: 40 }
+        platform: { type: string, minLength: 1, maxLength: 40 }
+        osVersion: { type: string, minLength: 1, maxLength: 500 }
+        deviceModel: { type: string, maxLength: 160 }
+        deviceManufacturer: { type: string, maxLength: 160 }
+        locale: { type: string, maxLength: 40 }
+        timezoneOffset: { type: string, maxLength: 16 }
+        networkType: { type: string, maxLength: 40 }
+        errorType: { type: string, maxLength: 240 }
+        errorMessage: { type: string, maxLength: 8000 }
+        stackTrace: { type: string, maxLength: 32000 }
+        correlationId: { type: string, maxLength: 128 }
+        context:
+          type: object
+          additionalProperties: true
+    AppLogAcknowledgement:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [batchId, acceptedEventIds, inserted, duplicates, committedAt]
+          properties:
+            batchId: { type: string, format: uuid }
+            acceptedEventIds:
+              type: array
+              items: { type: string, format: uuid }
+            inserted: { type: integer, minimum: 0 }
+            duplicates: { type: integer, minimum: 0 }
+            committedAt: { type: string, format: date-time }

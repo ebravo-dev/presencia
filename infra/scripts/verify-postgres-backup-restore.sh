@@ -14,6 +14,7 @@ fi
 : "${ACADEMIC_DB_NAME:?ACADEMIC_DB_NAME is required}"
 : "${ATTENDANCE_SERVICE_DB_NAME:?ATTENDANCE_SERVICE_DB_NAME is required}"
 : "${COORDINATION_QUERY_DB_NAME:?COORDINATION_QUERY_DB_NAME is required}"
+: "${APP_LOG_DB_NAME:?APP_LOG_DB_NAME is required}"
 
 export PGPASSWORD="$POSTGRES_PASSWORD"
 scratch_database="presencia_restore_check_$$"
@@ -43,7 +44,8 @@ for database in \
   "$IDENTITY_DB_NAME" \
   "$ACADEMIC_DB_NAME" \
   "$ATTENDANCE_SERVICE_DB_NAME" \
-  "$COORDINATION_QUERY_DB_NAME"
+  "$COORDINATION_QUERY_DB_NAME" \
+  "$APP_LOG_DB_NAME"
 do
   source_counts=$(table_counts "$database")
   if [ -z "$source_counts" ]; then

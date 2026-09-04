@@ -1,5 +1,5 @@
 import { api, superApi } from './client';
-import type { ActiveAcademicCycleResponse, Assignment, AttendanceSettingsResponse, Beacon, CoordinatorAccount, CoordinatorUser, DatabaseCatalogResponse, DatabasePurgeResponse, DatabaseTargetId, DebugCatalogResponse, DebugClassResponse, DebugFlowLogsResponse, DebugMutationResponse, DebugScheduleInput, DebugSettingsResponse, DebugStatusResponse, DebugStudent, DebugStudentAttendanceResponse, DebugTeacher, InfrastructureSummaryResponse, OverviewResponse, ProfessorDeviceBinding, ProfessorOption, RangeReportResponse, RegisteredStudent, SharedClassAssignment, StudentDeviceBinding, SuperUser, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
+import type { ActiveAcademicCycleResponse, AppLogApplication, AppLogLevel, AppLogPageResponse, AppLogSummaryResponse, Assignment, AttendanceSettingsResponse, Beacon, CoordinatorAccount, CoordinatorUser, DatabaseCatalogResponse, DatabasePurgeResponse, DatabaseTargetId, DebugCatalogResponse, DebugClassResponse, DebugFlowLogsResponse, DebugMutationResponse, DebugScheduleInput, DebugSettingsResponse, DebugStatusResponse, DebugStudent, DebugStudentAttendanceResponse, DebugTeacher, InfrastructureSummaryResponse, OverviewResponse, ProfessorDeviceBinding, ProfessorOption, RangeReportResponse, RegisteredStudent, SharedClassAssignment, StudentDeviceBinding, SuperUser, TeacherAssignmentsResponse, TeachersResponse, WeeklyReportResponse } from './types';
 
 export const coordinationApi = {
   login: async (input: { email: string; password: string }) => (await api.post<{ data: { user: CoordinatorUser; expiresAt: string } }>('/coordinacion/auth/login', input)).data,
@@ -28,6 +28,10 @@ export const superUserApi = {
   login: async (input: { password: string }) => (await superApi.post<{ data: { user: SuperUser; expiresAt: string } }>('/superUsuario/auth/login', input)).data,
   me: async () => (await superApi.get<{ data: { user: SuperUser } }>('/superUsuario/auth/me')).data,
   logout: async () => { await superApi.post('/superUsuario/auth/logout'); },
+  logs: async (params: {
+    q?: string; application?: AppLogApplication; level?: AppLogLevel; from?: string; to?: string; cursor?: string; limit?: number;
+  }) => (await superApi.get<AppLogPageResponse>('/superUsuario/logs', { params })).data,
+  logSummary: async () => (await superApi.get<AppLogSummaryResponse>('/superUsuario/logs/resumen')).data,
   databases: async () => (await superApi.get<DatabaseCatalogResponse>('/superUsuario/bases-datos')).data,
   purgeDatabase: async (input: { target: DatabaseTargetId | 'all'; confirmation: string }) => (
     await superApi.post<DatabasePurgeResponse>('/superUsuario/bases-datos/borrar', input, { timeout: 60_000 })

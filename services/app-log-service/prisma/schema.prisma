@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AppLogEvent {
+  id                  String   @id @db.Uuid
+  schemaVersion       Int      @map("schema_version")
+  batchId             String   @map("batch_id") @db.Uuid
+  sequence            BigInt
+  level               LogLevel
+  application         LogApplication
+  eventName           String   @map("event_name")
+  message             String
+  occurredAt          DateTime @map("occurred_at")
+  receivedAt          DateTime @default(now()) @map("received_at")
+  installationId      String   @map("installation_id") @db.Uuid
+  appSessionId        String   @map("app_session_id") @db.Uuid
+  userIdentifier      String?  @map("user_identifier")
+  appVersion          String   @map("app_version")
+  buildNumber         String   @map("build_number")
+  platform            String
+  osVersion           String   @map("os_version")
+  deviceModel         String?  @map("device_model")
+  deviceManufacturer  String?  @map("device_manufacturer")
+  locale              String?
+  timezoneOffset      String?  @map("timezone_offset")
+  networkType         String?  @map("network_type")
+  errorType           String?  @map("error_type")
+  errorMessage        String?  @map("error_message")
+  stackTrace          String?  @map("stack_trace")
+  correlationId       String?  @map("correlation_id")
+  context             Json?
+  sourceIp            String?  @map("source_ip")
+
+  @@index([receivedAt(sort: Desc)])
+  @@index([level, receivedAt(sort: Desc)])
+  @@index([application, receivedAt(sort: Desc)])
+  @@index([installationId, receivedAt(sort: Desc)])
+  @@index([userIdentifier, receivedAt(sort: Desc)])
+  @@index([eventName, receivedAt(sort: Desc)])
+  @@index([message(ops: raw("gin_trgm_ops"))], type: Gin, map: "app_log_events_message_trgm_idx")
+  @@index([eventName(ops: raw("gin_trgm_ops"))], type: Gin, map: "app_log_events_event_name_trgm_idx")
+  @@index([errorMessage(ops: raw("gin_trgm_ops"))], type: Gin, map: "app_log_events_error_message_trgm_idx")
+  @@index([userIdentifier(ops: raw("gin_trgm_ops"))], type: Gin, map: "app_log_events_user_identifier_trgm_idx")
+  @@index([correlationId(ops: raw("gin_trgm_ops"))], type: Gin, map: "app_log_events_correlation_id_trgm_idx")
+  @@map("app_log_events")
+}
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+  FATAL
+}
+
+enum LogApplication {
+  STUDENT
+  PROFESSOR
+}
